@@ -43,8 +43,9 @@ export default function EditorClient({ id, initialTitle, initialTemplate, initia
       startTransition(async () => {
         try {
           await saveResume(id, values, title);
-        } catch (e: any) {
-          toast.error("保存失败：" + e.message);
+        } catch (e: unknown) {
+          const msg = e instanceof Error ? e.message : String(e);
+          toast.error("保存失败：" + msg);
         }
       });
     }, 2000);

@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import type { Mock } from "vitest";
 
 vi.mock("@/lib/auth", () => ({ auth: vi.fn() }));
 vi.mock("@/db", () => ({ db: { insert: vi.fn(), delete: vi.fn() } }));
@@ -15,15 +16,15 @@ describe("createResume", () => {
   beforeEach(() => vi.clearAllMocks());
 
   it("redirects to login when unauthenticated", async () => {
-    (auth as any).mockResolvedValue(null);
+    (auth as unknown as Mock).mockResolvedValue(null);
     await expect(createResume()).rejects.toThrow("REDIRECT:/login");
   });
 
   it("inserts a resume and redirects to edit", async () => {
-    (auth as any).mockResolvedValue({ user: { id: "u1" } });
+    (auth as unknown as Mock).mockResolvedValue({ user: { id: "u1" } });
     const returning = vi.fn().mockResolvedValue([{ id: "r1" }]);
     const values = vi.fn().mockReturnValue({ returning });
-    (db.insert as any).mockReturnValue({ values });
+    (db.insert as unknown as Mock).mockReturnValue({ values });
     await expect(createResume()).rejects.toThrow("REDIRECT:/resume/r1/edit");
     expect(values).toHaveBeenCalled();
   });
