@@ -4,6 +4,7 @@ import { auth } from "@/lib/auth";
 import { db } from "@/db";
 import { resumes } from "@/db/schema";
 import { ResumeContent } from "@/lib/resume-schema";
+import { newSlug } from "@/lib/slug";
 
 export async function saveResume(id: string, content: unknown, title?: string) {
   const session = await auth();
@@ -24,4 +25,18 @@ export async function setTemplate(id: string, templateId: "classic" | "modern") 
   if (!session?.user?.id) throw new Error("unauthorized");
   await db.update(resumes).set({ templateId, updatedAt: new Date() })
     .where(and(eq(resumes.id, id), eq(resumes.userId, session.user.id)));
+}
+
+export async function toggleShare(
+  id: string,
+  enable: boolean,
+): Promise<{ slug: string | null }> {
+  const session = await auth();
+  if (!session?.user?.id) throw new Error("unauthorized");
+  const slug = enable ? newSlug() : null;
+  await db
+    .update(resumes)
+    .set({ isPublic: enable, slug, updatedAt: new Date() })
+    .where(and(eq(resumes.id, id), eq(resumes.userId, session.user.id)));
+  return { slug };
 }

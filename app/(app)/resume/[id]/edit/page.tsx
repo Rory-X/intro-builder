@@ -18,6 +18,8 @@ export default async function EditPage({ params }: { params: Promise<{ id: strin
       initialTitle={row.title}
       initialTemplate={row.templateId as "classic" | "modern"}
       initialContent={row.content}
+      initialIsPublic={row.isPublic}
+      initialSlug={row.slug ?? null}
     />
   );
 }

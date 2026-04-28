@@ -4,7 +4,7 @@ import { useForm, FormProvider } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { toast } from "sonner";
 import { ResumeContent } from "@/lib/resume-schema";
-import { saveResume, setTemplate } from "./actions";
+import { saveResume, setTemplate, toggleShare } from "./actions";
 import { PreviewPanel } from "@/components/preview/preview-panel";
 import { BasicsEditor } from "@/components/editor/basics-editor";
 import { ExperienceEditor } from "@/components/editor/experience-editor";
@@ -19,9 +19,11 @@ type Props = {
   initialTitle: string;
   initialTemplate: "classic" | "modern";
   initialContent: ResumeContent;
+  initialIsPublic: boolean;
+  initialSlug: string | null;
 };
 
-export default function EditorClient({ id, initialTitle, initialTemplate, initialContent }: Props) {
+export default function EditorClient({ id, initialTitle, initialTemplate, initialContent, initialIsPublic, initialSlug }: Props) {
   const form = useForm({
     resolver: zodResolver(ResumeContent),
     defaultValues: initialContent,
@@ -29,6 +31,8 @@ export default function EditorClient({ id, initialTitle, initialTemplate, initia
   });
   const [title, setTitleState] = useState(initialTitle);
   const [template, setTemplateState] = useState<"classic" | "modern">(initialTemplate);
+  const [isPublic, setIsPublic] = useState(initialIsPublic);
+  const [publicSlug, setPublicSlug] = useState<string | null>(initialSlug);
   const [isPending, startTransition] = useTransition();
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const values = form.watch();
@@ -53,6 +57,13 @@ export default function EditorClient({ id, initialTitle, initialTemplate, initia
     await setTemplate(id, next);
   }
 
+  async function onToggleShare() {
+    const next = !isPublic;
+    const { slug } = await toggleShare(id, next);
+    setIsPublic(next);
+    setPublicSlug(slug);
+  }
+
   return (
     <div className="grid min-h-screen grid-cols-1 lg:grid-cols-2">
       <div className="space-y-6 overflow-y-auto border-r p-6">
@@ -74,6 +85,19 @@ export default function EditorClient({ id, initialTitle, initialTemplate, initia
               size="sm"
               onClick={() => changeTemplate("modern")}
             >现代</Button>
+            <Button size="sm" variant="outline" onClick={onToggleShare}>
+              {isPublic ? "关闭分享" : "开启分享"}
+            </Button>
+            {isPublic && publicSlug && (
+              <a
+                className="self-center text-xs text-muted-foreground underline"
+                href={`/r/${publicSlug}`}
+                target="_blank"
+                rel="noreferrer"
+              >
+                /r/{publicSlug}
+              </a>
+            )}
             <a
               href={`/api/pdf/${id}`}
               className="rounded bg-primary px-3 py-1 text-sm text-primary-foreground"
