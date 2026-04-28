@@ -1,9 +1,12 @@
 import type { ResumeContent } from "@/lib/resume-schema";
-export function PreviewPanel({ content, templateId }: { content: ResumeContent; templateId: string }) {
+import { ClassicLayout } from "@/lib/templates/classic/Layout";
+
+export function PreviewPanel({ content, templateId }: { content: ResumeContent; templateId: "classic" | "modern" }) {
+  // Modern added in Task 15
+  void templateId;
   return (
-    <div className="mx-auto w-full max-w-[800px] rounded bg-white p-8 shadow">
-      <div className="mb-4 text-xs text-muted-foreground">template: {templateId}</div>
-      <pre className="whitespace-pre-wrap text-xs">{JSON.stringify(content, null, 2)}</pre>
+    <div className="mx-auto w-full max-w-[820px]">
+      <ClassicLayout content={content} />
     </div>
   );
 }
