@@ -1,36 +1,71 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# intro-builder
 
-## Getting Started
+面向互联网求职者的在线简历排版工具。Next.js 16 App Router + Neon Postgres + Auth.js v5 Magic Link + @react-pdf/renderer。
 
-First, run the development server:
+## 功能
+
+- 邮箱 Magic Link 登录（Resend），无密码
+- 结构化编辑：基础信息 / 教育 / 工作经历 / 项目 / 技能
+- 双模板（经典 / 现代），实时预览
+- 2 秒防抖自动保存
+- 一键导出 A4 PDF（支持中文，内置 Noto Sans SC）
+- 一键开启公开只读分享链接 `/r/[slug]`
+
+## 本地开发
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
+pnpm install
+cp .env.example .env.local
+# 填入 DATABASE_URL / AUTH_SECRET / AUTH_RESEND_KEY / AUTH_EMAIL_FROM
+pnpm drizzle-kit migrate
 pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+要生成 AUTH_SECRET：
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+```bash
+openssl rand -base64 32
+```
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+## 跑测试
 
-## Learn More
+```bash
+pnpm test             # 单测 (vitest)
+pnpm tsc --noEmit     # 类型检查
+pnpm build            # 生产构建
+```
 
-To learn more about Next.js, take a look at the following resources:
+## Vercel 部署
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+1. 推到 GitHub，在 Vercel Dashboard → Import Project。
+2. Vercel Dashboard → Storage → Create / Connect **Neon Postgres**（免费档）。`DATABASE_URL` 会自动注入。
+3. 在 [Resend](https://resend.com) 注册 → 验证域名 → 拿到 API Key。
+4. Vercel 项目 → Settings → Environment Variables，添加：
+   - `AUTH_SECRET` — `openssl rand -base64 32`
+   - `AUTH_URL` — 例如 `https://your-app.vercel.app`
+   - `AUTH_RESEND_KEY` — 来自 Resend
+   - `AUTH_EMAIL_FROM` — 例如 `login@your-domain.com`
+5. 本地用生产 `DATABASE_URL` 跑一次 `pnpm drizzle-kit migrate` 初始化表。
+6. Vercel 触发部署。
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+## 目录
 
-## Deploy on Vercel
+- `app/` — 路由与页面（App Router）
+- `components/editor/` — 编辑器分区组件
+- `components/ui/` — shadcn/ui 原语
+- `lib/templates/<id>/Layout.tsx` — 屏上预览
+- `lib/templates/<id>/Pdf.tsx` — PDF 导出
+- `db/` — Drizzle schema + migrations
+- `docs/superpowers/` — 设计 spec 与实施 plan
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+## 容量（Vercel Hobby 免费档，100 人/月）
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+| 资源 | 免费额度 | 估算用量 |
+|---|---|---|
+| Vercel 带宽 | 100 GB | ~2 GB |
+| Neon 存储 | 0.5 GB | ~10 MB |
+| Resend 邮件 | 3000/月 | ~500 |
+
+## License
+
+MIT
