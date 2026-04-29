@@ -1,13 +1,34 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import { render, screen } from "@testing-library/react";
 import { ClassicLayout } from "@/lib/templates/classic/Layout";
 import { emptyResumeContent } from "@/lib/resume-schema";
+import { bulletsToDoc } from "@/lib/tiptap-types";
+
+// Mock generateHTML since we're in jsdom without full TipTap server setup
+vi.mock("@tiptap/html", () => ({
+  generateHTML: (json: any) => {
+    const texts: string[] = [];
+    function walk(node: any) {
+      if (node.text) texts.push(node.text);
+      if (node.content) node.content.forEach(walk);
+    }
+    if (json?.content) json.content.forEach(walk);
+    return texts.map((t: string) => `<p>${t}</p>`).join("");
+  },
+}));
 
 describe("ClassicLayout", () => {
-  it("renders basics name as heading", () => {
+  it("renders basics name as heading and experience content", () => {
     const c = emptyResumeContent();
     c.basics.name = "张三";
-    c.experience = [{ company: "字节跳动", title: "前端工程师", start: "2022", end: "至今", location: "北京", bullets: ["主导 X 项目"] }];
+    c.experience = [{
+      company: "字节跳动",
+      title: "前端工程师",
+      start: "2022",
+      end: "至今",
+      location: "北京",
+      content: bulletsToDoc(["主导 X 项目"]),
+    }];
     render(<ClassicLayout content={c} />);
     expect(screen.getByRole("heading", { name: "张三" })).toBeInTheDocument();
     expect(screen.getByText("字节跳动 — 前端工程师")).toBeInTheDocument();

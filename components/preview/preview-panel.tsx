@@ -6,7 +6,7 @@ export function PreviewPanel({ content, templateId }: { content: ResumeContent; 
   const Layout = templateId === "modern" ? ModernLayout : ClassicLayout;
   return (
     <div className="mx-auto w-full max-w-[820px]">
-      <Layout content={content} />
+      <Layout content={content} sectionOrder={content.sectionOrder} />
     </div>
   );
 }
