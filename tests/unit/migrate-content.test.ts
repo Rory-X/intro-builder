@@ -46,4 +46,18 @@ describe("migrateContent", () => {
     const result = migrateContent(v1);
     expect(result.sectionOrder).toEqual(["basics", "experience", "education", "projects", "skills", "custom"]);
   });
+
+  it("preserves photo field if present", () => {
+    const v2 = {
+      basics: { name: "A", title: "", email: "a@b.com", phone: "", location: "", website: "", summary: "", photo: "https://example.com/pic.jpg" },
+      experience: [],
+      education: [],
+      projects: [],
+      skills: [],
+      custom: [],
+      sectionOrder: ["basics"],
+    };
+    const result = migrateContent(v2);
+    expect(result.basics.photo).toBe("https://example.com/pic.jpg");
+  });
 });

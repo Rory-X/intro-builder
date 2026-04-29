@@ -37,4 +37,16 @@ describe("ResumeContent v2", () => {
     const c = emptyResumeContent();
     expect(c.sectionOrder).toEqual(["basics", "experience", "education", "projects", "skills", "custom"]);
   });
+
+  it("accepts photo URL in basics", () => {
+    const c = emptyResumeContent();
+    c.basics.photo = "https://example.com/photo.jpg";
+    const r = ResumeContent.safeParse(c);
+    expect(r.success).toBe(true);
+  });
+
+  it("defaults photo to empty string", () => {
+    const c = emptyResumeContent();
+    expect(c.basics.photo).toBe("");
+  });
 });

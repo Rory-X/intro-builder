@@ -34,4 +34,14 @@ describe("ClassicLayout", () => {
     expect(screen.getByText("字节跳动 — 前端工程师")).toBeInTheDocument();
     expect(screen.getByText("主导 X 项目")).toBeInTheDocument();
   });
+
+  it("renders photo if present", () => {
+    const c = emptyResumeContent();
+    c.basics.name = "测试";
+    c.basics.photo = "https://example.com/photo.jpg";
+    render(<ClassicLayout content={c} />);
+    const img = screen.getByAltText("测试");
+    expect(img).toBeInTheDocument();
+    expect(img).toHaveAttribute("src", "https://example.com/photo.jpg");
+  });
 });
