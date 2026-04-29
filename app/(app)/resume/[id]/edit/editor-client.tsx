@@ -138,7 +138,7 @@ export default function EditorClient({ id, initialTitle, initialTemplate, initia
       </div>
 
       {/* Desktop: side-by-side grid */}
-      <div className="hidden lg:grid min-h-[calc(100vh-3.5rem-4rem)] grid-cols-2">
+      <div className="hidden lg:grid h-[calc(100vh-3.5rem-4rem)] grid-cols-2">
         <div className="space-y-6 overflow-y-auto border-r p-6">
           <BasicsEditor />
           {sectionOrder.filter(k => k !== "basics").map((key) => (
