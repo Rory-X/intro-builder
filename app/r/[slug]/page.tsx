@@ -17,7 +17,7 @@ export default async function PublicResume({ params }: { params: Promise<{ slug:
   const content = migrateContent(row.content);
   const Layout = row.templateId === "modern" ? ModernLayout : ClassicLayout;
   return (
-    <main className="bg-slate-100 py-8">
+    <main className="bg-muted py-8">
       <Layout content={content} sectionOrder={content.sectionOrder} />
     </main>
   );

@@ -163,7 +163,7 @@ export default function EditorClient({ id, initialTitle, initialTemplate, initia
             </SectionWrapper>
           ))}
         </div>
-        <div className="overflow-y-auto bg-slate-100 p-6">
+        <div className="overflow-y-auto bg-muted p-6">
           <PreviewPanel content={values as ResumeContent} templateId={template} />
         </div>
       </div>
@@ -186,7 +186,7 @@ export default function EditorClient({ id, initialTitle, initialTemplate, initia
               </SectionWrapper>
             ))}
           </TabsContent>
-          <TabsContent value="preview" className="bg-slate-100 p-4">
+          <TabsContent value="preview" className="bg-muted p-4">
             <PreviewPanel content={values as ResumeContent} templateId={template} />
           </TabsContent>
         </Tabs>

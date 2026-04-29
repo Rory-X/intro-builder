@@ -97,7 +97,7 @@ export default function Landing() {
       {/* Footer */}
       <footer className="border-t py-8">
         <div className="mx-auto flex max-w-5xl flex-col items-center justify-between gap-4 px-4 text-sm text-muted-foreground md:flex-row">
-          <span>intro-builder · v0.1.1</span>
+          <span>intro-builder · v0.2.2</span>
           <div className="flex gap-4">
             <a href="https://github.com" target="_blank" rel="noreferrer" className="hover:text-foreground">GitHub</a>
             <Link href="/terms" className="hover:text-foreground">用户协议</Link>
@@ -122,7 +122,7 @@ function FeatureCard({ icon, title, desc }: { icon: React.ReactNode; title: stri
 
 function TemplateFrame({ children }: { children: React.ReactNode }) {
   return (
-    <div className="mx-auto w-full max-w-[820px] overflow-hidden rounded border bg-slate-50 shadow-sm">
+    <div className="mx-auto w-full max-w-[820px] overflow-hidden rounded border bg-muted shadow-sm">
       <div className="origin-top-left scale-[0.55] md:scale-[0.72]" style={{ transformOrigin: "top left" }}>
         <div className="w-[820px]">{children}</div>
       </div>
