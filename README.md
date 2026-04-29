@@ -1,5 +1,7 @@
 # intro-builder
 
+[![CI](https://github.com/Rory-X/intro-builder/actions/workflows/ci.yml/badge.svg)](https://github.com/Rory-X/intro-builder/actions/workflows/ci.yml)
+
 面向互联网求职者的在线简历排版工具。Next.js 16 App Router + Neon Postgres + Auth.js v5 Magic Link + @react-pdf/renderer。
 
 ## 功能
