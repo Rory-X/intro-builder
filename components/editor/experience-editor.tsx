@@ -1,9 +1,10 @@
 "use client";
 import { useFieldArray, useFormContext } from "react-hook-form";
 import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
+import { RichTextEditor } from "./rich-text-editor";
+import { emptyDoc } from "@/lib/tiptap-types";
 import type { ResumeContent } from "@/lib/resume-schema";
 
 export function ExperienceEditor() {
@@ -13,7 +14,7 @@ export function ExperienceEditor() {
     <section className="rounded border p-4">
       <h2 className="mb-3 flex items-center justify-between text-lg font-semibold">
         工作经历
-        <Button type="button" size="sm" onClick={() => append({ company: "", title: "", start: "", end: "", location: "", bullets: [""] })}>
+        <Button type="button" size="sm" onClick={() => append({ company: "", title: "", start: "", end: "", location: "", content: emptyDoc() })}>
           + 新增
         </Button>
       </h2>
@@ -27,11 +28,11 @@ export function ExperienceEditor() {
               <div><Label>结束</Label><Input placeholder="至今" {...register(`experience.${idx}.end` as const)} /></div>
             </div>
             <div>
-              <Label>工作成果 (每行一条 bullet)</Label>
-              <Textarea
-                rows={4}
-                value={((watch(`experience.${idx}.bullets` as const) as string[]) ?? []).join("\n")}
-                onChange={(e) => setValue(`experience.${idx}.bullets` as const, e.target.value.split("\n").filter(Boolean), { shouldDirty: true })}
+              <Label>工作成果</Label>
+              <RichTextEditor
+                content={watch(`experience.${idx}.content` as const)}
+                onChange={(json) => setValue(`experience.${idx}.content` as const, json, { shouldDirty: true })}
+                placeholder="描述你的工作成果…"
               />
             </div>
             <Button type="button" variant="ghost" size="sm" onClick={() => remove(idx)}>删除此条</Button>

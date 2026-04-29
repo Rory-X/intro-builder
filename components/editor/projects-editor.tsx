@@ -2,8 +2,9 @@
 import { useFieldArray, useFormContext } from "react-hook-form";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
+import { RichTextEditor } from "./rich-text-editor";
+import { emptyDoc } from "@/lib/tiptap-types";
 import type { ResumeContent } from "@/lib/resume-schema";
 
 export function ProjectsEditor() {
@@ -13,7 +14,7 @@ export function ProjectsEditor() {
     <section className="rounded border p-4">
       <h2 className="mb-3 flex items-center justify-between text-lg font-semibold">
         项目经历
-        <Button type="button" size="sm" onClick={() => append({ name: "", stack: [], link: "", bullets: [] })}>
+        <Button type="button" size="sm" onClick={() => append({ name: "", stack: [], link: "", content: emptyDoc() })}>
           + 新增
         </Button>
       </h2>
@@ -32,11 +33,11 @@ export function ProjectsEditor() {
               />
             </div>
             <div>
-              <Label>项目亮点 (每行一条)</Label>
-              <Textarea
-                rows={3}
-                value={((watch(`projects.${idx}.bullets` as const) as string[]) ?? []).join("\n")}
-                onChange={(e) => setValue(`projects.${idx}.bullets` as const, e.target.value.split("\n").filter(Boolean), { shouldDirty: true })}
+              <Label>项目亮点</Label>
+              <RichTextEditor
+                content={watch(`projects.${idx}.content` as const)}
+                onChange={(json) => setValue(`projects.${idx}.content` as const, json, { shouldDirty: true })}
+                placeholder="描述你的项目亮点…"
               />
             </div>
             <Button type="button" variant="ghost" size="sm" onClick={() => remove(idx)}>删除此条</Button>
