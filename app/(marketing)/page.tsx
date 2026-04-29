@@ -1,7 +1,6 @@
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
-import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 import { Card, CardContent } from "@/components/ui/card";
 import { FileText, LayoutGrid, Share2, ArrowRight, Sparkles, Shield, Zap } from "lucide-react";
 import { ClassicLayout } from "@/lib/templates/classic/Layout";
@@ -145,39 +144,6 @@ export default function Landing() {
             </Button>
           </Link>
         </div>
-      </section>
-
-      {/* FAQ */}
-      <section className="mx-auto max-w-3xl px-4 py-16">
-        <div className="mb-8 text-center">
-          <h2 className="text-2xl font-bold md:text-3xl">常见问题</h2>
-        </div>
-        <Accordion className="w-full">
-          <AccordionItem value="q1">
-            <AccordionTrigger>数据安全吗？</AccordionTrigger>
-            <AccordionContent>
-              简历内容存储在 Neon Postgres（欧盟/美国托管），仅你自己可以访问，除非你开启了公开分享。
-            </AccordionContent>
-          </AccordionItem>
-          <AccordionItem value="q2">
-            <AccordionTrigger>真的免费吗？</AccordionTrigger>
-            <AccordionContent>
-              当前 100% 免费，没有付费墙。未来若加付费模板，已有的经典/现代模板会继续免费。
-            </AccordionContent>
-          </AccordionItem>
-          <AccordionItem value="q3">
-            <AccordionTrigger>能随时换模板吗？</AccordionTrigger>
-            <AccordionContent>
-              可以。同一份简历内容可在任意模板间切换，内容不会丢。
-            </AccordionContent>
-          </AccordionItem>
-          <AccordionItem value="q4">
-            <AccordionTrigger>PDF 支持中文吗？</AccordionTrigger>
-            <AccordionContent>
-              支持。内置思源黑体子集，导出 A4 规范 PDF，可直接用于投递。
-            </AccordionContent>
-          </AccordionItem>
-        </Accordion>
       </section>
 
       {/* Footer */}
