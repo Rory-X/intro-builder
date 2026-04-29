@@ -42,14 +42,14 @@ export function SectionWrapper({ id, children }: Props) {
   return (
     <div
       ref={ref}
-      className={`transition-opacity ${isDragging ? "opacity-50" : ""} ${isDragOver ? "ring-2 ring-primary/50 rounded" : ""}`}
+      className={`rounded-xl border bg-card transition-all duration-200 ${isDragging ? "opacity-40 scale-[0.98]" : ""} ${isDragOver ? "ring-2 ring-primary/40 shadow-md shadow-primary/10" : ""}`}
     >
       <div
         ref={handleRef}
-        className="mb-1 flex cursor-grab items-center gap-1 text-muted-foreground"
+        className="flex cursor-grab items-center gap-1.5 border-b border-dashed border-border/60 px-4 py-1.5 text-muted-foreground transition-colors duration-200 hover:bg-muted/60 active:cursor-grabbing"
       >
-        <GripHorizontal className="h-4 w-4" />
-        <span className="text-xs">拖拽排序</span>
+        <GripHorizontal className="h-3.5 w-3.5" />
+        <span className="text-xs font-medium">拖拽排序</span>
       </div>
       {children}
     </div>

@@ -14,10 +14,23 @@ export async function PUT(req: Request) {
   if (!file.type.startsWith("image/")) return NextResponse.json({ error: "not an image" }, { status: 400 });
   if (file.size > 4 * 1024 * 1024) return NextResponse.json({ error: "file too large (max 4MB)" }, { status: 400 });
 
-  const blob = await put(`photos/${session.user.id}/${Date.now()}-${file.name}`, file, {
-    access: "public",
-    contentType: file.type,
-  });
+  if (!process.env.BLOB_READ_WRITE_TOKEN) {
+    return NextResponse.json(
+      { error: "Photo upload is not configured. Please set BLOB_READ_WRITE_TOKEN environment variable." },
+      { status: 503 }
+    );
+  }
 
-  return NextResponse.json({ url: blob.url });
+  try {
+    const blob = await put(`photos/${session.user.id}/${Date.now()}-${file.name}`, file, {
+      access: "public",
+      contentType: file.type,
+    });
+
+    return NextResponse.json({ url: blob.url });
+  } catch (err: unknown) {
+    console.error("Photo upload error:", err);
+    const message = err instanceof Error ? err.message : "Unknown upload error";
+    return NextResponse.json({ error: message }, { status: 500 });
+  }
 }

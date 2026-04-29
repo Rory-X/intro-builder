@@ -18,23 +18,25 @@ export function SectionEditorHeader({ sectionKey, itemCount, isOpen, onToggle, o
   const Icon = meta.icon;
 
   return (
-    <div className="flex items-center justify-between py-2">
+    <div className="flex items-center justify-between py-3">
       <button
         type="button"
-        className="flex items-center gap-2 text-lg font-semibold"
+        className="flex items-center gap-2.5 text-lg font-semibold transition-colors duration-200 hover:text-foreground"
         onClick={onToggle}
       >
-        {isOpen ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
-        <Icon className={`h-5 w-5 ${meta.color}`} />
+        {isOpen ? <ChevronDown className="h-4 w-4 text-muted-foreground" /> : <ChevronRight className="h-4 w-4 text-muted-foreground" />}
+        <div className={`flex h-7 w-7 items-center justify-center rounded-lg ${meta.color.replace('text-', 'bg-').replace('-500', '-500/10')}`}>
+          <Icon className={`h-4 w-4 ${meta.color}`} />
+        </div>
         <span>{meta.label}</span>
         {itemCount > 0 && (
-          <span className="ml-1 rounded-full bg-muted px-2 py-0.5 text-xs text-muted-foreground">
+          <span className="ml-0.5 rounded-full bg-primary/10 px-2 py-0.5 text-xs font-medium text-primary">
             {itemCount}
           </span>
         )}
       </button>
-      <Button type="button" size="sm" variant="outline" onClick={onAdd}>
-        <Plus className="mr-1 h-3.5 w-3.5" />
+      <Button type="button" size="sm" variant="outline" onClick={onAdd} className="gap-1 text-xs">
+        <Plus className="h-3 w-3" />
         {addLabel}
       </Button>
     </div>

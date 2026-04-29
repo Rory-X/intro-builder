@@ -99,39 +99,44 @@ export default function EditorClient({ id, initialTitle, initialTemplate, initia
   return (
     <FormProvider {...form}>
       {/* Toolbar — always visible on both layouts */}
-      <div className="sticky top-14 z-30 border-b bg-background">
-        <div className="mx-auto flex max-w-6xl flex-wrap items-center gap-3 px-4 py-3">
+      <div className="sticky top-14 z-30 border-b border-border/60 bg-background/80 backdrop-blur-xl backdrop-saturate-150">
+        <div className="mx-auto flex max-w-6xl flex-wrap items-center gap-3 px-4 py-2.5">
           <Input
             value={title}
             onChange={(e) => setTitleState(e.target.value)}
-            className="w-full sm:max-w-xs text-base"
+            className="w-full sm:max-w-xs text-base font-medium"
           />
-          <span className="text-xs text-muted-foreground">{isPending ? "保存中…" : "已保存"}</span>
+          <span className={`inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-medium ${isPending ? "bg-orange-500/10 text-orange-600 dark:text-orange-400" : "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"}`}>
+            <span className={`h-1.5 w-1.5 rounded-full ${isPending ? "bg-orange-500 animate-pulse" : "bg-emerald-500"}`} />
+            {isPending ? "保存中" : "已保存"}
+          </span>
           <div className="ml-auto flex flex-wrap items-center gap-2">
-            <div className="flex items-center gap-1">
+            <div className="flex items-center gap-1 rounded-lg bg-muted p-0.5">
               <Button
-                variant={template === "classic" ? "default" : "outline"}
+                variant={template === "classic" ? "default" : "ghost"}
                 size="sm"
                 onClick={() => changeTemplate("classic")}
+                className="gap-1.5"
               >
-                <LayoutTemplate className="mr-1 h-3.5 w-3.5" />经典
+                <LayoutTemplate className="h-3.5 w-3.5" />经典
               </Button>
               <Button
-                variant={template === "modern" ? "default" : "outline"}
+                variant={template === "modern" ? "default" : "ghost"}
                 size="sm"
                 onClick={() => changeTemplate("modern")}
+                className="gap-1.5"
               >
-                <LayoutTemplate className="mr-1 h-3.5 w-3.5" />现代
+                <LayoutTemplate className="h-3.5 w-3.5" />现代
               </Button>
             </div>
             <Separator orientation="vertical" className="h-6" />
-            <Button size="sm" variant="outline" onClick={onToggleShare}>
-              <Share2 className="mr-1 h-3.5 w-3.5" />
+            <Button size="sm" variant="outline" onClick={onToggleShare} className="gap-1.5">
+              <Share2 className="h-3.5 w-3.5" />
               {isPublic ? "关闭分享" : "开启分享"}
             </Button>
             {isPublic && publicSlug && (
               <a
-                className="self-center text-xs text-muted-foreground underline"
+                className="self-center rounded-full bg-primary/10 px-2.5 py-0.5 text-xs font-medium text-primary transition-colors hover:bg-primary/20"
                 href={`/r/${publicSlug}`}
                 target="_blank"
                 rel="noreferrer"
@@ -142,7 +147,7 @@ export default function EditorClient({ id, initialTitle, initialTemplate, initia
             <Separator orientation="vertical" className="h-6" />
             <a
               href={`/api/pdf/${id}`}
-              className="inline-flex items-center gap-1 rounded bg-primary px-3 py-1 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90"
+              className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-3.5 py-1.5 text-sm font-medium text-primary-foreground shadow-sm shadow-primary/20 transition-all duration-200 hover:bg-primary/90 hover:shadow-md hover:shadow-primary/30"
             >
               <Download className="h-3.5 w-3.5" />下载 PDF
             </a>

@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import {
   DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem,
 } from "@/components/ui/dropdown-menu";
-import { Plus, MoreVertical, Edit, Copy, Trash2 } from "lucide-react";
+import { Plus, MoreVertical, Edit, Copy, Trash2, FileText } from "lucide-react";
 import { createResume, deleteResume, duplicateResume } from "./actions";
 import { migrateContent } from "@/lib/migrate-content";
 import { ClassicLayout } from "@/lib/templates/classic/Layout";
@@ -21,24 +21,35 @@ export default async function DashboardPage() {
   const list = await db.select().from(resumes).where(eq(resumes.userId, userId)).orderBy(desc(resumes.updatedAt));
 
   return (
-    <main className="mx-auto max-w-6xl px-4 py-6 md:py-10">
-      <div className="mb-8 flex items-center justify-between">
-        <h1 className="text-xl font-semibold md:text-2xl">
-          我的简历 <span className="text-muted-foreground">({list.length})</span>
-        </h1>
+    <main className="mx-auto max-w-6xl px-4 py-8 md:py-12">
+      <div className="mb-10 flex items-center justify-between">
+        <div>
+          <h1 className="text-2xl font-bold md:text-3xl">
+            我的简历
+          </h1>
+          <p className="mt-1 text-sm text-muted-foreground">
+            {list.length > 0 ? `共 ${list.length} 份简历` : "开始创建你的第一份专业简历"}
+          </p>
+        </div>
         <form action={createResume}>
-          <Button type="submit">
-            <Plus className="mr-1 h-4 w-4" />新建简历
+          <Button type="submit" className="gap-1.5 shadow-sm shadow-primary/20">
+            <Plus className="h-4 w-4" />新建简历
           </Button>
         </form>
       </div>
 
       {list.length === 0 ? (
-        <div className="rounded-lg border border-dashed p-16 text-center">
-          <p className="mb-4 text-muted-foreground">你还没有简历</p>
+        <div className="flex flex-col items-center rounded-2xl border-2 border-dashed border-primary/20 bg-primary/[0.02] p-16 text-center">
+          <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-2xl bg-primary/10">
+            <FileText className="h-7 w-7 text-primary" />
+          </div>
+          <h2 className="text-lg font-semibold">还没有简历</h2>
+          <p className="mb-6 mt-1 max-w-xs text-sm text-muted-foreground">
+            创建你的第一份简历，结构化编辑、实时预览、一键导出 PDF
+          </p>
           <form action={createResume}>
-            <Button type="submit" size="lg">
-              <Plus className="mr-1 h-4 w-4" />创建第一份简历
+            <Button type="submit" size="lg" className="gap-2 shadow-sm shadow-primary/20">
+              <Plus className="h-4 w-4" />创建第一份简历
             </Button>
           </form>
         </div>
@@ -51,7 +62,7 @@ export default async function DashboardPage() {
               <div key={r.id} className="group relative">
                 {/* Preview card */}
                 <Link href={`/resume/${r.id}/edit`} className="block">
-                  <div className="overflow-hidden rounded-lg border bg-white shadow-sm transition-shadow hover:shadow-md dark:border-neutral-700"
+                  <div className="overflow-hidden rounded-xl border bg-white shadow-sm transition-all duration-200 hover:shadow-lg hover:shadow-primary/5 dark:border-neutral-700 dark:bg-neutral-900"
                        style={{ aspectRatio: "210/297" }}>
                     <div className="pointer-events-none origin-top-left scale-[0.25]" style={{ width: "820px" }}>
                       <Layout content={content} sectionOrder={content.sectionOrder} />
@@ -59,16 +70,18 @@ export default async function DashboardPage() {
                   </div>
                 </Link>
                 {/* Card footer */}
-                <div className="mt-2 flex items-center justify-between">
+                <div className="mt-3 flex items-center justify-between">
                   <div className="min-w-0 flex-1">
                     <p className="truncate text-sm font-medium">{r.title}</p>
                     <p className="text-xs text-muted-foreground">
                       {r.updatedAt.toLocaleDateString("zh-CN")}
+                      <span className="mx-1 text-border">&middot;</span>
+                      <span className="capitalize">{r.templateId}</span>
                     </p>
                   </div>
                   <DropdownMenu>
                     <DropdownMenuTrigger
-                      render={<button type="button" className="inline-flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground opacity-0 transition-opacity hover:bg-accent hover:text-accent-foreground group-hover:opacity-100"><MoreVertical className="h-4 w-4" /></button>}
+                      render={<button type="button" className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-muted-foreground opacity-0 transition-all duration-200 hover:bg-accent hover:text-accent-foreground group-hover:opacity-100"><MoreVertical className="h-4 w-4" /></button>}
                     />
                     <DropdownMenuContent align="end">
                       <DropdownMenuItem>

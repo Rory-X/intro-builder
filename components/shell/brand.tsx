@@ -2,9 +2,16 @@ import Link from "next/link";
 
 export function Brand() {
   return (
-    <Link href="/" className="flex items-center gap-1 text-lg font-semibold tracking-tight">
-      <span aria-hidden className="rounded bg-primary px-1.5 py-0.5 text-primary-foreground">ib</span>
-      <span>intro-builder</span>
+    <Link href="/" className="group flex items-center gap-1.5 text-lg font-semibold tracking-tight">
+      <span
+        aria-hidden
+        className="inline-flex h-7 w-7 items-center justify-center rounded-lg bg-primary text-xs font-bold text-primary-foreground shadow-sm transition-transform duration-200 group-hover:scale-105"
+      >
+        ib
+      </span>
+      <span className="bg-gradient-to-r from-foreground to-foreground/70 bg-clip-text text-transparent">
+        intro-builder
+      </span>
     </Link>
   );
 }

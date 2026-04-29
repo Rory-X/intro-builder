@@ -35,7 +35,7 @@ export function ExperienceEditor() {
   }, [fields, move]);
 
   return (
-    <section className="rounded-lg border bg-card">
+    <section>
       <div className="px-4 pt-2">
         <SectionEditorHeader
           sectionKey="experience"

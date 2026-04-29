@@ -43,9 +43,9 @@ export function ItemWrapper({ id, sectionKey, children }: Props) {
   return (
     <div
       ref={ref}
-      className={`flex gap-2 ${isDragging ? "opacity-50" : ""} ${isDragOver ? "ring-2 ring-primary/30 rounded" : ""}`}
+      className={`flex gap-2 transition-all duration-200 ${isDragging ? "opacity-40 scale-[0.98]" : ""} ${isDragOver ? "ring-2 ring-primary/30 rounded-lg shadow-sm" : ""}`}
     >
-      <button ref={handleRef} type="button" className="mt-3 cursor-grab self-start">
+      <button ref={handleRef} type="button" className="mt-4 cursor-grab self-start rounded p-0.5 transition-colors duration-200 hover:bg-muted active:cursor-grabbing">
         <GripVertical className="h-4 w-4 text-muted-foreground" />
       </button>
       <div className="flex-1">{children}</div>

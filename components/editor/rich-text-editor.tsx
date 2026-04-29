@@ -20,7 +20,7 @@ export function RichTextEditor({ content, onChange, placeholder: _placeholder }:
     },
     editorProps: {
       attributes: {
-        class: "min-h-[80px] rounded-b border border-t-0 bg-background px-3 py-2 text-sm focus:outline-none prose prose-sm max-w-none",
+        class: "min-h-[80px] bg-background px-3 py-2 text-sm focus:outline-none prose prose-sm max-w-none",
       },
     },
     immediatelyRender: false,
@@ -29,8 +29,8 @@ export function RichTextEditor({ content, onChange, placeholder: _placeholder }:
   if (!editor) return null;
 
   return (
-    <div>
-      <div className="flex flex-wrap gap-0.5 rounded-t border bg-muted/30 px-1 py-1">
+    <div className="overflow-hidden rounded-lg border transition-colors duration-200 focus-within:ring-2 focus-within:ring-ring/30">
+      <div className="flex flex-wrap gap-0.5 border-b bg-muted/40 px-1.5 py-1.5">
         <ToolBtn active={editor.isActive("bold")} onClick={() => editor.chain().focus().toggleBold().run()} icon={Bold} title="粗体" />
         <ToolBtn active={editor.isActive("italic")} onClick={() => editor.chain().focus().toggleItalic().run()} icon={Italic} title="斜体" />
         <ToolBtn active={editor.isActive("underline")} onClick={() => editor.chain().focus().toggleUnderline().run()} icon={UnderlineIcon} title="下划线" />
@@ -39,7 +39,7 @@ export function RichTextEditor({ content, onChange, placeholder: _placeholder }:
           if (url) editor.chain().focus().setLink({ href: url }).run();
           else editor.chain().focus().unsetLink().run();
         }} icon={Link} title="链接" />
-        <span className="mx-1 w-px bg-border" />
+        <span className="mx-1 w-px self-stretch bg-border/60" />
         <ToolBtn active={editor.isActive("bulletList")} onClick={() => editor.chain().focus().toggleBulletList().run()} icon={List} title="无序列表" />
         <ToolBtn active={editor.isActive("orderedList")} onClick={() => editor.chain().focus().toggleOrderedList().run()} icon={ListOrdered} title="有序列表" />
       </div>
