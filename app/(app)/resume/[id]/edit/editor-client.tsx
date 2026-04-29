@@ -14,6 +14,10 @@ import { SkillsEditor } from "@/components/editor/skills-editor";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import { DndContext, closestCenter, PointerSensor, useSensor, useSensors } from "@dnd-kit/core";
+import { SortableContext, arrayMove, verticalListSortingStrategy } from "@dnd-kit/sortable";
+import { SortableSection } from "@/components/editor/section-sortable";
+import { DEFAULT_SECTION_ORDER } from "@/lib/resume-schema";
 
 type Props = {
   id: string;
@@ -35,8 +39,22 @@ export default function EditorClient({ id, initialTitle, initialTemplate, initia
   const [isPublic, setIsPublic] = useState(initialIsPublic);
   const [publicSlug, setPublicSlug] = useState<string | null>(initialSlug);
   const [isPending, startTransition] = useTransition();
+  const [sectionOrder, setSectionOrder] = useState<string[]>(
+    initialContent.sectionOrder ?? [...DEFAULT_SECTION_ORDER]
+  );
+  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 8 } }));
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const values = form.watch();
+
+  function handleSectionDragEnd(event: any) {
+    const { active, over } = event;
+    if (!over || active.id === over.id) return;
+    const oldIdx = sectionOrder.indexOf(active.id as string);
+    const newIdx = sectionOrder.indexOf(over.id as string);
+    const newOrder = arrayMove(sectionOrder, oldIdx, newIdx);
+    setSectionOrder(newOrder);
+    form.setValue("sectionOrder", newOrder, { shouldDirty: true });
+  }
 
   useEffect(() => {
     if (timer.current) clearTimeout(timer.current);
@@ -109,10 +127,18 @@ export default function EditorClient({ id, initialTitle, initialTemplate, initia
       <div className="hidden lg:grid min-h-[calc(100vh-3.5rem-4rem)] grid-cols-2">
         <div className="space-y-6 overflow-y-auto border-r p-6">
           <BasicsEditor />
-          <ExperienceEditor />
-          <EducationEditor />
-          <ProjectsEditor />
-          <SkillsEditor />
+          <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleSectionDragEnd}>
+            <SortableContext items={sectionOrder.filter(k => k !== "basics")} strategy={verticalListSortingStrategy}>
+              {sectionOrder.filter(k => k !== "basics").map((key) => (
+                <SortableSection key={key} id={key}>
+                  {key === "experience" && <ExperienceEditor />}
+                  {key === "education" && <EducationEditor />}
+                  {key === "projects" && <ProjectsEditor />}
+                  {key === "skills" && <SkillsEditor />}
+                </SortableSection>
+              ))}
+            </SortableContext>
+          </DndContext>
         </div>
         <div className="overflow-y-auto bg-slate-100 p-6">
           <PreviewPanel content={values as ResumeContent} templateId={template} />
@@ -128,10 +154,18 @@ export default function EditorClient({ id, initialTitle, initialTemplate, initia
           </TabsList>
           <TabsContent value="edit" className="space-y-6 p-4">
             <BasicsEditor />
-            <ExperienceEditor />
-            <EducationEditor />
-            <ProjectsEditor />
-            <SkillsEditor />
+            <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleSectionDragEnd}>
+              <SortableContext items={sectionOrder.filter(k => k !== "basics")} strategy={verticalListSortingStrategy}>
+                {sectionOrder.filter(k => k !== "basics").map((key) => (
+                  <SortableSection key={key} id={key}>
+                    {key === "experience" && <ExperienceEditor />}
+                    {key === "education" && <EducationEditor />}
+                    {key === "projects" && <ProjectsEditor />}
+                    {key === "skills" && <SkillsEditor />}
+                  </SortableSection>
+                ))}
+              </SortableContext>
+            </DndContext>
           </TabsContent>
           <TabsContent value="preview" className="bg-slate-100 p-4">
             <PreviewPanel content={values as ResumeContent} templateId={template} />
