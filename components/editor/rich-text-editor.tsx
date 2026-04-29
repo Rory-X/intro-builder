@@ -11,7 +11,7 @@ type Props = {
   placeholder?: string;
 };
 
-export function RichTextEditor({ content, onChange, placeholder }: Props) {
+export function RichTextEditor({ content, onChange, placeholder: _placeholder }: Props) {
   const editor = useEditor({
     extensions: tiptapExtensions,
     content,

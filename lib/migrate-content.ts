@@ -14,7 +14,7 @@ export function migrateContent(raw: unknown): ResumeContent {
     ? obj.experience.map((e: Record<string, unknown>) => {
         if (e.content && typeof e.content === "object") return e; // already v2
         const bullets = Array.isArray(e.bullets) ? (e.bullets as string[]) : [];
-        const { bullets: _, ...rest } = e;
+        const { bullets: _bullets, ...rest } = e;
         return { ...rest, content: bulletsToDoc(bullets) };
       })
     : [];
@@ -24,7 +24,7 @@ export function migrateContent(raw: unknown): ResumeContent {
     ? obj.projects.map((p: Record<string, unknown>) => {
         if (p.content && typeof p.content === "object") return p; // already v2
         const bullets = Array.isArray(p.bullets) ? (p.bullets as string[]) : [];
-        const { bullets: _, ...rest } = p;
+        const { bullets: _bullets, ...rest } = p;
         return { ...rest, content: bulletsToDoc(bullets) };
       })
     : [];

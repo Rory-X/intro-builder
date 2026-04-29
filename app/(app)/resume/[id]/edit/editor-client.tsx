@@ -14,7 +14,7 @@ import { SkillsEditor } from "@/components/editor/skills-editor";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
-import { DndContext, closestCenter, PointerSensor, useSensor, useSensors } from "@dnd-kit/core";
+import { DndContext, closestCenter, PointerSensor, useSensor, useSensors, type DragEndEvent } from "@dnd-kit/core";
 import { SortableContext, arrayMove, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { SortableSection } from "@/components/editor/section-sortable";
 import { DEFAULT_SECTION_ORDER } from "@/lib/resume-schema";
@@ -46,7 +46,7 @@ export default function EditorClient({ id, initialTitle, initialTemplate, initia
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const values = form.watch();
 
-  function handleSectionDragEnd(event: any) {
+  function handleSectionDragEnd(event: DragEndEvent) {
     const { active, over } = event;
     if (!over || active.id === over.id) return;
     const oldIdx = sectionOrder.indexOf(active.id as string);

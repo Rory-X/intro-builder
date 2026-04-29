@@ -6,13 +6,13 @@ import { bulletsToDoc } from "@/lib/tiptap-types";
 
 // Mock generateHTML since we're in jsdom without full TipTap server setup
 vi.mock("@tiptap/html", () => ({
-  generateHTML: (json: any) => {
+  generateHTML: (json: Record<string, unknown>) => {
     const texts: string[] = [];
-    function walk(node: any) {
-      if (node.text) texts.push(node.text);
-      if (node.content) node.content.forEach(walk);
+    function walk(node: Record<string, unknown>) {
+      if (node.text) texts.push(node.text as string);
+      if (Array.isArray(node.content)) node.content.forEach(walk);
     }
-    if (json?.content) json.content.forEach(walk);
+    if (json?.content && Array.isArray(json.content)) json.content.forEach(walk);
     return texts.map((t: string) => `<p>${t}</p>`).join("");
   },
 }));
