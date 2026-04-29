@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { TipTapJSON, emptyDoc } from "./tiptap-types";
 
 const nonEmpty = z.string().min(1, "必填");
 
@@ -19,7 +20,7 @@ export const Education = z.object({
   start: z.string().default(""),
   end: z.string().default(""),
   gpa: z.string().optional().default(""),
-  highlights: z.array(z.string()).default([]),
+  highlights: TipTapJSON.default(() => emptyDoc()),
 });
 
 export const Experience = z.object({
@@ -28,14 +29,14 @@ export const Experience = z.object({
   start: z.string().default(""),
   end: z.string().default(""),
   location: z.string().optional().default(""),
-  bullets: z.array(z.string()).default([]),
+  content: TipTapJSON.default(() => emptyDoc()),
 });
 
 export const Project = z.object({
   name: z.string().default(""),
   stack: z.array(z.string()).default([]),
   link: z.string().optional().default(""),
-  bullets: z.array(z.string()).default([]),
+  content: TipTapJSON.default(() => emptyDoc()),
 });
 
 export const SkillGroup = z.object({
@@ -48,6 +49,8 @@ export const CustomSection = z.object({
   content: z.string().default(""),
 });
 
+export const DEFAULT_SECTION_ORDER = ["basics", "experience", "education", "projects", "skills", "custom"] as const;
+
 export const ResumeContent = z.object({
   basics: Basics,
   education: z.array(Education).default([]),
@@ -55,6 +58,7 @@ export const ResumeContent = z.object({
   projects: z.array(Project).default([]),
   skills: z.array(SkillGroup).default([]),
   custom: z.array(CustomSection).default([]),
+  sectionOrder: z.array(z.string()).default([...DEFAULT_SECTION_ORDER]),
 });
 
 export type ResumeContent = z.infer<typeof ResumeContent>;
@@ -74,4 +78,5 @@ export const emptyResumeContent = (): ResumeContent => ({
   projects: [],
   skills: [],
   custom: [],
+  sectionOrder: [...DEFAULT_SECTION_ORDER],
 });
