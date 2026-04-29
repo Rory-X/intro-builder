@@ -1,15 +1,19 @@
-import type { ResumeContent } from "@/lib/resume-schema";
+import type { ResumeContent, StyleSettings } from "@/lib/resume-schema";
+import { DEFAULT_STYLE_SETTINGS } from "@/lib/resume-schema";
 import { RichTextRenderer } from "@/components/preview/rich-text-renderer";
-import { SECTION_META } from "@/lib/section-meta";
+import { SECTION_META, getSectionMeta } from "@/lib/section-meta";
+import { FONT_MAP } from "@/lib/font-map";
 import { Mail, Phone, MapPin, Globe } from "lucide-react";
 
 type Props = {
   content: ResumeContent;
   sectionOrder?: string[];
+  styleSettings?: StyleSettings;
 };
 
-export function ClassicLayout({ content, sectionOrder }: Props) {
+export function ClassicLayout({ content, sectionOrder, styleSettings }: Props) {
   const b = content.basics;
+  const ss = { ...DEFAULT_STYLE_SETTINGS, ...styleSettings };
   const order = sectionOrder ?? content.sectionOrder ?? ["basics", "experience", "education", "projects", "skills"];
 
   const contactItems = [
@@ -64,10 +68,29 @@ export function ClassicLayout({ content, sectionOrder }: Props) {
         ))}
       </Section>
     ) : null,
+    // Dynamic custom sections
+    ...Object.fromEntries(
+      (content.custom ?? []).map((cs) => [
+        cs.id,
+        cs.content?.content?.length > 0 ? (
+          <Section key={cs.id} sectionKey={cs.id} title={cs.title}>
+            <RichTextRenderer content={cs.content} className="prose prose-sm max-w-none" />
+          </Section>
+        ) : null,
+      ])
+    ),
   };
 
   return (
-    <article className="mx-auto max-w-[800px] bg-white p-10 font-serif text-[13px] leading-relaxed text-black">
+    <article
+      className="mx-auto max-w-[800px] bg-white text-black"
+      style={{
+        fontSize: `${ss.fontSize}px`,
+        lineHeight: ss.lineHeight,
+        padding: `${ss.pagePadding}px`,
+        fontFamily: FONT_MAP[ss.fontFamily].css,
+      }}
+    >
       <header className="mb-4">
         <div className="flex items-start justify-between">
           <div className="flex-1 text-center">
@@ -93,7 +116,7 @@ export function ClassicLayout({ content, sectionOrder }: Props) {
 }
 
 function Section({ sectionKey, title, children }: { sectionKey?: string; title: string; children: React.ReactNode }) {
-  const meta = sectionKey ? SECTION_META[sectionKey] : null;
+  const meta = sectionKey ? getSectionMeta(sectionKey) : null;
   const Icon = meta?.icon;
   return (
     <section className="mt-4">

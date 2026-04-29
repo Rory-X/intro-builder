@@ -18,7 +18,7 @@ export default async function PublicResume({ params }: { params: Promise<{ slug:
   const Layout = row.templateId === "modern" ? ModernLayout : ClassicLayout;
   return (
     <main className="bg-muted py-8">
-      <Layout content={content} sectionOrder={content.sectionOrder} />
+      <Layout content={content} sectionOrder={content.sectionOrder} styleSettings={content.styleSettings} />
     </main>
   );
 }

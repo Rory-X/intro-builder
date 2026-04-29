@@ -18,8 +18,11 @@ import { Separator } from "@/components/ui/separator";
 import { Download, Share2, LayoutTemplate } from "lucide-react";
 import { monitorForElements } from "@atlaskit/pragmatic-drag-and-drop/element/adapter";
 import { SectionWrapper } from "@/components/editor/section-wrapper";
+import { ModuleManager } from "@/components/editor/module-manager";
+import { CustomSectionEditor } from "@/components/editor/custom-section-editor";
+import { StyleEditor } from "@/components/editor/style-editor";
 import { arrayMove } from "@/lib/array-move";
-import { DEFAULT_SECTION_ORDER } from "@/lib/resume-schema";
+import { DEFAULT_SECTION_ORDER, BUILTIN_SECTION_KEYS } from "@/lib/resume-schema";
 
 type Props = {
   id: string;
@@ -96,6 +99,16 @@ export default function EditorClient({ id, initialTitle, initialTemplate, initia
     setPublicSlug(slug);
   }
 
+  function handleOrderChange(newOrder: string[]) {
+    setSectionOrder(newOrder);
+    form.setValue("sectionOrder", newOrder, { shouldDirty: true });
+  }
+
+  /** Check if a section key is a custom (non-built-in) section */
+  function isCustomSection(key: string): boolean {
+    return !BUILTIN_SECTION_KEYS.has(key);
+  }
+
   return (
     <FormProvider {...form}>
       {/* Toolbar — always visible on both layouts */}
@@ -130,6 +143,8 @@ export default function EditorClient({ id, initialTitle, initialTemplate, initia
               </Button>
             </div>
             <Separator orientation="vertical" className="h-6" />
+            <ModuleManager sectionOrder={sectionOrder} onOrderChange={handleOrderChange} />
+            <Separator orientation="vertical" className="h-6" />
             <Button size="sm" variant="outline" onClick={onToggleShare} className="gap-1.5">
               <Share2 className="h-3.5 w-3.5" />
               {isPublic ? "关闭分享" : "开启分享"}
@@ -158,6 +173,7 @@ export default function EditorClient({ id, initialTitle, initialTemplate, initia
       {/* Desktop: side-by-side grid */}
       <div className="hidden lg:grid h-[calc(100vh-3.5rem-4rem)] grid-cols-2">
         <div className="space-y-6 overflow-y-auto border-r p-6">
+          <StyleEditor />
           <BasicsEditor />
           {sectionOrder.filter(k => k !== "basics").map((key) => (
             <SectionWrapper key={key} id={key}>
@@ -165,6 +181,7 @@ export default function EditorClient({ id, initialTitle, initialTemplate, initia
               {key === "education" && <EducationEditor />}
               {key === "projects" && <ProjectsEditor />}
               {key === "skills" && <SkillsEditor />}
+              {isCustomSection(key) && <CustomSectionEditor sectionId={key} />}
             </SectionWrapper>
           ))}
         </div>
@@ -181,6 +198,7 @@ export default function EditorClient({ id, initialTitle, initialTemplate, initia
             <TabsTrigger value="preview">预览</TabsTrigger>
           </TabsList>
           <TabsContent value="edit" className="space-y-6 p-4">
+            <StyleEditor />
             <BasicsEditor />
             {sectionOrder.filter(k => k !== "basics").map((key) => (
               <SectionWrapper key={key} id={key}>
@@ -188,6 +206,7 @@ export default function EditorClient({ id, initialTitle, initialTemplate, initia
                 {key === "education" && <EducationEditor />}
                 {key === "projects" && <ProjectsEditor />}
                 {key === "skills" && <SkillsEditor />}
+                {isCustomSection(key) && <CustomSectionEditor sectionId={key} />}
               </SectionWrapper>
             ))}
           </TabsContent>

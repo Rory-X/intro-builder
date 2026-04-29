@@ -1,20 +1,32 @@
-import type { ResumeContent } from "@/lib/resume-schema";
+import type { ResumeContent, StyleSettings } from "@/lib/resume-schema";
+import { DEFAULT_STYLE_SETTINGS } from "@/lib/resume-schema";
 import { RichTextRenderer } from "@/components/preview/rich-text-renderer";
-import { SECTION_META } from "@/lib/section-meta";
+import { SECTION_META, getSectionMeta } from "@/lib/section-meta";
+import { FONT_MAP } from "@/lib/font-map";
 import { Mail, Phone, MapPin, Globe } from "lucide-react";
 
 type Props = {
   content: ResumeContent;
   sectionOrder?: string[];
+  styleSettings?: StyleSettings;
 };
 
-export function ModernLayout({ content, sectionOrder }: Props) {
+export function ModernLayout({ content, sectionOrder, styleSettings }: Props) {
   const b = content.basics;
+  const ss = { ...DEFAULT_STYLE_SETTINGS, ...styleSettings };
   const order = sectionOrder ?? content.sectionOrder ?? ["basics", "experience", "education", "projects", "skills"];
   const sidebarKeys = new Set(["skills", "education"]);
 
   return (
-    <article className="mx-auto grid max-w-[820px] grid-cols-[220px_1fr] gap-6 bg-white p-8 text-[12.5px] leading-relaxed text-black">
+    <article
+      className="mx-auto grid max-w-[820px] grid-cols-[220px_1fr] gap-6 bg-white text-black"
+      style={{
+        fontSize: `${ss.fontSize}px`,
+        lineHeight: ss.lineHeight,
+        padding: `${ss.pagePadding}px`,
+        fontFamily: FONT_MAP[ss.fontFamily].css,
+      }}
+    >
       <aside className="space-y-4 border-r pr-4">
         {b.photo && (
           <img src={b.photo} alt={b.name} className="mx-auto h-24 w-24 rounded-full object-cover" />
@@ -108,6 +120,19 @@ export function ModernLayout({ content, sectionOrder }: Props) {
                     <RichTextRenderer content={p.content} className="prose prose-sm max-w-none" />
                   </div>
                 ))}
+              </section>
+            );
+          }
+          // Custom sections rendered in main area
+          const customSection = (content.custom ?? []).find((cs) => cs.id === key);
+          if (customSection && customSection.content?.content?.length > 0) {
+            const csMeta = getSectionMeta(key);
+            return (
+              <section key={key}>
+                <h2 className="mb-1 flex items-center gap-1 border-b pb-0.5 text-sm font-bold">
+                  <csMeta.icon className={`h-3.5 w-3.5 ${csMeta.color}`} />{customSection.title}
+                </h2>
+                <RichTextRenderer content={customSection.content} className="prose prose-sm max-w-none" />
               </section>
             );
           }

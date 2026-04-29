@@ -36,7 +36,7 @@ export default async function PreviewPage({
         `}} />
       )}
       <div className={isPdf ? "" : "bg-slate-100 py-8"}>
-        <Layout content={content} sectionOrder={content.sectionOrder} />
+        <Layout content={content} sectionOrder={content.sectionOrder} styleSettings={content.styleSettings} />
       </div>
     </>
   );
