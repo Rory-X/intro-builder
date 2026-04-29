@@ -14,6 +14,8 @@ import { SkillsEditor } from "@/components/editor/skills-editor";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import { Separator } from "@/components/ui/separator";
+import { Download, Share2, LayoutTemplate } from "lucide-react";
 import { monitorForElements } from "@atlaskit/pragmatic-drag-and-drop/element/adapter";
 import { SectionWrapper } from "@/components/editor/section-wrapper";
 import { arrayMove } from "@/lib/array-move";
@@ -105,18 +107,26 @@ export default function EditorClient({ id, initialTitle, initialTemplate, initia
             className="w-full sm:max-w-xs text-base"
           />
           <span className="text-xs text-muted-foreground">{isPending ? "保存中…" : "已保存"}</span>
-          <div className="ml-auto flex flex-wrap gap-2">
-            <Button
-              variant={template === "classic" ? "default" : "outline"}
-              size="sm"
-              onClick={() => changeTemplate("classic")}
-            >经典</Button>
-            <Button
-              variant={template === "modern" ? "default" : "outline"}
-              size="sm"
-              onClick={() => changeTemplate("modern")}
-            >现代</Button>
+          <div className="ml-auto flex flex-wrap items-center gap-2">
+            <div className="flex items-center gap-1">
+              <Button
+                variant={template === "classic" ? "default" : "outline"}
+                size="sm"
+                onClick={() => changeTemplate("classic")}
+              >
+                <LayoutTemplate className="mr-1 h-3.5 w-3.5" />经典
+              </Button>
+              <Button
+                variant={template === "modern" ? "default" : "outline"}
+                size="sm"
+                onClick={() => changeTemplate("modern")}
+              >
+                <LayoutTemplate className="mr-1 h-3.5 w-3.5" />现代
+              </Button>
+            </div>
+            <Separator orientation="vertical" className="h-6" />
             <Button size="sm" variant="outline" onClick={onToggleShare}>
+              <Share2 className="mr-1 h-3.5 w-3.5" />
               {isPublic ? "关闭分享" : "开启分享"}
             </Button>
             {isPublic && publicSlug && (
@@ -129,10 +139,13 @@ export default function EditorClient({ id, initialTitle, initialTemplate, initia
                 /r/{publicSlug}
               </a>
             )}
+            <Separator orientation="vertical" className="h-6" />
             <a
               href={`/api/pdf/${id}`}
-              className="rounded bg-primary px-3 py-1 text-sm text-primary-foreground"
-            >下载 PDF</a>
+              className="inline-flex items-center gap-1 rounded bg-primary px-3 py-1 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90"
+            >
+              <Download className="h-3.5 w-3.5" />下载 PDF
+            </a>
           </div>
         </div>
       </div>
