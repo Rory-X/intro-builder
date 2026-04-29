@@ -2,6 +2,8 @@ import { sendLoginLink } from "./actions";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import type { Metadata } from "next";
+export const metadata: Metadata = { title: "登录" };
 
 export default function LoginPage() {
   return (

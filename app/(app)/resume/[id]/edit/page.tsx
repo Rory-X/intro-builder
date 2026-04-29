@@ -4,6 +4,8 @@ import { requireUserId } from "@/lib/auth-helpers";
 import { db } from "@/db";
 import { resumes } from "@/db/schema";
 import EditorClient from "./editor-client";
+import type { Metadata } from "next";
+export const metadata: Metadata = { title: "编辑简历" };
 
 export default async function EditPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;

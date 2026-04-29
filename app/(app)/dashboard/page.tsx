@@ -6,6 +6,8 @@ import { resumes } from "@/db/schema";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { createResume, deleteResume } from "./actions";
+import type { Metadata } from "next";
+export const metadata: Metadata = { title: "我的简历" };
 
 export default async function DashboardPage() {
   const userId = await requireUserId();
