@@ -119,6 +119,10 @@ export default function EditorClient({ id, initialTitle, initialTemplate, initia
                 /r/{publicSlug}
               </a>
             )}
+            <a
+              href={`/api/pdf/${id}`}
+              className="rounded bg-primary px-3 py-1 text-sm text-primary-foreground"
+            >下载 PDF</a>
           </div>
         </div>
       </div>
