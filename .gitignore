@@ -40,3 +40,7 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# ui-ux-pro-max skill (local only)
+.claude/skills/ui-ux-pro-max/
+.shared/ui-ux-pro-max/
