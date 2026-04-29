@@ -14,9 +14,9 @@ import { SkillsEditor } from "@/components/editor/skills-editor";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
-import { DndContext, closestCenter, PointerSensor, useSensor, useSensors, type DragEndEvent } from "@dnd-kit/core";
-import { SortableContext, arrayMove, verticalListSortingStrategy } from "@dnd-kit/sortable";
-import { SortableSection } from "@/components/editor/section-sortable";
+import { monitorForElements } from "@atlaskit/pragmatic-drag-and-drop/element/adapter";
+import { SectionWrapper } from "@/components/editor/section-wrapper";
+import { arrayMove } from "@/lib/array-move";
 import { DEFAULT_SECTION_ORDER } from "@/lib/resume-schema";
 
 type Props = {
@@ -42,19 +42,29 @@ export default function EditorClient({ id, initialTitle, initialTemplate, initia
   const [sectionOrder, setSectionOrder] = useState<string[]>(
     initialContent.sectionOrder ?? [...DEFAULT_SECTION_ORDER]
   );
-  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 8 } }));
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const values = form.watch();
 
-  function handleSectionDragEnd(event: DragEndEvent) {
-    const { active, over } = event;
-    if (!over || active.id === over.id) return;
-    const oldIdx = sectionOrder.indexOf(active.id as string);
-    const newIdx = sectionOrder.indexOf(over.id as string);
-    const newOrder = arrayMove(sectionOrder, oldIdx, newIdx);
-    setSectionOrder(newOrder);
-    form.setValue("sectionOrder", newOrder, { shouldDirty: true });
-  }
+  useEffect(() => {
+    return monitorForElements({
+      onDrop: ({ source, location }) => {
+        const target = location.current.dropTargets[0];
+        if (!target) return;
+        if (source.data.type === "section" && target.data.type === "section") {
+          const fromId = source.data.id as string;
+          const toId = target.data.id as string;
+          setSectionOrder((prev) => {
+            const oldIdx = prev.indexOf(fromId);
+            const newIdx = prev.indexOf(toId);
+            if (oldIdx === -1 || newIdx === -1) return prev;
+            const next = arrayMove(prev, oldIdx, newIdx);
+            form.setValue("sectionOrder", next, { shouldDirty: true });
+            return next;
+          });
+        }
+      },
+    });
+  }, [form]);
 
   useEffect(() => {
     if (timer.current) clearTimeout(timer.current);
@@ -131,18 +141,14 @@ export default function EditorClient({ id, initialTitle, initialTemplate, initia
       <div className="hidden lg:grid min-h-[calc(100vh-3.5rem-4rem)] grid-cols-2">
         <div className="space-y-6 overflow-y-auto border-r p-6">
           <BasicsEditor />
-          <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleSectionDragEnd}>
-            <SortableContext items={sectionOrder.filter(k => k !== "basics")} strategy={verticalListSortingStrategy}>
-              {sectionOrder.filter(k => k !== "basics").map((key) => (
-                <SortableSection key={key} id={key}>
-                  {key === "experience" && <ExperienceEditor />}
-                  {key === "education" && <EducationEditor />}
-                  {key === "projects" && <ProjectsEditor />}
-                  {key === "skills" && <SkillsEditor />}
-                </SortableSection>
-              ))}
-            </SortableContext>
-          </DndContext>
+          {sectionOrder.filter(k => k !== "basics").map((key) => (
+            <SectionWrapper key={key} id={key}>
+              {key === "experience" && <ExperienceEditor />}
+              {key === "education" && <EducationEditor />}
+              {key === "projects" && <ProjectsEditor />}
+              {key === "skills" && <SkillsEditor />}
+            </SectionWrapper>
+          ))}
         </div>
         <div className="overflow-y-auto bg-slate-100 p-6">
           <PreviewPanel content={values as ResumeContent} templateId={template} />
@@ -158,18 +164,14 @@ export default function EditorClient({ id, initialTitle, initialTemplate, initia
           </TabsList>
           <TabsContent value="edit" className="space-y-6 p-4">
             <BasicsEditor />
-            <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleSectionDragEnd}>
-              <SortableContext items={sectionOrder.filter(k => k !== "basics")} strategy={verticalListSortingStrategy}>
-                {sectionOrder.filter(k => k !== "basics").map((key) => (
-                  <SortableSection key={key} id={key}>
-                    {key === "experience" && <ExperienceEditor />}
-                    {key === "education" && <EducationEditor />}
-                    {key === "projects" && <ProjectsEditor />}
-                    {key === "skills" && <SkillsEditor />}
-                  </SortableSection>
-                ))}
-              </SortableContext>
-            </DndContext>
+            {sectionOrder.filter(k => k !== "basics").map((key) => (
+              <SectionWrapper key={key} id={key}>
+                {key === "experience" && <ExperienceEditor />}
+                {key === "education" && <EducationEditor />}
+                {key === "projects" && <ProjectsEditor />}
+                {key === "skills" && <SkillsEditor />}
+              </SectionWrapper>
+            ))}
           </TabsContent>
           <TabsContent value="preview" className="bg-slate-100 p-4">
             <PreviewPanel content={values as ResumeContent} templateId={template} />
