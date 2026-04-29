@@ -49,12 +49,12 @@ export function ExperienceEditor() {
         <div className="space-y-3 px-4 pb-4">
           {fields.map((f, idx) => (
             <ItemWrapper key={f.id} id={f.id} sectionKey="experience">
-              <div className="space-y-2 rounded border p-3">
-                <div className="grid grid-cols-2 gap-2">
-                  <div><Label>公司</Label><Input {...register(`experience.${idx}.company` as const)} /></div>
-                  <div><Label>职位</Label><Input {...register(`experience.${idx}.title` as const)} /></div>
-                  <div><Label>开始</Label><Input placeholder="2023.07" {...register(`experience.${idx}.start` as const)} /></div>
-                  <div><Label>结束</Label><Input placeholder="至今" {...register(`experience.${idx}.end` as const)} /></div>
+              <div className="space-y-3 rounded-lg border border-border/60 bg-background/50 p-4">
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="flex flex-col gap-1.5"><Label>公司</Label><Input {...register(`experience.${idx}.company` as const)} /></div>
+                  <div className="flex flex-col gap-1.5"><Label>职位</Label><Input {...register(`experience.${idx}.title` as const)} /></div>
+                  <div className="flex flex-col gap-1.5"><Label>开始</Label><Input placeholder="2023.07" {...register(`experience.${idx}.start` as const)} /></div>
+                  <div className="flex flex-col gap-1.5"><Label>结束</Label><Input placeholder="至今" {...register(`experience.${idx}.end` as const)} /></div>
                 </div>
                 <div>
                   <Label>工作成果</Label>
@@ -64,7 +64,7 @@ export function ExperienceEditor() {
                     placeholder="描述你的工作成果…"
                   />
                 </div>
-                <Button type="button" variant="ghost" size="sm" onClick={() => remove(idx)}>删除此条</Button>
+                <Button type="button" variant="ghost" size="sm" className="text-xs text-muted-foreground hover:text-destructive" onClick={() => remove(idx)}>删除此条</Button>
               </div>
             </ItemWrapper>
           ))}

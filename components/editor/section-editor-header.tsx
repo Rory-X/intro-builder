@@ -12,7 +12,7 @@ type Props = {
   addLabel?: string;
 };
 
-export function SectionEditorHeader({ sectionKey, itemCount, isOpen, onToggle, onAdd, addLabel = "+ 新增" }: Props) {
+export function SectionEditorHeader({ sectionKey, itemCount, isOpen, onToggle, onAdd, addLabel = "新增" }: Props) {
   const meta = SECTION_META[sectionKey];
   if (!meta) return null;
   const Icon = meta.icon;

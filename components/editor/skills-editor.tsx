@@ -41,23 +41,23 @@ export function SkillsEditor() {
           isOpen={isOpen}
           onToggle={() => setIsOpen(!isOpen)}
           onAdd={() => { append({ category: "", items: [] }); setIsOpen(true); }}
-          addLabel="+ 新增分组"
+          addLabel="新增分组"
         />
       </div>
       {isOpen && (
         <div className="space-y-3 px-4 pb-4">
           {fields.map((f, idx) => (
             <ItemWrapper key={f.id} id={f.id} sectionKey="skills">
-              <div className="space-y-2 rounded border p-3">
-                <div><Label>分类名 (如：语言 / 框架)</Label><Input {...register(`skills.${idx}.category` as const)} /></div>
-                <div>
+              <div className="space-y-3 rounded-lg border border-border/60 bg-background/50 p-4">
+                <div className="flex flex-col gap-1.5"><Label>分类名 (如：语言 / 框架)</Label><Input {...register(`skills.${idx}.category` as const)} /></div>
+                <div className="flex flex-col gap-1.5">
                   <Label>项目列表 (逗号分隔)</Label>
                   <Input
                     value={((watch(`skills.${idx}.items` as const) as string[]) ?? []).join(", ")}
                     onChange={(e) => setValue(`skills.${idx}.items` as const, e.target.value.split(",").map(s => s.trim()).filter(Boolean), { shouldDirty: true })}
                   />
                 </div>
-                <Button type="button" variant="ghost" size="sm" onClick={() => remove(idx)}>删除此组</Button>
+                <Button type="button" variant="ghost" size="sm" className="text-xs text-muted-foreground hover:text-destructive" onClick={() => remove(idx)}>删除此组</Button>
               </div>
             </ItemWrapper>
           ))}

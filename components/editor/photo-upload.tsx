@@ -32,7 +32,7 @@ export function PhotoUpload() {
     <div className="flex items-center gap-4">
       <button
         type="button"
-        className="relative flex h-20 w-20 shrink-0 items-center justify-center overflow-hidden rounded-full border-2 border-dashed border-muted-foreground/30 bg-muted transition-colors hover:border-primary"
+        className="relative flex h-20 w-20 shrink-0 items-center justify-center overflow-hidden rounded-2xl border-2 border-dashed border-muted-foreground/20 bg-muted/50 transition-all duration-200 hover:border-primary hover:bg-primary/5"
         onClick={() => inputRef.current?.click()}
       >
         {uploading ? (
@@ -40,9 +40,9 @@ export function PhotoUpload() {
         ) : photo ? (
           <img src={photo} alt="头像" className="h-full w-full object-cover" />
         ) : (
-          <User className="h-8 w-8 text-muted-foreground" />
+          <User className="h-8 w-8 text-muted-foreground/60" />
         )}
-        <div className="absolute inset-0 flex items-center justify-center bg-black/20 opacity-0 transition-opacity hover:opacity-100">
+        <div className="absolute inset-0 flex items-center justify-center rounded-2xl bg-black/30 opacity-0 transition-opacity duration-200 hover:opacity-100">
           <Camera className="h-5 w-5 text-white" />
         </div>
       </button>

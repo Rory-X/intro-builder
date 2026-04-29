@@ -49,12 +49,12 @@ export function ProjectsEditor() {
         <div className="space-y-3 px-4 pb-4">
           {fields.map((f, idx) => (
             <ItemWrapper key={f.id} id={f.id} sectionKey="projects">
-              <div className="space-y-2 rounded border p-3">
-                <div className="grid grid-cols-2 gap-2">
-                  <div><Label>项目名</Label><Input {...register(`projects.${idx}.name` as const)} /></div>
-                  <div><Label>链接</Label><Input {...register(`projects.${idx}.link` as const)} /></div>
+              <div className="space-y-3 rounded-lg border border-border/60 bg-background/50 p-4">
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="flex flex-col gap-1.5"><Label>项目名</Label><Input {...register(`projects.${idx}.name` as const)} /></div>
+                  <div className="flex flex-col gap-1.5"><Label>链接</Label><Input {...register(`projects.${idx}.link` as const)} /></div>
                 </div>
-                <div>
+                <div className="flex flex-col gap-1.5">
                   <Label>技术栈 (逗号分隔)</Label>
                   <Input
                     value={((watch(`projects.${idx}.stack` as const) as string[]) ?? []).join(", ")}
@@ -69,7 +69,7 @@ export function ProjectsEditor() {
                     placeholder="描述你的项目亮点…"
                   />
                 </div>
-                <Button type="button" variant="ghost" size="sm" onClick={() => remove(idx)}>删除此条</Button>
+                <Button type="button" variant="ghost" size="sm" className="text-xs text-muted-foreground hover:text-destructive" onClick={() => remove(idx)}>删除此条</Button>
               </div>
             </ItemWrapper>
           ))}
