@@ -11,6 +11,7 @@ export const Basics = z.object({
   location: z.string().default(""),
   website: z.string().url().optional().or(z.literal("")).default(""),
   summary: z.string().default(""),
+  photo: z.string().optional().default(""),
 });
 
 export const Education = z.object({
@@ -72,6 +73,7 @@ export const emptyResumeContent = (): ResumeContent => ({
     location: "",
     website: "",
     summary: "",
+    photo: "",
   },
   education: [],
   experience: [],

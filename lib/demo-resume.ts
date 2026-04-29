@@ -10,6 +10,7 @@ export const demoResume: ResumeContent = {
     location: "北京",
     website: "github.com/zhangsan",
     summary: "3 年前端经验，专注 Web 性能与可访问性，熟悉 React / Next.js 技术栈。",
+    photo: "",
   },
   education: [
     {
