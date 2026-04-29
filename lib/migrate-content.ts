@@ -1,10 +1,11 @@
 import type { ResumeContent } from "./resume-schema";
 import { DEFAULT_SECTION_ORDER, ResumeContent as ResumeContentSchema } from "./resume-schema";
-import { bulletsToDoc, emptyDoc } from "./tiptap-types";
+import { bulletsToDoc, emptyDoc, stringToDoc } from "./tiptap-types";
 
 /**
- * Transparently upgrade v1 (bullets: string[]) content to v2 (content: TipTapJSON).
- * If already v2, returns parsed v2. Pure function — no side effects.
+ * Transparently upgrade legacy content to current schema.
+ * Handles: v1 bullets→TipTapJSON, old custom string→TipTapJSON, missing fields.
+ * Pure function — no side effects.
  */
 export function migrateContent(raw: unknown): ResumeContent {
   const obj = (typeof raw === "object" && raw !== null ? raw : {}) as Record<string, unknown>;
@@ -38,16 +39,46 @@ export function migrateContent(raw: unknown): ResumeContent {
       })
     : [];
 
-  // Add sectionOrder if missing
-  const sectionOrder = Array.isArray(obj.sectionOrder)
-    ? obj.sectionOrder
-    : [...DEFAULT_SECTION_ORDER];
+  // Migrate custom sections: old format was {title, content: string}, new is {id, title, content: TipTapJSON}
+  const custom = Array.isArray(obj.custom)
+    ? obj.custom.map((c: Record<string, unknown>, idx: number) => {
+        // Already new format (has id and content is object)
+        if (c.id && typeof c.id === "string" && c.content && typeof c.content === "object") return c;
+        // Old format: {title: string, content: string}
+        const id = typeof c.id === "string" ? c.id : `custom_${idx}`;
+        const title = typeof c.title === "string" ? c.title : "";
+        const content = typeof c.content === "string" ? stringToDoc(c.content) : emptyDoc();
+        return { id, title, content };
+      })
+    : [];
+
+  // Add sectionOrder if missing; also clean up old "custom" entry
+  let sectionOrder: string[];
+  if (Array.isArray(obj.sectionOrder)) {
+    // Remove the old catch-all "custom" key if present, replace with actual custom section IDs
+    sectionOrder = (obj.sectionOrder as string[]).filter(k => k !== "custom");
+    // Add custom section IDs that aren't already in order
+    for (const c of custom) {
+      const cId = (c as Record<string, unknown>).id as string;
+      if (cId && !sectionOrder.includes(cId)) {
+        sectionOrder.push(cId);
+      }
+    }
+  } else {
+    sectionOrder = [...DEFAULT_SECTION_ORDER];
+    // Add any custom section IDs
+    for (const c of custom) {
+      const cId = (c as Record<string, unknown>).id as string;
+      if (cId) sectionOrder.push(cId);
+    }
+  }
 
   const migrated = {
     ...obj,
     experience,
     projects,
     education,
+    custom,
     sectionOrder,
   };
 

@@ -44,7 +44,7 @@ describe("migrateContent", () => {
       custom: [],
     };
     const result = migrateContent(v1);
-    expect(result.sectionOrder).toEqual(["basics", "experience", "education", "projects", "skills", "custom"]);
+    expect(result.sectionOrder).toEqual(["basics", "experience", "education", "projects", "skills"]);
   });
 
   it("preserves photo field if present", () => {

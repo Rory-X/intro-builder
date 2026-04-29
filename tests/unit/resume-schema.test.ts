@@ -35,7 +35,7 @@ describe("ResumeContent v2", () => {
 
   it("has sectionOrder with defaults", () => {
     const c = emptyResumeContent();
-    expect(c.sectionOrder).toEqual(["basics", "experience", "education", "projects", "skills", "custom"]);
+    expect(c.sectionOrder).toEqual(["basics", "experience", "education", "projects", "skills"]);
   });
 
   it("accepts photo URL in basics", () => {

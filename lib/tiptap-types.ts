@@ -28,3 +28,12 @@ export function bulletsToDoc(bullets: string[]): TipTapJSON {
     ],
   };
 }
+
+/** Convert a plain string to a TipTap paragraph doc */
+export function stringToDoc(text: string): TipTapJSON {
+  if (!text) return emptyDoc();
+  return {
+    type: "doc",
+    content: [{ type: "paragraph", content: [{ type: "text", text }] }],
+  };
+}
