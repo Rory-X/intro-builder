@@ -1,6 +1,7 @@
 import { notFound } from "next/navigation";
 import { and, eq } from "drizzle-orm";
 import { requireUserId } from "@/lib/auth-helpers";
+import { migrateContent } from "@/lib/migrate-content";
 import { db } from "@/db";
 import { resumes } from "@/db/schema";
 import EditorClient from "./editor-client";
@@ -19,7 +20,7 @@ export default async function EditPage({ params }: { params: Promise<{ id: strin
       id={row.id}
       initialTitle={row.title}
       initialTemplate={row.templateId as "classic" | "modern"}
-      initialContent={row.content}
+      initialContent={migrateContent(row.content)}
       initialIsPublic={row.isPublic}
       initialSlug={row.slug ?? null}
     />
