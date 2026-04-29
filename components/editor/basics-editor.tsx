@@ -4,6 +4,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import type { ResumeContent } from "@/lib/resume-schema";
+import { PhotoUpload } from "./photo-upload";
 
 type BasicsKey = keyof ResumeContent["basics"];
 
@@ -20,9 +21,10 @@ export function BasicsEditor() {
   const { register, formState } = useFormContext<ResumeContent>();
   const err = formState.errors.basics;
   return (
-    <section className="rounded border p-4">
+    <section className="rounded-lg border bg-card p-4">
       <h2 className="mb-3 text-lg font-semibold">基础信息</h2>
-      <div className="grid grid-cols-2 gap-3">
+      <PhotoUpload />
+      <div className="mt-4 grid grid-cols-2 gap-3">
         {FIELDS.map(({ k, label, type = "text" }) => (
           <div key={k} className="flex flex-col gap-1">
             <Label htmlFor={`basics-${k}`}>{label}</Label>
