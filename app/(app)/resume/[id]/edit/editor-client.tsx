@@ -13,6 +13,7 @@ import { ProjectsEditor } from "@/components/editor/projects-editor";
 import { SkillsEditor } from "@/components/editor/skills-editor";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 
 type Props = {
   id: string;
@@ -66,16 +67,17 @@ export default function EditorClient({ id, initialTitle, initialTemplate, initia
   }
 
   return (
-    <div className="grid min-h-screen grid-cols-1 lg:grid-cols-2">
-      <div className="space-y-6 overflow-y-auto border-r p-6">
-        <div className="flex items-center gap-3">
+    <FormProvider {...form}>
+      {/* Toolbar — always visible on both layouts */}
+      <div className="sticky top-14 z-30 border-b bg-background">
+        <div className="mx-auto flex max-w-6xl flex-wrap items-center gap-3 px-4 py-3">
           <Input
             value={title}
             onChange={(e) => setTitleState(e.target.value)}
-            className="max-w-xs text-base"
+            className="w-full sm:max-w-xs text-base"
           />
           <span className="text-xs text-muted-foreground">{isPending ? "保存中…" : "已保存"}</span>
-          <div className="ml-auto flex gap-2">
+          <div className="ml-auto flex flex-wrap gap-2">
             <Button
               variant={template === "classic" ? "default" : "outline"}
               size="sm"
@@ -105,17 +107,41 @@ export default function EditorClient({ id, initialTitle, initialTemplate, initia
             >下载 PDF</a>
           </div>
         </div>
-        <FormProvider {...form}>
+      </div>
+
+      {/* Desktop: side-by-side grid */}
+      <div className="hidden lg:grid min-h-[calc(100vh-3.5rem-4rem)] grid-cols-2">
+        <div className="space-y-6 overflow-y-auto border-r p-6">
           <BasicsEditor />
           <ExperienceEditor />
           <EducationEditor />
           <ProjectsEditor />
           <SkillsEditor />
-        </FormProvider>
+        </div>
+        <div className="overflow-y-auto bg-slate-100 p-6">
+          <PreviewPanel content={values as ResumeContent} templateId={template} />
+        </div>
       </div>
-      <div className="overflow-y-auto bg-slate-100 p-6">
-        <PreviewPanel content={values as ResumeContent} templateId={template} />
+
+      {/* Mobile: tabs */}
+      <div className="lg:hidden">
+        <Tabs defaultValue="edit" className="w-full">
+          <TabsList className="sticky top-[calc(3.5rem+3.5rem)] z-20 grid w-full grid-cols-2 rounded-none border-b">
+            <TabsTrigger value="edit">编辑</TabsTrigger>
+            <TabsTrigger value="preview">预览</TabsTrigger>
+          </TabsList>
+          <TabsContent value="edit" className="space-y-6 p-4">
+            <BasicsEditor />
+            <ExperienceEditor />
+            <EducationEditor />
+            <ProjectsEditor />
+            <SkillsEditor />
+          </TabsContent>
+          <TabsContent value="preview" className="bg-slate-100 p-4">
+            <PreviewPanel content={values as ResumeContent} templateId={template} />
+          </TabsContent>
+        </Tabs>
       </div>
-    </div>
+    </FormProvider>
   );
 }
