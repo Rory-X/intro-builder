@@ -23,7 +23,7 @@ export async function PUT(req: Request) {
 
   try {
     const blob = await put(`photos/${session.user.id}/${Date.now()}-${file.name}`, file, {
-      access: "public",
+      access: "private",
       contentType: file.type,
     });
 

@@ -62,9 +62,9 @@ export default async function DashboardPage() {
               <div key={r.id} className="group relative">
                 {/* Preview card */}
                 <Link href={`/resume/${r.id}/edit`} className="block">
-                  <div className="overflow-hidden rounded-xl border bg-white shadow-sm transition-all duration-200 hover:shadow-lg hover:shadow-primary/5 dark:border-neutral-700 dark:bg-neutral-900"
+                  <div className="overflow-hidden rounded-xl border bg-white shadow-sm transition-all duration-200 hover:shadow-lg hover:shadow-primary/5 [container-type:inline-size] dark:border-neutral-700 dark:bg-neutral-900"
                        style={{ aspectRatio: "210/297" }}>
-                    <div className="pointer-events-none origin-top-left scale-[0.25]" style={{ width: "820px" }}>
+                    <div className="pointer-events-none origin-top-left [transform:scale(calc(100cqw/820px))]" style={{ width: "820px" }}>
                       <Layout content={content} sectionOrder={content.sectionOrder} />
                     </div>
                   </div>

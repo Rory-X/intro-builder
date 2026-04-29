@@ -213,9 +213,9 @@ function FeatureCard({ icon, title, desc, color }: { icon: React.ReactNode; titl
 
 function TemplateFrame({ children }: { children: React.ReactNode }) {
   return (
-    <div className="mx-auto w-full max-w-[820px] overflow-hidden rounded-xl border bg-white shadow-lg shadow-black/5 dark:bg-neutral-900">
-      <div className="origin-top-left scale-[0.55] md:scale-[0.72]" style={{ transformOrigin: "top left" }}>
-        <div className="w-[820px]">{children}</div>
+    <div className="mx-auto w-full max-w-[820px] overflow-hidden rounded-xl border bg-white shadow-lg shadow-black/5 [container-type:inline-size] dark:bg-neutral-900" style={{ aspectRatio: "210/297" }}>
+      <div className="origin-top-left [transform:scale(calc(100cqw/820px))]" style={{ width: "820px" }}>
+        {children}
       </div>
     </div>
   );
