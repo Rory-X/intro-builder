@@ -11,7 +11,11 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
     sessionsTable: sessions,
     verificationTokensTable: verificationTokens,
   }),
-  session: { strategy: "database" },
+  session: {
+    strategy: "database",
+    maxAge: 60 * 60 * 24 * 14,   // 14 days absolute
+    updateAge: 60 * 60 * 24,     // extend at most once per 24h
+  },
   providers: [
     Resend({
       apiKey: process.env.AUTH_RESEND_KEY!,
