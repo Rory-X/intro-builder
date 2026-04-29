@@ -3,6 +3,7 @@ import { auth } from "@/lib/auth";
 import { signOutAction } from "@/app/(app)/actions/logout";
 import { Brand } from "./brand";
 import { UserMenu } from "./user-menu";
+import { ThemeToggle } from "@/components/theme-toggle";
 
 export async function Header() {
   const session = await auth();
@@ -17,7 +18,10 @@ export async function Header() {
             <Link href="/#templates" className="hover:text-foreground">模板</Link>
           </nav>
         </div>
-        <UserMenu email={email} signOutAction={signOutAction} />
+        <div className="flex items-center gap-2">
+          <ThemeToggle />
+          <UserMenu email={email} signOutAction={signOutAction} />
+        </div>
       </div>
     </header>
   );
