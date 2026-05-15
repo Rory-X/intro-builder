@@ -29,6 +29,7 @@ export function ModernLayout({ content, sectionOrder, styleSettings }: Props) {
     >
       <aside className="space-y-4 border-r pr-4">
         {b.photo && (
+          // eslint-disable-next-line @next/next/no-img-element -- Template markup is printed by Puppeteer; next/image is not used in PDFs.
           <img src={b.photo} alt={b.name} className="mx-auto h-24 w-24 rounded-full object-cover" />
         )}
         <div>

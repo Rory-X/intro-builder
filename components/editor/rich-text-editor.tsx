@@ -22,7 +22,7 @@ const COLOR_PALETTE = [
   "#DB2777", "#6B7280",
 ];
 
-export function RichTextEditor({ content, onChange, placeholder: _placeholder }: Props) {
+export function RichTextEditor({ content, onChange }: Props) {
   const editor = useEditor({
     extensions: tiptapExtensions,
     content,

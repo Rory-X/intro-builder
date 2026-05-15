@@ -4,7 +4,6 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { RichTextEditor } from "./rich-text-editor";
 import type { ResumeContent } from "@/lib/resume-schema";
-import { getSectionMeta } from "@/lib/section-meta";
 import { SectionEditorHeader } from "./section-editor-header";
 import { useState } from "react";
 
@@ -21,7 +20,6 @@ export function CustomSectionEditor({ sectionId }: Props) {
   if (idx === -1) return null;
 
   const section = custom[idx];
-  const meta = getSectionMeta(sectionId);
 
   return (
     <section>

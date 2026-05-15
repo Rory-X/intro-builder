@@ -38,6 +38,7 @@ export function PhotoUpload() {
         {uploading ? (
           <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
         ) : photo ? (
+          // eslint-disable-next-line @next/next/no-img-element -- User-uploaded blob URLs are also rendered by the PDF preview path.
           <img src={photo} alt="头像" className="h-full w-full object-cover" />
         ) : (
           <User className="h-8 w-8 text-muted-foreground/60" />

@@ -2,7 +2,7 @@ import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Card, CardContent } from "@/components/ui/card";
-import { FileText, LayoutGrid, Share2, ArrowRight, Sparkles, Shield, Zap } from "lucide-react";
+import { FileText, LayoutGrid, Share2, ArrowRight, Eye, Shield, Zap } from "lucide-react";
 import { ClassicLayout } from "@/lib/templates/classic/Layout";
 import { ModernLayout } from "@/lib/templates/modern/Layout";
 import { demoResume } from "@/lib/demo-resume";
@@ -17,11 +17,6 @@ export default function Landing() {
           <div className="aspect-square w-full rounded-full bg-primary/40" />
         </div>
 
-        <div className="mb-6 inline-flex items-center gap-2 rounded-full border border-primary/20 bg-primary/5 px-4 py-1.5 text-sm font-medium text-primary">
-          <Sparkles className="h-3.5 w-3.5" />
-          <span>免费使用，无需信用卡</span>
-        </div>
-
         <h1 className="text-4xl font-bold tracking-tight md:text-5xl lg:text-6xl">
           <span className="bg-gradient-to-r from-foreground via-foreground/90 to-foreground/70 bg-clip-text text-transparent">
             为互联网求职者打造的
@@ -32,9 +27,11 @@ export default function Landing() {
           </span>
         </h1>
 
-        <p className="mx-auto mt-6 max-w-2xl text-base leading-relaxed text-muted-foreground md:text-lg">
-          结构化分区编辑 · 实时预览 · 自动保存 · 一键导出 PDF · 公开分享链接
-        </p>
+        <div className="mx-auto mt-7 flex max-w-2xl flex-wrap items-center justify-center gap-2.5">
+          <HeroFeature icon={<LayoutGrid className="h-3.5 w-3.5" />} label="结构化编辑" />
+          <HeroFeature icon={<Eye className="h-3.5 w-3.5" />} label="实时预览" />
+          <HeroFeature icon={<Share2 className="h-3.5 w-3.5" />} label="PDF / 分享" />
+        </div>
 
         <div className="mt-10 flex flex-col items-center justify-center gap-3 sm:flex-row">
           <Link href="/login">
@@ -160,6 +157,15 @@ export default function Landing() {
         </div>
       </footer>
     </>
+  );
+}
+
+function HeroFeature({ icon, label }: { icon: React.ReactNode; label: string }) {
+  return (
+    <span className="inline-flex items-center gap-1.5 rounded-full border border-white/10 bg-white/[0.04] px-3.5 py-1.5 text-sm font-medium text-muted-foreground shadow-sm shadow-black/5 backdrop-blur transition-colors duration-200 hover:border-primary/30 hover:text-foreground dark:border-white/10 dark:bg-white/[0.06]">
+      <span className="text-primary">{icon}</span>
+      {label}
+    </span>
   );
 }
 

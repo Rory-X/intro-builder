@@ -1,7 +1,7 @@
 import type { ResumeContent, StyleSettings } from "@/lib/resume-schema";
 import { DEFAULT_STYLE_SETTINGS } from "@/lib/resume-schema";
 import { RichTextRenderer } from "@/components/preview/rich-text-renderer";
-import { SECTION_META, getSectionMeta } from "@/lib/section-meta";
+import { getSectionMeta } from "@/lib/section-meta";
 import { FONT_MAP } from "@/lib/font-map";
 import { Mail, Phone, MapPin, Globe } from "lucide-react";
 
@@ -98,6 +98,7 @@ export function ClassicLayout({ content, sectionOrder, styleSettings }: Props) {
             {b.title && <p className="text-base">{b.title}</p>}
           </div>
           {b.photo && (
+            // eslint-disable-next-line @next/next/no-img-element -- Template markup is printed by Puppeteer; next/image is not used in PDFs.
             <img src={b.photo} alt={b.name} className="ml-4 h-20 w-20 rounded object-cover" />
           )}
         </div>
