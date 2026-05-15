@@ -2,7 +2,13 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import type { Mock } from "vitest";
 
 vi.mock("@/lib/auth", () => ({ auth: vi.fn() }));
-vi.mock("@/db", () => ({ db: { insert: vi.fn(), delete: vi.fn() } }));
+vi.mock("@/db", () => ({
+  db: {
+    insert: vi.fn(),
+    delete: vi.fn(),
+    query: { resumes: { findFirst: vi.fn() } },
+  },
+}));
 vi.mock("next/navigation", () => ({
   redirect: vi.fn((u: string) => { throw new Error("REDIRECT:" + u); }),
 }));
@@ -10,7 +16,7 @@ vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }));
 
 import { auth } from "@/lib/auth";
 import { db } from "@/db";
-import { createResume } from "@/app/(app)/dashboard/actions";
+import { createResume, duplicateResume } from "@/app/(app)/dashboard/actions";
 
 describe("createResume", () => {
   beforeEach(() => vi.clearAllMocks());
@@ -27,5 +33,34 @@ describe("createResume", () => {
     (db.insert as unknown as Mock).mockReturnValue({ values });
     await expect(createResume()).rejects.toThrow("REDIRECT:/resume/r1/edit");
     expect(values).toHaveBeenCalled();
+  });
+
+  it("duplicates an owned resume and redirects to the copy", async () => {
+    (auth as unknown as Mock).mockResolvedValue({ user: { id: "u1" } });
+    (db.query.resumes.findFirst as unknown as Mock).mockResolvedValue({
+      title: "前端简历",
+      templateId: "modern",
+      content: { basics: { name: "A" } },
+    });
+    const returning = vi.fn().mockResolvedValue([{ id: "r-copy" }]);
+    const values = vi.fn().mockReturnValue({ returning });
+    (db.insert as unknown as Mock).mockReturnValue({ values });
+
+    await expect(duplicateResume("r1")).rejects.toThrow("REDIRECT:/resume/r-copy/edit");
+
+    expect(db.query.resumes.findFirst).toHaveBeenCalled();
+    expect(values).toHaveBeenCalledWith({
+      userId: "u1",
+      title: "前端简历 (副本)",
+      templateId: "modern",
+      content: { basics: { name: "A" } },
+    });
+  });
+
+  it("redirects to dashboard when duplicate source is missing", async () => {
+    (auth as unknown as Mock).mockResolvedValue({ user: { id: "u1" } });
+    (db.query.resumes.findFirst as unknown as Mock).mockResolvedValue(null);
+
+    await expect(duplicateResume("missing")).rejects.toThrow("REDIRECT:/dashboard");
   });
 });

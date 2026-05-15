@@ -48,6 +48,7 @@ export default function EditorClient({ id, initialTitle, initialTemplate, initia
     initialContent.sectionOrder ?? [...DEFAULT_SECTION_ORDER]
   );
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // eslint-disable-next-line react-hooks/incompatible-library -- React Hook Form watch drives the existing autosave flow.
   const values = form.watch();
 
   useEffect(() => {

@@ -5,6 +5,11 @@ import { db } from "@/db";
 import { resumes } from "@/db/schema";
 import chromium from "@sparticuz/chromium";
 import puppeteer from "puppeteer-core";
+import {
+  buildPdfFailureResponse,
+  PDF_NAVIGATION_TIMEOUT_MS,
+  waitForPdfFonts,
+} from "@/lib/pdf-route-helpers";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -33,7 +38,8 @@ export async function GET(req: Request, ctx: { params: Promise<{ id: string }> }
     });
     const page = await browser.newPage();
     await page.setExtraHTTPHeaders({ cookie: cookieHeader });
-    await page.goto(previewUrl, { waitUntil: "networkidle0", timeout: 8000 });
+    await page.goto(previewUrl, { waitUntil: "networkidle0", timeout: PDF_NAVIGATION_TIMEOUT_MS });
+    await waitForPdfFonts(page);
     const pdfBuffer = await page.pdf({
       format: "A4",
       printBackground: true,
@@ -47,8 +53,8 @@ export async function GET(req: Request, ctx: { params: Promise<{ id: string }> }
       },
     });
   } catch (err) {
-    console.error("PDF generation failed:", err);
-    return new NextResponse("PDF generation failed", { status: 500 });
+    console.error("PDF generation failed:", { resumeId: id, err });
+    return buildPdfFailureResponse(err);
   } finally {
     if (browser) await browser.close();
   }

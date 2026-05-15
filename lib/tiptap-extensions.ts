@@ -10,6 +10,8 @@ export const tiptapExtensions = [
     codeBlock: false,
     blockquote: false,
     horizontalRule: false,
+    link: false,
+    underline: false,
   }),
   Link.configure({ openOnClick: false }),
   Underline,

@@ -1,7 +1,9 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
+import Script from "next/script";
 import { ThemeProvider } from "next-themes";
 import { Toaster } from "@/components/ui/sonner";
+import { cursorHydrationGuardScript } from "@/lib/cursor-hydration-guard";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -26,7 +28,7 @@ export default function RootLayout({
 }>) {
   return (
     <html
-      lang="en"
+      lang="zh-CN"
       suppressHydrationWarning
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
     >
@@ -35,6 +37,13 @@ export default function RootLayout({
           {children}
           <Toaster />
         </ThemeProvider>
+        {process.env.NODE_ENV === "development" && (
+          <Script
+            id="cursor-hydration-guard"
+            strategy="beforeInteractive"
+            dangerouslySetInnerHTML={{ __html: cursorHydrationGuardScript }}
+          />
+        )}
       </body>
     </html>
   );
