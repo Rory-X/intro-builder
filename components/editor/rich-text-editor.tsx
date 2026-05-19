@@ -31,7 +31,10 @@ const COLOR_PALETTE = [
 
 export function RichTextEditor({ content, onChange }: Props) {
   const onChangeRef = useRef(onChange);
-  onChangeRef.current = onChange;
+
+  useEffect(() => {
+    onChangeRef.current = onChange;
+  }, [onChange]);
 
   const editor = useEditor({
     extensions: tiptapExtensions,

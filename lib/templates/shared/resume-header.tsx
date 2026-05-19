@@ -12,7 +12,7 @@ type Props = {
   showEmptyPlaceholders?: boolean;
 };
 
-export function ResumeHeader({ basics, variant, className, showEmptyPlaceholders }: Props) {
+export function ResumeHeader({ basics, variant, className }: Props) {
   const contactItems = buildContactItems(basics);
 
   if (variant === "modern-sidebar") {

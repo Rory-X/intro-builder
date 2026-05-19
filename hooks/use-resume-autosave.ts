@@ -23,7 +23,6 @@ type Options = {
  */
 export function useResumeAutosave({
   form,
-  resumeId,
   title,
   debounceMs = 2000,
   onSave,
@@ -35,8 +34,14 @@ export function useResumeAutosave({
   const previousTitleRef = useRef(title);
   const savingRef = useRef(false);
   const saveAgainRef = useRef(false);
-  titleRef.current = title;
 
+  useEffect(() => {
+    titleRef.current = title;
+  }, [title]);
+
+  // The serial save queue intentionally uses refs so in-flight saves never
+  // overwrite newer edits when React re-renders during autosave.
+  // eslint-disable-next-line react-hooks/preserve-manual-memoization
   const persist = useCallback(async () => {
     if (savingRef.current) {
       saveAgainRef.current = true;
