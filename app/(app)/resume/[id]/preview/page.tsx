@@ -4,8 +4,7 @@ import { requireUserId } from "@/lib/auth-helpers";
 import { db } from "@/db";
 import { resumes } from "@/db/schema";
 import { migrateContent } from "@/lib/migrate-content";
-import { ClassicLayout } from "@/lib/templates/classic/Layout";
-import { ModernLayout } from "@/lib/templates/modern/Layout";
+import { TemplateRenderer } from "@/components/preview/template-renderer";
 
 export default async function PreviewPage({
   params,
@@ -22,8 +21,6 @@ export default async function PreviewPage({
   });
   if (!row) notFound();
   const content = migrateContent(row.content);
-  const Layout = row.templateId === "modern" ? ModernLayout : ClassicLayout;
-
   const isPdf = _pdf === "1";
 
   return (
@@ -36,7 +33,12 @@ export default async function PreviewPage({
         `}} />
       )}
       <div className={isPdf ? "" : "bg-slate-100 py-8"}>
-        <Layout content={content} sectionOrder={content.sectionOrder} styleSettings={content.styleSettings} />
+        <TemplateRenderer
+          templateId={row.templateId}
+          content={content}
+          sectionOrder={content.sectionOrder}
+          styleSettings={content.styleSettings}
+        />
       </div>
     </>
   );

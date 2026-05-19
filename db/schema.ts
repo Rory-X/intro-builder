@@ -49,7 +49,7 @@ export const resumes = pgTable("resume", {
   id: text("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
   userId: text("userId").notNull().references(() => users.id, { onDelete: "cascade" }),
   title: text("title").notNull().default("我的简历"),
-  templateId: text("templateId").notNull().default("classic"),
+  templateId: text("templateId").notNull().default("professional"),
   content: jsonb("content").$type<ResumeContent>().notNull(),
   slug: text("slug"),
   isPublic: boolean("isPublic").notNull().default(false),

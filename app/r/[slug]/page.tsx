@@ -3,8 +3,7 @@ import { and, eq } from "drizzle-orm";
 import { db } from "@/db";
 import { resumes } from "@/db/schema";
 import { migrateContent } from "@/lib/migrate-content";
-import { ClassicLayout } from "@/lib/templates/classic/Layout";
-import { ModernLayout } from "@/lib/templates/modern/Layout";
+import { TemplateRenderer } from "@/components/preview/template-renderer";
 
 export const revalidate = 60;
 
@@ -15,10 +14,14 @@ export default async function PublicResume({ params }: { params: Promise<{ slug:
   });
   if (!row) notFound();
   const content = migrateContent(row.content);
-  const Layout = row.templateId === "modern" ? ModernLayout : ClassicLayout;
   return (
     <main className="bg-muted py-8">
-      <Layout content={content} sectionOrder={content.sectionOrder} styleSettings={content.styleSettings} />
+      <TemplateRenderer
+        templateId={row.templateId}
+        content={content}
+        sectionOrder={content.sectionOrder}
+        styleSettings={content.styleSettings}
+      />
     </main>
   );
 }

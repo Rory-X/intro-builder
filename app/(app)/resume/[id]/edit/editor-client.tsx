@@ -15,7 +15,8 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Separator } from "@/components/ui/separator";
-import { Download, Share2, LayoutTemplate } from "lucide-react";
+import { Download, Share2 } from "lucide-react";
+import { resolveTemplateId, type TemplateId } from "@/lib/templates/registry";
 import { monitorForElements } from "@atlaskit/pragmatic-drag-and-drop/element/adapter";
 import { SectionWrapper } from "@/components/editor/section-wrapper";
 import { ModuleManager } from "@/components/editor/module-manager";
@@ -27,7 +28,7 @@ import { DEFAULT_SECTION_ORDER, BUILTIN_SECTION_KEYS } from "@/lib/resume-schema
 type Props = {
   id: string;
   initialTitle: string;
-  initialTemplate: "classic" | "modern";
+  initialTemplate: TemplateId;
   initialContent: ResumeContent;
   initialIsPublic: boolean;
   initialSlug: string | null;
@@ -40,7 +41,7 @@ export default function EditorClient({ id, initialTitle, initialTemplate, initia
     mode: "onChange",
   });
   const [title, setTitleState] = useState(initialTitle);
-  const [template, setTemplateState] = useState<"classic" | "modern">(initialTemplate);
+  const [template, setTemplateState] = useState<TemplateId>(resolveTemplateId(initialTemplate));
   const [isPublic, setIsPublic] = useState(initialIsPublic);
   const [publicSlug, setPublicSlug] = useState<string | null>(initialSlug);
   const [isPending, startTransition] = useTransition();
@@ -88,7 +89,7 @@ export default function EditorClient({ id, initialTitle, initialTemplate, initia
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [JSON.stringify(values), title]);
 
-  async function changeTemplate(next: "classic" | "modern") {
+  async function changeTemplate(next: TemplateId) {
     setTemplateState(next);
     await setTemplate(id, next);
   }
@@ -125,25 +126,6 @@ export default function EditorClient({ id, initialTitle, initialTemplate, initia
             {isPending ? "保存中" : "已保存"}
           </span>
           <div className="ml-auto flex flex-wrap items-center gap-2">
-            <div className="flex items-center gap-1 rounded-lg bg-muted p-0.5">
-              <Button
-                variant={template === "classic" ? "default" : "ghost"}
-                size="sm"
-                onClick={() => changeTemplate("classic")}
-                className="gap-1.5"
-              >
-                <LayoutTemplate className="h-3.5 w-3.5" />经典
-              </Button>
-              <Button
-                variant={template === "modern" ? "default" : "ghost"}
-                size="sm"
-                onClick={() => changeTemplate("modern")}
-                className="gap-1.5"
-              >
-                <LayoutTemplate className="h-3.5 w-3.5" />现代
-              </Button>
-            </div>
-            <Separator orientation="vertical" className="h-6" />
             <ModuleManager sectionOrder={sectionOrder} onOrderChange={handleOrderChange} />
             <Separator orientation="vertical" className="h-6" />
             <Button size="sm" variant="outline" onClick={onToggleShare} className="gap-1.5">
@@ -174,7 +156,7 @@ export default function EditorClient({ id, initialTitle, initialTemplate, initia
       {/* Desktop: side-by-side grid */}
       <div className="hidden lg:grid h-[calc(100vh-3.5rem-4rem)] grid-cols-2">
         <div className="space-y-6 overflow-y-auto border-r p-6">
-          <StyleEditor />
+          <StyleEditor templateId={template} onTemplateChange={changeTemplate} />
           <BasicsEditor />
           {sectionOrder.filter(k => k !== "basics").map((key) => (
             <SectionWrapper key={key} id={key}>
@@ -199,7 +181,7 @@ export default function EditorClient({ id, initialTitle, initialTemplate, initia
             <TabsTrigger value="preview">预览</TabsTrigger>
           </TabsList>
           <TabsContent value="edit" className="space-y-6 p-4">
-            <StyleEditor />
+            <StyleEditor templateId={template} onTemplateChange={changeTemplate} />
             <BasicsEditor />
             {sectionOrder.filter(k => k !== "basics").map((key) => (
               <SectionWrapper key={key} id={key}>

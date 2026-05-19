@@ -5,6 +5,7 @@ import { db } from "@/db";
 import { resumes } from "@/db/schema";
 import { ResumeContent } from "@/lib/resume-schema";
 import { newSlug } from "@/lib/slug";
+import type { TemplateId } from "@/lib/templates/registry";
 
 export async function saveResume(id: string, content: unknown, title?: string) {
   const session = await auth();
@@ -20,7 +21,7 @@ export async function saveResume(id: string, content: unknown, title?: string) {
     .where(and(eq(resumes.id, id), eq(resumes.userId, session.user.id)));
 }
 
-export async function setTemplate(id: string, templateId: "classic" | "modern") {
+export async function setTemplate(id: string, templateId: TemplateId) {
   const session = await auth();
   if (!session?.user?.id) throw new Error("unauthorized");
   await db.update(resumes).set({ templateId, updatedAt: new Date() })
