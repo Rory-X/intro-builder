@@ -1,11 +1,13 @@
 "use client";
-import { useEffect, useRef, useState, useTransition } from "react";
+import { useCallback, useEffect, useState, useTransition } from "react";
 import { useForm, FormProvider } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { toast } from "sonner";
 import { ResumeContent } from "@/lib/resume-schema";
 import { saveResume, setTemplate, toggleShare } from "./actions";
-import { PreviewPanel } from "@/components/preview/preview-panel";
+import { useResumeAutosave } from "@/hooks/use-resume-autosave";
+import { formatSaveError } from "@/lib/format-save-error";
+import { LivePreview } from "@/components/preview/live-preview";
 import { BasicsEditor } from "@/components/editor/basics-editor";
 import { ExperienceEditor } from "@/components/editor/experience-editor";
 import { EducationEditor } from "@/components/editor/education-editor";
@@ -48,9 +50,28 @@ export default function EditorClient({ id, initialTitle, initialTemplate, initia
   const [sectionOrder, setSectionOrder] = useState<string[]>(
     initialContent.sectionOrder ?? [...DEFAULT_SECTION_ORDER]
   );
-  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  // eslint-disable-next-line react-hooks/incompatible-library -- React Hook Form watch drives the existing autosave flow.
-  const values = form.watch();
+  const persistResume = useCallback(
+    async (content: ResumeContent, resumeTitle: string) => {
+      await saveResume(id, content, resumeTitle);
+    },
+    [id],
+  );
+
+  useResumeAutosave({
+    form: {
+      watch: (cb) => form.watch((data) => cb(data as ResumeContent)),
+      getValues: () => form.getValues() as ResumeContent,
+    },
+    resumeId: id,
+    title,
+    onSave: (content, resumeTitle) =>
+      new Promise<void>((resolve, reject) => {
+        startTransition(() => {
+          persistResume(content, resumeTitle).then(resolve).catch(reject);
+        });
+      }),
+    onError: (e) => toast.error(formatSaveError(e)),
+  });
 
   useEffect(() => {
     return monitorForElements({
@@ -72,22 +93,6 @@ export default function EditorClient({ id, initialTitle, initialTemplate, initia
       },
     });
   }, [form]);
-
-  useEffect(() => {
-    if (timer.current) clearTimeout(timer.current);
-    timer.current = setTimeout(() => {
-      startTransition(async () => {
-        try {
-          await saveResume(id, values, title);
-        } catch (e: unknown) {
-          const msg = e instanceof Error ? e.message : String(e);
-          toast.error("保存失败：" + msg);
-        }
-      });
-    }, 2000);
-    return () => { if (timer.current) clearTimeout(timer.current); };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [JSON.stringify(values), title]);
 
   async function changeTemplate(next: TemplateId) {
     setTemplateState(next);
@@ -169,7 +174,7 @@ export default function EditorClient({ id, initialTitle, initialTemplate, initia
           ))}
         </div>
         <div className="overflow-y-auto bg-muted p-6">
-          <PreviewPanel content={values as ResumeContent} templateId={template} />
+          <LivePreview templateId={template} />
         </div>
       </div>
 
@@ -194,7 +199,7 @@ export default function EditorClient({ id, initialTitle, initialTemplate, initia
             ))}
           </TabsContent>
           <TabsContent value="preview" className="bg-muted p-4">
-            <PreviewPanel content={values as ResumeContent} templateId={template} />
+            <LivePreview templateId={template} />
           </TabsContent>
         </Tabs>
       </div>

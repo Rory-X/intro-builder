@@ -4,6 +4,7 @@ import { bulletsToDoc } from "@/lib/tiptap-types";
 export const demoResume: ResumeContent = {
   basics: {
     name: "张三",
+    status: "在职",
     title: "前端工程师",
     email: "zhang@example.com",
     phone: "138 0000 0000",

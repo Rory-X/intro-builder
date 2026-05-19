@@ -1,9 +1,10 @@
 import { RichTextRenderer } from "@/components/preview/rich-text-renderer";
+import { RICH_TEXT_PROSE_CLASS } from "@/lib/rich-text-prose";
 import type { TipTapJSON } from "@/lib/tiptap-types";
 import { cn } from "@/lib/utils";
 
-export const RESUME_PROSE_CLASS =
-  "prose prose-sm max-w-none text-neutral-800 prose-p:my-1 prose-li:my-0.5 prose-ul:my-1 prose-ol:my-1";
+/** @deprecated Use RICH_TEXT_PROSE_CLASS */
+export const RESUME_PROSE_CLASS = RICH_TEXT_PROSE_CLASS;
 
 export function ResumeRichText({
   content,

@@ -64,6 +64,7 @@ export function ProjectsEditor() {
                 <div>
                   <Label>项目亮点</Label>
                   <RichTextEditor
+                    key={`projects-content-${f.id}`}
                     content={watch(`projects.${idx}.content` as const)}
                     onChange={(json) => setValue(`projects.${idx}.content` as const, json, { shouldDirty: true })}
                     placeholder="描述你的项目亮点…"

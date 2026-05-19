@@ -5,6 +5,7 @@ const nonEmpty = z.string().min(1, "必填");
 
 export const Basics = z.object({
   name: nonEmpty,
+  status: z.string().default(""),
   title: z.string().default(""),
   email: z.string().email(),
   phone: z.string().default(""),
@@ -100,6 +101,7 @@ export type ResumeContent = z.infer<typeof ResumeContent>;
 export const emptyResumeContent = (): ResumeContent => ({
   basics: {
     name: "你的姓名",
+    status: "",
     title: "目标岗位",
     email: "you@example.com",
     phone: "",

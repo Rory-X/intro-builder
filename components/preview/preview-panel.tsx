@@ -17,6 +17,7 @@ export function PreviewPanel({
           content={content}
           sectionOrder={content.sectionOrder}
           styleSettings={content.styleSettings}
+          showEmptyPlaceholders
         />
       </div>
     </div>

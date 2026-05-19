@@ -5,6 +5,8 @@ export type ResumeItemHeaderVariant = "classic" | "professional" | "modern";
 type Props = {
   primary: React.ReactNode;
   secondary?: React.ReactNode;
+  /** Shown right-aligned on the secondary row (e.g. location) */
+  tertiary?: React.ReactNode;
   dateRange?: string;
   variant?: ResumeItemHeaderVariant;
   className?: string;
@@ -13,6 +15,7 @@ type Props = {
 export function ResumeItemHeader({
   primary,
   secondary,
+  tertiary,
   dateRange,
   variant = "professional",
   className,
@@ -44,15 +47,20 @@ export function ResumeItemHeader({
   }
 
   return (
-    <div className={cn("mb-1 break-inside-avoid", className)}>
-      <div className="flex justify-between gap-4">
-        <span className="font-semibold text-neutral-900">{primary}</span>
+    <div className={cn("mb-1.5 break-inside-avoid", className)}>
+      <div className="flex items-baseline justify-between gap-4">
+        <span className="font-bold leading-snug text-neutral-900">{primary}</span>
         {dateRange && (
-          <span className="shrink-0 text-[0.92em] text-neutral-600 tabular-nums">{dateRange}</span>
+          <span className="shrink-0 text-[0.9em] font-normal tabular-nums text-neutral-600">
+            {dateRange}
+          </span>
         )}
       </div>
-      {secondary && (
-        <div className="text-[0.92em] text-neutral-600">{secondary}</div>
+      {(secondary || tertiary) && (
+        <div className="mt-0.5 flex items-baseline justify-between gap-4 text-[0.92em] text-neutral-700">
+          <span className="min-w-0">{secondary}</span>
+          {tertiary && <span className="shrink-0 text-neutral-600">{tertiary}</span>}
+        </div>
       )}
     </div>
   );

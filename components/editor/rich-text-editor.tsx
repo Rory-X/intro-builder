@@ -1,13 +1,21 @@
 "use client";
+import { useEffect, useRef, useState } from "react";
 import { useEditor, EditorContent } from "@tiptap/react";
+import type { Editor } from "@tiptap/react";
 import {
   Bold, Italic, Underline as UnderlineIcon, Link, List, ListOrdered,
-  AlignLeft, AlignCenter, AlignRight, Palette, ChevronDown,
+  AlignLeft, AlignCenter, AlignRight, Palette,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverTrigger, PopoverContent } from "@/components/ui/popover";
 import { tiptapExtensions } from "@/lib/tiptap-extensions";
+import {
+  DEFAULT_RICH_TEXT_FONT_SIZE,
+  RICH_TEXT_FONT_SIZES,
+  RICH_TEXT_PROSE_CLASS,
+} from "@/lib/rich-text-prose";
 import type { TipTapJSON } from "@/lib/tiptap-types";
+import { cn } from "@/lib/utils";
 
 type Props = {
   content: TipTapJSON;
@@ -15,7 +23,6 @@ type Props = {
   placeholder?: string;
 };
 
-const FONT_SIZES = ["12px", "13px", "14px", "16px", "18px"];
 const COLOR_PALETTE = [
   "#000000", "#374151", "#DC2626", "#EA580C",
   "#CA8A04", "#16A34A", "#2563EB", "#7C3AED",
@@ -23,19 +30,34 @@ const COLOR_PALETTE = [
 ];
 
 export function RichTextEditor({ content, onChange }: Props) {
+  const onChangeRef = useRef(onChange);
+  onChangeRef.current = onChange;
+
   const editor = useEditor({
     extensions: tiptapExtensions,
     content,
     onUpdate: ({ editor: e }) => {
-      onChange(e.getJSON() as TipTapJSON);
+      onChangeRef.current(e.getJSON() as TipTapJSON);
     },
     editorProps: {
       attributes: {
-        class: "min-h-[80px] bg-background px-3 py-2 text-sm focus:outline-none prose prose-sm max-w-none",
+        class: cn(
+          "min-h-[80px] bg-background px-3 py-2 text-sm focus:outline-none",
+          RICH_TEXT_PROSE_CLASS,
+        ),
       },
     },
     immediatelyRender: false,
   });
+
+  useEffect(() => {
+    if (!editor || editor.isDestroyed) return;
+    const incoming = JSON.stringify(content);
+    const current = JSON.stringify(editor.getJSON());
+    if (incoming !== current) {
+      editor.commands.setContent(content, { emitUpdate: false });
+    }
+  }, [editor, content]);
 
   if (!editor) return null;
 
@@ -67,37 +89,7 @@ export function RichTextEditor({ content, onChange }: Props) {
 
         <span className="mx-1 h-4 w-px bg-border/60" />
 
-        {/* Font size */}
-        <Popover>
-          <PopoverTrigger
-            render={<Button type="button" variant="ghost" size="sm" className="h-7 gap-0.5 px-1.5 text-xs" title="字号" />}
-          >
-            <span className="w-5 text-center">
-              {editor.getAttributes("textStyle").fontSize?.replace("px", "") ?? "14"}
-            </span>
-            <ChevronDown className="h-3 w-3" />
-          </PopoverTrigger>
-          <PopoverContent className="w-24 p-1" align="start">
-            {FONT_SIZES.map((size) => (
-              <button
-                key={size}
-                type="button"
-                className={`w-full rounded px-2 py-1 text-left text-sm hover:bg-muted ${
-                  editor.getAttributes("textStyle").fontSize === size ? "bg-muted font-medium" : ""
-                }`}
-                onClick={() => {
-                  if (size === "14px") {
-                    editor.chain().focus().unsetFontSize().run();
-                  } else {
-                    editor.chain().focus().setFontSize(size).run();
-                  }
-                }}
-              >
-                {size.replace("px", "")}
-              </button>
-            ))}
-          </PopoverContent>
-        </Popover>
+        <FontSizeToolbar editor={editor} />
 
         {/* Color */}
         <Popover>
@@ -130,6 +122,63 @@ export function RichTextEditor({ content, onChange }: Props) {
         </Popover>
       </div>
       <EditorContent editor={editor} />
+    </div>
+  );
+}
+
+function activeFontSize(editor: Editor): string {
+  return editor.getAttributes("textStyle").fontSize ?? DEFAULT_RICH_TEXT_FONT_SIZE;
+}
+
+function FontSizeToolbar({ editor }: { editor: Editor }) {
+  const [, setTick] = useState(0);
+
+  useEffect(() => {
+    const refresh = () => setTick((t) => t + 1);
+    editor.on("selectionUpdate", refresh);
+    editor.on("transaction", refresh);
+    return () => {
+      editor.off("selectionUpdate", refresh);
+      editor.off("transaction", refresh);
+    };
+  }, [editor]);
+
+  const current = activeFontSize(editor);
+
+  return (
+    <div
+      className="flex items-center gap-0.5 rounded-md border border-border/60 bg-background p-0.5"
+      role="group"
+      aria-label="字号"
+    >
+      {RICH_TEXT_FONT_SIZES.map((size) => {
+        const label = size.replace("px", "");
+        const isDefault = size === DEFAULT_RICH_TEXT_FONT_SIZE;
+        const active = current === size;
+
+        return (
+          <button
+            key={size}
+            type="button"
+            title={isDefault ? "默认字号" : `${label}px`}
+            className={cn(
+              "h-6 min-w-7 rounded px-1 text-xs tabular-nums transition-colors",
+              active
+                ? "bg-muted font-medium text-foreground"
+                : "text-muted-foreground hover:bg-muted/70",
+            )}
+            onClick={() => {
+              if (isDefault) {
+                editor.chain().focus().unsetFontSize().run();
+              } else {
+                editor.chain().focus().setFontSize(size).run();
+              }
+            }}
+          >
+            {label}
+          </button>
+        );
+      })}
     </div>
   );
 }

@@ -50,6 +50,7 @@ export function CustomSectionEditor({ sectionId }: Props) {
           <div className="flex flex-col gap-1.5">
             <Label>内容</Label>
             <RichTextEditor
+              key={`custom-content-${sectionId}`}
               content={section.content}
               onChange={(json) => {
                 const updated = [...getValues("custom")];

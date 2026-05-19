@@ -9,4 +9,6 @@ export type TemplateLayoutProps = {
   content: ResumeContent;
   sectionOrder?: string[];
   styleSettings?: StyleSettings;
+  /** Editor preview: show section shells when modules have no entries yet */
+  showEmptyPlaceholders?: boolean;
 };

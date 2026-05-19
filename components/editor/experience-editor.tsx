@@ -59,6 +59,7 @@ export function ExperienceEditor() {
                 <div>
                   <Label>工作成果</Label>
                   <RichTextEditor
+                    key={`experience-content-${f.id}`}
                     content={watch(`experience.${idx}.content` as const)}
                     onChange={(json) => setValue(`experience.${idx}.content` as const, json, { shouldDirty: true })}
                     placeholder="描述你的工作成果…"

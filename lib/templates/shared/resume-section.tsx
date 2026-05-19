@@ -1,5 +1,6 @@
 import { getSectionMeta } from "@/lib/section-meta";
 import { cn } from "@/lib/utils";
+import { ProfessionalSectionTitle } from "./professional-section-title";
 
 export type ResumeSectionVariant = "classic" | "professional" | "modern";
 
@@ -17,13 +18,9 @@ export function ResumeSection({ title, sectionKey, variant, children, className 
 
   if (variant === "professional") {
     return (
-      <section className={cn("mt-3 break-inside-avoid", className)}>
-        <h2 className="mb-2 flex items-center gap-2 text-[0.95em] font-bold tracking-wide text-neutral-900">
-          <span className="h-px min-w-[1rem] flex-1 bg-neutral-300" aria-hidden />
-          <span className="shrink-0 px-1">{title}</span>
-          <span className="h-px min-w-[1rem] flex-1 bg-neutral-300" aria-hidden />
-        </h2>
-        {children}
+      <section className={cn("mt-3.5 break-inside-avoid", className)}>
+        <ProfessionalSectionTitle title={title} icon={Icon ?? undefined} />
+        <div className="mt-2">{children}</div>
       </section>
     );
   }

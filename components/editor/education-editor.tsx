@@ -61,6 +61,7 @@ export function EducationEditor() {
                 <div>
                   <Label>亮点</Label>
                   <RichTextEditor
+                    key={`education-highlights-${f.id}`}
                     content={watch(`education.${idx}.highlights` as const)}
                     onChange={(json) => setValue(`education.${idx}.highlights` as const, json, { shouldDirty: true })}
                     placeholder="描述你的教育亮点…"
