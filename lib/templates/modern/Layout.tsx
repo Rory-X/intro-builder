@@ -1,145 +1,135 @@
-import type { ResumeContent, StyleSettings } from "@/lib/resume-schema";
-import { DEFAULT_STYLE_SETTINGS } from "@/lib/resume-schema";
-import { RichTextRenderer } from "@/components/preview/rich-text-renderer";
-import { SECTION_META, getSectionMeta } from "@/lib/section-meta";
-import { FONT_MAP } from "@/lib/font-map";
-import { Mail, Phone, MapPin, Globe } from "lucide-react";
+import type { TemplateLayoutProps } from "@/lib/templates/types";
+import { ResumeHeader } from "@/lib/templates/shared/resume-header";
+import { ResumePage } from "@/lib/templates/shared/resume-page";
+import { ResumeRichText } from "@/lib/templates/shared/resume-rich-text";
+import { ResumeSection } from "@/lib/templates/shared/resume-section";
+import { ResumeItemHeader } from "@/lib/templates/shared/resume-item-header";
+import { getSectionOrder } from "@/lib/templates/shared/render-sections";
 
-type Props = {
-  content: ResumeContent;
-  sectionOrder?: string[];
-  styleSettings?: StyleSettings;
-};
+const SIDEBAR_KEYS = new Set(["skills", "education"]);
 
-export function ModernLayout({ content, sectionOrder, styleSettings }: Props) {
+export function ModernLayout({ content, sectionOrder, styleSettings }: TemplateLayoutProps) {
   const b = content.basics;
-  const ss = { ...DEFAULT_STYLE_SETTINGS, ...styleSettings };
-  const order = sectionOrder ?? content.sectionOrder ?? ["basics", "experience", "education", "projects", "skills"];
-  const sidebarKeys = new Set(["skills", "education"]);
+  const order = getSectionOrder(content, sectionOrder);
 
   return (
-    <article
-      className="mx-auto grid max-w-[820px] grid-cols-[220px_1fr] gap-6 bg-white text-black"
-      style={{
-        fontSize: `${ss.fontSize}px`,
-        lineHeight: ss.lineHeight,
-        padding: `${ss.pagePadding}px`,
-        fontFamily: FONT_MAP[ss.fontFamily].css,
-      }}
+    <ResumePage
+      styleSettings={styleSettings}
+      maxWidthClass="max-w-[840px]"
+      className="grid grid-cols-[240px_1fr] gap-6"
     >
-      <aside className="space-y-4 border-r pr-4">
-        {b.photo && (
-          // eslint-disable-next-line @next/next/no-img-element -- Template markup is printed by Puppeteer; next/image is not used in PDFs.
-          <img src={b.photo} alt={b.name} className="mx-auto h-24 w-24 rounded-full object-cover" />
-        )}
-        <div>
-          <h1 className="text-xl font-bold">{b.name}</h1>
-          <p className="text-sm text-neutral-600">{b.title}</p>
-        </div>
-        <div className="space-y-1 text-xs">
-          {b.email && <div className="flex items-center gap-1.5"><Mail className="h-3 w-3 text-neutral-500" />{b.email}</div>}
-          {b.phone && <div className="flex items-center gap-1.5"><Phone className="h-3 w-3 text-neutral-500" />{b.phone}</div>}
-          {b.location && <div className="flex items-center gap-1.5"><MapPin className="h-3 w-3 text-neutral-500" />{b.location}</div>}
-          {b.website && <div className="flex items-center gap-1.5"><Globe className="h-3 w-3 text-neutral-500" />{b.website}</div>}
-        </div>
-        {order.filter((k) => sidebarKeys.has(k)).map((key) => {
-          if (key === "skills" && content.skills.length > 0) {
-            const meta = SECTION_META.skills;
-            return (
-              <div key="skills">
-                <h2 className="mb-1 flex items-center gap-1 text-sm font-bold">
-                  <meta.icon className={`h-3.5 w-3.5 ${meta.color}`} />技能
-                </h2>
-                {content.skills.map((s, i) => (
-                  <div key={i} className="mb-1">
-                    <div className="text-xs font-semibold">{s.category}</div>
-                    <div className="text-xs text-neutral-700">{s.items.join(", ")}</div>
-                  </div>
-                ))}
-              </div>
-            );
-          }
-          if (key === "education" && content.education.length > 0) {
-            const meta = SECTION_META.education;
-            return (
-              <div key="education">
-                <h2 className="mb-1 flex items-center gap-1 text-sm font-bold">
-                  <meta.icon className={`h-3.5 w-3.5 ${meta.color}`} />教育
-                </h2>
-                {content.education.map((e, i) => (
-                  <div key={i} className="mb-1 text-xs">
-                    <div className="font-semibold">{e.school}</div>
-                    <div>{e.degree} {e.major}</div>
-                    <div className="text-neutral-600">{e.start} – {e.end}</div>
-                  </div>
-                ))}
-              </div>
-            );
-          }
-          return null;
-        })}
+      <aside className="space-y-4 border-r border-neutral-200 pr-4">
+        <ResumeHeader basics={b} variant="modern-sidebar" />
+        {order
+          .filter((k) => SIDEBAR_KEYS.has(k))
+          .map((key) => {
+            if (key === "skills" && content.skills.length > 0) {
+              return (
+                <ResumeSection key="skills" sectionKey="skills" title="技能" variant="modern">
+                  {content.skills.map((s, i) => (
+                    <div key={i} className="mb-1.5 last:mb-0">
+                      <div className="text-xs font-semibold">{s.category}</div>
+                      <div className="text-xs leading-relaxed text-neutral-700">
+                        {s.items.join("、")}
+                      </div>
+                    </div>
+                  ))}
+                </ResumeSection>
+              );
+            }
+            if (key === "education" && content.education.length > 0) {
+              return (
+                <ResumeSection key="education" sectionKey="education" title="教育" variant="modern">
+                  {content.education.map((e, i) => (
+                    <div key={i} className="mb-2 text-xs last:mb-0">
+                      <div className="font-semibold">{e.school}</div>
+                      <div>
+                        {e.degree} {e.major}
+                      </div>
+                      <div className="text-neutral-600">
+                        {e.start} – {e.end}
+                      </div>
+                    </div>
+                  ))}
+                </ResumeSection>
+              );
+            }
+            return null;
+          })}
       </aside>
       <main className="space-y-4">
-        {order.filter((k) => !sidebarKeys.has(k)).map((key) => {
-          if (key === "basics" && b.summary) {
-            return (
-              <section key="basics">
-                <h2 className="mb-1 border-b pb-0.5 text-sm font-bold">自我介绍</h2>
-                <p>{b.summary}</p>
-              </section>
-            );
-          }
-          if (key === "experience" && content.experience.length > 0) {
-            const meta = SECTION_META.experience;
-            return (
-              <section key="experience">
-                <h2 className="mb-1 flex items-center gap-1 border-b pb-0.5 text-sm font-bold">
-                  <meta.icon className={`h-3.5 w-3.5 ${meta.color}`} />工作经历
-                </h2>
-                {content.experience.map((e, i) => (
-                  <div key={i} className="mb-2">
-                    <div className="flex justify-between">
-                      <span className="font-semibold">{e.title} @ {e.company}</span>
-                      <span className="text-xs text-neutral-600">{e.start} – {e.end}</span>
+        {order
+          .filter((k) => !SIDEBAR_KEYS.has(k))
+          .map((key) => {
+            if (key === "basics" && b.summary) {
+              return (
+                <ResumeSection key="basics" sectionKey="basics" title="自我介绍" variant="modern">
+                  <p>{b.summary}</p>
+                </ResumeSection>
+              );
+            }
+            if (key === "experience" && content.experience.length > 0) {
+              return (
+                <ResumeSection
+                  key="experience"
+                  sectionKey="experience"
+                  title="工作经历"
+                  variant="modern"
+                >
+                  {content.experience.map((e, i) => (
+                    <div key={i} className="mb-2 last:mb-0">
+                      <ResumeItemHeader
+                        variant="modern"
+                        primary={`${e.title} @ ${e.company}`}
+                        dateRange={
+                          e.start || e.end ? `${e.start} – ${e.end}` : undefined
+                        }
+                      />
+                      <ResumeRichText content={e.content} />
                     </div>
-                    <RichTextRenderer content={e.content} className="prose prose-sm max-w-none" />
-                  </div>
-                ))}
-              </section>
-            );
-          }
-          if (key === "projects" && content.projects.length > 0) {
-            const meta = SECTION_META.projects;
-            return (
-              <section key="projects">
-                <h2 className="mb-1 flex items-center gap-1 border-b pb-0.5 text-sm font-bold">
-                  <meta.icon className={`h-3.5 w-3.5 ${meta.color}`} />项目
-                </h2>
-                {content.projects.map((p, i) => (
-                  <div key={i} className="mb-2">
-                    <div className="font-semibold">{p.name}{p.stack.length > 0 && <span className="ml-2 font-normal text-neutral-600">{p.stack.join(" · ")}</span>}</div>
-                    <RichTextRenderer content={p.content} className="prose prose-sm max-w-none" />
-                  </div>
-                ))}
-              </section>
-            );
-          }
-          // Custom sections rendered in main area
-          const customSection = (content.custom ?? []).find((cs) => cs.id === key);
-          if (customSection && customSection.content?.content?.length > 0) {
-            const csMeta = getSectionMeta(key);
-            return (
-              <section key={key}>
-                <h2 className="mb-1 flex items-center gap-1 border-b pb-0.5 text-sm font-bold">
-                  <csMeta.icon className={`h-3.5 w-3.5 ${csMeta.color}`} />{customSection.title}
-                </h2>
-                <RichTextRenderer content={customSection.content} className="prose prose-sm max-w-none" />
-              </section>
-            );
-          }
-          return null;
-        })}
+                  ))}
+                </ResumeSection>
+              );
+            }
+            if (key === "projects" && content.projects.length > 0) {
+              return (
+                <ResumeSection
+                  key="projects"
+                  sectionKey="projects"
+                  title="项目"
+                  variant="modern"
+                >
+                  {content.projects.map((p, i) => (
+                    <div key={i} className="mb-2 last:mb-0">
+                      <ResumeItemHeader
+                        variant="modern"
+                        primary={p.name}
+                        secondary={
+                          p.stack.length > 0 ? p.stack.join(" · ") : undefined
+                        }
+                      />
+                      <ResumeRichText content={p.content} />
+                    </div>
+                  ))}
+                </ResumeSection>
+              );
+            }
+            const customSection = (content.custom ?? []).find((cs) => cs.id === key);
+            if (customSection && customSection.content?.content?.length > 0) {
+              return (
+                <ResumeSection
+                  key={key}
+                  sectionKey={key}
+                  title={customSection.title}
+                  variant="modern"
+                >
+                  <ResumeRichText content={customSection.content} />
+                </ResumeSection>
+              );
+            }
+            return null;
+          })}
       </main>
-    </article>
+    </ResumePage>
   );
 }

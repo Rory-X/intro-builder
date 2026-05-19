@@ -3,9 +3,8 @@ import { Button } from "@/components/ui/button";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Card, CardContent } from "@/components/ui/card";
 import { FileText, LayoutGrid, Share2, ArrowRight, Eye, Shield, Zap } from "lucide-react";
-import { ClassicLayout } from "@/lib/templates/classic/Layout";
-import { ModernLayout } from "@/lib/templates/modern/Layout";
 import { demoResume } from "@/lib/demo-resume";
+import { DEFAULT_TEMPLATE_ID, TEMPLATES } from "@/lib/templates/registry";
 
 export default function Landing() {
   return (
@@ -110,20 +109,27 @@ export default function Landing() {
       {/* Templates preview */}
       <section id="templates" className="mx-auto max-w-5xl px-4 py-16">
         <div className="mb-8 text-center">
-          <h2 className="text-2xl font-bold md:text-3xl">两套模板，任选一套</h2>
-          <p className="mt-2 text-muted-foreground">同一份内容，不同的展示风格</p>
+          <h2 className="text-2xl font-bold md:text-3xl">三套模板，任选一套</h2>
+          <p className="mt-2 text-muted-foreground">同一份内容，专业 / 经典 / 现代三种展示风格</p>
         </div>
-        <Tabs defaultValue="classic" className="w-full">
-          <TabsList className="mx-auto mb-8 grid w-fit grid-cols-2 gap-1">
-            <TabsTrigger value="classic">经典</TabsTrigger>
-            <TabsTrigger value="modern">现代</TabsTrigger>
+        <Tabs defaultValue={DEFAULT_TEMPLATE_ID} className="w-full">
+          <TabsList className="mx-auto mb-8 grid w-fit grid-cols-3 gap-1">
+            {TEMPLATES.map((t) => (
+              <TabsTrigger key={t.id} value={t.id}>
+                {t.name}
+              </TabsTrigger>
+            ))}
           </TabsList>
-          <TabsContent value="classic">
-            <TemplateFrame><ClassicLayout content={demoResume} /></TemplateFrame>
-          </TabsContent>
-          <TabsContent value="modern">
-            <TemplateFrame><ModernLayout content={demoResume} /></TemplateFrame>
-          </TabsContent>
+          {TEMPLATES.map((t) => {
+            const Layout = t.Layout;
+            return (
+              <TabsContent key={t.id} value={t.id}>
+                <TemplateFrame>
+                  <Layout content={demoResume} />
+                </TemplateFrame>
+              </TabsContent>
+            );
+          })}
         </Tabs>
       </section>
 

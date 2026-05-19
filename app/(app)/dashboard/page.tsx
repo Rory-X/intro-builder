@@ -10,8 +10,8 @@ import {
 import { Plus, MoreVertical, Edit, Copy, Trash2, FileText } from "lucide-react";
 import { createResume, deleteResume, duplicateResume } from "./actions";
 import { migrateContent } from "@/lib/migrate-content";
-import { ClassicLayout } from "@/lib/templates/classic/Layout";
-import { ModernLayout } from "@/lib/templates/modern/Layout";
+import { getTemplateMeta } from "@/lib/templates/registry";
+import { TemplateRenderer } from "@/components/preview/template-renderer";
 import type { Metadata } from "next";
 
 export const metadata: Metadata = { title: "我的简历" };
@@ -57,7 +57,7 @@ export default async function DashboardPage() {
         <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
           {list.map((r) => {
             const content = migrateContent(r.content);
-            const Layout = r.templateId === "modern" ? ModernLayout : ClassicLayout;
+            const templateName = getTemplateMeta(r.templateId).name;
             return (
               <div key={r.id} className="group relative">
                 {/* Preview card */}
@@ -65,7 +65,11 @@ export default async function DashboardPage() {
                   <div className="overflow-hidden rounded-xl border bg-white shadow-sm transition-all duration-200 hover:shadow-lg hover:shadow-primary/5 [container-type:inline-size] dark:border-neutral-700 dark:bg-neutral-900"
                        style={{ aspectRatio: "210/297" }}>
                     <div className="pointer-events-none origin-top-left [transform:scale(calc(100cqw/820px))]" style={{ width: "820px" }}>
-                      <Layout content={content} sectionOrder={content.sectionOrder} />
+                      <TemplateRenderer
+                        templateId={r.templateId}
+                        content={content}
+                        sectionOrder={content.sectionOrder}
+                      />
                     </div>
                   </div>
                 </Link>
@@ -76,7 +80,7 @@ export default async function DashboardPage() {
                     <p className="text-xs text-muted-foreground">
                       {r.updatedAt.toLocaleDateString("zh-CN")}
                       <span className="mx-1 text-border">&middot;</span>
-                      <span className="capitalize">{r.templateId}</span>
+                      <span>{templateName}</span>
                     </p>
                   </div>
                   <DropdownMenu>

@@ -13,7 +13,7 @@ export async function createResume() {
   const [row] = await db.insert(resumes).values({
     userId: session.user.id,
     title: "新简历",
-    templateId: "classic",
+    templateId: "professional",
     content: emptyResumeContent(),
   }).returning({ id: resumes.id });
   revalidatePath("/dashboard");

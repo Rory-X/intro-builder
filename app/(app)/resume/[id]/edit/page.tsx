@@ -5,6 +5,7 @@ import { migrateContent } from "@/lib/migrate-content";
 import { db } from "@/db";
 import { resumes } from "@/db/schema";
 import EditorClient from "./editor-client";
+import { resolveTemplateId } from "@/lib/templates/registry";
 import type { Metadata } from "next";
 export const metadata: Metadata = { title: "编辑简历" };
 
@@ -19,7 +20,7 @@ export default async function EditPage({ params }: { params: Promise<{ id: strin
     <EditorClient
       id={row.id}
       initialTitle={row.title}
-      initialTemplate={row.templateId as "classic" | "modern"}
+      initialTemplate={resolveTemplateId(row.templateId)}
       initialContent={migrateContent(row.content)}
       initialIsPublic={row.isPublic}
       initialSlug={row.slug ?? null}
