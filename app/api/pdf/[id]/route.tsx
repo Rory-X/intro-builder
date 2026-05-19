@@ -8,6 +8,7 @@ import puppeteer from "puppeteer-core";
 import {
   buildPdfFailureResponse,
   PDF_NAVIGATION_TIMEOUT_MS,
+  resolvePdfExecutablePath,
   waitForPdfFonts,
 } from "@/lib/pdf-route-helpers";
 
@@ -33,7 +34,7 @@ export async function GET(req: Request, ctx: { params: Promise<{ id: string }> }
     browser = await puppeteer.launch({
       args: chromium.args,
       defaultViewport: { width: 794, height: 1123 },
-      executablePath: await chromium.executablePath(),
+      executablePath: await resolvePdfExecutablePath(chromium),
       headless: true,
     });
     const page = await browser.newPage();

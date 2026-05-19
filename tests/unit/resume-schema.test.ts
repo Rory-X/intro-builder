@@ -7,16 +7,16 @@ describe("ResumeContent v2", () => {
     expect(r.success).toBe(true);
   });
 
-  it("rejects invalid email in basics", () => {
-    const bad = { ...emptyResumeContent() };
-    bad.basics.email = "not-an-email";
-    expect(ResumeContent.safeParse(bad).success).toBe(false);
+  it("accepts non-standard email text in basics", () => {
+    const c = emptyResumeContent();
+    c.basics.email = "not-an-email";
+    expect(ResumeContent.safeParse(c).success).toBe(true);
   });
 
-  it("requires non-empty name in basics", () => {
-    const bad = emptyResumeContent();
-    bad.basics.name = "";
-    expect(ResumeContent.safeParse(bad).success).toBe(false);
+  it("accepts empty name while the user is editing", () => {
+    const c = emptyResumeContent();
+    c.basics.name = "";
+    expect(ResumeContent.safeParse(c).success).toBe(true);
   });
 
   it("experience uses content (TipTapJSON) not bullets", () => {
@@ -41,6 +41,13 @@ describe("ResumeContent v2", () => {
   it("accepts photo URL in basics", () => {
     const c = emptyResumeContent();
     c.basics.photo = "https://example.com/photo.jpg";
+    const r = ResumeContent.safeParse(c);
+    expect(r.success).toBe(true);
+  });
+
+  it("accepts personal website domains without a protocol", () => {
+    const c = emptyResumeContent();
+    c.basics.website = "space.ly57.cn";
     const r = ResumeContent.safeParse(c);
     expect(r.success).toBe(true);
   });

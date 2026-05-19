@@ -18,6 +18,24 @@ function useTestAutosave(onSave: (c: ResumeContent, t: string) => Promise<void>)
   return form;
 }
 
+function useTestAutosaveWithUnstableAdapter(
+  onSave: (c: ResumeContent, t: string) => Promise<void>,
+) {
+  const form = useForm<ResumeContent>({ defaultValues: emptyResumeContent() });
+  useResumeAutosave({
+    form: {
+      watch: (cb) => form.watch((data) => cb(data as ResumeContent)),
+      getValues: () => form.getValues(),
+    },
+    resumeId: "r1",
+    title: "My resume",
+    debounceMs: 50,
+    onSave,
+    onError: vi.fn(),
+  });
+  return form;
+}
+
 describe("useResumeAutosave", () => {
   beforeEach(() => {
     vi.useFakeTimers();
@@ -83,5 +101,18 @@ describe("useResumeAutosave", () => {
 
     expect(onSave).toHaveBeenCalledTimes(2);
     expect(onSave.mock.calls[1][0].basics.name).toBe("B");
+  });
+
+  it("does not autosave on mount or rerender without edits", async () => {
+    const onSave = vi.fn().mockResolvedValue(undefined);
+    const { rerender } = renderHook(() => useTestAutosaveWithUnstableAdapter(onSave));
+
+    await act(async () => {
+      rerender();
+      await vi.advanceTimersByTimeAsync(100);
+      await vi.runAllTimersAsync();
+    });
+
+    expect(onSave).not.toHaveBeenCalled();
   });
 });

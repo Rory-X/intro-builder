@@ -32,6 +32,7 @@ export function useResumeAutosave({
   const debounceTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const editGeneration = useRef(0);
   const titleRef = useRef(title);
+  const previousTitleRef = useRef(title);
   const savingRef = useRef(false);
   const saveAgainRef = useRef(false);
   titleRef.current = title;
@@ -74,6 +75,8 @@ export function useResumeAutosave({
   }, [form, schedule]);
 
   useEffect(() => {
+    if (previousTitleRef.current === title) return;
+    previousTitleRef.current = title;
     schedule();
   }, [title, schedule]);
 

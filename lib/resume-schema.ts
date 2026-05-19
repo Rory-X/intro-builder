@@ -1,16 +1,14 @@
 import { z } from "zod";
 import { TipTapJSON, emptyDoc } from "./tiptap-types";
 
-const nonEmpty = z.string().min(1, "必填");
-
 export const Basics = z.object({
-  name: nonEmpty,
+  name: z.string().default(""),
   status: z.string().default(""),
   title: z.string().default(""),
-  email: z.string().email(),
+  email: z.string().default(""),
   phone: z.string().default(""),
   location: z.string().default(""),
-  website: z.string().url().optional().or(z.literal("")).default(""),
+  website: z.string().default(""),
   summary: z.string().default(""),
   photo: z.string().optional().default(""),
 });

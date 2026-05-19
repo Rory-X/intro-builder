@@ -2,8 +2,6 @@ import type { ResumeContent } from "@/lib/resume-schema";
 import { cn } from "@/lib/utils";
 import { buildContactItems } from "./contact-items";
 import { ProfessionalHeader } from "./professional-header";
-import { BasicsSummaryPlaceholder } from "./section-shell";
-import { wrapProfessionalEntry } from "./professional-wrap";
 
 export type ResumeHeaderVariant = "classic" | "professional" | "modern-sidebar";
 
@@ -48,19 +46,6 @@ export function ResumeHeader({ basics, variant, className, showEmptyPlaceholders
     return (
       <header className={cn("mb-3 break-inside-avoid pb-2", className)}>
         <ProfessionalHeader basics={basics} />
-        {basics.summary ? (
-          wrapProfessionalEntry(
-            "professional",
-            <p className="text-[0.92em] leading-relaxed text-neutral-700">{basics.summary}</p>,
-            { className: "mt-2.5" },
-          )
-        ) : showEmptyPlaceholders ? (
-          wrapProfessionalEntry("professional", <BasicsSummaryPlaceholder />, {
-            className: "mt-2.5",
-            muted: true,
-          })
-        ) : null}
-        <div className="mt-3 border-b border-neutral-300" aria-hidden />
       </header>
     );
   }

@@ -1,5 +1,12 @@
 "use client";
-import { useCallback, useEffect, useState, useTransition } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+  useSyncExternalStore,
+  useTransition,
+} from "react";
 import { useForm, FormProvider } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { toast } from "sonner";
@@ -36,7 +43,31 @@ type Props = {
   initialSlug: string | null;
 };
 
+const DESKTOP_QUERY = "(min-width: 1024px)";
+
+function subscribeToDesktopQuery(onStoreChange: () => void) {
+  if (typeof window === "undefined" || !window.matchMedia) return () => {};
+  const media = window.matchMedia(DESKTOP_QUERY);
+  media.addEventListener("change", onStoreChange);
+  return () => media.removeEventListener("change", onStoreChange);
+}
+
+function getDesktopSnapshot() {
+  return typeof window !== "undefined" && window.matchMedia
+    ? window.matchMedia(DESKTOP_QUERY).matches
+    : false;
+}
+
+function getServerDesktopSnapshot() {
+  return false;
+}
+
 export default function EditorClient({ id, initialTitle, initialTemplate, initialContent, initialIsPublic, initialSlug }: Props) {
+  const isDesktop = useSyncExternalStore(
+    subscribeToDesktopQuery,
+    getDesktopSnapshot,
+    getServerDesktopSnapshot,
+  );
   const form = useForm({
     resolver: zodResolver(ResumeContent),
     defaultValues: initialContent,
@@ -56,21 +87,33 @@ export default function EditorClient({ id, initialTitle, initialTemplate, initia
     },
     [id],
   );
-
-  useResumeAutosave({
-    form: {
-      watch: (cb) => form.watch((data) => cb(data as ResumeContent)),
+  const autosaveForm = useMemo(
+    () => ({
+      watch: (cb: (data: ResumeContent) => void) =>
+        form.watch((data) => cb(data as ResumeContent)),
       getValues: () => form.getValues() as ResumeContent,
-    },
-    resumeId: id,
-    title,
-    onSave: (content, resumeTitle) =>
+    }),
+    [form],
+  );
+  const handleAutosaveError = useCallback((e: unknown) => {
+    toast.error(formatSaveError(e));
+  }, []);
+  const handleAutosaveSave = useCallback(
+    (content: ResumeContent, resumeTitle: string) =>
       new Promise<void>((resolve, reject) => {
         startTransition(() => {
           persistResume(content, resumeTitle).then(resolve).catch(reject);
         });
       }),
-    onError: (e) => toast.error(formatSaveError(e)),
+    [persistResume, startTransition],
+  );
+
+  useResumeAutosave({
+    form: autosaveForm,
+    resumeId: id,
+    title,
+    onSave: handleAutosaveSave,
+    onError: handleAutosaveError,
   });
 
   useEffect(() => {
@@ -158,34 +201,9 @@ export default function EditorClient({ id, initialTitle, initialTemplate, initia
         </div>
       </div>
 
-      {/* Desktop: side-by-side grid */}
-      <div className="hidden lg:grid h-[calc(100vh-3.5rem-4rem)] grid-cols-2">
-        <div className="space-y-6 overflow-y-auto border-r p-6">
-          <StyleEditor templateId={template} onTemplateChange={changeTemplate} />
-          <BasicsEditor />
-          {sectionOrder.filter(k => k !== "basics").map((key) => (
-            <SectionWrapper key={key} id={key}>
-              {key === "experience" && <ExperienceEditor />}
-              {key === "education" && <EducationEditor />}
-              {key === "projects" && <ProjectsEditor />}
-              {key === "skills" && <SkillsEditor />}
-              {isCustomSection(key) && <CustomSectionEditor sectionId={key} />}
-            </SectionWrapper>
-          ))}
-        </div>
-        <div className="overflow-y-auto bg-muted p-6">
-          <LivePreview templateId={template} />
-        </div>
-      </div>
-
-      {/* Mobile: tabs */}
-      <div className="lg:hidden">
-        <Tabs defaultValue="edit" className="w-full">
-          <TabsList className="sticky top-[calc(3.5rem+3.5rem)] z-20 grid w-full grid-cols-2 rounded-none border-b">
-            <TabsTrigger value="edit">编辑</TabsTrigger>
-            <TabsTrigger value="preview">预览</TabsTrigger>
-          </TabsList>
-          <TabsContent value="edit" className="space-y-6 p-4">
+      {isDesktop ? (
+        <div className="grid h-[calc(100vh-3.5rem-4rem)] grid-cols-2">
+          <div className="space-y-6 overflow-y-auto border-r p-6">
             <StyleEditor templateId={template} onTemplateChange={changeTemplate} />
             <BasicsEditor />
             {sectionOrder.filter(k => k !== "basics").map((key) => (
@@ -197,12 +215,37 @@ export default function EditorClient({ id, initialTitle, initialTemplate, initia
                 {isCustomSection(key) && <CustomSectionEditor sectionId={key} />}
               </SectionWrapper>
             ))}
-          </TabsContent>
-          <TabsContent value="preview" className="bg-muted p-4">
+          </div>
+          <div className="overflow-y-auto bg-muted p-6">
             <LivePreview templateId={template} />
-          </TabsContent>
-        </Tabs>
-      </div>
+          </div>
+        </div>
+      ) : (
+        <div>
+          <Tabs defaultValue="edit" className="w-full">
+            <TabsList className="sticky top-[calc(3.5rem+3.5rem)] z-20 grid w-full grid-cols-2 rounded-none border-b">
+              <TabsTrigger value="edit">编辑</TabsTrigger>
+              <TabsTrigger value="preview">预览</TabsTrigger>
+            </TabsList>
+            <TabsContent value="edit" className="space-y-6 p-4">
+              <StyleEditor templateId={template} onTemplateChange={changeTemplate} />
+              <BasicsEditor />
+              {sectionOrder.filter(k => k !== "basics").map((key) => (
+                <SectionWrapper key={key} id={key}>
+                  {key === "experience" && <ExperienceEditor />}
+                  {key === "education" && <EducationEditor />}
+                  {key === "projects" && <ProjectsEditor />}
+                  {key === "skills" && <SkillsEditor />}
+                  {isCustomSection(key) && <CustomSectionEditor sectionId={key} />}
+                </SectionWrapper>
+              ))}
+            </TabsContent>
+            <TabsContent value="preview" className="bg-muted p-4">
+              <LivePreview templateId={template} />
+            </TabsContent>
+          </Tabs>
+        </div>
+      )}
     </FormProvider>
   );
 }

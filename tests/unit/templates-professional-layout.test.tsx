@@ -54,4 +54,40 @@ describe("ProfessionalLayout", () => {
     const article = container.querySelector("article");
     expect(article).toHaveClass("bg-white", "text-black");
   });
+
+  it("renders education with school left, date right, and metadata below", () => {
+    const c = emptyResumeContent();
+    c.education = [{
+      school: "广东工业大学",
+      degree: "本科 全日制",
+      major: "计算机科学与技术",
+      start: "2023-09",
+      end: "2027-07",
+      gpa: "3.8",
+      highlights: bulletsToDoc(["一等奖学金"]),
+    }];
+    c.sectionOrder = ["education"];
+
+    const { container } = render(<ProfessionalLayout content={c} />);
+    const educationEntry = container.querySelector("[data-testid='professional-education-entry']");
+
+    expect(educationEntry).toBeTruthy();
+    expect(educationEntry?.querySelector("[data-testid='education-school']")?.textContent).toBe(
+      "广东工业大学",
+    );
+    expect(educationEntry?.querySelector("[data-testid='education-date']")?.textContent).toBe(
+      "2023-09 – 2027-07",
+    );
+    expect(educationEntry?.querySelector("[data-testid='education-meta']")?.textContent).toContain(
+      "本科 全日制",
+    );
+    expect(educationEntry?.querySelector("[data-testid='education-meta']")?.textContent).toContain(
+      "计算机科学与技术",
+    );
+    expect(educationEntry?.querySelector("[data-testid='education-meta']")?.textContent).toContain(
+      "GPA 3.8",
+    );
+    expect(educationEntry?.querySelector("[data-testid='education-meta']")?.textContent).not.toContain("2023-09");
+    expect(screen.getByText("一等奖学金")).toBeInTheDocument();
+  });
 });

@@ -51,7 +51,7 @@ export function EducationEditor() {
             <ItemWrapper key={f.id} id={f.id} sectionKey="education">
               <div className="space-y-3 rounded-lg border border-border/60 bg-background/50 p-4">
                 <div className="grid grid-cols-2 gap-3">
-                  <div className="flex flex-col gap-1.5"><Label>学校</Label><Input {...register(`education.${idx}.school` as const)} /></div>
+                  <div data-testid="education-school-field" className="col-span-2 flex flex-col gap-1.5"><Label>学校</Label><Input {...register(`education.${idx}.school` as const)} /></div>
                   <div className="flex flex-col gap-1.5"><Label>学历</Label><Input {...register(`education.${idx}.degree` as const)} /></div>
                   <div className="flex flex-col gap-1.5"><Label>专业</Label><Input {...register(`education.${idx}.major` as const)} /></div>
                   <div className="flex flex-col gap-1.5"><Label>GPA</Label><Input {...register(`education.${idx}.gpa` as const)} /></div>
@@ -59,12 +59,12 @@ export function EducationEditor() {
                   <div className="flex flex-col gap-1.5"><Label>结束</Label><Input {...register(`education.${idx}.end` as const)} /></div>
                 </div>
                 <div>
-                  <Label>亮点</Label>
+                  <Label>在校经历/奖项</Label>
                   <RichTextEditor
                     key={`education-highlights-${f.id}`}
                     content={watch(`education.${idx}.highlights` as const)}
                     onChange={(json) => setValue(`education.${idx}.highlights` as const, json, { shouldDirty: true })}
-                    placeholder="描述你的教育亮点…"
+                    placeholder="描述你的在校经历、荣誉奖项或相关成果…"
                   />
                 </div>
                 <Button type="button" variant="ghost" size="sm" className="text-xs text-muted-foreground hover:text-destructive" onClick={() => remove(idx)}>删除此条</Button>

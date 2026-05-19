@@ -12,7 +12,7 @@ import { tiptapExtensions } from "@/lib/tiptap-extensions";
 import {
   DEFAULT_RICH_TEXT_FONT_SIZE,
   RICH_TEXT_FONT_SIZES,
-  RICH_TEXT_PROSE_CLASS,
+  RICH_TEXT_EDITOR_PROSE_CLASS,
 } from "@/lib/rich-text-prose";
 import type { TipTapJSON } from "@/lib/tiptap-types";
 import { cn } from "@/lib/utils";
@@ -43,7 +43,7 @@ export function RichTextEditor({ content, onChange }: Props) {
       attributes: {
         class: cn(
           "min-h-[80px] bg-background px-3 py-2 text-sm focus:outline-none",
-          RICH_TEXT_PROSE_CLASS,
+          RICH_TEXT_EDITOR_PROSE_CLASS,
         ),
       },
     },

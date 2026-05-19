@@ -16,7 +16,8 @@ describe("empty resume template shell", () => {
     expect(screen.getByRole("heading", { name: "项目经历" })).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "技能" })).toBeInTheDocument();
     expect(screen.getByText("公司名称")).toBeInTheDocument();
-    expect(screen.getByText(/概括你的背景/)).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "自我介绍" })).not.toBeInTheDocument();
+    expect(screen.queryByText(/概括你的背景/)).not.toBeInTheDocument();
   });
 
   it("hides section shells when placeholders disabled (PDF/export)", () => {

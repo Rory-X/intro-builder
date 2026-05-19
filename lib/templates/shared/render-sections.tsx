@@ -115,22 +115,36 @@ export function buildResumeSections(
               renderResumeEntry(
                 variant,
                 i,
-                <>
-                  <ResumeItemHeader
-                    variant={variant}
-                    primary={
-                      variant === "professional" ? (
-                        <>
-                          {e.school}
-                          {(e.degree || e.major) && (
-                            <span className="font-normal">
-                              {" "}
-                              {[e.degree, e.major].filter(Boolean).join(" ")}
-                            </span>
-                          )}
-                          {e.gpa ? ` · GPA ${e.gpa}` : ""}
-                        </>
-                      ) : (
+                variant === "professional" ? (
+                  <div data-testid="professional-education-entry">
+                    <div className="flex items-baseline justify-between gap-4">
+                      <div data-testid="education-school" className="font-bold leading-snug text-neutral-900">
+                        {e.school}
+                      </div>
+                      {formatDateRange(e.start, e.end) && (
+                        <div
+                          data-testid="education-date"
+                          className="shrink-0 text-[0.9em] font-normal tabular-nums text-neutral-600"
+                        >
+                          {formatDateRange(e.start, e.end)}
+                        </div>
+                      )}
+                    </div>
+                    <div
+                      data-testid="education-meta"
+                      className="mt-0.5 text-[0.92em] leading-relaxed text-neutral-700"
+                    >
+                      {[e.degree, e.major, e.gpa ? `GPA ${e.gpa}` : ""]
+                        .filter(Boolean)
+                        .join(" · ")}
+                    </div>
+                    <ResumeRichText content={e.highlights} />
+                  </div>
+                ) : (
+                  <>
+                    <ResumeItemHeader
+                      variant={variant}
+                      primary={
                         <>
                           <strong>{e.school}</strong>
                           {(e.degree || e.major) && (
@@ -141,12 +155,12 @@ export function buildResumeSections(
                           )}
                           {e.gpa ? ` · GPA ${e.gpa}` : ""}
                         </>
-                      )
-                    }
-                    dateRange={formatDateRange(e.start, e.end)}
-                  />
-                  <ResumeRichText content={e.highlights} />
-                </>,
+                      }
+                      dateRange={formatDateRange(e.start, e.end)}
+                    />
+                    <ResumeRichText content={e.highlights} />
+                  </>
+                ),
               ),
             )
           ) : (

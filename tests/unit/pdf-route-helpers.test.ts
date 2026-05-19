@@ -3,6 +3,7 @@ import {
   buildPdfFailureResponse,
   isPdfTimeoutError,
   PDF_NAVIGATION_TIMEOUT_MS,
+  resolvePdfExecutablePath,
   waitForPdfFonts,
 } from "@/lib/pdf-route-helpers";
 
@@ -27,5 +28,34 @@ describe("PDF route helpers", () => {
     await waitForPdfFonts(page);
 
     expect(page.evaluate).toHaveBeenCalledOnce();
+  });
+
+  it("uses local Chrome on macOS when available", async () => {
+    const chromium = {
+      executablePath: vi.fn().mockResolvedValue("/tmp/sparticuz-chromium"),
+    };
+
+    const executablePath = await resolvePdfExecutablePath(chromium, {
+      platform: "darwin",
+      env: { NODE_ENV: "test" },
+      existsSync: (path) => path === "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
+    });
+
+    expect(executablePath).toBe("/Applications/Google Chrome.app/Contents/MacOS/Google Chrome");
+    expect(chromium.executablePath).not.toHaveBeenCalled();
+  });
+
+  it("falls back to Sparticuz Chromium outside local macOS", async () => {
+    const chromium = {
+      executablePath: vi.fn().mockResolvedValue("/tmp/sparticuz-chromium"),
+    };
+
+    const executablePath = await resolvePdfExecutablePath(chromium, {
+      platform: "linux",
+      env: { NODE_ENV: "test" },
+      existsSync: () => false,
+    });
+
+    expect(executablePath).toBe("/tmp/sparticuz-chromium");
   });
 });
