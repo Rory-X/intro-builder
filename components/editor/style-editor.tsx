@@ -7,7 +7,7 @@ import { FONT_MAP, type FontKey } from "@/lib/font-map";
 import { DEFAULT_STYLE_SETTINGS, type ResumeContent } from "@/lib/resume-schema";
 import { TEMPLATES, type TemplateId } from "@/lib/templates/registry";
 import { cn } from "@/lib/utils";
-import { ChevronDown, LayoutTemplate, RotateCcw } from "lucide-react";
+import { ChevronDown, LayoutTemplate, Loader2, RotateCcw } from "lucide-react";
 
 const FONT_KEYS: FontKey[] = ["sans", "serif", "mono"];
 const FONT_SIZE_OPTIONS = [10, 11, 12, 13, 14, 15, 16] as const;
@@ -17,9 +17,10 @@ const PAGE_PADDING_OPTIONS = [20, 25, 30, 35, 40, 45, 50, 55, 60] as const;
 type Props = {
   templateId: TemplateId;
   onTemplateChange: (id: TemplateId) => void;
+  pendingTemplateId?: TemplateId | null;
 };
 
-export function StyleEditor({ templateId, onTemplateChange }: Props) {
+export function StyleEditor({ templateId, onTemplateChange, pendingTemplateId = null }: Props) {
   const { watch, setValue } = useFormContext<ResumeContent>();
 
   const ss = { ...DEFAULT_STYLE_SETTINGS, ...watch("styleSettings") };
@@ -56,29 +57,37 @@ export function StyleEditor({ templateId, onTemplateChange }: Props) {
         <div className="space-y-2">
           <Label>简历模板</Label>
           <div className="grid gap-2 sm:grid-cols-3">
-            {TEMPLATES.map((t) => (
-              <button
-                key={t.id}
-                type="button"
-                onClick={() => onTemplateChange(t.id)}
-                className={cn(
-                  "rounded-lg border px-3 py-2 text-left transition-colors",
-                  templateId === t.id
-                    ? "border-primary bg-primary/10 ring-1 ring-primary/40"
-                    : "border-border hover:border-primary/40 hover:bg-muted/50",
-                )}
-              >
-                <div className="flex items-center justify-between gap-2">
-                  <span className="text-sm font-medium">{t.name}</span>
-                  {t.isRecommended && (
-                    <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-medium text-primary">
-                      推荐
-                    </span>
+            {TEMPLATES.map((t) => {
+              const isPendingThis = pendingTemplateId === t.id;
+              const isOtherPending = pendingTemplateId !== null && !isPendingThis;
+              return (
+                <button
+                  key={t.id}
+                  type="button"
+                  onClick={() => onTemplateChange(t.id)}
+                  disabled={isOtherPending || isPendingThis}
+                  aria-busy={isPendingThis}
+                  className={cn(
+                    "relative rounded-lg border px-3 py-2 text-left transition-colors disabled:cursor-wait disabled:opacity-80",
+                    templateId === t.id
+                      ? "border-primary bg-primary/10 ring-1 ring-primary/40"
+                      : "border-border hover:border-primary/40 hover:bg-muted/50",
                   )}
-                </div>
-                <p className="mt-0.5 text-xs text-muted-foreground">{t.description}</p>
-              </button>
-            ))}
+                >
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-sm font-medium">{t.name}</span>
+                    {isPendingThis ? (
+                      <Loader2 className="h-3.5 w-3.5 animate-spin text-primary" />
+                    ) : t.isRecommended ? (
+                      <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-medium text-primary">
+                        推荐
+                      </span>
+                    ) : null}
+                  </div>
+                  <p className="mt-0.5 text-xs text-muted-foreground">{t.description}</p>
+                </button>
+              );
+            })}
           </div>
         </div>
 

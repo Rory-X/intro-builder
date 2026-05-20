@@ -71,7 +71,7 @@ describe("EditorClient live preview", () => {
         initialContent={content}
         initialIsPublic={false}
         initialSlug={null}
-        initialUpdatedAt={new Date()}
+        initialUpdatedAtIso={new Date().toISOString()}
       />,
     );
 
@@ -104,7 +104,7 @@ describe("EditorClient live preview", () => {
         initialContent={emptyResumeContent()}
         initialIsPublic={false}
         initialSlug={null}
-        initialUpdatedAt={new Date()}
+        initialUpdatedAtIso={new Date().toISOString()}
       />,
     );
 
@@ -124,7 +124,7 @@ describe("EditorClient live preview", () => {
         initialContent={emptyResumeContent()}
         initialIsPublic={false}
         initialSlug={null}
-        initialUpdatedAt={new Date("2026-05-19T11:21:00.000Z")}
+        initialUpdatedAtIso="2026-05-19T11:21:00.000Z"
       />,
     );
 
@@ -143,7 +143,7 @@ describe("EditorClient live preview", () => {
         initialContent={emptyResumeContent()}
         initialIsPublic={false}
         initialSlug={null}
-        initialUpdatedAt={new Date()}
+        initialUpdatedAtIso={new Date().toISOString()}
       />,
     );
 
@@ -158,6 +158,29 @@ describe("EditorClient live preview", () => {
     expect(toastSuccessMock).toHaveBeenCalledWith("图片已导出");
   });
 
+  it.each([
+    ["empty string", ""],
+    ["invalid string", "not-a-date"],
+  ])("does not crash when initialUpdatedAtIso is %s", (_, iso) => {
+    // Regression: Next.js 16 dev RSC sometimes loses Date instances through
+    // the SC → CC boundary. The editor must tolerate a missing/invalid
+    // initial timestamp instead of crashing on `lastSavedAt.getTime()`.
+    expect(() =>
+      render(
+        <EditorClient
+          id="r1"
+          initialTitle="简历"
+          initialTemplate="professional"
+          initialContent={emptyResumeContent()}
+          initialIsPublic={false}
+          initialSlug={null}
+          initialUpdatedAtIso={iso}
+        />,
+      ),
+    ).not.toThrow();
+    expect(screen.getByTestId("autosave-status")).toBeInTheDocument();
+  });
+
   it("shows an error toast when PNG export fails", async () => {
     exportPreviewImageMock.mockRejectedValueOnce(new Error("boom"));
 
@@ -169,7 +192,7 @@ describe("EditorClient live preview", () => {
         initialContent={emptyResumeContent()}
         initialIsPublic={false}
         initialSlug={null}
-        initialUpdatedAt={new Date()}
+        initialUpdatedAtIso={new Date().toISOString()}
       />,
     );
 
