@@ -24,7 +24,7 @@ export default async function EditPage({ params }: { params: Promise<{ id: strin
       initialContent={migrateContent(row.content)}
       initialIsPublic={row.isPublic}
       initialSlug={row.slug ?? null}
-      initialUpdatedAt={row.updatedAt}
+      initialUpdatedAtIso={row.updatedAt.toISOString()}
     />
   );
 }

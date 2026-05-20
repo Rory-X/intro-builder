@@ -2,7 +2,6 @@ import { eq, desc } from "drizzle-orm";
 import { requireUserId } from "@/lib/auth-helpers";
 import { db } from "@/db";
 import { resumes } from "@/db/schema";
-import { Button } from "@/components/ui/button";
 import {
   DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem,
 } from "@/components/ui/dropdown-menu";
@@ -13,6 +12,7 @@ import { getTemplateMeta } from "@/lib/templates/registry";
 import { TemplateRenderer } from "@/components/preview/template-renderer";
 import type { Metadata } from "next";
 import { ResumeCardLink } from "./resume-card-link";
+import { PendingSubmitButton } from "./pending-submit-button";
 
 export const metadata: Metadata = { title: "我的简历" };
 
@@ -32,9 +32,11 @@ export default async function DashboardPage() {
           </p>
         </div>
         <form action={createResume}>
-          <Button type="submit" className="gap-1.5 shadow-sm shadow-primary/20">
-            <Plus className="h-4 w-4" />新建简历
-          </Button>
+          <PendingSubmitButton
+            idleIcon={<Plus className="h-4 w-4" />}
+            idleLabel="新建简历"
+            pendingLabel="创建中…"
+          />
         </form>
       </div>
 
@@ -48,9 +50,12 @@ export default async function DashboardPage() {
             创建你的第一份简历，结构化编辑、实时预览、一键导出 PDF
           </p>
           <form action={createResume}>
-            <Button type="submit" size="lg" className="gap-2 shadow-sm shadow-primary/20">
-              <Plus className="h-4 w-4" />创建第一份简历
-            </Button>
+            <PendingSubmitButton
+              variant="lg-primary"
+              idleIcon={<Plus className="h-4 w-4" />}
+              idleLabel="创建第一份简历"
+              pendingLabel="创建中…"
+            />
           </form>
         </div>
       ) : (
@@ -95,16 +100,22 @@ export default async function DashboardPage() {
                       </DropdownMenuItem>
                       <DropdownMenuItem>
                         <form action={async () => { "use server"; await duplicateResume(r.id); }} className="w-full">
-                          <button type="submit" className="flex w-full items-center gap-2">
-                            <Copy className="h-3.5 w-3.5" />复制
-                          </button>
+                          <PendingSubmitButton
+                            variant="inline"
+                            idleIcon={<Copy className="h-3.5 w-3.5" />}
+                            idleLabel="复制"
+                            pendingLabel="复制中…"
+                          />
                         </form>
                       </DropdownMenuItem>
                       <DropdownMenuItem>
                         <form action={async () => { "use server"; await deleteResume(r.id); }} className="w-full">
-                          <button type="submit" className="flex w-full items-center gap-2 text-destructive">
-                            <Trash2 className="h-3.5 w-3.5" />删除
-                          </button>
+                          <PendingSubmitButton
+                            variant="inline-destructive"
+                            idleIcon={<Trash2 className="h-3.5 w-3.5" />}
+                            idleLabel="删除"
+                            pendingLabel="删除中…"
+                          />
                         </form>
                       </DropdownMenuItem>
                     </DropdownMenuContent>

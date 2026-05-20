@@ -25,7 +25,7 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Separator } from "@/components/ui/separator";
-import { Download, Share2 } from "lucide-react";
+import { Download, Loader2, Share2 } from "lucide-react";
 import { resolveTemplateId, type TemplateId } from "@/lib/templates/registry";
 import { monitorForElements } from "@atlaskit/pragmatic-drag-and-drop/element/adapter";
 import { SectionWrapper } from "@/components/editor/section-wrapper";
@@ -36,6 +36,7 @@ import { arrayMove } from "@/lib/array-move";
 import { DEFAULT_SECTION_ORDER, BUILTIN_SECTION_KEYS } from "@/lib/resume-schema";
 import { cn } from "@/lib/utils";
 import { exportPreviewImage } from "@/lib/client/export-preview-image";
+import { PdfDownloadButton } from "./pdf-download-button";
 
 type Props = {
   id: string;
@@ -44,7 +45,10 @@ type Props = {
   initialContent: ResumeContent;
   initialIsPublic: boolean;
   initialSlug: string | null;
-  initialUpdatedAt: Date;
+  // Server passes an ISO string (NOT a Date instance) — Next 16's RSC
+  // serializer has dropped Date through the SC → CC boundary in dev, which
+  // would crash `lastSavedAt.getTime()` on first render. Strings are safe.
+  initialUpdatedAtIso: string;
 };
 
 const DESKTOP_QUERY = "(min-width: 1024px)";
@@ -77,7 +81,7 @@ function formatRelativeSaveTime(savedAt: Date, now: Date): string {
   return `${days}天前保存`;
 }
 
-export default function EditorClient({ id, initialTitle, initialTemplate, initialContent, initialIsPublic, initialSlug, initialUpdatedAt }: Props) {
+export default function EditorClient({ id, initialTitle, initialTemplate, initialContent, initialIsPublic, initialSlug, initialUpdatedAtIso }: Props) {
   const isDesktop = useSyncExternalStore(
     subscribeToDesktopQuery,
     getDesktopSnapshot,
@@ -93,9 +97,14 @@ export default function EditorClient({ id, initialTitle, initialTemplate, initia
   const [isPublic, setIsPublic] = useState(initialIsPublic);
   const [publicSlug, setPublicSlug] = useState<string | null>(initialSlug);
   const [saveError, setSaveError] = useState<string | null>(null);
-  const [lastSavedAt, setLastSavedAt] = useState<Date>(initialUpdatedAt);
+  const [lastSavedAt, setLastSavedAt] = useState<Date>(() => {
+    const parsed = initialUpdatedAtIso ? new Date(initialUpdatedAtIso) : null;
+    return parsed && !Number.isNaN(parsed.getTime()) ? parsed : new Date();
+  });
   const [now, setNow] = useState(() => new Date());
   const [isExportingImage, setIsExportingImage] = useState(false);
+  const [pendingTemplateId, setPendingTemplateId] = useState<TemplateId | null>(null);
+  const [isTogglingShare, setIsTogglingShare] = useState(false);
   const [isPending, startTransition] = useTransition();
   const previewRootRef = useRef<HTMLDivElement>(null);
   const [sectionOrder, setSectionOrder] = useState<string[]>(
@@ -171,15 +180,36 @@ export default function EditorClient({ id, initialTitle, initialTemplate, initia
   }, []);
 
   async function changeTemplate(next: TemplateId) {
+    if (pendingTemplateId) return;
+    const previous = template;
     setTemplateState(next);
-    await setTemplate(id, next);
+    setPendingTemplateId(next);
+    try {
+      await setTemplate(id, next);
+    } catch (error) {
+      console.error("[changeTemplate] failed", error);
+      setTemplateState(previous);
+      toast.error("切换模板失败，请稍后重试");
+    } finally {
+      setPendingTemplateId(null);
+    }
   }
 
   async function onToggleShare() {
+    if (isTogglingShare) return;
     const next = !isPublic;
-    const { slug } = await toggleShare(id, next);
-    setIsPublic(next);
-    setPublicSlug(slug);
+    setIsTogglingShare(true);
+    try {
+      const { slug } = await toggleShare(id, next);
+      setIsPublic(next);
+      setPublicSlug(slug);
+      toast.success(next ? "已开启分享" : "已关闭分享");
+    } catch (error) {
+      console.error("[toggleShare] failed", error);
+      toast.error(next ? "开启分享失败，请稍后重试" : "关闭分享失败，请稍后重试");
+    } finally {
+      setIsTogglingShare(false);
+    }
   }
 
   function handleOrderChange(newOrder: string[]) {
@@ -267,13 +297,34 @@ export default function EditorClient({ id, initialTitle, initialTemplate, initia
             </span>
           </span>
           <div data-testid="editor-toolbar" className="ml-auto flex flex-wrap items-center gap-2">
-            <StyleEditor templateId={template} onTemplateChange={changeTemplate} />
+            <StyleEditor
+              templateId={template}
+              onTemplateChange={changeTemplate}
+              pendingTemplateId={pendingTemplateId}
+            />
             <Separator orientation="vertical" className="h-6" />
             <ModuleManager sectionOrder={sectionOrder} onOrderChange={handleOrderChange} />
             <Separator orientation="vertical" className="h-6" />
-            <Button size="sm" variant="outline" onClick={onToggleShare} className="gap-1.5">
-              <Share2 className="h-3.5 w-3.5" />
-              {isPublic ? "关闭分享" : "开启分享"}
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={onToggleShare}
+              disabled={isTogglingShare}
+              aria-busy={isTogglingShare}
+              className="gap-1.5"
+            >
+              {isTogglingShare ? (
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              ) : (
+                <Share2 className="h-3.5 w-3.5" />
+              )}
+              {isTogglingShare
+                ? isPublic
+                  ? "关闭中"
+                  : "开启中"
+                : isPublic
+                  ? "关闭分享"
+                  : "开启分享"}
             </Button>
             {isPublic && publicSlug && (
               <a
@@ -296,12 +347,7 @@ export default function EditorClient({ id, initialTitle, initialTemplate, initia
               <Download className="h-3.5 w-3.5" />
               {isExportingImage ? "导出中" : "导出图片"}
             </Button>
-            <a
-              href={`/api/pdf/${id}`}
-              className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-3.5 py-1.5 text-sm font-medium text-primary-foreground shadow-sm shadow-primary/20 transition-all duration-200 hover:bg-primary/90 hover:shadow-md hover:shadow-primary/30"
-            >
-              <Download className="h-3.5 w-3.5" />下载 PDF
-            </a>
+            <PdfDownloadButton resumeId={id} filename={title} />
           </div>
         </div>
       </div>
