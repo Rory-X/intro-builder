@@ -53,6 +53,7 @@ export function ExperienceEditor() {
                 <div className="grid grid-cols-2 gap-3">
                   <div className="flex flex-col gap-1.5"><Label>公司</Label><Input {...register(`experience.${idx}.company` as const)} /></div>
                   <div className="flex flex-col gap-1.5"><Label>职位</Label><Input {...register(`experience.${idx}.title` as const)} /></div>
+                  <div className="flex flex-col gap-1.5"><Label>城市</Label><Input {...register(`experience.${idx}.location` as const)} /></div>
                   <div className="flex flex-col gap-1.5"><Label>开始</Label><Input placeholder="2023.07" {...register(`experience.${idx}.start` as const)} /></div>
                   <div className="flex flex-col gap-1.5"><Label>结束</Label><Input placeholder="至今" {...register(`experience.${idx}.end` as const)} /></div>
                 </div>

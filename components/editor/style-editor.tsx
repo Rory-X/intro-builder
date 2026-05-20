@@ -2,16 +2,17 @@
 import { useFormContext } from "react-hook-form";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
-import { Slider } from "@/components/ui/slider";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { FONT_MAP, type FontKey } from "@/lib/font-map";
-import { DENSITY_PRESETS, type DensityPresetId } from "@/lib/style-presets";
 import { DEFAULT_STYLE_SETTINGS, type ResumeContent } from "@/lib/resume-schema";
 import { TEMPLATES, type TemplateId } from "@/lib/templates/registry";
 import { cn } from "@/lib/utils";
-import { LayoutTemplate, RotateCcw, Settings2 } from "lucide-react";
-import { useState } from "react";
+import { ChevronDown, LayoutTemplate, RotateCcw } from "lucide-react";
 
 const FONT_KEYS: FontKey[] = ["sans", "serif", "mono"];
+const FONT_SIZE_OPTIONS = [10, 11, 12, 13, 14, 15, 16] as const;
+const LINE_HEIGHT_OPTIONS = [1.2, 1.3, 1.4, 1.5, 1.6, 1.7, 1.8, 1.9, 2.0] as const;
+const PAGE_PADDING_OPTIONS = [20, 25, 30, 35, 40, 45, 50, 55, 60] as const;
 
 type Props = {
   templateId: TemplateId;
@@ -20,8 +21,6 @@ type Props = {
 
 export function StyleEditor({ templateId, onTemplateChange }: Props) {
   const { watch, setValue } = useFormContext<ResumeContent>();
-  const [isOpen, setIsOpen] = useState(true);
-  const [advancedOpen, setAdvancedOpen] = useState(false);
 
   const ss = { ...DEFAULT_STYLE_SETTINGS, ...watch("styleSettings") };
 
@@ -32,207 +31,171 @@ export function StyleEditor({ templateId, onTemplateChange }: Props) {
     setValue("styleSettings", { ...ss, [key]: val }, { shouldDirty: true });
   }
 
-  function applyPreset(presetId: DensityPresetId) {
-    setValue("styleSettings", { ...DENSITY_PRESETS[presetId].settings }, { shouldDirty: true });
-  }
-
   function resetAll() {
     setValue("styleSettings", { ...DEFAULT_STYLE_SETTINGS }, { shouldDirty: true });
   }
 
   return (
-    <section className="rounded-xl border bg-card">
-      <button
-        type="button"
-        className="flex w-full items-center justify-between px-5 py-3 text-left"
-        onClick={() => setIsOpen(!isOpen)}
+    <Popover>
+      <PopoverTrigger
+        render={
+          <Button type="button" size="sm" variant="outline" className="gap-1.5" />
+        }
       >
-        <span className="flex items-center gap-2.5 text-lg font-semibold">
-          <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-primary/10">
-            <LayoutTemplate className="h-4 w-4 text-primary" />
-          </div>
-          模板与排版
-        </span>
-        <svg
-          className={`h-4 w-4 text-muted-foreground transition-transform duration-200 ${isOpen ? "rotate-180" : ""}`}
-          fill="none"
-          viewBox="0 0 24 24"
-          stroke="currentColor"
-          strokeWidth={2}
-        >
-          <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
-        </svg>
-      </button>
+        <LayoutTemplate className="h-3.5 w-3.5" />
+        模板与排版
+      </PopoverTrigger>
+      <PopoverContent align="end" className="w-[min(92vw,34rem)] gap-4 p-4">
+        <div>
+          <h3 className="text-sm font-semibold">模板与排版</h3>
+          <p className="mt-0.5 text-xs text-muted-foreground">
+            调整简历模板、密度、字体和页面尺度。
+          </p>
+        </div>
 
-      {isOpen && (
-        <div className="space-y-5 border-t px-5 pb-5 pt-4">
-          <div className="space-y-2">
-            <Label>简历模板</Label>
-            <div className="grid gap-2">
-              {TEMPLATES.map((t) => (
-                <button
-                  key={t.id}
-                  type="button"
-                  onClick={() => onTemplateChange(t.id)}
-                  className={cn(
-                    "rounded-lg border px-3 py-2.5 text-left transition-colors",
-                    templateId === t.id
-                      ? "border-primary bg-primary/5 ring-1 ring-primary/30"
-                      : "border-border hover:border-primary/40 hover:bg-muted/50",
+        <div className="space-y-2">
+          <Label>简历模板</Label>
+          <div className="grid gap-2 sm:grid-cols-3">
+            {TEMPLATES.map((t) => (
+              <button
+                key={t.id}
+                type="button"
+                onClick={() => onTemplateChange(t.id)}
+                className={cn(
+                  "rounded-lg border px-3 py-2 text-left transition-colors",
+                  templateId === t.id
+                    ? "border-primary bg-primary/10 ring-1 ring-primary/40"
+                    : "border-border hover:border-primary/40 hover:bg-muted/50",
+                )}
+              >
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-sm font-medium">{t.name}</span>
+                  {t.isRecommended && (
+                    <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-medium text-primary">
+                      推荐
+                    </span>
                   )}
+                </div>
+                <p className="mt-0.5 text-xs text-muted-foreground">{t.description}</p>
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div className="space-y-4 rounded-lg border bg-muted/20 p-3">
+          <div className="space-y-2">
+            <Label>字体</Label>
+            <div className="grid grid-cols-3 rounded-lg border bg-background p-1">
+              {FONT_KEYS.map((key) => (
+                <button
+                  key={key}
+                  type="button"
+                  className={cn(
+                    "rounded-md px-3 py-1.5 text-xs font-medium transition-colors hover:bg-muted",
+                    ss.fontFamily === key && "bg-primary text-primary-foreground hover:bg-primary",
+                  )}
+                  onClick={() => set("fontFamily", key)}
                 >
-                  <div className="flex items-center justify-between gap-2">
-                    <span className="text-sm font-medium">{t.name}</span>
-                    {t.isRecommended && (
-                      <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-medium text-primary">
-                        推荐
-                      </span>
-                    )}
-                  </div>
-                  <p className="mt-0.5 text-xs text-muted-foreground">{t.description}</p>
+                  {FONT_MAP[key].label}
                 </button>
               ))}
             </div>
           </div>
 
-          <div className="space-y-2">
-            <Label>排版密度</Label>
-            <div className="grid grid-cols-3 gap-1.5">
-              {(Object.keys(DENSITY_PRESETS) as DensityPresetId[]).map((id) => (
-                <Button
-                  key={id}
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  className="h-auto flex-col gap-0.5 px-2 py-2 text-xs"
-                  onClick={() => applyPreset(id)}
-                >
-                  <span className="font-medium">{DENSITY_PRESETS[id].label}</span>
-                </Button>
-              ))}
-            </div>
-          </div>
+          <ValueDropdownRow
+            label="字号"
+            value={ss.fontSize}
+            unit="px"
+            options={FONT_SIZE_OPTIONS}
+            onChange={(v) => set("fontSize", v)}
+          />
 
-          <button
+          <ValueDropdownRow
+            label="行距"
+            value={ss.lineHeight}
+            options={LINE_HEIGHT_OPTIONS}
+            onChange={(v) => set("lineHeight", Math.round(v * 10) / 10)}
+          />
+
+          <ValueDropdownRow
+            label="页边距"
+            value={ss.pagePadding}
+            unit="px"
+            options={PAGE_PADDING_OPTIONS}
+            onChange={(v) => set("pagePadding", v)}
+          />
+
+          <Button
             type="button"
-            className="flex w-full items-center justify-between text-sm font-medium text-muted-foreground"
-            onClick={() => setAdvancedOpen(!advancedOpen)}
+            variant="ghost"
+            size="sm"
+            className="gap-1.5 text-xs text-muted-foreground"
+            onClick={resetAll}
           >
-            <span className="flex items-center gap-1.5">
-              <Settings2 className="h-3.5 w-3.5" />
-              高级排版
-            </span>
-            <svg
-              className={`h-4 w-4 transition-transform ${advancedOpen ? "rotate-180" : ""}`}
-              fill="none"
-              viewBox="0 0 24 24"
-              stroke="currentColor"
-              strokeWidth={2}
-            >
-              <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
-            </svg>
-          </button>
-
-          {advancedOpen && (
-            <div className="space-y-5">
-              <div className="space-y-2">
-                <Label>字体</Label>
-                <div className="flex gap-1.5">
-                  {FONT_KEYS.map((key) => (
-                    <Button
-                      key={key}
-                      type="button"
-                      variant={ss.fontFamily === key ? "default" : "outline"}
-                      size="sm"
-                      className="flex-1 text-xs"
-                      onClick={() => set("fontFamily", key)}
-                    >
-                      {FONT_MAP[key].label}
-                    </Button>
-                  ))}
-                </div>
-              </div>
-
-              <SliderRow
-                label="字号"
-                value={ss.fontSize}
-                min={10}
-                max={16}
-                step={0.5}
-                unit="px"
-                onChange={(v) => set("fontSize", v)}
-              />
-
-              <SliderRow
-                label="行距"
-                value={ss.lineHeight}
-                min={1.2}
-                max={2.0}
-                step={0.1}
-                onChange={(v) => set("lineHeight", Math.round(v * 10) / 10)}
-              />
-
-              <SliderRow
-                label="页边距"
-                value={ss.pagePadding}
-                min={20}
-                max={60}
-                step={5}
-                unit="px"
-                onChange={(v) => set("pagePadding", v)}
-              />
-
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                className="gap-1.5 text-xs text-muted-foreground"
-                onClick={resetAll}
-              >
-                <RotateCcw className="h-3 w-3" />
-                恢复默认
-              </Button>
-            </div>
-          )}
+            <RotateCcw className="h-3 w-3" />
+            恢复默认
+          </Button>
         </div>
-      )}
-    </section>
+      </PopoverContent>
+    </Popover>
   );
 }
 
-function SliderRow({
+function ValueDropdownRow({
   label,
   value,
-  min,
-  max,
-  step,
   unit,
+  options,
   onChange,
 }: {
   label: string;
   value: number;
-  min: number;
-  max: number;
-  step: number;
   unit?: string;
+  options: readonly number[];
   onChange: (v: number) => void;
 }) {
+  const formattedValue = `${value}${unit ?? ""}`;
+
   return (
     <div className="space-y-2">
       <div className="flex items-center justify-between">
         <Label>{label}</Label>
-        <span className="text-xs font-medium tabular-nums text-muted-foreground">
-          {value}
-          {unit ?? ""}
-        </span>
+        <Popover>
+          <PopoverTrigger
+            render={
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="h-8 min-w-20 justify-between gap-2 px-2.5 tabular-nums"
+                aria-label={`${label}：${formattedValue}`}
+              />
+            }
+          >
+            {formattedValue}
+            <ChevronDown className="h-3.5 w-3.5 text-muted-foreground" />
+          </PopoverTrigger>
+          <PopoverContent align="end" className="max-h-72 w-28 gap-0 overflow-y-auto p-1">
+            {options.map((option) => {
+              const formattedOption = `${option}${unit ?? ""}`;
+              return (
+                <button
+                  key={option}
+                  type="button"
+                  aria-label={`${label}：${formattedOption}`}
+                  className={cn(
+                    "w-full rounded-md px-3 py-2 text-center text-sm tabular-nums transition-colors hover:bg-muted",
+                    option === value && "bg-muted font-semibold text-primary",
+                  )}
+                  onClick={() => onChange(option)}
+                >
+                  {formattedOption}
+                </button>
+              );
+            })}
+          </PopoverContent>
+        </Popover>
       </div>
-      <Slider
-        value={[value]}
-        min={min}
-        max={max}
-        step={step}
-        onValueChange={(v: number | readonly number[]) => onChange(Array.isArray(v) ? v[0] : v)}
-      />
     </div>
   );
 }

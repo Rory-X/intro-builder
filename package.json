@@ -1,6 +1,6 @@
 {
   "name": "intro-web",
-  "version": "0.3.2",
+  "version": "0.3.3",
   "private": true,
   "scripts": {
     "dev": "next dev",
@@ -8,7 +8,8 @@
     "start": "next start",
     "lint": "eslint",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "verify": "pnpm lint && pnpm tsc --noEmit && pnpm test && pnpm build"
   },
   "dependencies": {
     "@atlaskit/pragmatic-drag-and-drop": "^1.8.1",
@@ -31,6 +32,7 @@
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "drizzle-orm": "^0.45.2",
+    "html-to-image": "^1.11.13",
     "lucide-react": "^1.11.0",
     "nanoid": "^5.1.9",
     "next": "16.2.4",
