@@ -33,6 +33,74 @@ describe("ResumeContent v2", () => {
     expect(r.success).toBe(true);
   });
 
+  it("education and projects include location fields", () => {
+    const c = emptyResumeContent();
+    c.education = [{
+      school: "广东工业大学",
+      degree: "本科",
+      major: "计算机科学与技术",
+      location: "广州",
+      start: "2023-09",
+      end: "2027-07",
+      gpa: "",
+      highlights: { type: "doc", content: [] },
+    }];
+    c.projects = [{
+      name: "权限管理系统",
+      role: "核心开发",
+      location: "广州",
+      start: "2025-03",
+      end: "2025-06",
+      stack: ["Vue3"],
+      link: "",
+      content: { type: "doc", content: [] },
+    }];
+    const r = ResumeContent.safeParse(c);
+    expect(r.success).toBe(true);
+    if (r.success) {
+      expect(r.data.education[0].location).toBe("广州");
+      expect(r.data.projects[0].role).toBe("核心开发");
+      expect(r.data.projects[0].location).toBe("广州");
+      expect(r.data.projects[0].start).toBe("2025-03");
+      expect(r.data.projects[0].end).toBe("2025-06");
+    }
+  });
+
+  it("preserves rich text font size marks through schema parsing", () => {
+    const c = emptyResumeContent();
+    c.projects = [{
+      name: "P",
+      role: "",
+      location: "",
+      start: "",
+      end: "",
+      stack: [],
+      link: "",
+      content: {
+        type: "doc",
+        content: [
+          {
+            type: "paragraph",
+            content: [
+              {
+                type: "text",
+                text: "Hello",
+                marks: [{ type: "textStyle", attrs: { fontSize: "12px" } }],
+              },
+            ],
+          },
+        ],
+      },
+    }];
+
+    const r = ResumeContent.safeParse(c);
+
+    expect(r.success).toBe(true);
+    if (r.success) {
+      expect(JSON.stringify(r.data.projects[0].content)).toContain('"fontSize":"12px"');
+    }
+  });
+
   it("has sectionOrder with defaults", () => {
     const c = emptyResumeContent();
     expect(c.sectionOrder).toEqual(["basics", "experience", "education", "projects", "skills"]);

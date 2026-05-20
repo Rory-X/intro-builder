@@ -8,14 +8,33 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverTrigger, PopoverContent } from "@/components/ui/popover";
+import {
+  applyRichTextFontSize,
+  getActiveRichTextFontSize,
+} from "@/lib/rich-text-font-size";
 import { tiptapExtensions } from "@/lib/tiptap-extensions";
 import {
   DEFAULT_RICH_TEXT_FONT_SIZE,
-  RICH_TEXT_FONT_SIZES,
   RICH_TEXT_EDITOR_PROSE_CLASS,
+  RICH_TEXT_FONT_SIZES,
 } from "@/lib/rich-text-prose";
 import type { TipTapJSON } from "@/lib/tiptap-types";
 import { cn } from "@/lib/utils";
+
+/**
+ * ProseMirror's `editor.getJSON()` returns objects whose nested `attrs`
+ * carry the ProseMirror Mark/Node attribute instance. Next.js 16 server
+ * actions serialize arguments through React Flight, which only walks plain
+ * objects — non-plain prototypes get their entries dropped on the floor,
+ * which is exactly what was happening to `fontSize` (the attribute survived
+ * client `JSON.stringify` but never reached the `saveResume` action).
+ *
+ * Round-tripping through JSON guarantees we hand RHF a pure plain object,
+ * so the value can travel intact through autosave.
+ */
+function toPlainJson(json: ReturnType<Editor["getJSON"]>): TipTapJSON {
+  return JSON.parse(JSON.stringify(json)) as TipTapJSON;
+}
 
 type Props = {
   content: TipTapJSON;
@@ -31,6 +50,7 @@ const COLOR_PALETTE = [
 
 export function RichTextEditor({ content, onChange }: Props) {
   const onChangeRef = useRef(onChange);
+  const lastSyncedContentRef = useRef(JSON.stringify(content));
 
   useEffect(() => {
     onChangeRef.current = onChange;
@@ -40,7 +60,7 @@ export function RichTextEditor({ content, onChange }: Props) {
     extensions: tiptapExtensions,
     content,
     onUpdate: ({ editor: e }) => {
-      onChangeRef.current(e.getJSON() as TipTapJSON);
+      onChangeRef.current(toPlainJson(e.getJSON()));
     },
     editorProps: {
       attributes: {
@@ -56,6 +76,8 @@ export function RichTextEditor({ content, onChange }: Props) {
   useEffect(() => {
     if (!editor || editor.isDestroyed) return;
     const incoming = JSON.stringify(content);
+    if (incoming === lastSyncedContentRef.current) return;
+    lastSyncedContentRef.current = incoming;
     const current = JSON.stringify(editor.getJSON());
     if (incoming !== current) {
       editor.commands.setContent(content, { emitUpdate: false });
@@ -92,7 +114,15 @@ export function RichTextEditor({ content, onChange }: Props) {
 
         <span className="mx-1 h-4 w-px bg-border/60" />
 
-        <FontSizeToolbar editor={editor} />
+        <FontSizeToolbar
+          editor={editor}
+          onFormatChange={() => {
+            // TipTap's onUpdate runs in the same microtask, but we forward
+            // the latest JSON synchronously here too so RHF's `setValue` is
+            // done before autosave reads `form.getValues()`.
+            onChangeRef.current(toPlainJson(editor.getJSON()));
+          }}
+        />
 
         {/* Color */}
         <Popover>
@@ -129,11 +159,13 @@ export function RichTextEditor({ content, onChange }: Props) {
   );
 }
 
-function activeFontSize(editor: Editor): string {
-  return editor.getAttributes("textStyle").fontSize ?? DEFAULT_RICH_TEXT_FONT_SIZE;
-}
-
-function FontSizeToolbar({ editor }: { editor: Editor }) {
+function FontSizeToolbar({
+  editor,
+  onFormatChange,
+}: {
+  editor: Editor;
+  onFormatChange: () => void;
+}) {
   const [, setTick] = useState(0);
 
   useEffect(() => {
@@ -146,7 +178,7 @@ function FontSizeToolbar({ editor }: { editor: Editor }) {
     };
   }, [editor]);
 
-  const current = activeFontSize(editor);
+  const current = getActiveRichTextFontSize(editor);
 
   return (
     <div
@@ -171,11 +203,8 @@ function FontSizeToolbar({ editor }: { editor: Editor }) {
                 : "text-muted-foreground hover:bg-muted/70",
             )}
             onClick={() => {
-              if (isDefault) {
-                editor.chain().focus().unsetFontSize().run();
-              } else {
-                editor.chain().focus().setFontSize(size).run();
-              }
+              applyRichTextFontSize(editor, size);
+              onFormatChange();
             }}
           >
             {label}

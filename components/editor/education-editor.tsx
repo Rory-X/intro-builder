@@ -42,7 +42,7 @@ export function EducationEditor() {
           itemCount={fields.length}
           isOpen={isOpen}
           onToggle={() => setIsOpen(!isOpen)}
-          onAdd={() => { append({ school: "", degree: "", major: "", start: "", end: "", gpa: "", highlights: emptyDoc() }); setIsOpen(true); }}
+          onAdd={() => { append({ school: "", degree: "", major: "", location: "", start: "", end: "", gpa: "", highlights: emptyDoc() }); setIsOpen(true); }}
         />
       </div>
       {isOpen && (
@@ -54,6 +54,7 @@ export function EducationEditor() {
                   <div data-testid="education-school-field" className="col-span-2 flex flex-col gap-1.5"><Label>学校</Label><Input {...register(`education.${idx}.school` as const)} /></div>
                   <div className="flex flex-col gap-1.5"><Label>学历</Label><Input {...register(`education.${idx}.degree` as const)} /></div>
                   <div className="flex flex-col gap-1.5"><Label>专业</Label><Input {...register(`education.${idx}.major` as const)} /></div>
+                  <div className="flex flex-col gap-1.5"><Label>城市</Label><Input {...register(`education.${idx}.location` as const)} /></div>
                   <div className="flex flex-col gap-1.5"><Label>GPA</Label><Input {...register(`education.${idx}.gpa` as const)} /></div>
                   <div className="flex flex-col gap-1.5"><Label>开始</Label><Input {...register(`education.${idx}.start` as const)} /></div>
                   <div className="flex flex-col gap-1.5"><Label>结束</Label><Input {...register(`education.${idx}.end` as const)} /></div>

@@ -1,6 +1,8 @@
 import { DEFAULT_STYLE_SETTINGS, type StyleSettings } from "@/lib/resume-schema";
 
 export type DensityPresetId = "compact" | "standard" | "relaxed";
+export type LineHeightPresetId = "compact" | "standard" | "relaxed";
+export type PagePaddingPresetId = "narrow" | "standard" | "wide";
 
 export const DENSITY_PRESETS: Record<
   DensityPresetId,
@@ -31,4 +33,22 @@ export const DENSITY_PRESETS: Record<
       pagePadding: 48,
     },
   },
+};
+
+export const LINE_HEIGHT_PRESETS: Record<
+  LineHeightPresetId,
+  { label: string; value: StyleSettings["lineHeight"] }
+> = {
+  compact: { label: "紧凑", value: 1.35 },
+  standard: { label: "标准", value: DEFAULT_STYLE_SETTINGS.lineHeight },
+  relaxed: { label: "舒展", value: 1.75 },
+};
+
+export const PAGE_PADDING_PRESETS: Record<
+  PagePaddingPresetId,
+  { label: string; value: StyleSettings["pagePadding"] }
+> = {
+  narrow: { label: "窄", value: 28 },
+  standard: { label: "标准", value: DEFAULT_STYLE_SETTINGS.pagePadding },
+  wide: { label: "宽", value: 48 },
 };

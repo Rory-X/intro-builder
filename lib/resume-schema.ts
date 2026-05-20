@@ -17,6 +17,7 @@ export const Education = z.object({
   school: z.string().default(""),
   degree: z.string().default(""),
   major: z.string().default(""),
+  location: z.string().default(""),
   start: z.string().default(""),
   end: z.string().default(""),
   gpa: z.string().optional().default(""),
@@ -34,6 +35,10 @@ export const Experience = z.object({
 
 export const Project = z.object({
   name: z.string().default(""),
+  role: z.string().default(""),
+  location: z.string().default(""),
+  start: z.string().default(""),
+  end: z.string().default(""),
   stack: z.array(z.string()).default([]),
   link: z.string().optional().default(""),
   content: TipTapJSON.default(() => emptyDoc()),

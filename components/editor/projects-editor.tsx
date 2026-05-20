@@ -42,7 +42,7 @@ export function ProjectsEditor() {
           itemCount={fields.length}
           isOpen={isOpen}
           onToggle={() => setIsOpen(!isOpen)}
-          onAdd={() => { append({ name: "", stack: [], link: "", content: emptyDoc() }); setIsOpen(true); }}
+          onAdd={() => { append({ name: "", role: "", location: "", start: "", end: "", stack: [], link: "", content: emptyDoc() }); setIsOpen(true); }}
         />
       </div>
       {isOpen && (
@@ -52,6 +52,10 @@ export function ProjectsEditor() {
               <div className="space-y-3 rounded-lg border border-border/60 bg-background/50 p-4">
                 <div className="grid grid-cols-2 gap-3">
                   <div className="flex flex-col gap-1.5"><Label>项目名</Label><Input {...register(`projects.${idx}.name` as const)} /></div>
+                  <div className="flex flex-col gap-1.5"><Label>担任角色</Label><Input {...register(`projects.${idx}.role` as const)} /></div>
+                  <div className="flex flex-col gap-1.5"><Label>城市</Label><Input {...register(`projects.${idx}.location` as const)} /></div>
+                  <div className="flex flex-col gap-1.5"><Label>开始</Label><Input placeholder="2025-03" {...register(`projects.${idx}.start` as const)} /></div>
+                  <div className="flex flex-col gap-1.5"><Label>结束</Label><Input placeholder="2025-06" {...register(`projects.${idx}.end` as const)} /></div>
                   <div className="flex flex-col gap-1.5"><Label>链接</Label><Input {...register(`projects.${idx}.link` as const)} /></div>
                 </div>
                 <div className="flex flex-col gap-1.5">

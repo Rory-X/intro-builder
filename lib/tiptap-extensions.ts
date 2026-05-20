@@ -15,6 +15,10 @@ export const tiptapExtensions = [
   }),
   Link.configure({ openOnClick: false }),
   Underline,
+  // Keep fontSize enabled so the rich-text toolbar can write a textStyle mark
+  // with `fontSize: "<n>px"` into the saved JSON. Other styling extensions
+  // (fontFamily/lineHeight/background) stay off because they're controlled by
+  // the global style settings.
   TextStyleKit.configure({
     fontFamily: false,
     lineHeight: false,

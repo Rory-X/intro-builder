@@ -1,4 +1,3 @@
-import Link from "next/link";
 import { eq, desc } from "drizzle-orm";
 import { requireUserId } from "@/lib/auth-helpers";
 import { db } from "@/db";
@@ -13,6 +12,7 @@ import { migrateContent } from "@/lib/migrate-content";
 import { getTemplateMeta } from "@/lib/templates/registry";
 import { TemplateRenderer } from "@/components/preview/template-renderer";
 import type { Metadata } from "next";
+import { ResumeCardLink } from "./resume-card-link";
 
 export const metadata: Metadata = { title: "我的简历" };
 
@@ -61,7 +61,7 @@ export default async function DashboardPage() {
             return (
               <div key={r.id} className="group relative">
                 {/* Preview card */}
-                <Link href={`/resume/${r.id}/edit`} className="block">
+                <ResumeCardLink href={`/resume/${r.id}/edit`}>
                   <div className="overflow-hidden rounded-xl border bg-white shadow-sm transition-all duration-200 hover:shadow-lg hover:shadow-primary/5 [container-type:inline-size] dark:border-neutral-700 dark:bg-neutral-900"
                        style={{ aspectRatio: "210/297" }}>
                     <div className="pointer-events-none origin-top-left [transform:scale(calc(100cqw/820px))]" style={{ width: "820px" }}>
@@ -72,7 +72,7 @@ export default async function DashboardPage() {
                       />
                     </div>
                   </div>
-                </Link>
+                </ResumeCardLink>
                 {/* Card footer */}
                 <div className="mt-3 flex items-center justify-between">
                   <div className="min-w-0 flex-1">
@@ -89,9 +89,9 @@ export default async function DashboardPage() {
                     />
                     <DropdownMenuContent align="end">
                       <DropdownMenuItem>
-                        <Link href={`/resume/${r.id}/edit`} className="flex w-full items-center gap-2">
+                        <ResumeCardLink href={`/resume/${r.id}/edit`} className="flex w-full items-center gap-2">
                           <Edit className="h-3.5 w-3.5" />编辑
-                        </Link>
+                        </ResumeCardLink>
                       </DropdownMenuItem>
                       <DropdownMenuItem>
                         <form action={async () => { "use server"; await duplicateResume(r.id); }} className="w-full">

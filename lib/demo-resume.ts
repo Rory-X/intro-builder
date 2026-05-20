@@ -18,6 +18,7 @@ export const demoResume: ResumeContent = {
       school: "北京邮电大学",
       degree: "本科",
       major: "计算机科学与技术",
+      location: "北京",
       start: "2018.09",
       end: "2022.06",
       gpa: "3.7/4.0",
@@ -51,6 +52,10 @@ export const demoResume: ResumeContent = {
   projects: [
     {
       name: "intro-builder",
+      role: "核心开发",
+      location: "北京",
+      start: "2024.04",
+      end: "2024.06",
       stack: ["Next.js", "TypeScript", "Tailwind"],
       link: "github.com/zhangsan/intro-builder",
       content: bulletsToDoc([

@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { ResumeContent } from "@/lib/resume-schema";
 
 type ResumeFormApi = {
@@ -17,6 +17,8 @@ type Options = {
   onError: (error: unknown) => void;
 };
 
+export type ResumeAutosaveStatus = "idle" | "pending" | "saving" | "error";
+
 /**
  * Debounced autosave with a serial queue so an older in-flight save
  * cannot overwrite newer edits (affects every form field, not only summary).
@@ -28,12 +30,14 @@ export function useResumeAutosave({
   onSave,
   onError,
 }: Options) {
+  const [status, setStatus] = useState<ResumeAutosaveStatus>("idle");
   const debounceTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const editGeneration = useRef(0);
   const titleRef = useRef(title);
   const previousTitleRef = useRef(title);
   const savingRef = useRef(false);
   const saveAgainRef = useRef(false);
+  const hasPendingSaveRef = useRef(false);
 
   useEffect(() => {
     titleRef.current = title;
@@ -48,9 +52,13 @@ export function useResumeAutosave({
       return;
     }
     savingRef.current = true;
+    setStatus("saving");
     try {
+      hasPendingSaveRef.current = false;
       await onSave(form.getValues(), titleRef.current);
+      setStatus("idle");
     } catch (e: unknown) {
+      setStatus("error");
       onError(e);
     } finally {
       savingRef.current = false;
@@ -62,6 +70,8 @@ export function useResumeAutosave({
   }, [form, onSave, onError]);
 
   const schedule = useCallback(() => {
+    hasPendingSaveRef.current = true;
+    setStatus("pending");
     editGeneration.current += 1;
     if (debounceTimer.current) clearTimeout(debounceTimer.current);
     const generation = editGeneration.current;
@@ -73,11 +83,24 @@ export function useResumeAutosave({
 
   useEffect(() => {
     const { unsubscribe } = form.watch(schedule);
+    const flushPending = () => {
+      if (debounceTimer.current) {
+        clearTimeout(debounceTimer.current);
+        debounceTimer.current = null;
+      }
+      if (hasPendingSaveRef.current) {
+        void persist();
+      }
+    };
+    window.addEventListener("pagehide", flushPending);
+    window.addEventListener("resume:flush-autosave", flushPending);
     return () => {
       unsubscribe();
-      if (debounceTimer.current) clearTimeout(debounceTimer.current);
+      window.removeEventListener("pagehide", flushPending);
+      window.removeEventListener("resume:flush-autosave", flushPending);
+      flushPending();
     };
-  }, [form, schedule]);
+  }, [form, persist, schedule]);
 
   useEffect(() => {
     if (previousTitleRef.current === title) return;
@@ -85,5 +108,5 @@ export function useResumeAutosave({
     schedule();
   }, [title, schedule]);
 
-  return { schedule };
+  return { schedule, status };
 }

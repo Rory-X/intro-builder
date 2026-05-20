@@ -1,5 +1,6 @@
 "use client";
 
+import { forwardRef } from "react";
 import { useWatch } from "react-hook-form";
 import type { ResumeContent } from "@/lib/resume-schema";
 import type { TemplateId } from "@/lib/templates/registry";
@@ -10,7 +11,10 @@ type Props = {
 };
 
 /** Isolated preview; subscribes via FormProvider so editor fields are not re-rendered. */
-export function LivePreview({ templateId }: Props) {
+export const LivePreview = forwardRef<HTMLDivElement, Props>(function LivePreview(
+  { templateId },
+  ref,
+) {
   const content = useWatch() as ResumeContent;
-  return <PreviewPanel content={content} templateId={templateId} />;
-}
+  return <PreviewPanel ref={ref} content={content} templateId={templateId} />;
+});

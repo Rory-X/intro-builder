@@ -3,6 +3,7 @@ import {
   useCallback,
   useEffect,
   useMemo,
+  useRef,
   useState,
   useSyncExternalStore,
   useTransition,
@@ -33,6 +34,8 @@ import { CustomSectionEditor } from "@/components/editor/custom-section-editor";
 import { StyleEditor } from "@/components/editor/style-editor";
 import { arrayMove } from "@/lib/array-move";
 import { DEFAULT_SECTION_ORDER, BUILTIN_SECTION_KEYS } from "@/lib/resume-schema";
+import { cn } from "@/lib/utils";
+import { exportPreviewImage } from "@/lib/client/export-preview-image";
 
 type Props = {
   id: string;
@@ -41,6 +44,7 @@ type Props = {
   initialContent: ResumeContent;
   initialIsPublic: boolean;
   initialSlug: string | null;
+  initialUpdatedAt: Date;
 };
 
 const DESKTOP_QUERY = "(min-width: 1024px)";
@@ -62,7 +66,18 @@ function getServerDesktopSnapshot() {
   return false;
 }
 
-export default function EditorClient({ id, initialTitle, initialTemplate, initialContent, initialIsPublic, initialSlug }: Props) {
+function formatRelativeSaveTime(savedAt: Date, now: Date): string {
+  const diffMs = Math.max(0, now.getTime() - savedAt.getTime());
+  const minutes = Math.floor(diffMs / 60_000);
+  if (minutes < 1) return "刚刚保存";
+  if (minutes < 60) return `${minutes}分钟前保存`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours}小时前保存`;
+  const days = Math.floor(hours / 24);
+  return `${days}天前保存`;
+}
+
+export default function EditorClient({ id, initialTitle, initialTemplate, initialContent, initialIsPublic, initialSlug, initialUpdatedAt }: Props) {
   const isDesktop = useSyncExternalStore(
     subscribeToDesktopQuery,
     getDesktopSnapshot,
@@ -77,7 +92,12 @@ export default function EditorClient({ id, initialTitle, initialTemplate, initia
   const [template, setTemplateState] = useState<TemplateId>(resolveTemplateId(initialTemplate));
   const [isPublic, setIsPublic] = useState(initialIsPublic);
   const [publicSlug, setPublicSlug] = useState<string | null>(initialSlug);
+  const [saveError, setSaveError] = useState<string | null>(null);
+  const [lastSavedAt, setLastSavedAt] = useState<Date>(initialUpdatedAt);
+  const [now, setNow] = useState(() => new Date());
+  const [isExportingImage, setIsExportingImage] = useState(false);
   const [isPending, startTransition] = useTransition();
+  const previewRootRef = useRef<HTMLDivElement>(null);
   const [sectionOrder, setSectionOrder] = useState<string[]>(
     initialContent.sectionOrder ?? [...DEFAULT_SECTION_ORDER]
   );
@@ -96,19 +116,27 @@ export default function EditorClient({ id, initialTitle, initialTemplate, initia
     [form],
   );
   const handleAutosaveError = useCallback((e: unknown) => {
-    toast.error(formatSaveError(e));
+    const message = formatSaveError(e);
+    setSaveError(message);
+    toast.error(message);
   }, []);
   const handleAutosaveSave = useCallback(
     (content: ResumeContent, resumeTitle: string) =>
       new Promise<void>((resolve, reject) => {
         startTransition(() => {
-          persistResume(content, resumeTitle).then(resolve).catch(reject);
+          persistResume(content, resumeTitle)
+            .then(() => {
+              setSaveError(null);
+              setLastSavedAt(new Date());
+              resolve();
+            })
+            .catch(reject);
         });
       }),
     [persistResume, startTransition],
   );
 
-  useResumeAutosave({
+  const autosave = useResumeAutosave({
     form: autosaveForm,
     resumeId: id,
     title,
@@ -137,6 +165,11 @@ export default function EditorClient({ id, initialTitle, initialTemplate, initia
     });
   }, [form]);
 
+  useEffect(() => {
+    const timer = window.setInterval(() => setNow(new Date()), 60_000);
+    return () => window.clearInterval(timer);
+  }, []);
+
   async function changeTemplate(next: TemplateId) {
     setTemplateState(next);
     await setTemplate(id, next);
@@ -159,6 +192,39 @@ export default function EditorClient({ id, initialTitle, initialTemplate, initia
     return !BUILTIN_SECTION_KEYS.has(key);
   }
 
+  async function onExportImage() {
+    if (!previewRootRef.current) {
+      toast.error("未找到可导出的简历预览");
+      return;
+    }
+
+    setIsExportingImage(true);
+    try {
+      await exportPreviewImage({
+        root: previewRootRef.current,
+        filename: title,
+      });
+      toast.success("图片已导出");
+    } catch {
+      toast.error("图片导出失败，请稍后重试");
+    } finally {
+      setIsExportingImage(false);
+    }
+  }
+
+  const savedLabel = formatRelativeSaveTime(lastSavedAt, now);
+  const isSaving = autosave.status === "saving" || isPending;
+  const saveStatusLabel = saveError
+    ? "保存失败"
+    : isSaving
+      ? "保存中"
+      : autosave.status === "pending"
+        ? "待保存"
+        : savedLabel;
+  const saveStatusDescription = saveError
+    ? `当前自动保存状态：保存失败（${saveError}）`
+    : `当前自动保存状态：${saveStatusLabel}`;
+
   return (
     <FormProvider {...form}>
       {/* Toolbar — always visible on both layouts */}
@@ -169,11 +235,40 @@ export default function EditorClient({ id, initialTitle, initialTemplate, initia
             onChange={(e) => setTitleState(e.target.value)}
             className="w-full sm:max-w-xs text-base font-medium"
           />
-          <span className={`inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-medium ${isPending ? "bg-orange-500/10 text-orange-600 dark:text-orange-400" : "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"}`}>
-            <span className={`h-1.5 w-1.5 rounded-full ${isPending ? "bg-orange-500 animate-pulse" : "bg-emerald-500"}`} />
-            {isPending ? "保存中" : "已保存"}
+          <span
+            data-testid="autosave-status"
+            title={saveStatusDescription}
+            className={cn(
+              "group relative inline-flex cursor-default items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-medium",
+              saveError
+                ? "bg-destructive/10 text-destructive"
+                : isSaving
+                  ? "bg-orange-500/10 text-orange-600 dark:text-orange-400"
+                  : autosave.status === "pending"
+                    ? "bg-sky-500/10 text-sky-600 dark:text-sky-400"
+                  : "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400",
+            )}
+          >
+            <span
+              className={cn(
+                "h-1.5 w-1.5 rounded-full",
+                saveError
+                  ? "bg-destructive"
+                  : isSaving
+                    ? "animate-pulse bg-orange-500"
+                    : autosave.status === "pending"
+                      ? "bg-sky-500"
+                    : "bg-emerald-500",
+              )}
+            />
+            {saveStatusLabel}
+            <span className="pointer-events-none absolute left-1/2 top-[calc(100%+0.4rem)] z-50 hidden w-max max-w-72 -translate-x-1/2 rounded-md bg-popover px-2.5 py-1.5 text-xs font-normal text-popover-foreground shadow-md ring-1 ring-foreground/10 group-hover:block">
+              {saveStatusDescription}
+            </span>
           </span>
-          <div className="ml-auto flex flex-wrap items-center gap-2">
+          <div data-testid="editor-toolbar" className="ml-auto flex flex-wrap items-center gap-2">
+            <StyleEditor templateId={template} onTemplateChange={changeTemplate} />
+            <Separator orientation="vertical" className="h-6" />
             <ModuleManager sectionOrder={sectionOrder} onOrderChange={handleOrderChange} />
             <Separator orientation="vertical" className="h-6" />
             <Button size="sm" variant="outline" onClick={onToggleShare} className="gap-1.5">
@@ -191,6 +286,16 @@ export default function EditorClient({ id, initialTitle, initialTemplate, initia
               </a>
             )}
             <Separator orientation="vertical" className="h-6" />
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={onExportImage}
+              disabled={isExportingImage}
+              className="gap-1.5"
+            >
+              <Download className="h-3.5 w-3.5" />
+              {isExportingImage ? "导出中" : "导出图片"}
+            </Button>
             <a
               href={`/api/pdf/${id}`}
               className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-3.5 py-1.5 text-sm font-medium text-primary-foreground shadow-sm shadow-primary/20 transition-all duration-200 hover:bg-primary/90 hover:shadow-md hover:shadow-primary/30"
@@ -204,7 +309,6 @@ export default function EditorClient({ id, initialTitle, initialTemplate, initia
       {isDesktop ? (
         <div className="grid h-[calc(100vh-3.5rem-4rem)] grid-cols-2">
           <div className="space-y-6 overflow-y-auto border-r p-6">
-            <StyleEditor templateId={template} onTemplateChange={changeTemplate} />
             <BasicsEditor />
             {sectionOrder.filter(k => k !== "basics").map((key) => (
               <SectionWrapper key={key} id={key}>
@@ -217,7 +321,7 @@ export default function EditorClient({ id, initialTitle, initialTemplate, initia
             ))}
           </div>
           <div className="overflow-y-auto bg-muted p-6">
-            <LivePreview templateId={template} />
+            <LivePreview ref={previewRootRef} templateId={template} />
           </div>
         </div>
       ) : (
@@ -228,7 +332,6 @@ export default function EditorClient({ id, initialTitle, initialTemplate, initia
               <TabsTrigger value="preview">预览</TabsTrigger>
             </TabsList>
             <TabsContent value="edit" className="space-y-6 p-4">
-              <StyleEditor templateId={template} onTemplateChange={changeTemplate} />
               <BasicsEditor />
               {sectionOrder.filter(k => k !== "basics").map((key) => (
                 <SectionWrapper key={key} id={key}>
@@ -241,7 +344,7 @@ export default function EditorClient({ id, initialTitle, initialTemplate, initia
               ))}
             </TabsContent>
             <TabsContent value="preview" className="bg-muted p-4">
-              <LivePreview templateId={template} />
+              <LivePreview ref={previewRootRef} templateId={template} />
             </TabsContent>
           </Tabs>
         </div>

@@ -134,7 +134,7 @@ export function buildResumeSections(
                       data-testid="education-meta"
                       className="mt-0.5 text-[0.92em] leading-relaxed text-neutral-700"
                     >
-                      {[e.degree, e.major, e.gpa ? `GPA ${e.gpa}` : ""]
+                      {[e.degree, e.major, e.location, e.gpa ? `GPA ${e.gpa}` : ""]
                         .filter(Boolean)
                         .join(" · ")}
                     </div>
@@ -147,10 +147,10 @@ export function buildResumeSections(
                       primary={
                         <>
                           <strong>{e.school}</strong>
-                          {(e.degree || e.major) && (
+                          {(e.degree || e.major || e.location) && (
                             <span className="font-normal">
                               {" "}
-                              {[e.degree, e.major].filter(Boolean).join(" ")}
+                              {[e.degree, e.major, e.location].filter(Boolean).join(" ")}
                             </span>
                           )}
                           {e.gpa ? ` · GPA ${e.gpa}` : ""}
@@ -181,16 +181,59 @@ export function buildResumeSections(
               renderResumeEntry(
                 variant,
                 i,
-                <>
-                  <ResumeItemHeader
-                    variant={variant}
-                    primary={p.name}
-                    secondary={
-                      p.stack.length > 0 ? p.stack.join(" · ") : undefined
-                    }
-                  />
-                  <ResumeRichText content={p.content} />
-                </>,
+                variant === "professional" ? (
+                  <div data-testid="professional-project-entry">
+                    <div data-testid="project-main-row" className="flex items-start justify-between gap-4">
+                      <div data-testid="project-left" className="min-w-0 flex-1">
+                        <div data-testid="project-name" className="font-bold leading-snug text-neutral-900">
+                          {p.name}
+                        </div>
+                        {(p.role || p.stack.length > 0) && (
+                          <div
+                            data-testid="project-meta"
+                            className="mt-0.5 text-[0.92em] leading-relaxed text-neutral-700"
+                          >
+                            {[p.role, p.stack.length > 0 ? p.stack.join(" · ") : ""]
+                              .filter(Boolean)
+                              .join(" · ")}
+                          </div>
+                        )}
+                      </div>
+                      {(p.location || formatDateRange(p.start, p.end)) && (
+                        <div
+                          data-testid="project-right"
+                          className="w-[9rem] shrink-0 text-right text-[0.9em] font-normal text-neutral-600"
+                        >
+                          {formatDateRange(p.start, p.end) && (
+                            <div data-testid="project-date" className="tabular-nums">
+                              {formatDateRange(p.start, p.end)}
+                            </div>
+                          )}
+                          {p.location && (
+                            <div data-testid="project-location" className="mt-0.5">
+                              {p.location}
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                    <ResumeRichText content={p.content} />
+                  </div>
+                ) : (
+                  <>
+                    <ResumeItemHeader
+                      variant={variant}
+                      primary={p.name}
+                      secondary={
+                        [p.role, p.location, p.stack.length > 0 ? p.stack.join(" · ") : ""]
+                          .filter(Boolean)
+                          .join(" · ") || undefined
+                      }
+                      dateRange={formatDateRange(p.start, p.end)}
+                    />
+                    <ResumeRichText content={p.content} />
+                  </>
+                ),
               ),
             )
           ) : (

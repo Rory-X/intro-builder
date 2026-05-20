@@ -115,4 +115,118 @@ describe("useResumeAutosave", () => {
 
     expect(onSave).not.toHaveBeenCalled();
   });
+
+  it("persists rich text font size changes in nested project content", async () => {
+    const onSave = vi.fn().mockResolvedValue(undefined);
+    const { result } = renderHook(() => useTestAutosave(onSave));
+
+    await act(async () => {
+      result.current.setValue("projects", [{
+        name: "P",
+        role: "",
+        location: "",
+        start: "",
+        end: "",
+        stack: [],
+        link: "",
+        content: {
+          type: "doc",
+          content: [
+            {
+              type: "paragraph",
+              content: [
+                {
+                  type: "text",
+                  text: "Hello",
+                  marks: [{ type: "textStyle", attrs: { fontSize: "12px" } }],
+                },
+              ],
+            },
+          ],
+        },
+      }], { shouldDirty: true });
+      await vi.advanceTimersByTimeAsync(50);
+      await vi.runAllTimersAsync();
+    });
+
+    expect(onSave).toHaveBeenCalledTimes(1);
+    expect(JSON.stringify(onSave.mock.calls[0][0].projects[0].content)).toContain(
+      '"fontSize":"12px"',
+    );
+  });
+
+  it("persists rich text font size changes when only the nested content path changes", async () => {
+    const onSave = vi.fn().mockResolvedValue(undefined);
+    const { result } = renderHook(() => useTestAutosave(onSave));
+
+    await act(async () => {
+      result.current.setValue("projects", [{
+        name: "P",
+        role: "",
+        location: "",
+        start: "",
+        end: "",
+        stack: [],
+        link: "",
+        content: { type: "doc", content: [{ type: "paragraph", content: [{ type: "text", text: "Hello" }] }] },
+      }], { shouldDirty: true });
+      await vi.advanceTimersByTimeAsync(50);
+      await vi.runAllTimersAsync();
+    });
+    onSave.mockClear();
+
+    await act(async () => {
+      result.current.setValue("projects.0.content", {
+        type: "doc",
+        content: [
+          {
+            type: "paragraph",
+            content: [
+              {
+                type: "text",
+                text: "Hello",
+                marks: [{ type: "textStyle", attrs: { fontSize: "12px" } }],
+              },
+            ],
+          },
+        ],
+      }, { shouldDirty: true });
+      await vi.advanceTimersByTimeAsync(50);
+      await vi.runAllTimersAsync();
+    });
+
+    expect(onSave).toHaveBeenCalledTimes(1);
+    expect(JSON.stringify(onSave.mock.calls[0][0].projects[0].content)).toContain(
+      '"fontSize":"12px"',
+    );
+  });
+
+  it("flushes pending debounced changes on unmount", async () => {
+    const onSave = vi.fn().mockResolvedValue(undefined);
+    const { result, unmount } = renderHook(() => useTestAutosave(onSave));
+
+    await act(async () => {
+      result.current.setValue("basics.name", "Before refresh", { shouldDirty: true });
+      await vi.advanceTimersByTimeAsync(25);
+      unmount();
+      await Promise.resolve();
+    });
+
+    expect(onSave).toHaveBeenCalledTimes(1);
+    expect(onSave.mock.calls[0][0].basics.name).toBe("Before refresh");
+  });
+
+  it("flushes pending changes when rich text toolbar requests an immediate save", async () => {
+    const onSave = vi.fn().mockResolvedValue(undefined);
+    const { result } = renderHook(() => useTestAutosave(onSave));
+
+    await act(async () => {
+      result.current.setValue("basics.name", "Format changed", { shouldDirty: true });
+      window.dispatchEvent(new Event("resume:flush-autosave"));
+      await Promise.resolve();
+    });
+
+    expect(onSave).toHaveBeenCalledTimes(1);
+    expect(onSave.mock.calls[0][0].basics.name).toBe("Format changed");
+  });
 });

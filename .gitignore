@@ -44,3 +44,6 @@ next-env.d.ts
 # ui-ux-pro-max skill (local only)
 .claude/skills/ui-ux-pro-max/
 .shared/ui-ux-pro-max/
+
+# Cursor local plugin / rule overrides (per-developer, never shared)
+.cursor/

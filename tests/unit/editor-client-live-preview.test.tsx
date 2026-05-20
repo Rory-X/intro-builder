@@ -4,11 +4,25 @@ import EditorClient from "@/app/(app)/resume/[id]/edit/editor-client";
 import { emptyResumeContent } from "@/lib/resume-schema";
 
 const saveResumeMock = vi.fn();
+const exportPreviewImageMock = vi.fn();
+const toastErrorMock = vi.fn();
+const toastSuccessMock = vi.fn();
 
 vi.mock("@/app/(app)/resume/[id]/edit/actions", () => ({
   saveResume: (...args: unknown[]) => saveResumeMock(...args),
   setTemplate: vi.fn(),
   toggleShare: vi.fn(),
+}));
+
+vi.mock("@/lib/client/export-preview-image", () => ({
+  exportPreviewImage: (...args: unknown[]) => exportPreviewImageMock(...args),
+}));
+
+vi.mock("sonner", () => ({
+  toast: {
+    error: (...args: unknown[]) => toastErrorMock(...args),
+    success: (...args: unknown[]) => toastSuccessMock(...args),
+  },
 }));
 
 vi.mock("@atlaskit/pragmatic-drag-and-drop/element/adapter", () => ({
@@ -26,6 +40,10 @@ describe("EditorClient live preview", () => {
     vi.useFakeTimers();
     saveResumeMock.mockReset();
     saveResumeMock.mockResolvedValue(undefined);
+    exportPreviewImageMock.mockReset();
+    exportPreviewImageMock.mockResolvedValue(undefined);
+    toastErrorMock.mockReset();
+    toastSuccessMock.mockReset();
     Object.defineProperty(window, "matchMedia", {
       configurable: true,
       value: vi.fn().mockImplementation((query: string) => ({
@@ -53,6 +71,7 @@ describe("EditorClient live preview", () => {
         initialContent={content}
         initialIsPublic={false}
         initialSlug={null}
+        initialUpdatedAt={new Date()}
       />,
     );
 
@@ -65,6 +84,7 @@ describe("EditorClient live preview", () => {
     });
 
     expect(screen.getByRole("heading", { name: "新姓名" })).toBeInTheDocument();
+    expect(screen.getByTestId("autosave-status")).toHaveTextContent("待保存");
 
     await act(async () => {
       await vi.advanceTimersByTimeAsync(2_000);
@@ -73,5 +93,91 @@ describe("EditorClient live preview", () => {
 
     expect(saveResumeMock).toHaveBeenCalled();
     expect(saveResumeMock.mock.calls.at(-1)?.[1].basics.name).toBe("新姓名");
+  });
+
+  it("renders template and layout settings in the toolbar only", () => {
+    render(
+      <EditorClient
+        id="r1"
+        initialTitle="简历"
+        initialTemplate="professional"
+        initialContent={emptyResumeContent()}
+        initialIsPublic={false}
+        initialSlug={null}
+        initialUpdatedAt={new Date()}
+      />,
+    );
+
+    const toolbar = screen.getByTestId("editor-toolbar");
+    expect(toolbar).toHaveTextContent("模板与排版");
+    expect(screen.getAllByRole("button", { name: /模板与排版/ })).toHaveLength(1);
+  });
+
+  it("shows autosave status details on the save badge", () => {
+    vi.setSystemTime(new Date("2026-05-19T11:26:00.000Z"));
+
+    render(
+      <EditorClient
+        id="r1"
+        initialTitle="简历"
+        initialTemplate="professional"
+        initialContent={emptyResumeContent()}
+        initialIsPublic={false}
+        initialSlug={null}
+        initialUpdatedAt={new Date("2026-05-19T11:21:00.000Z")}
+      />,
+    );
+
+    const badge = screen.getByTestId("autosave-status");
+    expect(badge).toHaveTextContent("5分钟前保存");
+    expect(badge).toHaveAttribute("title", "当前自动保存状态：5分钟前保存");
+    expect(screen.getByText("当前自动保存状态：5分钟前保存")).toBeInTheDocument();
+  });
+
+  it("exports the current live preview as a PNG image", async () => {
+    render(
+      <EditorClient
+        id="r1"
+        initialTitle="实习生/钱嘉豪"
+        initialTemplate="professional"
+        initialContent={emptyResumeContent()}
+        initialIsPublic={false}
+        initialSlug={null}
+        initialUpdatedAt={new Date()}
+      />,
+    );
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "导出图片" }));
+    });
+
+    expect(exportPreviewImageMock).toHaveBeenCalledWith({
+      root: screen.getByTestId("resume-export-preview"),
+      filename: "实习生/钱嘉豪",
+    });
+    expect(toastSuccessMock).toHaveBeenCalledWith("图片已导出");
+  });
+
+  it("shows an error toast when PNG export fails", async () => {
+    exportPreviewImageMock.mockRejectedValueOnce(new Error("boom"));
+
+    render(
+      <EditorClient
+        id="r1"
+        initialTitle="简历"
+        initialTemplate="professional"
+        initialContent={emptyResumeContent()}
+        initialIsPublic={false}
+        initialSlug={null}
+        initialUpdatedAt={new Date()}
+      />,
+    );
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "导出图片" }));
+    });
+
+    expect(toastErrorMock).toHaveBeenCalledWith("图片导出失败，请稍后重试");
+    expect(screen.getByRole("button", { name: "导出图片" })).toBeEnabled();
   });
 });
