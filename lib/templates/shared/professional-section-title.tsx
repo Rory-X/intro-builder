@@ -51,7 +51,7 @@ export function ProfessionalSectionTitle({ title, icon: Icon }: Props) {
           className="relative z-[1] m-0 inline-flex items-center gap-1.5 bg-neutral-900 py-1 pl-2.5 pr-3 text-[0.92em] font-bold leading-snug text-white print:bg-neutral-900"
           style={{ clipPath: TAB_CLIP }}
         >
-          {Icon && <Icon className="h-3.5 w-3.5 shrink-0 text-white" />}
+          {Icon && <Icon className="h-[1em] w-[1em] shrink-0 text-white" />}
           <span className="whitespace-nowrap">{title}</span>
         </h2>
       </div>

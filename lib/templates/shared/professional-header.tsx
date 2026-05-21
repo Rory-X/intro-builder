@@ -19,7 +19,7 @@ function ContactCell({ icon: Icon, text }: { icon: LucideIcon; text: string }) {
       data-testid="contact-chip"
       className="inline-flex max-w-full items-center gap-1.5 whitespace-nowrap"
     >
-      <Icon className="h-3.5 w-3.5 shrink-0 text-neutral-500" aria-hidden />
+      <Icon className="h-[1em] w-[1em] shrink-0 text-neutral-500" aria-hidden />
       <span className="truncate">{text}</span>
     </span>
   );

@@ -33,7 +33,7 @@ export function ResumeHeader({ basics, variant, className }: Props) {
         <div className="space-y-1 text-xs">
           {contactItems.map((item, i) => (
             <div key={i} className="flex items-center gap-1.5">
-              <item.icon className="h-3 w-3 shrink-0 text-neutral-500" />
+              <item.icon className="h-[0.9em] w-[0.9em] shrink-0 text-neutral-500" />
               <span className="break-all">{item.text}</span>
             </div>
           ))}
@@ -70,7 +70,7 @@ export function ResumeHeader({ basics, variant, className }: Props) {
         <div className="mt-2 flex flex-wrap items-center justify-center gap-x-4 gap-y-1 text-xs text-neutral-600">
           {contactItems.map((item, i) => (
             <span key={i} className="inline-flex items-center gap-1">
-              <item.icon className="h-3 w-3" />
+              <item.icon className="h-[0.9em] w-[0.9em]" />
               {item.text}
             </span>
           ))}

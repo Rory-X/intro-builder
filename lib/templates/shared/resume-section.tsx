@@ -32,7 +32,7 @@ export function ResumeSection({ title, sectionKey, variant, children, className 
       <section data-pagination-section={sectionKey} className={cn("break-inside-avoid", className)}>
         <div data-pagination-section-header>
           <h2 className="mb-1 flex items-center gap-1 border-b border-neutral-300 pb-0.5 text-sm font-bold">
-            {Icon && <Icon className={cn("h-3.5 w-3.5", meta?.color)} />}
+            {Icon && <Icon className={cn("h-[1em] w-[1em]", meta?.color)} />}
             {title}
           </h2>
         </div>
@@ -45,7 +45,7 @@ export function ResumeSection({ title, sectionKey, variant, children, className 
     <section data-pagination-section={sectionKey} className={cn("mt-4 break-inside-avoid", className)}>
       <div data-pagination-section-header>
         <h2 className="mb-1 flex items-center gap-1.5 border-b border-black pb-0.5 text-sm font-bold uppercase tracking-wide">
-          {Icon && <Icon className={cn("h-4 w-4", meta?.color)} />}
+          {Icon && <Icon className={cn("h-[1em] w-[1em]", meta?.color)} />}
           {title}
         </h2>
       </div>
