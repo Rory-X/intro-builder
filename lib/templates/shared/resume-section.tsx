@@ -18,8 +18,10 @@ export function ResumeSection({ title, sectionKey, variant, children, className 
 
   if (variant === "professional") {
     return (
-      <section className={cn("mt-3.5 break-inside-avoid", className)}>
-        <ProfessionalSectionTitle title={title} icon={Icon ?? undefined} />
+      <section data-pagination-section={sectionKey} className={cn("mt-3.5 break-inside-avoid", className)}>
+        <div data-pagination-section-header>
+          <ProfessionalSectionTitle title={title} icon={Icon ?? undefined} />
+        </div>
         <div className="mt-2">{children}</div>
       </section>
     );
@@ -27,22 +29,26 @@ export function ResumeSection({ title, sectionKey, variant, children, className 
 
   if (variant === "modern") {
     return (
-      <section className={cn("break-inside-avoid", className)}>
-        <h2 className="mb-1 flex items-center gap-1 border-b border-neutral-300 pb-0.5 text-sm font-bold">
-          {Icon && <Icon className={cn("h-3.5 w-3.5", meta?.color)} />}
-          {title}
-        </h2>
+      <section data-pagination-section={sectionKey} className={cn("break-inside-avoid", className)}>
+        <div data-pagination-section-header>
+          <h2 className="mb-1 flex items-center gap-1 border-b border-neutral-300 pb-0.5 text-sm font-bold">
+            {Icon && <Icon className={cn("h-3.5 w-3.5", meta?.color)} />}
+            {title}
+          </h2>
+        </div>
         {children}
       </section>
     );
   }
 
   return (
-    <section className={cn("mt-4 break-inside-avoid", className)}>
-      <h2 className="mb-1 flex items-center gap-1.5 border-b border-black pb-0.5 text-sm font-bold uppercase tracking-wide">
-        {Icon && <Icon className={cn("h-4 w-4", meta?.color)} />}
-        {title}
-      </h2>
+    <section data-pagination-section={sectionKey} className={cn("mt-4 break-inside-avoid", className)}>
+      <div data-pagination-section-header>
+        <h2 className="mb-1 flex items-center gap-1.5 border-b border-black pb-0.5 text-sm font-bold uppercase tracking-wide">
+          {Icon && <Icon className={cn("h-4 w-4", meta?.color)} />}
+          {title}
+        </h2>
+      </div>
       {children}
     </section>
   );

@@ -17,6 +17,7 @@ import {
   DEFAULT_RICH_TEXT_FONT_SIZE,
   RICH_TEXT_EDITOR_PROSE_CLASS,
   RICH_TEXT_FONT_SIZES,
+  RICH_TEXT_FONT_SIZE_LABELS,
 } from "@/lib/rich-text-prose";
 import type { TipTapJSON } from "@/lib/tiptap-types";
 import { cn } from "@/lib/utils";
@@ -187,7 +188,7 @@ function FontSizeToolbar({
       aria-label="字号"
     >
       {RICH_TEXT_FONT_SIZES.map((size) => {
-        const label = size.replace("px", "");
+        const label = RICH_TEXT_FONT_SIZE_LABELS[size] ?? size;
         const isDefault = size === DEFAULT_RICH_TEXT_FONT_SIZE;
         const active = current === size;
 

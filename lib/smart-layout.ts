@@ -1,0 +1,92 @@
+/**
+ * Smart layout algorithm — finds optimal typography settings to fit
+ * resume content on a single A4 page using binary search.
+ *
+ * Pure algorithm module: no DOM or React dependencies.
+ */
+
+import type { StyleSettings } from "@/lib/resume-schema";
+import { A4_HEIGHT_PX } from "@/lib/pagination";
+
+export { A4_HEIGHT_PX };
+
+// Minimum values for each adjustable setting
+const MIN_FONT = 10;
+const MIN_LINE_HEIGHT = 1.2;
+const MIN_PADDING = 20;
+
+export type SmartLayoutResult =
+  | { status: "already-fits" }
+  | { status: "optimized"; settings: StyleSettings }
+  | { status: "cannot-fit"; settings: StyleSettings };
+
+/**
+ * Linear interpolation between minimum and current settings based on scale [0,1].
+ *
+ * scale=0 → all minimums; scale=1 → current (unchanged) settings.
+ * fontFamily is always preserved from current.
+ */
+export function interpolateSettings(
+  current: StyleSettings,
+  scale: number,
+): StyleSettings {
+  return {
+    fontFamily: current.fontFamily,
+    fontSize:
+      Math.round((MIN_FONT + (current.fontSize - MIN_FONT) * scale) * 10) / 10,
+    lineHeight:
+      Math.round(
+        (MIN_LINE_HEIGHT + (current.lineHeight - MIN_LINE_HEIGHT) * scale) *
+          100,
+      ) / 100,
+    pagePadding: Math.round(
+      MIN_PADDING + (current.pagePadding - MIN_PADDING) * scale,
+    ),
+  };
+}
+
+/**
+ * Binary search for the maximum scale where measure(settings) <= A4_HEIGHT_PX.
+ *
+ * `measure` is an async function (e.g. DOM measurement) that returns content
+ * height in pixels for a given set of style settings.
+ *
+ * Algorithm:
+ * 1. If content already fits at current settings → "already-fits"
+ * 2. If content overflows even at minimum settings → "cannot-fit"
+ * 3. Binary search (8 iterations) to find the largest scale that fits
+ */
+export async function findOptimalSettings(
+  current: StyleSettings,
+  measure: (settings: StyleSettings) => Promise<number>,
+): Promise<SmartLayoutResult> {
+  // 1. Check if content already fits
+  const currentHeight = await measure(current);
+  if (currentHeight <= A4_HEIGHT_PX) {
+    return { status: "already-fits" };
+  }
+
+  // 2. Check if even minimum settings cannot make it fit
+  // Still return the most compact settings so user gets the best possible result
+  const minSettings = interpolateSettings(current, 0);
+  const minHeight = await measure(minSettings);
+  if (minHeight > A4_HEIGHT_PX) {
+    return { status: "cannot-fit", settings: minSettings };
+  }
+
+  // 3. Binary search for the maximum scale that fits
+  let lo = 0;
+  let hi = 1;
+
+  for (let i = 0; i < 8; i++) {
+    const mid = (lo + hi) / 2;
+    const h = await measure(interpolateSettings(current, mid));
+    if (h <= A4_HEIGHT_PX) {
+      lo = mid;
+    } else {
+      hi = mid;
+    }
+  }
+
+  return { status: "optimized", settings: interpolateSettings(current, lo) };
+}

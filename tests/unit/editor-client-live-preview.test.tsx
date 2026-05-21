@@ -147,6 +147,10 @@ describe("EditorClient live preview", () => {
       />,
     );
 
+    // Open the export dropdown then click "导出图片"
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "导出简历" }));
+    });
     await act(async () => {
       fireEvent.click(screen.getByRole("button", { name: "导出图片" }));
     });
@@ -197,10 +201,13 @@ describe("EditorClient live preview", () => {
     );
 
     await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "导出简历" }));
+    });
+    await act(async () => {
       fireEvent.click(screen.getByRole("button", { name: "导出图片" }));
     });
 
     expect(toastErrorMock).toHaveBeenCalledWith("图片导出失败，请稍后重试");
-    expect(screen.getByRole("button", { name: "导出图片" })).toBeEnabled();
+    expect(screen.getByRole("button", { name: "导出简历" })).toBeEnabled();
   });
 });

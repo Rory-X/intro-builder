@@ -37,6 +37,9 @@ import { DEFAULT_SECTION_ORDER, BUILTIN_SECTION_KEYS } from "@/lib/resume-schema
 import { cn } from "@/lib/utils";
 import { exportPreviewImage } from "@/lib/client/export-preview-image";
 import { PdfDownloadButton } from "./pdf-download-button";
+import { CompletenessScore } from "@/components/editor/completeness-score";
+import { SmartLayoutButton } from "@/components/editor/smart-layout-button";
+import { ExportButton } from "@/components/editor/export-button";
 
 type Props = {
   id: string;
@@ -259,7 +262,7 @@ export default function EditorClient({ id, initialTitle, initialTemplate, initia
     <FormProvider {...form}>
       {/* Toolbar — always visible on both layouts */}
       <div className="sticky top-14 z-30 border-b border-border/60 bg-background/80 backdrop-blur-xl backdrop-saturate-150">
-        <div className="mx-auto flex max-w-6xl flex-wrap items-center gap-3 px-4 py-2.5">
+        <div className="mx-auto flex max-w-6xl items-center gap-3 px-4 py-2.5">
           <Input
             value={title}
             onChange={(e) => setTitleState(e.target.value)}
@@ -296,7 +299,10 @@ export default function EditorClient({ id, initialTitle, initialTemplate, initia
               {saveStatusDescription}
             </span>
           </span>
+          <CompletenessScore />
           <div data-testid="editor-toolbar" className="ml-auto flex flex-wrap items-center gap-2">
+            <SmartLayoutButton templateId={template} measureRef={previewRootRef} />
+            <Separator orientation="vertical" className="h-6" />
             <StyleEditor
               templateId={template}
               onTemplateChange={changeTemplate}
@@ -337,17 +343,12 @@ export default function EditorClient({ id, initialTitle, initialTemplate, initia
               </a>
             )}
             <Separator orientation="vertical" className="h-6" />
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={onExportImage}
-              disabled={isExportingImage}
-              className="gap-1.5"
-            >
-              <Download className="h-3.5 w-3.5" />
-              {isExportingImage ? "导出中" : "导出图片"}
-            </Button>
-            <PdfDownloadButton resumeId={id} filename={title} />
+            <ExportButton
+              resumeId={id}
+              filename={title}
+              onExportImage={onExportImage}
+              isExportingImage={isExportingImage}
+            />
           </div>
         </div>
       </div>

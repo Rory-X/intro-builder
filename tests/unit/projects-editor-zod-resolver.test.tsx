@@ -59,7 +59,7 @@ describe("ProjectsEditor with zodResolver + onChange validation", () => {
 
     await waitFor(() => {
       const json = JSON.stringify(getProjectContent());
-      expect(json).toContain('"fontSize":"12px"');
+      expect(json).toContain('"fontSize":"0.92em"');
     });
   });
 });

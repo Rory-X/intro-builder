@@ -1,6 +1,96 @@
 import type { ResumeContent } from "./resume-schema";
 import { DEFAULT_SECTION_ORDER, ResumeContent as ResumeContentSchema } from "./resume-schema";
 import { bulletsToDoc, emptyDoc, stringToDoc } from "./tiptap-types";
+import { RICH_TEXT_BASE_PX } from "./rich-text-prose";
+
+/**
+ * Convert a px font-size string (e.g. "14px") to em relative to the base.
+ * Returns undefined if the value equals the default (1em) so the mark can be removed.
+ */
+function pxToEm(pxValue: string): string | undefined {
+  const match = pxValue.match(/^(\d+(?:\.\d+)?)px$/);
+  if (!match) return undefined; // not a px value, leave unchanged
+  const px = parseFloat(match[1]);
+  const em = Math.round((px / RICH_TEXT_BASE_PX) * 100) / 100;
+  if (em === 1) return undefined; // default size → remove mark
+  return `${em}em`;
+}
+
+/**
+ * Recursively migrate textStyle fontSize marks from px to em in TipTap JSON.
+ */
+function migrateFontSizeMarks(node: Record<string, unknown>): Record<string, unknown> {
+  // Process marks on text nodes
+  if (Array.isArray(node.marks)) {
+    node.marks = (node.marks as Record<string, unknown>[])
+      .map((mark) => {
+        if (mark.type !== "textStyle") return mark;
+        const attrs = mark.attrs as Record<string, unknown> | undefined;
+        if (!attrs || typeof attrs.fontSize !== "string") return mark;
+        const fontSize = attrs.fontSize as string;
+        // Already em? skip
+        if (fontSize.endsWith("em")) return mark;
+        // Convert px → em
+        const emValue = pxToEm(fontSize);
+        if (!emValue) {
+          // Default size — remove fontSize attr; if no other attrs, remove the mark entirely
+          const { fontSize: _fs, ...restAttrs } = attrs;
+          if (Object.keys(restAttrs).length === 0) return null; // remove mark
+          return { ...mark, attrs: restAttrs };
+        }
+        return { ...mark, attrs: { ...attrs, fontSize: emValue } };
+      })
+      .filter(Boolean);
+    // If marks array is empty after filtering, remove it
+    if ((node.marks as unknown[]).length === 0) delete node.marks;
+  }
+
+  // Recurse into content
+  if (Array.isArray(node.content)) {
+    node.content = (node.content as Record<string, unknown>[]).map(migrateFontSizeMarks);
+  }
+
+  return node;
+}
+
+/**
+ * Migrate all TipTap JSON docs in the resume content (experience.content,
+ * projects.content, education.highlights, custom.content) from px to em font sizes.
+ */
+function migrateAllFontSizes(obj: Record<string, unknown>): void {
+  const experience = obj.experience as Record<string, unknown>[] | undefined;
+  if (Array.isArray(experience)) {
+    for (const e of experience) {
+      if (e.content && typeof e.content === "object") {
+        migrateFontSizeMarks(e.content as Record<string, unknown>);
+      }
+    }
+  }
+  const projects = obj.projects as Record<string, unknown>[] | undefined;
+  if (Array.isArray(projects)) {
+    for (const p of projects) {
+      if (p.content && typeof p.content === "object") {
+        migrateFontSizeMarks(p.content as Record<string, unknown>);
+      }
+    }
+  }
+  const education = obj.education as Record<string, unknown>[] | undefined;
+  if (Array.isArray(education)) {
+    for (const e of education) {
+      if (e.highlights && typeof e.highlights === "object") {
+        migrateFontSizeMarks(e.highlights as Record<string, unknown>);
+      }
+    }
+  }
+  const custom = obj.custom as Record<string, unknown>[] | undefined;
+  if (Array.isArray(custom)) {
+    for (const c of custom) {
+      if (c.content && typeof c.content === "object") {
+        migrateFontSizeMarks(c.content as Record<string, unknown>);
+      }
+    }
+  }
+}
 
 /**
  * Transparently upgrade legacy content to current schema.
@@ -83,6 +173,9 @@ export function migrateContent(raw: unknown): ResumeContent {
     custom,
     sectionOrder,
   };
+
+  // Migrate any px font sizes in rich text to em (relative) units
+  migrateAllFontSizes(migrated);
 
   return ResumeContentSchema.parse(migrated);
 }

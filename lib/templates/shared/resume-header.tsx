@@ -17,7 +17,7 @@ export function ResumeHeader({ basics, variant, className }: Props) {
 
   if (variant === "modern-sidebar") {
     return (
-      <header className={cn("space-y-3", className)}>
+      <header data-pagination-header className={cn("space-y-3", className)}>
         {basics.photo && (
           // eslint-disable-next-line @next/next/no-img-element -- Puppeteer PDF uses plain img
           <img
@@ -44,14 +44,14 @@ export function ResumeHeader({ basics, variant, className }: Props) {
 
   if (variant === "professional") {
     return (
-      <header className={cn("mb-3 break-inside-avoid pb-2", className)}>
+      <header data-pagination-header className={cn("mb-3 break-inside-avoid pb-2", className)}>
         <ProfessionalHeader basics={basics} />
       </header>
     );
   }
 
   return (
-    <header className={cn("mb-4 break-inside-avoid", className)}>
+    <header data-pagination-header className={cn("mb-4 break-inside-avoid", className)}>
       <div className="flex items-start justify-between gap-4">
         <div className="flex-1 text-center">
           <h1 className="text-2xl font-bold">{basics.name}</h1>

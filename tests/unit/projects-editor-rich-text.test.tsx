@@ -51,7 +51,7 @@ describe("ProjectsEditor rich text", () => {
 
     await waitFor(() => {
       const json = JSON.stringify(form.getValues("projects.0.content"));
-      expect(json).toContain('"fontSize":"12px"');
+      expect(json).toContain('"fontSize":"0.92em"');
     });
   });
 });

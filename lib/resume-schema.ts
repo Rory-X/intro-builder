@@ -97,6 +97,10 @@ export const ResumeContent = z.object({
   custom: z.array(CustomSection).default([]),
   sectionOrder: z.array(z.string()).default([...DEFAULT_SECTION_ORDER]),
   styleSettings: StyleSettings.optional(),
+  smartLayout: z.object({
+    enabled: z.boolean(),
+    originalSettings: StyleSettings,
+  }).optional(),
 });
 
 export type ResumeContent = z.infer<typeof ResumeContent>;

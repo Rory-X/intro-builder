@@ -20,10 +20,10 @@ describe("rich text fontSize helpers", () => {
       ],
     });
 
-    applyRichTextFontSize(editor, "12px");
+    applyRichTextFontSize(editor, "0.92em");
 
     const json = JSON.stringify(editor.getJSON());
-    expect(json.match(/"fontSize":"12px"/g)).toHaveLength(2);
+    expect(json.match(/"fontSize":"0.92em"/g)).toHaveLength(2);
     editor.destroy();
   });
 
@@ -62,16 +62,16 @@ describe("rich text fontSize helpers", () => {
       ],
     });
 
-    applyRichTextFontSize(editor, "16px");
+    applyRichTextFontSize(editor, "1.23em");
 
     const json = JSON.stringify(editor.getJSON());
     expect(json).toContain('"text":"项目描述"');
     expect(json).toContain('"text":"登录请求"');
-    expect(json.match(/"fontSize":"16px"/g)).toHaveLength(2);
+    expect(json.match(/"fontSize":"1.23em"/g)).toHaveLength(2);
     editor.destroy();
   });
 
-  it("clears the mark for the default size", () => {
+  it("clears the mark for the default size (1em)", () => {
     const editor = makeEditor({
       type: "doc",
       content: [
@@ -81,14 +81,14 @@ describe("rich text fontSize helpers", () => {
             {
               type: "text",
               text: "Hello",
-              marks: [{ type: "textStyle", attrs: { fontSize: "12px" } }],
+              marks: [{ type: "textStyle", attrs: { fontSize: "0.92em" } }],
             },
           ],
         },
       ],
     });
 
-    applyRichTextFontSize(editor, "14px");
+    applyRichTextFontSize(editor, "1em");
 
     expect(JSON.stringify(editor.getJSON())).not.toContain("fontSize");
     editor.destroy();
@@ -104,14 +104,14 @@ describe("rich text fontSize helpers", () => {
             {
               type: "text",
               text: "Hello",
-              marks: [{ type: "textStyle", attrs: { fontSize: "12px" } }],
+              marks: [{ type: "textStyle", attrs: { fontSize: "0.92em" } }],
             },
           ],
         },
       ],
     });
 
-    expect(getActiveRichTextFontSize(editor)).toBe("12px");
+    expect(getActiveRichTextFontSize(editor)).toBe("0.92em");
     editor.destroy();
   });
 
@@ -123,15 +123,11 @@ describe("rich text fontSize helpers", () => {
       ],
     });
 
-    expect(getActiveRichTextFontSize(editor)).toBe("14px");
+    expect(getActiveRichTextFontSize(editor)).toBe("1em");
     editor.destroy();
   });
 
   it("restores the original cursor position after applying a size", () => {
-    // Regression: previously `applyRichTextFontSize` would call selectAll()
-    // when the cursor was collapsed and never restore the selection, so any
-    // subsequent toolbar click (alignment, list, ...) would silently act on
-    // the whole document.
     const editor = makeEditor({
       type: "doc",
       content: [
@@ -144,7 +140,7 @@ describe("rich text fontSize helpers", () => {
     const before = editor.state.selection;
     expect(before.empty).toBe(true);
 
-    applyRichTextFontSize(editor, "12px");
+    applyRichTextFontSize(editor, "0.92em");
 
     const after = editor.state.selection;
     expect(after.empty).toBe(true);

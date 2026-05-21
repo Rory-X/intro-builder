@@ -10,6 +10,7 @@ type Props = {
 export function ProfessionalEntry({ children, className, muted = false }: Props) {
   return (
     <div
+      data-pagination-item
       className={cn(
         "mb-2.5 break-inside-avoid last:mb-0",
         muted && "text-neutral-400",

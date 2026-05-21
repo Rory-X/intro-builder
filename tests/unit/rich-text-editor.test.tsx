@@ -29,7 +29,7 @@ describe("RichTextEditor", () => {
 
     expect(onChange).toHaveBeenCalled();
     const lastJson = JSON.stringify(onChange.mock.calls.at(-1)?.[0]);
-    expect(lastJson).toContain('"fontSize":"12px"');
+    expect(lastJson).toContain('"fontSize":"0.92em"');
   });
 
   it("emits plain JSON-serializable objects to the parent (Next 16 server-action safe)", () => {
@@ -53,7 +53,7 @@ describe("RichTextEditor", () => {
     };
     visit(lastValue);
     const round = JSON.stringify(JSON.parse(JSON.stringify(lastValue)));
-    expect(round).toContain('"fontSize":"12px"');
+    expect(round).toContain('"fontSize":"0.92em"');
   });
 
   it("shows the previously saved font size on the toolbar after mount", async () => {
@@ -69,7 +69,7 @@ describe("RichTextEditor", () => {
                   type: "text",
                   text: "Hello",
                   marks: [
-                    { type: "textStyle", attrs: { fontSize: "16px" } },
+                    { type: "textStyle", attrs: { fontSize: "1.23em" } },
                   ],
                 },
               ],

@@ -66,6 +66,6 @@ describe("ProjectsEditor autosave rich text", () => {
 
     expect(onSave).toHaveBeenCalled();
     const lastPayload = JSON.stringify(onSave.mock.calls.at(-1)?.[0].projects[0].content);
-    expect(lastPayload).toContain('"fontSize":"12px"');
+    expect(lastPayload).toContain('"fontSize":"0.92em"');
   });
 });

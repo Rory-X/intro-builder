@@ -30,7 +30,7 @@ export function renderResumeEntry(
     );
   }
   return (
-    <div key={key} className="mb-2.5 last:mb-0">
+    <div key={key} data-pagination-item className="mb-2.5 last:mb-0">
       {children}
     </div>
   );

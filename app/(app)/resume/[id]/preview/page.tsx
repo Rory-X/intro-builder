@@ -27,9 +27,13 @@ export default async function PreviewPage({
     <>
       {isPdf && (
         <style dangerouslySetInnerHTML={{ __html: `
-          @page { size: A4; margin: 0; }
+          @page { size: A4; margin: 40px 0; }
           body { -webkit-print-color-adjust: exact; print-color-adjust: exact; margin: 0; padding: 0; }
           header, nav, footer { display: none !important; }
+          [data-pagination-header] { display: block !important; }
+          article { padding-top: 0 !important; padding-bottom: 0 !important; }
+          [data-pagination-section] { break-inside: avoid; }
+          [data-pagination-item] { break-inside: avoid; }
         `}} />
       )}
       <div className={isPdf ? "" : "bg-slate-100 py-8"}>
