@@ -291,7 +291,8 @@ export default function EditorClient({ id, initialTitle, initialTemplate, initia
 
   return (
     <FormProvider {...form}>
-      {/* Toolbar — always visible on both layouts */}
+      {/* Toolbar — only visible on desktop */}
+      {isDesktop && (
       <div className="sticky top-14 z-30 border-b border-border/60 bg-background/80 backdrop-blur-xl backdrop-saturate-150">
         <div className="mx-auto flex max-w-6xl items-center gap-3 px-4 py-2.5">
           <Input
@@ -383,6 +384,7 @@ export default function EditorClient({ id, initialTitle, initialTemplate, initia
           </div>
         </div>
       </div>
+      )}
 
       {isDesktop ? (
         <div className="flex h-[calc(100vh-3.5rem-4rem)]">
