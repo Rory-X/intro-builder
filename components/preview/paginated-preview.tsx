@@ -182,6 +182,8 @@ export const PaginatedPreview = forwardRef<HTMLDivElement, Props>(function Pagin
   { content, templateId, styleSettings, showEmptyPlaceholders },
   ref,
 ) {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const [scale, setScale] = useState(1);
   const measureRef = useRef<HTMLDivElement>(null);
   const [pageBreaks, setPageBreaks] = useState<number[]>([]);
   const [totalHeight, setTotalHeight] = useState(0);
@@ -236,12 +238,44 @@ export const PaginatedPreview = forwardRef<HTMLDivElement, Props>(function Pagin
     };
   }, [recalculate, debouncedRecalculate]);
 
+  // Responsive scaling: when container is narrower than A4 width, scale down
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el || typeof ResizeObserver === "undefined") return;
+
+    const updateScale = () => {
+      const availableWidth = el.clientWidth;
+      // Add some padding allowance (16px each side)
+      const targetWidth = A4_WIDTH_PX + 32;
+      const newScale = availableWidth >= targetWidth ? 1 : availableWidth / targetWidth;
+      setScale(Math.min(1, Math.max(0.4, newScale)));
+    };
+
+    updateScale();
+    const observer = new ResizeObserver(updateScale);
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, []);
+
   // Calculate pages from breaks
   const pageOffsets = [0, ...pageBreaks];
   const numPages = pageOffsets.length;
 
+  // Calculate scaled height for the outer container to avoid layout collapse
+  const totalPagesHeight = numPages * A4_HEIGHT_PX + (numPages - 1) * 32; // pages + gaps
+
   return (
-    <div ref={ref} data-testid="resume-export-preview" className="flex flex-col items-center gap-8">
+    <div ref={containerRef} className="w-full">
+      <div
+        ref={ref}
+        data-testid="resume-export-preview"
+        className="flex flex-col items-center gap-8"
+        style={{
+          transform: scale < 1 ? `scale(${scale})` : undefined,
+          transformOrigin: "top center",
+          height: scale < 1 ? `${totalPagesHeight * scale}px` : undefined,
+        }}
+      >
       {/* Invisible measurement container — renders full content at A4 width */}
       <div
         ref={measureRef}
@@ -331,6 +365,7 @@ export const PaginatedPreview = forwardRef<HTMLDivElement, Props>(function Pagin
           />
         </div>
       )}
+    </div>
     </div>
   );
 });
