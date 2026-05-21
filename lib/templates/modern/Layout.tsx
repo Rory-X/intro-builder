@@ -83,10 +83,10 @@ export function ModernLayout({
         {order
           .filter((k) => !SIDEBAR_KEYS.has(k))
           .map((key) => {
-            if (key === "basics" && (b.summary || shells)) {
+            if (key === "basics" && b.summary) {
               return (
                 <ResumeSection key="basics" sectionKey="basics" title="自我介绍" variant="modern">
-                  {b.summary ? <p>{b.summary}</p> : <SummarySectionShell />}
+                  <p>{b.summary}</p>
                 </ResumeSection>
               );
             }

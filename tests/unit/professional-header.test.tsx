@@ -47,17 +47,15 @@ describe("ProfessionalHeader", () => {
     expect(websiteRow?.className).toContain("justify-center");
   });
 
-  it("does not render the summary section in the professional template", () => {
+  it("renders the summary section in the professional template when filled", () => {
     const content: ResumeContent = {
       ...emptyResumeContent(),
       basics: { ...basics, summary: "11" },
       sectionOrder: ["basics"],
     };
 
-    const { container } = render(<ProfessionalLayout content={content} showEmptyPlaceholders />);
-    expect(container.querySelector("header")?.textContent).not.toContain("11");
-    expect(screen.queryByRole("heading", { name: "自我介绍" })).not.toBeInTheDocument();
-    expect(screen.queryByText("11")).not.toBeInTheDocument();
+    render(<ProfessionalLayout content={content} showEmptyPlaceholders />);
+    expect(screen.getByText("11")).toBeInTheDocument();
   });
 
   it("does not render a divider under the professional header", () => {

@@ -14,14 +14,16 @@ import { Button } from "@/components/ui/button";
 
 type Props = {
   email: string | null;
+  name: string | null;
   signOutAction: () => Promise<void>;
 };
 
-function initial(email: string) {
+function initial(email: string, name: string | null) {
+  if (name) return name.charAt(0).toUpperCase();
   return email.charAt(0).toUpperCase();
 }
 
-export function UserMenu({ email, signOutAction }: Props) {
+export function UserMenu({ email, name, signOutAction }: Props) {
   const [sheetOpen, setSheetOpen] = useState(false);
 
   if (!email) {
@@ -42,24 +44,25 @@ export function UserMenu({ email, signOutAction }: Props) {
   return (
     <>
       {/* desktop: dropdown */}
-      <div className="hidden items-center gap-4 md:flex">
-        <Link href="/dashboard" className="text-sm text-muted-foreground hover:text-foreground">
-          我的简历
+      <div className="hidden items-center gap-3 md:flex">
+        <Link href="/dashboard">
+          <Button variant="outline" size="sm">控制台</Button>
         </Link>
         <DropdownMenu>
           <DropdownMenuTrigger
             render={
               <button className="flex items-center" aria-label="用户菜单">
                 <Avatar className="h-8 w-8">
-                  <AvatarFallback>{initial(email)}</AvatarFallback>
+                  <AvatarFallback>{initial(email, name)}</AvatarFallback>
                 </Avatar>
               </button>
             }
           />
-          <DropdownMenuContent align="end" className="w-52">
-            <DropdownMenuLabel className="truncate">{email}</DropdownMenuLabel>
-            <DropdownMenuSeparator />
-            <DropdownMenuItem render={<Link href="/dashboard">我的简历</Link>} />
+          <DropdownMenuContent align="end" className="w-56">
+            <DropdownMenuLabel className="flex flex-col gap-0.5 font-normal">
+              {name && <span className="text-sm font-medium">{name}</span>}
+              <span className="truncate text-xs text-muted-foreground">{email}</span>
+            </DropdownMenuLabel>
             <DropdownMenuSeparator />
             <DropdownMenuItem
               render={

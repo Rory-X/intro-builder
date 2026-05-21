@@ -49,7 +49,7 @@ describe("ProfessionalLayout", () => {
     expect(screen.getByText("优秀员工")).toBeInTheDocument();
   });
 
-  it("does not render the basics summary section even when it is in the section order", () => {
+  it("renders the basics summary section when content is present", () => {
     const c = emptyResumeContent();
     c.basics.name = "李四";
     c.basics.summary = "具备扎实的工程能力和沟通能力";
@@ -57,8 +57,7 @@ describe("ProfessionalLayout", () => {
 
     render(<ProfessionalLayout content={c} />);
 
-    expect(screen.queryByRole("heading", { name: "自我介绍" })).not.toBeInTheDocument();
-    expect(screen.queryByText("具备扎实的工程能力和沟通能力")).not.toBeInTheDocument();
+    expect(screen.getByText("具备扎实的工程能力和沟通能力")).toBeInTheDocument();
   });
 
   it("uses light resume paper root", () => {

@@ -11,7 +11,7 @@ export function ProfessionalLayout({
 }: TemplateLayoutProps) {
   const order = getSectionOrder(content, sectionOrder);
   const sections = buildResumeSections(content, "professional", {
-    includeBasicsSummary: false,
+    includeBasicsSummary: true,
     showEmptyPlaceholders,
   });
 

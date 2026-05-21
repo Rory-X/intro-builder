@@ -43,15 +43,11 @@ export function buildResumeSections(
 
   return {
     basics:
-      includeBasicsSummary && (content.basics.summary || shells) ? (
+      includeBasicsSummary && content.basics.summary ? (
         <ResumeSection key="basics" sectionKey="basics" title="自我介绍" variant={variant}>
-          {content.basics.summary ? (
-            wrapProfessionalEntry(
-              variant,
-              <p className="text-[0.92em] leading-relaxed text-neutral-700">{content.basics.summary}</p>,
-            )
-          ) : (
-            <SummarySectionShell variant={variant} />
+          {wrapProfessionalEntry(
+            variant,
+            <p className="text-[0.92em] leading-relaxed text-neutral-700">{content.basics.summary}</p>,
           )}
         </ResumeSection>
       ) : null,
