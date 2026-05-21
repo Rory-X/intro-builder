@@ -49,28 +49,22 @@ export function UserMenu({ email, name, signOutAction }: Props) {
           <Button variant="outline" size="sm">我的简历</Button>
         </Link>
         <DropdownMenu>
-          <DropdownMenuTrigger
-            render={
-              <button className="flex items-center" aria-label="用户菜单">
-                <Avatar className="h-8 w-8">
-                  <AvatarFallback>{initial(email, name)}</AvatarFallback>
-                </Avatar>
-              </button>
-            }
-          />
+          <DropdownMenuTrigger className="flex items-center" aria-label="用户菜单">
+            <Avatar className="h-8 w-8">
+              <AvatarFallback>{initial(email, name)}</AvatarFallback>
+            </Avatar>
+          </DropdownMenuTrigger>
           <DropdownMenuContent align="end" className="w-56">
             <DropdownMenuLabel className="flex flex-col gap-0.5 font-normal">
               {name && <span className="text-sm font-medium">{name}</span>}
               <span className="truncate text-xs text-muted-foreground">{email}</span>
             </DropdownMenuLabel>
             <DropdownMenuSeparator />
-            <DropdownMenuItem
-              render={
-                <form action={signOutAction} className="w-full">
-                  <button type="submit" className="w-full text-left">退出登录</button>
-                </form>
-              }
-            />
+            <form action={signOutAction} className="w-full">
+              <DropdownMenuItem className="w-full cursor-pointer">
+                退出登录
+              </DropdownMenuItem>
+            </form>
           </DropdownMenuContent>
         </DropdownMenu>
       </div>
@@ -78,13 +72,11 @@ export function UserMenu({ email, name, signOutAction }: Props) {
       {/* mobile: sheet */}
       <div className="md:hidden">
         <Sheet open={sheetOpen} onOpenChange={setSheetOpen}>
-          <SheetTrigger
-            render={
-              <Button variant="ghost" size="icon" aria-label="打开菜单">
-                <Menu className="h-5 w-5" />
-              </Button>
-            }
-          />
+          <SheetTrigger>
+            <Button variant="ghost" size="icon" aria-label="打开菜单">
+              <Menu className="h-5 w-5" />
+            </Button>
+          </SheetTrigger>
           <SheetContent side="right" className="w-72">
             <SheetHeader>
               <SheetTitle className="truncate text-base">{email}</SheetTitle>

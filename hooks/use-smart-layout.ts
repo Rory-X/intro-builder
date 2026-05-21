@@ -34,8 +34,10 @@ export function useSmartLayout({ measureRef }: UseSmartLayoutOptions) {
           return;
         }
 
-        // Find the hidden measurement container inside PaginatedPreview
-        const container = root.querySelector("[aria-hidden='true']") as HTMLElement | null;
+        // The measurement container is a sibling of the ref div (both inside containerRef).
+        // Navigate to parent to find it.
+        const parent = root.parentElement;
+        const container = parent?.querySelector("[aria-hidden='true']") as HTMLElement | null;
         if (!container) {
           resolve(Infinity);
           return;
