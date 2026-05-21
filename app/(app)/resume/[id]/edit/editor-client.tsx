@@ -245,6 +245,38 @@ export default function EditorClient({ id, initialTitle, initialTemplate, initia
     }
   }
 
+  const [splitPercent, setSplitPercent] = useState(50);
+  const isDragging = useRef(false);
+  const containerWidthRef = useRef(0);
+
+  const handleMouseDown = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    isDragging.current = true;
+    const container = e.currentTarget.parentElement;
+    if (container) containerWidthRef.current = container.clientWidth;
+
+    const handleMouseMove = (ev: MouseEvent) => {
+      if (!isDragging.current || !container) return;
+      const rect = container.getBoundingClientRect();
+      const x = ev.clientX - rect.left;
+      const pct = Math.min(70, Math.max(30, (x / rect.width) * 100));
+      setSplitPercent(pct);
+    };
+
+    const handleMouseUp = () => {
+      isDragging.current = false;
+      document.removeEventListener("mousemove", handleMouseMove);
+      document.removeEventListener("mouseup", handleMouseUp);
+      document.body.style.cursor = "";
+      document.body.style.userSelect = "";
+    };
+
+    document.body.style.cursor = "col-resize";
+    document.body.style.userSelect = "none";
+    document.addEventListener("mousemove", handleMouseMove);
+    document.addEventListener("mouseup", handleMouseUp);
+  }, []);
+
   const savedLabel = formatRelativeSaveTime(lastSavedAt, now);
   const isSaving = autosave.status === "saving" || isPending;
   const saveStatusLabel = saveError
@@ -354,8 +386,11 @@ export default function EditorClient({ id, initialTitle, initialTemplate, initia
       </div>
 
       {isDesktop ? (
-        <div className="grid h-[calc(100vh-3.5rem-4rem)] grid-cols-2">
-          <div className="space-y-6 overflow-y-auto border-r p-6">
+        <div className="flex h-[calc(100vh-3.5rem-4rem)]">
+          <div
+            className="thin-scrollbar space-y-6 overflow-y-auto border-r p-6"
+            style={{ width: `${splitPercent}%` }}
+          >
             <BasicsEditor />
             {sectionOrder.filter(k => k !== "basics").map((key) => (
               <SectionWrapper key={key} id={key}>
@@ -367,7 +402,17 @@ export default function EditorClient({ id, initialTitle, initialTemplate, initia
               </SectionWrapper>
             ))}
           </div>
-          <div className="overflow-y-auto bg-muted p-6">
+          {/* Resize handle */}
+          <div
+            className="flex w-1.5 shrink-0 cursor-col-resize items-center justify-center hover:bg-accent active:bg-accent"
+            onMouseDown={handleMouseDown}
+          >
+            <div className="h-8 w-0.5 rounded-full bg-border" />
+          </div>
+          <div
+            className="thin-scrollbar overflow-y-auto bg-muted p-6"
+            style={{ width: `${100 - splitPercent}%` }}
+          >
             <LivePreview ref={previewRootRef} templateId={template} />
           </div>
         </div>
