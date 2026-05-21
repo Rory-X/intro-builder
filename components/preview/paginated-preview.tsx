@@ -265,18 +265,8 @@ export const PaginatedPreview = forwardRef<HTMLDivElement, Props>(function Pagin
   const totalPagesHeight = numPages * A4_HEIGHT_PX + (numPages - 1) * 32; // pages + gaps
 
   return (
-    <div ref={containerRef} className="w-full">
-      <div
-        ref={ref}
-        data-testid="resume-export-preview"
-        className="flex flex-col items-center gap-8"
-        style={{
-          transform: scale < 1 ? `scale(${scale})` : undefined,
-          transformOrigin: "top center",
-          height: scale < 1 ? `${totalPagesHeight * scale}px` : undefined,
-        }}
-      >
-      {/* Invisible measurement container — renders full content at A4 width */}
+    <div ref={containerRef} className="w-full overflow-hidden">
+      {/* Invisible measurement container — OUTSIDE the scaled area to ensure accurate A4 measurements */}
       <div
         ref={measureRef}
         aria-hidden="true"
@@ -291,6 +281,18 @@ export const PaginatedPreview = forwardRef<HTMLDivElement, Props>(function Pagin
           showEmptyPlaceholders={showEmptyPlaceholders}
         />
       </div>
+
+      {/* Scaled visual output — transform only affects visual display, not layout/measurement */}
+      <div
+        ref={ref}
+        data-testid="resume-export-preview"
+        className="flex flex-col items-center gap-8"
+        style={{
+          transform: scale < 1 ? `scale(${scale})` : undefined,
+          transformOrigin: "top center",
+          height: scale < 1 ? `${totalPagesHeight * scale}px` : undefined,
+        }}
+      >
 
       {/* Visible pages */}
       {measured && Array.from({ length: numPages }, (_, i) => {
