@@ -46,7 +46,7 @@ export function UserMenu({ email, name, signOutAction }: Props) {
       {/* desktop: dropdown */}
       <div className="hidden items-center gap-3 md:flex">
         <Link href="/dashboard">
-          <Button variant="outline" size="sm">控制台</Button>
+          <Button variant="outline" size="sm">我的简历</Button>
         </Link>
         <DropdownMenu>
           <DropdownMenuTrigger
