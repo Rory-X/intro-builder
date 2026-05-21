@@ -23,7 +23,6 @@ import { ProjectsEditor } from "@/components/editor/projects-editor";
 import { SkillsEditor } from "@/components/editor/skills-editor";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Separator } from "@/components/ui/separator";
 import { Download, Loader2, Share2 } from "lucide-react";
 import { resolveTemplateId, type TemplateId } from "@/lib/templates/registry";
@@ -417,28 +416,19 @@ export default function EditorClient({ id, initialTitle, initialTemplate, initia
           </div>
         </div>
       ) : (
-        <div>
-          <Tabs defaultValue="edit" className="w-full">
-            <TabsList className="sticky top-[calc(3.5rem+3.5rem)] z-20 grid w-full grid-cols-2 rounded-none border-b">
-              <TabsTrigger value="edit">编辑</TabsTrigger>
-              <TabsTrigger value="preview">预览</TabsTrigger>
-            </TabsList>
-            <TabsContent value="edit" className="space-y-6 p-4">
-              <BasicsEditor />
-              {sectionOrder.filter(k => k !== "basics").map((key) => (
-                <SectionWrapper key={key} id={key}>
-                  {key === "experience" && <ExperienceEditor />}
-                  {key === "education" && <EducationEditor />}
-                  {key === "projects" && <ProjectsEditor />}
-                  {key === "skills" && <SkillsEditor />}
-                  {isCustomSection(key) && <CustomSectionEditor sectionId={key} />}
-                </SectionWrapper>
-              ))}
-            </TabsContent>
-            <TabsContent value="preview" className="bg-muted p-4">
-              <LivePreview ref={previewRootRef} templateId={template} />
-            </TabsContent>
-          </Tabs>
+        <div className="flex min-h-[60vh] flex-col items-center justify-center gap-4 px-6 text-center">
+          <div className="rounded-full bg-muted p-4">
+            <svg xmlns="http://www.w3.org/2000/svg" className="h-10 w-10 text-muted-foreground" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M9 17.25v1.007a3 3 0 0 1-.879 2.122L7.5 21h9l-.621-.621A3 3 0 0 1 15 18.257V17.25m6-12V15a2.25 2.25 0 0 1-2.25 2.25H5.25A2.25 2.25 0 0 1 3 15V5.25m18 0A2.25 2.25 0 0 0 18.75 3H5.25A2.25 2.25 0 0 0 3 5.25m18 0V12a2.25 2.25 0 0 1-2.25 2.25H5.25A2.25 2.25 0 0 1 3 12V5.25" />
+            </svg>
+          </div>
+          <h2 className="text-lg font-semibold">请在电脑端使用简历排版功能</h2>
+          <p className="max-w-sm text-sm text-muted-foreground">
+            简历编辑与排版需要较大屏幕以获得最佳体验，请使用电脑浏览器打开此页面。
+          </p>
+          <a href="/dashboard" className="mt-2 text-sm font-medium text-primary hover:underline">
+            返回我的简历
+          </a>
         </div>
       )}
     </FormProvider>
