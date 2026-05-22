@@ -3,6 +3,8 @@ import Link from "@tiptap/extension-link";
 import Underline from "@tiptap/extension-underline";
 import TextAlign from "@tiptap/extension-text-align";
 import { TextStyleKit } from "@tiptap/extension-text-style";
+import Collaboration from "@tiptap/extension-collaboration";
+import CollaborationCursor from "@tiptap/extension-collaboration-cursor";
 
 export const tiptapExtensions = [
   StarterKit.configure({
@@ -34,12 +36,6 @@ export const tiptapExtensions = [
  * Disables built-in undo/redo (Y.js has its own undo manager).
  */
 export function createCollabExtensions(ydoc: import("yjs").Doc, provider: unknown, user: { name: string; color: string }) {
-  // These are dynamically imported at module level but only used in collab mode
-  // eslint-disable-next-line @typescript-eslint/no-require-imports
-  const Collaboration = require("@tiptap/extension-collaboration").default;
-  // eslint-disable-next-line @typescript-eslint/no-require-imports
-  const CollaborationCursor = require("@tiptap/extension-collaboration-cursor").default;
-
   return [
     StarterKit.configure({
       heading: false,
