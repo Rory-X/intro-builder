@@ -10,6 +10,7 @@ import { createResume, deleteResume, duplicateResume } from "./actions";
 import { migrateContent } from "@/lib/migrate-content";
 import { getTemplateMeta } from "@/lib/templates/registry";
 import { TemplateRenderer } from "@/components/preview/template-renderer";
+import { computeCompletenessScore } from "@/hooks/use-completeness-score";
 import type { Metadata } from "next";
 import { ResumeCardLink } from "./resume-card-link";
 import { PendingSubmitButton } from "./pending-submit-button";
@@ -63,6 +64,7 @@ export default async function DashboardPage() {
           {list.map((r) => {
             const content = migrateContent(r.content);
             const templateName = getTemplateMeta(r.templateId).name;
+            const score = computeCompletenessScore(content).overall;
             return (
               <div key={r.id} className="group relative">
                 {/* Preview card */}
@@ -86,6 +88,8 @@ export default async function DashboardPage() {
                       {r.updatedAt.toLocaleDateString("zh-CN")}
                       <span className="mx-1 text-border">&middot;</span>
                       <span>{templateName}</span>
+                      <span className="mx-1 text-border">&middot;</span>
+                      <span className={score >= 70 ? "text-emerald-500" : score >= 40 ? "text-amber-500" : "text-destructive"}>{score}%</span>
                     </p>
                   </div>
                   <DropdownMenu>
