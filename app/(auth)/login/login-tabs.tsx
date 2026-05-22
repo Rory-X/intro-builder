@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useTransition } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -14,19 +14,25 @@ type Props = {
 
 export function LoginTabs({ sendLoginLink, loginWithPassword }: Props) {
   const [tab, setTab] = useState<"magic" | "password">("magic");
-  const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [magicPending, startMagicTransition] = useTransition();
+  const [pwdPending, startPwdTransition] = useTransition();
 
-  async function handlePasswordSubmit(formData: FormData) {
-    setLoading(true);
+  function handleMagicSubmit(formData: FormData) {
+    startMagicTransition(async () => {
+      await sendLoginLink(formData);
+    });
+  }
+
+  function handlePasswordSubmit(formData: FormData) {
     setError("");
-    try {
-      await loginWithPassword(formData);
-    } catch {
-      setError("邮箱或密码错误");
-    } finally {
-      setLoading(false);
-    }
+    startPwdTransition(async () => {
+      try {
+        await loginWithPassword(formData);
+      } catch {
+        setError("邮箱或密码错误");
+      }
+    });
   }
 
   return (
@@ -57,43 +63,50 @@ export function LoginTabs({ sendLoginLink, loginWithPassword }: Props) {
 
       {/* Magic link form */}
       {tab === "magic" && (
-        <form action={sendLoginLink} className="flex flex-col gap-4">
-          <div className="flex flex-col gap-1.5">
-            <Label htmlFor="email-magic">邮箱</Label>
-            <div className="relative">
-              <Mail className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-              <Input id="email-magic" name="email" type="email" required placeholder="you@example.com" className="pl-9" />
+        <form action={handleMagicSubmit} className="flex flex-col gap-4">
+          <fieldset disabled={magicPending} className="flex flex-col gap-4">
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="email-magic">邮箱</Label>
+              <div className="relative">
+                <Mail className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                <Input id="email-magic" name="email" type="email" required placeholder="you@example.com" className="pl-9" />
+              </div>
             </div>
-          </div>
-          <Button type="submit" className="w-full shadow-sm shadow-primary/20">发送登录链接</Button>
+            <Button type="submit" disabled={magicPending} className="w-full shadow-sm shadow-primary/20">
+              {magicPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              {magicPending ? "发送中…" : "发送登录链接"}
+            </Button>
+          </fieldset>
         </form>
       )}
 
       {/* Password form */}
       {tab === "password" && (
         <form action={handlePasswordSubmit} className="flex flex-col gap-4">
-          <div className="flex flex-col gap-1.5">
-            <Label htmlFor="email-pwd">邮箱</Label>
-            <div className="relative">
-              <Mail className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-              <Input id="email-pwd" name="email" type="email" required placeholder="you@example.com" className="pl-9" />
+          <fieldset disabled={pwdPending} className="flex flex-col gap-4">
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="email-pwd">邮箱</Label>
+              <div className="relative">
+                <Mail className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                <Input id="email-pwd" name="email" type="email" required placeholder="you@example.com" className="pl-9" />
+              </div>
             </div>
-          </div>
-          <div className="flex flex-col gap-1.5">
-            <Label htmlFor="password">密码</Label>
-            <div className="relative">
-              <Lock className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-              <Input id="password" name="password" type="password" required placeholder="输入密码" className="pl-9" />
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="password">密码</Label>
+              <div className="relative">
+                <Lock className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                <Input id="password" name="password" type="password" required placeholder="输入密码" className="pl-9" />
+              </div>
             </div>
-          </div>
-          {error && <p className="text-sm text-destructive">{error}</p>}
-          <Button type="submit" disabled={loading} className="w-full shadow-sm shadow-primary/20">
-            {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-            登录
-          </Button>
-          <p className="text-center text-xs text-muted-foreground">
-            还没设置密码？使用魔法链接登录后可在设置中设置密码。
-          </p>
+            {error && <p className="text-sm text-destructive">{error}</p>}
+            <Button type="submit" disabled={pwdPending} className="w-full shadow-sm shadow-primary/20">
+              {pwdPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              {pwdPending ? "登录中…" : "登录"}
+            </Button>
+            <p className="text-center text-xs text-muted-foreground">
+              还没设置密码？使用魔法链接登录后可在设置中设置密码。
+            </p>
+          </fieldset>
         </form>
       )}
     </div>
