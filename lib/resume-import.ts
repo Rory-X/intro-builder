@@ -137,21 +137,33 @@ interface LLMResumeData {
 
 async function structureWithLLM(text: string): Promise<LLMResumeData> {
   const deepseek = getDeepSeekClient();
-  const response = await deepseek.chat.completions.create({
-    model: "deepseek-chat",
-    response_format: { type: "json_object" },
-    messages: [
-      { role: "system", content: SYSTEM_PROMPT },
-      { role: "user", content: text },
-    ],
-    temperature: 0.1,
-    max_tokens: 4000,
-  });
+
+  let response;
+  try {
+    response = await deepseek.chat.completions.create({
+      model: "deepseek-chat",
+      response_format: { type: "json_object" },
+      messages: [
+        { role: "system", content: SYSTEM_PROMPT },
+        { role: "user", content: text },
+      ],
+      temperature: 0.1,
+      max_tokens: 4000,
+    });
+  } catch (apiErr) {
+    console.error("[structureWithLLM] API call failed:", apiErr);
+    throw new Error("AI 解析服务暂时不可用，请稍后重试");
+  }
 
   const content = response.choices[0]?.message?.content;
-  if (!content) throw new Error("DeepSeek returned empty response");
+  if (!content) throw new Error("AI 返回空结果，请稍后重试");
 
-  return JSON.parse(content) as LLMResumeData;
+  try {
+    return JSON.parse(content) as LLMResumeData;
+  } catch {
+    console.error("[structureWithLLM] Invalid JSON:", content.substring(0, 200));
+    throw new Error("AI 返回格式异常，请重试");
+  }
 }
 
 // ─── Convert to ResumeContent ────────────────────────────────

@@ -11,6 +11,7 @@ import type { ImportResult } from "@/lib/resume-import";
 type Step = "idle" | "uploading" | "success" | "error";
 
 const ACCEPTED = ".pdf,.docx,.jpg,.jpeg,.png";
+const TIMEOUT_MS = 120_000; // 2 minutes client-side timeout
 
 export function ImportResumeButton() {
   const router = useRouter();
@@ -28,18 +29,69 @@ export function ImportResumeButton() {
     setProgress("正在上传文件…");
 
     try {
+      // Validate file size client-side
+      if (file.size > 5 * 1024 * 1024) {
+        setStep("error");
+        setError("文件过大，最大支持 5MB");
+        return;
+      }
+
       const formData = new FormData();
       formData.append("file", file);
 
-      setProgress("正在解析简历…（可能需要 5-15 秒）");
+      setProgress("正在解析简历…（可能需要 10-30 秒）");
 
-      const response = await fetch("/api/import-resume", {
-        method: "POST",
-        body: formData,
-        credentials: "include",
-      });
+      // Fetch with timeout
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), TIMEOUT_MS);
 
-      const result: ImportResult = await response.json();
+      let response: Response;
+      try {
+        response = await fetch("/api/import-resume", {
+          method: "POST",
+          body: formData,
+          credentials: "include",
+          signal: controller.signal,
+        });
+      } catch (fetchErr) {
+        clearTimeout(timeoutId);
+        if (fetchErr instanceof DOMException && fetchErr.name === "AbortError") {
+          throw new Error("请求超时，请稍后重试");
+        }
+        throw new Error("网络请求失败，请检查网络连接");
+      }
+      clearTimeout(timeoutId);
+
+      // Check response status before parsing
+      if (!response.ok) {
+        // Try to extract error message from JSON response
+        let errorMsg = `服务器错误 (${response.status})`;
+        try {
+          const contentType = response.headers.get("content-type") || "";
+          if (contentType.includes("application/json")) {
+            const errBody = await response.json();
+            if (errBody.error) errorMsg = errBody.error;
+          }
+        } catch {
+          // If we can't parse the error response, use the generic message
+        }
+        throw new Error(errorMsg);
+      }
+
+      // Parse JSON response safely
+      let result: ImportResult;
+      try {
+        const contentType = response.headers.get("content-type") || "";
+        if (!contentType.includes("application/json")) {
+          throw new Error("服务器返回了非预期的响应格式");
+        }
+        result = await response.json();
+      } catch (parseErr) {
+        if (parseErr instanceof Error && parseErr.message.includes("非预期")) {
+          throw parseErr;
+        }
+        throw new Error("解析服务器响应失败，请稍后重试");
+      }
 
       if (result.status === "success") {
         setProgress("正在创建简历…");
@@ -56,7 +108,14 @@ export function ImportResumeButton() {
           credentials: "include",
         });
 
-        if (!createRes.ok) throw new Error("创建简历失败");
+        if (!createRes.ok) {
+          let createErr = "创建简历失败";
+          try {
+            const body = await createRes.json();
+            if (body.error) createErr = body.error;
+          } catch { /* ignore */ }
+          throw new Error(createErr);
+        }
         const { id } = await createRes.json();
 
         setStep("success");
@@ -70,7 +129,7 @@ export function ImportResumeButton() {
         setError(result.error);
       } else {
         setStep("error");
-        setError(result.error);
+        setError(result.error || "解析失败，请稍后重试");
       }
     } catch (e) {
       setStep("error");
@@ -135,6 +194,9 @@ export function ImportResumeButton() {
             <div className="flex flex-col items-center gap-3 py-4">
               <Loader2 className="h-8 w-8 animate-spin text-primary" />
               <p className="text-sm text-muted-foreground">{progress}</p>
+              <p className="text-[11px] text-muted-foreground/60">
+                文件越大解析时间越长，请耐心等待
+              </p>
             </div>
           )}
 

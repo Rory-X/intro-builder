@@ -2,6 +2,10 @@ import { NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { importResume, isSupportedType } from "@/lib/resume-import";
 
+// Allow up to 60 seconds for this route (Vercel Pro)
+// OCR + LLM call can take 10-30 seconds
+export const maxDuration = 60;
+
 const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5MB
 
 export async function POST(request: Request) {
@@ -29,6 +33,15 @@ export async function POST(request: Request) {
       return NextResponse.json(
         { error: "文件过大，最大支持 5MB" },
         { status: 400 },
+      );
+    }
+
+    // Check DeepSeek API key is configured
+    if (!process.env.DEEPSEEK_API_KEY) {
+      console.error("[import-resume] DEEPSEEK_API_KEY not configured");
+      return NextResponse.json(
+        { status: "parse-failed", error: "服务未配置完整，请联系管理员" },
+        { status: 500 },
       );
     }
 
