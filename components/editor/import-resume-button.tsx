@@ -134,6 +134,22 @@ export function ImportResumeButton() {
     setProgress("");
   }
 
+  // Track whether the trigger button initiated the close, so we can
+  // distinguish trigger-clicks from outside-clicks in onOpenChange.
+  const triggerClickRef = useRef(false);
+
+  // During uploading/success, block closes from outside interaction;
+  // only allow dismissal via the trigger button.
+  const handleOpenChange = useCallback((v: boolean) => {
+    if (!v && (step === "uploading" || step === "success") && !triggerClickRef.current) {
+      // Block close from outside interaction during processing
+      return;
+    }
+    triggerClickRef.current = false;
+    setOpen(v);
+    if (!v) reset();
+  }, [step]);
+
   return (
     <>
       <input
@@ -143,14 +159,27 @@ export function ImportResumeButton() {
         className="hidden"
         onChange={handleInputChange}
       />
-      <Popover open={open} onOpenChange={(v) => { setOpen(v); if (!v && step !== "uploading") reset(); }}>
-        <PopoverTrigger>
+
+      {/* Gray backdrop overlay when popover is open during processing */}
+      {open && step === "uploading" && (
+        <div className="fixed inset-0 z-40 bg-black/20" aria-hidden="true" />
+      )}
+
+      <Popover open={open} onOpenChange={handleOpenChange}>
+        <PopoverTrigger
+          onClick={() => { triggerClickRef.current = true; }}
+          className="relative z-50"
+        >
           <Button variant="outline" size="sm" className="gap-1.5">
             <FileUp className="h-4 w-4" />
             导入简历
           </Button>
         </PopoverTrigger>
-        <PopoverContent align="end" sideOffset={8} className="w-80">
+        <PopoverContent
+          align="end"
+          sideOffset={8}
+          className="z-50 w-80"
+        >
           {step === "idle" && (
             <div className="flex flex-col items-center gap-3 py-2">
               <div className="rounded-full bg-muted p-3">
