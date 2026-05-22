@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   computeCompletenessScore,
-} from "@/hooks/use-completeness-score";
+} from "@/lib/completeness-score";
 import type { ResumeContent } from "@/lib/resume-schema";
 import { emptyResumeContent } from "@/lib/resume-schema";
 import { emptyDoc } from "@/lib/tiptap-types";

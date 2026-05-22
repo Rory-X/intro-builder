@@ -10,7 +10,7 @@ import { createResume, deleteResume, duplicateResume } from "./actions";
 import { migrateContent } from "@/lib/migrate-content";
 import { getTemplateMeta } from "@/lib/templates/registry";
 import { TemplateRenderer } from "@/components/preview/template-renderer";
-import { computeCompletenessScore } from "@/hooks/use-completeness-score";
+import { computeCompletenessScore } from "@/lib/completeness-score";
 import { ImportResumeButton } from "@/components/editor/import-resume-button";
 import type { Metadata } from "next";
 import { ResumeCardLink } from "./resume-card-link";
