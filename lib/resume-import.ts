@@ -228,19 +228,25 @@ function llmDataToResumeContent(data: LLMResumeData): ResumeContent {
 
 // ─── Main Entry Point ────────────────────────────────────────
 
+export type ProgressCallback = (step: "extracting" | "ocr" | "structuring") => void;
+
 export async function importResume(
   buffer: Buffer,
   mimeType: string,
+  onProgress?: ProgressCallback,
 ): Promise<ImportResult> {
   const warnings: string[] = [];
   let text: string;
 
   try {
     // Step 1: Extract text based on file type
+    onProgress?.("extracting");
+
     if (mimeType === "application/pdf") {
       const { text: pdfText, isScanned } = await extractFromPdf(buffer);
       if (isScanned) {
         // Scanned PDF — fall back to OCR
+        onProgress?.("ocr");
         const ocr = await ocrImage(buffer);
         if (ocr.confidence < 60) {
           return {
@@ -258,6 +264,7 @@ export async function importResume(
     } else if (mimeType === "application/vnd.openxmlformats-officedocument.wordprocessingml.document") {
       text = await extractFromDocx(buffer);
     } else if (mimeType === "image/jpeg" || mimeType === "image/png") {
+      onProgress?.("ocr");
       const ocr = await ocrImage(buffer);
       if (ocr.confidence < 60) {
         return {
@@ -278,6 +285,7 @@ export async function importResume(
     }
 
     // Step 2: Structure with LLM
+    onProgress?.("structuring");
     const llmData = await structureWithLLM(text);
 
     // Step 3: Convert to ResumeContent

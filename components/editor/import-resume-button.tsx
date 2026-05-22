@@ -11,7 +11,6 @@ import type { ImportResult } from "@/lib/resume-import";
 type Step = "idle" | "uploading" | "success" | "error";
 
 const ACCEPTED = ".pdf,.docx,.jpg,.jpeg,.png";
-const TIMEOUT_MS = 120_000; // 2 minutes client-side timeout
 
 export function ImportResumeButton() {
   const router = useRouter();
@@ -39,62 +38,43 @@ export function ImportResumeButton() {
       const formData = new FormData();
       formData.append("file", file);
 
-      setProgress("正在解析简历…（可能需要 10-30 秒）");
+      setProgress("正在上传…");
 
-      // Fetch with timeout
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), TIMEOUT_MS);
+      // Use streaming fetch to avoid gateway timeout
+      const response = await fetch("/api/import-resume", {
+        method: "POST",
+        body: formData,
+        credentials: "include",
+      });
 
-      let response: Response;
-      try {
-        response = await fetch("/api/import-resume", {
-          method: "POST",
-          body: formData,
-          credentials: "include",
-          signal: controller.signal,
-        });
-      } catch (fetchErr) {
-        clearTimeout(timeoutId);
-        if (fetchErr instanceof DOMException && fetchErr.name === "AbortError") {
-          throw new Error("请求超时，请稍后重试");
-        }
-        throw new Error("网络请求失败，请检查网络连接");
-      }
-      clearTimeout(timeoutId);
-
-      // Check response status before parsing
       if (!response.ok) {
-        // Specific message for gateway timeout
+        // Handle non-streaming error responses
         if (response.status === 504) {
           throw new Error("解析超时，文件可能过大或服务繁忙，请稍后重试");
         }
-        // Try to extract error message from JSON response
-        let errorMsg = `服务器错误 (${response.status})，请稍后重试`;
+        let errorMsg = `服务器错误 (${response.status})`;
         try {
           const contentType = response.headers.get("content-type") || "";
           if (contentType.includes("application/json")) {
             const errBody = await response.json();
             if (errBody.error) errorMsg = errBody.error;
           }
-        } catch {
-          // If we can't parse the error response, use the generic message
-        }
+        } catch { /* ignore */ }
         throw new Error(errorMsg);
       }
 
-      // Parse JSON response safely
+      // Check if response is streaming (SSE) or plain JSON
+      const contentType = response.headers.get("content-type") || "";
       let result: ImportResult;
-      try {
-        const contentType = response.headers.get("content-type") || "";
-        if (!contentType.includes("application/json")) {
-          throw new Error("服务器返回了非预期的响应格式");
-        }
+
+      if (contentType.includes("text/event-stream")) {
+        // Parse Server-Sent Events stream
+        result = await readSSEStream(response, (msg) => setProgress(msg));
+      } else if (contentType.includes("application/json")) {
+        // Fallback: plain JSON response
         result = await response.json();
-      } catch (parseErr) {
-        if (parseErr instanceof Error && parseErr.message.includes("非预期")) {
-          throw parseErr;
-        }
-        throw new Error("解析服务器响应失败，请稍后重试");
+      } else {
+        throw new Error("服务器返回了非预期的响应格式");
       }
 
       if (result.status === "success") {
@@ -144,7 +124,6 @@ export function ImportResumeButton() {
   function handleInputChange(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     if (file) void handleFile(file);
-    // Reset input so same file can be selected again
     e.target.value = "";
   }
 
@@ -164,7 +143,7 @@ export function ImportResumeButton() {
         className="hidden"
         onChange={handleInputChange}
       />
-      <Popover open={open} onOpenChange={(v) => { setOpen(v); if (!v) reset(); }}>
+      <Popover open={open} onOpenChange={(v) => { setOpen(v); if (!v && step !== "uploading") reset(); }}>
         <PopoverTrigger>
           <Button variant="outline" size="sm" className="gap-1.5">
             <FileUp className="h-4 w-4" />
@@ -199,7 +178,7 @@ export function ImportResumeButton() {
               <Loader2 className="h-8 w-8 animate-spin text-primary" />
               <p className="text-sm text-muted-foreground">{progress}</p>
               <p className="text-[11px] text-muted-foreground/60">
-                文件越大解析时间越长，请耐心等待
+                通常需要 10-30 秒，请耐心等待
               </p>
             </div>
           )}
@@ -232,4 +211,48 @@ export function ImportResumeButton() {
       </Popover>
     </>
   );
+}
+
+// ─── SSE Stream Reader ──────────────────────────────────────
+
+async function readSSEStream(
+  response: Response,
+  onProgress: (message: string) => void,
+): Promise<ImportResult> {
+  const reader = response.body!.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+  let lastResult: ImportResult | null = null;
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+
+    buffer += decoder.decode(value, { stream: true });
+    const lines = buffer.split("\n");
+    buffer = lines.pop() || ""; // Keep incomplete line in buffer
+
+    for (const line of lines) {
+      if (!line.startsWith("data: ")) continue;
+      const jsonStr = line.slice(6).trim();
+      if (!jsonStr) continue;
+
+      try {
+        const event = JSON.parse(jsonStr);
+        if (event.step === "done" && event.result) {
+          lastResult = event.result as ImportResult;
+        } else if (event.message) {
+          onProgress(event.message);
+        }
+      } catch {
+        // Skip malformed events
+      }
+    }
+  }
+
+  if (!lastResult) {
+    throw new Error("服务器未返回解析结果");
+  }
+
+  return lastResult;
 }
