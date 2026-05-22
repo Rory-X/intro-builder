@@ -67,8 +67,8 @@ export default async function DashboardPage() {
               <div key={r.id} className="group relative">
                 {/* Preview card */}
                 <ResumeCardLink href={`/resume/${r.id}/edit`}>
-                  <div className="overflow-hidden rounded-xl border bg-white shadow-sm transition-all duration-200 hover:shadow-lg hover:shadow-primary/5 [container-type:inline-size] dark:border-neutral-700 dark:bg-neutral-900"
-                       style={{ aspectRatio: "210/297" }}>
+                  <div className="overflow-hidden rounded-xl border shadow-sm transition-all duration-200 hover:shadow-lg hover:shadow-primary/5 [container-type:inline-size]"
+                       style={{ aspectRatio: "210/297", backgroundColor: "#ffffff" }}>
                     <div className="pointer-events-none origin-top-left [transform:scale(calc(100cqw/820px))]" style={{ width: "820px" }}>
                       <TemplateRenderer
                         templateId={r.templateId}

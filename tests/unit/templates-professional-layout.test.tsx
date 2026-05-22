@@ -63,7 +63,7 @@ describe("ProfessionalLayout", () => {
   it("uses light resume paper root", () => {
     const { container } = render(<ProfessionalLayout content={emptyResumeContent()} />);
     const article = container.querySelector("article");
-    expect(article).toHaveClass("bg-white", "text-black");
+    expect(article).toHaveStyle({ backgroundColor: "#ffffff", color: "#000000" });
   });
 
   it("renders education with school left, date right, and metadata below", () => {

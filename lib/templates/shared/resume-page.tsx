@@ -21,7 +21,7 @@ export function ResumePage({
   return (
     <article
       className={cn(
-        "mx-auto bg-white text-black dark:bg-white dark:text-black print:bg-white print:text-black",
+        "mx-auto",
         maxWidthClass,
         className,
       )}
@@ -30,6 +30,8 @@ export function ResumePage({
         lineHeight: ss.lineHeight,
         padding: `${ss.pagePadding}px`,
         fontFamily: FONT_MAP[ss.fontFamily].css,
+        backgroundColor: "#ffffff",
+        color: "#000000",
       }}
     >
       {children}

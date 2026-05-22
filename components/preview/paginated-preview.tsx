@@ -302,17 +302,18 @@ export const PaginatedPreview = forwardRef<HTMLDivElement, Props>(function Pagin
         return (
           <div
             key={i}
-            className="relative overflow-hidden rounded-sm bg-white shadow-md ring-1 ring-black/5 dark:bg-white"
+            className="relative overflow-hidden rounded-sm shadow-md ring-1 ring-black/5"
             style={{
               width: `${A4_WIDTH_PX}px`,
               height: `${A4_HEIGHT_PX}px`,
+              backgroundColor: "#ffffff",
             }}
           >
             {/* Top white overlay for continuation page breathing room */}
             {!isFirstPage && (
               <div
-                className="absolute inset-x-0 top-0 z-[1] bg-white dark:bg-white"
-                style={{ height: `${CONTINUATION_PADDING}px` }}
+                className="absolute inset-x-0 top-0 z-[1]"
+                style={{ backgroundColor: "#ffffff", height: `${CONTINUATION_PADDING}px` }}
               />
             )}
             {/* Content shifted to show this page's portion */}
@@ -331,8 +332,8 @@ export const PaginatedPreview = forwardRef<HTMLDivElement, Props>(function Pagin
             {/* Bottom white overlay to hide content beyond break point */}
             {bottomOverlay > 0 && (
               <div
-                className="absolute inset-x-0 bottom-0 z-[1] bg-white dark:bg-white"
-                style={{ height: `${bottomOverlay}px` }}
+                className="absolute inset-x-0 bottom-0 z-[1]"
+                style={{ backgroundColor: "#ffffff", height: `${bottomOverlay}px` }}
               />
             )}
             {/* Page number indicator */}
@@ -351,8 +352,8 @@ export const PaginatedPreview = forwardRef<HTMLDivElement, Props>(function Pagin
       {/* Fallback: show single page while measuring */}
       {!measured && (
         <div
-          className="overflow-hidden rounded-sm bg-white shadow-md ring-1 ring-black/5 dark:bg-white"
-          style={{ width: `${A4_WIDTH_PX}px`, minHeight: `${A4_HEIGHT_PX}px` }}
+          className="overflow-hidden rounded-sm shadow-md ring-1 ring-black/5"
+          style={{ width: `${A4_WIDTH_PX}px`, minHeight: `${A4_HEIGHT_PX}px`, backgroundColor: "#ffffff" }}
         >
           <TemplateRenderer
             templateId={templateId}
