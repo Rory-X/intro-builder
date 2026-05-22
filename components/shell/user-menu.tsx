@@ -1,7 +1,7 @@
 "use client";
 import { useState } from "react";
 import Link from "next/link";
-import { LogOut, Menu } from "lucide-react";
+import { LogOut, Menu, Settings } from "lucide-react";
 import {
   Popover, PopoverContent, PopoverTrigger,
 } from "@/components/ui/popover";
@@ -63,6 +63,14 @@ export function UserMenu({ email, name, signOutAction }: Props) {
               <div className="truncate text-xs text-muted-foreground">{email}</div>
             </div>
             <div className="p-1">
+              <Link
+                href="/settings"
+                onClick={() => setPopoverOpen(false)}
+                className="flex w-full items-center gap-2 rounded-md px-2.5 py-2 text-sm text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+              >
+                <Settings className="h-4 w-4" />
+                账户设置
+              </Link>
               <button
                 type="button"
                 onClick={() => {

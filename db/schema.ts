@@ -11,6 +11,7 @@ export const users = pgTable("user", {
   email: text("email").notNull(),
   emailVerified: timestamp("emailVerified", { mode: "date" }),
   image: text("image"),
+  passwordHash: text("passwordHash"),
 }, (t) => ({
   emailIdx: uniqueIndex("user_email_idx").on(t.email),
 }));
