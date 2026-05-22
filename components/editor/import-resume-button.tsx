@@ -134,18 +134,13 @@ export function ImportResumeButton() {
     setProgress("");
   }
 
-  // Track whether the trigger button initiated the close, so we can
-  // distinguish trigger-clicks from outside-clicks in onOpenChange.
-  const triggerClickRef = useRef(false);
-
-  // During uploading/success, block closes from outside interaction;
-  // only allow dismissal via the trigger button.
-  const handleOpenChange = useCallback((v: boolean) => {
-    if (!v && (step === "uploading" || step === "success") && !triggerClickRef.current) {
-      // Block close from outside interaction during processing
-      return;
+  // During uploading/success, only allow the trigger button to close;
+  // in idle/error states, any close reason (outside click, escape, trigger) works.
+  const handleOpenChange = useCallback((v: boolean, details: { reason?: string }) => {
+    if (!v && (step === "uploading" || step === "success")) {
+      // Only allow trigger-press to close during processing
+      if (details.reason !== "trigger-press") return;
     }
-    triggerClickRef.current = false;
     setOpen(v);
     if (!v) reset();
   }, [step]);
@@ -166,10 +161,7 @@ export function ImportResumeButton() {
       )}
 
       <Popover open={open} onOpenChange={handleOpenChange}>
-        <PopoverTrigger
-          onClick={() => { triggerClickRef.current = true; }}
-          className="relative z-50"
-        >
+        <PopoverTrigger className="relative z-50">
           <Button variant="outline" size="sm" className="gap-1.5">
             <FileUp className="h-4 w-4" />
             导入简历
