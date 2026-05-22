@@ -58,12 +58,8 @@ export function useCollabProvider(config: CollabConfig | null): CollabState | nu
       const ydoc = new Y.Doc();
       ydocRef.current = ydoc;
 
-      const protocol = PARTYKIT_HOST.startsWith("127.0.0.1") || PARTYKIT_HOST.startsWith("localhost")
-        ? "ws"
-        : "wss";
-
       const provider = new WebsocketProvider(
-        `${protocol}://${PARTYKIT_HOST}/party/${config.roomId}`,
+        PARTYKIT_HOST,
         config.roomId,
         ydoc,
         { params: { token: config.partyToken } },

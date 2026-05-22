@@ -28,3 +28,44 @@ export const tiptapExtensions = [
     types: ["paragraph", "listItem"],
   }),
 ];
+
+/**
+ * Create TipTap extensions for collaborative mode.
+ * Disables built-in undo/redo (Y.js has its own undo manager).
+ */
+export function createCollabExtensions(ydoc: import("yjs").Doc, provider: unknown, user: { name: string; color: string }) {
+  // These are dynamically imported at module level but only used in collab mode
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const Collaboration = require("@tiptap/extension-collaboration").default;
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const CollaborationCursor = require("@tiptap/extension-collaboration-cursor").default;
+
+  return [
+    StarterKit.configure({
+      heading: false,
+      codeBlock: false,
+      blockquote: false,
+      horizontalRule: false,
+      link: false,
+      underline: false,
+      undoRedo: false, // Y.js handles undo/redo in collab mode
+    }),
+    Link.configure({ openOnClick: false }),
+    Underline,
+    TextStyleKit.configure({
+      fontFamily: false,
+      lineHeight: false,
+      backgroundColor: false,
+    }),
+    TextAlign.configure({
+      types: ["paragraph", "listItem"],
+    }),
+    Collaboration.configure({
+      document: ydoc,
+    }),
+    CollaborationCursor.configure({
+      provider,
+      user,
+    }),
+  ];
+}
