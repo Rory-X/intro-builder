@@ -1,0 +1,282 @@
+import type { ResumeContent } from "@/lib/resume-schema";
+import { bulletsToDoc, emptyDoc } from "@/lib/tiptap-types";
+import { DEFAULT_SECTION_ORDER } from "@/lib/resume-schema";
+import OpenAI from "openai";
+
+function getDeepSeekClient() {
+  return new OpenAI({
+    baseURL: "https://api.deepseek.com",
+    apiKey: process.env.DEEPSEEK_API_KEY ?? "",
+  });
+}
+
+export type ImportResult =
+  | { status: "success"; data: ResumeContent; warnings?: string[] }
+  | { status: "ocr-failed"; error: string }
+  | { status: "parse-failed"; error: string };
+
+const SUPPORTED_TYPES = new Set([
+  "application/pdf",
+  "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  "image/jpeg",
+  "image/png",
+]);
+
+export function isSupportedType(mimeType: string): boolean {
+  return SUPPORTED_TYPES.has(mimeType);
+}
+
+// ─── Text Extraction ────────────────────────────────────────
+
+async function extractFromPdf(buffer: Buffer): Promise<{ text: string; isScanned: boolean }> {
+  const { PDFParse } = await import("pdf-parse");
+  const parser = new PDFParse({ data: buffer });
+  try {
+    const result = await parser.getText();
+    const text = result.text.trim();
+    return { text, isScanned: text.length < 50 };
+  } finally {
+    await parser.destroy();
+  }
+}
+
+async function extractFromDocx(buffer: Buffer): Promise<string> {
+  const mammoth = await import("mammoth");
+  const result = await mammoth.extractRawText({ buffer });
+  return result.value.trim();
+}
+
+async function ocrImage(buffer: Buffer): Promise<{ text: string; confidence: number }> {
+  const { createWorker } = await import("tesseract.js");
+  const worker = await createWorker("chi_sim+eng");
+  try {
+    const { data } = await worker.recognize(buffer);
+    return { text: data.text.trim(), confidence: data.confidence };
+  } finally {
+    await worker.terminate();
+  }
+}
+
+// ─── LLM Structuring ────────────────────────────────────────
+
+const SYSTEM_PROMPT = `你是一个简历解析助手。将用户提供的简历文本精确转换为结构化 JSON。
+
+严格按以下格式输出 JSON（不要输出任何其他内容）：
+{
+  "basics": {
+    "name": "",
+    "title": "",
+    "email": "",
+    "phone": "",
+    "location": "",
+    "website": "",
+    "summary": ""
+  },
+  "experience": [
+    { "company": "", "title": "", "start": "", "end": "", "location": "", "contentText": "" }
+  ],
+  "education": [
+    { "school": "", "degree": "", "major": "", "start": "", "end": "", "gpa": "" }
+  ],
+  "projects": [
+    { "name": "", "role": "", "start": "", "end": "", "stack": [], "link": "", "contentText": "" }
+  ],
+  "skills": [
+    { "category": "", "items": [] }
+  ]
+}
+
+规则：
+- 日期格式统一为 YYYY-MM（如 2023-06）
+- contentText 保留原始的工作/项目描述文字，每个要点用换行分隔
+- 如果某字段在简历中不存在，留空字符串或空数组
+- skills 按类别分组（如：编程语言、框架、工具等）
+- 从文本中提取尽可能多的信息，不要遗漏
+- 只输出 JSON，不要加 markdown 代码块标记`;
+
+interface LLMResumeData {
+  basics: {
+    name: string;
+    title: string;
+    email: string;
+    phone: string;
+    location: string;
+    website: string;
+    summary: string;
+  };
+  experience: Array<{
+    company: string;
+    title: string;
+    start: string;
+    end: string;
+    location: string;
+    contentText: string;
+  }>;
+  education: Array<{
+    school: string;
+    degree: string;
+    major: string;
+    start: string;
+    end: string;
+    gpa: string;
+  }>;
+  projects: Array<{
+    name: string;
+    role: string;
+    start: string;
+    end: string;
+    stack: string[];
+    link: string;
+    contentText: string;
+  }>;
+  skills: Array<{
+    category: string;
+    items: string[];
+  }>;
+}
+
+async function structureWithLLM(text: string): Promise<LLMResumeData> {
+  const deepseek = getDeepSeekClient();
+  const response = await deepseek.chat.completions.create({
+    model: "deepseek-chat",
+    response_format: { type: "json_object" },
+    messages: [
+      { role: "system", content: SYSTEM_PROMPT },
+      { role: "user", content: text },
+    ],
+    temperature: 0.1,
+    max_tokens: 4000,
+  });
+
+  const content = response.choices[0]?.message?.content;
+  if (!content) throw new Error("DeepSeek returned empty response");
+
+  return JSON.parse(content) as LLMResumeData;
+}
+
+// ─── Convert to ResumeContent ────────────────────────────────
+
+function textToTipTapContent(text: string) {
+  const lines = text.split("\n").map(l => l.trim()).filter(Boolean);
+  if (lines.length === 0) return emptyDoc();
+  return bulletsToDoc(lines);
+}
+
+function llmDataToResumeContent(data: LLMResumeData): ResumeContent {
+  const sectionOrder = [...DEFAULT_SECTION_ORDER];
+
+  return {
+    basics: {
+      name: data.basics.name || "",
+      status: "",
+      title: data.basics.title || "",
+      email: data.basics.email || "",
+      phone: data.basics.phone || "",
+      location: data.basics.location || "",
+      website: data.basics.website || "",
+      summary: data.basics.summary || "",
+      photo: "",
+    },
+    experience: (data.experience || []).map((e) => ({
+      company: e.company || "",
+      title: e.title || "",
+      start: e.start || "",
+      end: e.end || "",
+      location: e.location || "",
+      content: textToTipTapContent(e.contentText || ""),
+    })),
+    education: (data.education || []).map((e) => ({
+      school: e.school || "",
+      degree: e.degree || "",
+      major: e.major || "",
+      location: "",
+      start: e.start || "",
+      end: e.end || "",
+      gpa: e.gpa || "",
+      highlights: emptyDoc(),
+    })),
+    projects: (data.projects || []).map((p) => ({
+      name: p.name || "",
+      role: p.role || "",
+      location: "",
+      start: p.start || "",
+      end: p.end || "",
+      stack: p.stack || [],
+      link: p.link || "",
+      content: textToTipTapContent(p.contentText || ""),
+    })),
+    skills: (data.skills || []).map((s) => ({
+      category: s.category || "",
+      items: s.items || [],
+    })),
+    custom: [],
+    sectionOrder,
+  };
+}
+
+// ─── Main Entry Point ────────────────────────────────────────
+
+export async function importResume(
+  buffer: Buffer,
+  mimeType: string,
+): Promise<ImportResult> {
+  const warnings: string[] = [];
+  let text: string;
+
+  try {
+    // Step 1: Extract text based on file type
+    if (mimeType === "application/pdf") {
+      const { text: pdfText, isScanned } = await extractFromPdf(buffer);
+      if (isScanned) {
+        // Scanned PDF — fall back to OCR
+        const ocr = await ocrImage(buffer);
+        if (ocr.confidence < 60) {
+          return {
+            status: "ocr-failed",
+            error: `图片识别质量过低（置信度 ${Math.round(ocr.confidence)}%），请上传更清晰的文件或文本型 PDF`,
+          };
+        }
+        if (ocr.confidence < 75) {
+          warnings.push("部分内容可能识别不准确，导入后请仔细检查");
+        }
+        text = ocr.text;
+      } else {
+        text = pdfText;
+      }
+    } else if (mimeType === "application/vnd.openxmlformats-officedocument.wordprocessingml.document") {
+      text = await extractFromDocx(buffer);
+    } else if (mimeType === "image/jpeg" || mimeType === "image/png") {
+      const ocr = await ocrImage(buffer);
+      if (ocr.confidence < 60) {
+        return {
+          status: "ocr-failed",
+          error: `图片识别质量过低（置信度 ${Math.round(ocr.confidence)}%），请上传更清晰的图片`,
+        };
+      }
+      if (ocr.confidence < 75) {
+        warnings.push("部分内容可能识别不准确，导入后请仔细检查");
+      }
+      text = ocr.text;
+    } else {
+      return { status: "parse-failed", error: "不支持的文件格式" };
+    }
+
+    if (!text || text.length < 20) {
+      return { status: "parse-failed", error: "未能从文件中提取到有效内容" };
+    }
+
+    // Step 2: Structure with LLM
+    const llmData = await structureWithLLM(text);
+
+    // Step 3: Convert to ResumeContent
+    const resumeContent = llmDataToResumeContent(llmData);
+
+    return { status: "success", data: resumeContent, warnings: warnings.length > 0 ? warnings : undefined };
+  } catch (error) {
+    console.error("[importResume] failed:", error);
+    return {
+      status: "parse-failed",
+      error: error instanceof Error ? error.message : "解析失败，请稍后重试",
+    };
+  }
+}

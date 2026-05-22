@@ -11,6 +11,7 @@ import { migrateContent } from "@/lib/migrate-content";
 import { getTemplateMeta } from "@/lib/templates/registry";
 import { TemplateRenderer } from "@/components/preview/template-renderer";
 import { computeCompletenessScore } from "@/hooks/use-completeness-score";
+import { ImportResumeButton } from "@/components/editor/import-resume-button";
 import type { Metadata } from "next";
 import { ResumeCardLink } from "./resume-card-link";
 import { PendingSubmitButton } from "./pending-submit-button";
@@ -32,13 +33,16 @@ export default async function DashboardPage() {
             {list.length > 0 ? `共 ${list.length} 份简历` : "开始创建你的第一份专业简历"}
           </p>
         </div>
-        <form action={createResume}>
-          <PendingSubmitButton
-            idleIcon={<Plus className="h-4 w-4" />}
-            idleLabel="新建简历"
-            pendingLabel="创建中…"
-          />
-        </form>
+        <div className="flex items-center gap-2">
+          <ImportResumeButton />
+          <form action={createResume}>
+            <PendingSubmitButton
+              idleIcon={<Plus className="h-4 w-4" />}
+              idleLabel="新建简历"
+              pendingLabel="创建中…"
+            />
+          </form>
+        </div>
       </div>
 
       {list.length === 0 ? (
