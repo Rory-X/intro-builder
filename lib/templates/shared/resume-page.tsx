@@ -21,7 +21,7 @@ export function ResumePage({
   return (
     <article
       className={cn(
-        "mx-auto bg-white text-black print:bg-white print:text-black",
+        "mx-auto bg-white text-black dark:bg-white dark:text-black print:bg-white print:text-black",
         maxWidthClass,
         className,
       )}
