@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useCallback, useRef, useSyncExternalStore } from "react";
+import { useEffect, useRef, useSyncExternalStore } from "react";
 
 /**
  * A thin top progress bar that shows during page navigation.
@@ -14,9 +14,14 @@ let progress = 0;
 const listeners = new Set<() => void>();
 let animationTimer: ReturnType<typeof setTimeout> | null = null;
 let completeTimer: ReturnType<typeof setTimeout> | null = null;
+let hydrated = false; // Skip events until hydration is complete
 
 function getProgress() {
   return progress;
+}
+
+function getServerProgress() {
+  return 0; // Always 0 on server
 }
 
 function subscribe(listener: () => void) {
@@ -29,6 +34,8 @@ function emit() {
 }
 
 function startProgress() {
+  if (!hydrated) return; // Don't start during hydration
+
   if (completeTimer) { clearTimeout(completeTimer); completeTimer = null; }
   if (animationTimer) { clearTimeout(animationTimer); animationTimer = null; }
 
@@ -36,28 +43,19 @@ function startProgress() {
   emit();
 
   // Trickle: simulate slow progress
-  const trickle = (target: number, delay: number) => {
-    animationTimer = setTimeout(() => {
-      if (progress < 90) {
-        progress = target;
-        emit();
-      }
-    }, delay);
-  };
-
-  trickle(40, 200);
+  animationTimer = setTimeout(() => {
+    if (progress > 0 && progress < 90) { progress = 40; emit(); }
+  }, 200);
   setTimeout(() => {
-    if (progress < 90) { progress = 60; emit(); }
+    if (progress > 0 && progress < 90) { progress = 60; emit(); }
   }, 500);
   setTimeout(() => {
-    if (progress < 90) { progress = 75; emit(); }
-  }, 1000);
-  setTimeout(() => {
-    if (progress < 90) { progress = 85; emit(); }
-  }, 2000);
+    if (progress > 0 && progress < 90) { progress = 80; emit(); }
+  }, 1500);
 }
 
 function completeProgress() {
+  if (!hydrated) return;
   if (animationTimer) { clearTimeout(animationTimer); animationTimer = null; }
 
   progress = 100;
@@ -71,47 +69,49 @@ function completeProgress() {
 }
 
 export function NavigationProgress() {
-  const currentProgress = useSyncExternalStore(subscribe, getProgress, getProgress);
+  const currentProgress = useSyncExternalStore(subscribe, getProgress, getServerProgress);
   const isPatched = useRef(false);
 
   useEffect(() => {
+    // Mark hydration complete after first effect runs
+    hydrated = true;
+
     if (isPatched.current) return;
     isPatched.current = true;
 
-    // Monkey-patch history methods (Next.js App Router uses these)
     const originalPushState = history.pushState.bind(history);
     const originalReplaceState = history.replaceState.bind(history);
+    let currentUrl = location.href;
 
     history.pushState = function (...args: Parameters<typeof history.pushState>) {
-      startProgress();
+      const newUrl = args[2]?.toString();
       const result = originalPushState(...args);
-      // Complete after a microtask (DOM update happens synchronously after pushState)
-      requestAnimationFrame(() => {
-        completeProgress();
-      });
+      // Only show progress for actual URL changes
+      if (newUrl && new URL(newUrl, location.origin).href !== currentUrl) {
+        startProgress();
+        currentUrl = new URL(newUrl, location.origin).href;
+        requestAnimationFrame(() => completeProgress());
+      }
       return result;
     };
 
     history.replaceState = function (...args: Parameters<typeof history.replaceState>) {
-      // Only show progress for actual navigations, not state-only updates
-      const newUrl = args[2];
-      if (newUrl && newUrl !== location.href && newUrl !== location.pathname + location.search) {
+      const newUrl = args[2]?.toString();
+      const result = originalReplaceState(...args);
+      if (newUrl && new URL(newUrl, location.origin).href !== currentUrl) {
         startProgress();
-        const result = originalReplaceState(...args);
-        requestAnimationFrame(() => {
-          completeProgress();
-        });
-        return result;
+        currentUrl = new URL(newUrl, location.origin).href;
+        requestAnimationFrame(() => completeProgress());
       }
-      return originalReplaceState(...args);
+      return result;
     };
 
-    // Also handle browser back/forward
     const handlePopState = () => {
-      startProgress();
-      requestAnimationFrame(() => {
-        completeProgress();
-      });
+      if (location.href !== currentUrl) {
+        currentUrl = location.href;
+        startProgress();
+        requestAnimationFrame(() => completeProgress());
+      }
     };
 
     window.addEventListener("popstate", handlePopState);

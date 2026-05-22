@@ -64,8 +64,12 @@ export function ImportResumeButton() {
 
       // Check response status before parsing
       if (!response.ok) {
+        // Specific message for gateway timeout
+        if (response.status === 504) {
+          throw new Error("解析超时，文件可能过大或服务繁忙，请稍后重试");
+        }
         // Try to extract error message from JSON response
-        let errorMsg = `服务器错误 (${response.status})`;
+        let errorMsg = `服务器错误 (${response.status})，请稍后重试`;
         try {
           const contentType = response.headers.get("content-type") || "";
           if (contentType.includes("application/json")) {
