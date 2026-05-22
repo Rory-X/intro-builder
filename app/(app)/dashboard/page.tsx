@@ -5,13 +5,14 @@ import { resumes } from "@/db/schema";
 import {
   DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem,
 } from "@/components/ui/dropdown-menu";
-import { Plus, MoreVertical, Edit, Copy, Trash2, FileText } from "lucide-react";
+import { Plus, MoreVertical, Edit, Copy, FileText } from "lucide-react";
 import { createResume, deleteResume, duplicateResume } from "./actions";
 import { migrateContent } from "@/lib/migrate-content";
 import { getTemplateMeta } from "@/lib/templates/registry";
 import { TemplateRenderer } from "@/components/preview/template-renderer";
 import { computeCompletenessScore } from "@/lib/completeness-score";
 import { ImportResumeButton } from "@/components/editor/import-resume-button";
+import { DeleteResumeButton } from "@/components/editor/delete-resume-button";
 import type { Metadata } from "next";
 import { ResumeCardLink } from "./resume-card-link";
 import { PendingSubmitButton } from "./pending-submit-button";
@@ -117,14 +118,10 @@ export default async function DashboardPage() {
                         </form>
                       </DropdownMenuItem>
                       <DropdownMenuItem>
-                        <form action={async () => { "use server"; await deleteResume(r.id); }} className="w-full">
-                          <PendingSubmitButton
-                            variant="inline-destructive"
-                            idleIcon={<Trash2 className="h-3.5 w-3.5" />}
-                            idleLabel="删除"
-                            pendingLabel="删除中…"
-                          />
-                        </form>
+                        <DeleteResumeButton
+                          resumeTitle={r.title}
+                          deleteAction={async () => { "use server"; await deleteResume(r.id); }}
+                        />
                       </DropdownMenuItem>
                     </DropdownMenuContent>
                   </DropdownMenu>
