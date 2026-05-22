@@ -38,6 +38,7 @@ import { exportPreviewImage } from "@/lib/client/export-preview-image";
 import { CompletenessScore } from "@/components/editor/completeness-score";
 import { SmartLayoutButton } from "@/components/editor/smart-layout-button";
 import { ExportButton } from "@/components/editor/export-button";
+import { InviteCollabDialog } from "@/components/collab/invite-collab-dialog";
 
 type Props = {
   id: string;
@@ -380,6 +381,8 @@ export default function EditorClient({ id, initialTitle, initialTemplate, initia
               onExportImage={onExportImage}
               isExportingImage={isExportingImage}
             />
+            <Separator orientation="vertical" className="h-6" />
+            <InviteCollabDialog resumeId={id} onSessionCreated={() => {}} />
           </div>
         </div>
       </div>

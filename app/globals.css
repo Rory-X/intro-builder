@@ -184,3 +184,26 @@
 :is(.dark .thin-scrollbar) {
   scrollbar-color: rgba(255, 255, 255, 0.15) transparent;
 }
+
+/* ─── Collaboration Cursors ─── */
+.collaboration-cursor__caret {
+  position: relative;
+  border-left: 2px solid;
+  margin-left: -1px;
+  margin-right: -1px;
+  pointer-events: none;
+  word-break: normal;
+}
+.collaboration-cursor__label {
+  position: absolute;
+  top: -1.4em;
+  left: -1px;
+  font-size: 10px;
+  font-weight: 500;
+  color: white;
+  padding: 1px 5px;
+  border-radius: 3px 3px 3px 0;
+  white-space: nowrap;
+  user-select: none;
+  line-height: 1.4;
+}

@@ -8,6 +8,13 @@
       "when": 1777387367153,
       "tag": "0000_useful_lord_tyger",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1779474452459,
+      "tag": "0001_new_weapon_omega",
+      "breakpoints": true
     }
   ]
 }

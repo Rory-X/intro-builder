@@ -60,3 +60,20 @@ export const resumes = pgTable("resume", {
   userIdx: index("resume_user_idx").on(r.userId),
   slugIdx: uniqueIndex("resume_slug_idx").on(r.slug),
 }));
+
+// ─── Collaboration Sessions ──────────────────────────────────
+
+export const collabSessions = pgTable("collab_session", {
+  id: text("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  resumeId: text("resumeId").notNull().references(() => resumes.id, { onDelete: "cascade" }),
+  ownerId: text("ownerId").notNull().references(() => users.id, { onDelete: "cascade" }),
+  inviteToken: text("inviteToken").notNull(),
+  mode: text("mode").$type<"edit" | "comment">().notNull().default("edit"),
+  mentorName: text("mentorName"),
+  status: text("status").$type<"pending" | "active" | "expired">().notNull().default("pending"),
+  createdAt: timestamp("createdAt").notNull().defaultNow(),
+  expiresAt: timestamp("expiresAt").notNull(),
+}, (t) => ({
+  tokenIdx: uniqueIndex("collab_session_token_idx").on(t.inviteToken),
+  resumeIdx: index("collab_session_resume_idx").on(t.resumeId),
+}));
