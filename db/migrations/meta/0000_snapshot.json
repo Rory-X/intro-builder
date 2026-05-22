@@ -1,5 +1,5 @@
 {
-  "id": "c3983ba2-c5ff-4609-8746-955c9108ee37",
+  "id": "3b3ef5d0-0404-495e-82d0-75b06e8cd1ad",
   "prevId": "00000000-0000-0000-0000-000000000000",
   "version": "7",
   "dialect": "postgresql",
@@ -105,6 +105,134 @@
       "checkConstraints": {},
       "isRLSEnabled": false
     },
+    "public.collab_session": {
+      "name": "collab_session",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "resumeId": {
+          "name": "resumeId",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "ownerId": {
+          "name": "ownerId",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "inviteToken": {
+          "name": "inviteToken",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "mode": {
+          "name": "mode",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'edit'"
+        },
+        "mentorName": {
+          "name": "mentorName",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "status": {
+          "name": "status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'pending'"
+        },
+        "createdAt": {
+          "name": "createdAt",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "expiresAt": {
+          "name": "expiresAt",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {
+        "collab_session_token_idx": {
+          "name": "collab_session_token_idx",
+          "columns": [
+            {
+              "expression": "inviteToken",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "collab_session_resume_idx": {
+          "name": "collab_session_resume_idx",
+          "columns": [
+            {
+              "expression": "resumeId",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "collab_session_resumeId_resume_id_fk": {
+          "name": "collab_session_resumeId_resume_id_fk",
+          "tableFrom": "collab_session",
+          "tableTo": "resume",
+          "columnsFrom": [
+            "resumeId"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "collab_session_ownerId_user_id_fk": {
+          "name": "collab_session_ownerId_user_id_fk",
+          "tableFrom": "collab_session",
+          "tableTo": "user",
+          "columnsFrom": [
+            "ownerId"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
     "public.resume": {
       "name": "resume",
       "schema": "",
@@ -133,7 +261,7 @@
           "type": "text",
           "primaryKey": false,
           "notNull": true,
-          "default": "'classic'"
+          "default": "'professional'"
         },
         "content": {
           "name": "content",
@@ -297,6 +425,12 @@
         },
         "image": {
           "name": "image",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "passwordHash": {
+          "name": "passwordHash",
           "type": "text",
           "primaryKey": false,
           "notNull": false
