@@ -1,11 +1,7 @@
 import { redirect } from "next/navigation";
 import { auth } from "@/lib/auth";
 import { sendLoginLink, loginWithPassword } from "./actions";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { Card, CardContent } from "@/components/ui/card";
-import { Mail, Lock } from "lucide-react";
 import { LoginTabs } from "./login-tabs";
 import type { Metadata } from "next";
 export const metadata: Metadata = { title: "登录" };

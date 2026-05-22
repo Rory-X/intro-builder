@@ -11,7 +11,6 @@ import {
   ExperienceSectionShell,
   ProjectsSectionShell,
   SkillsSectionShell,
-  SummarySectionShell,
 } from "@/lib/templates/shared/section-shell";
 
 const SIDEBAR_KEYS = new Set(["skills", "education"]);

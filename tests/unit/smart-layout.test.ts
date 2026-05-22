@@ -3,7 +3,6 @@ import {
   interpolateSettings,
   findOptimalSettings,
   A4_HEIGHT_PX,
-  type SmartLayoutResult,
 } from "@/lib/smart-layout";
 import type { StyleSettings } from "@/lib/resume-schema";
 

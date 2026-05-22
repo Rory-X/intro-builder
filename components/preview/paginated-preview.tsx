@@ -261,9 +261,6 @@ export const PaginatedPreview = forwardRef<HTMLDivElement, Props>(function Pagin
   const pageOffsets = [0, ...pageBreaks];
   const numPages = pageOffsets.length;
 
-  // Calculate scaled height for the outer container to avoid layout collapse
-  const totalPagesHeight = numPages * A4_HEIGHT_PX + (numPages - 1) * 32; // pages + gaps
-
   return (
     <div ref={containerRef} className="w-full">
       {/* Invisible measurement container — OUTSIDE the scaled area to ensure accurate A4 measurements */}

@@ -6,7 +6,6 @@ import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { FileUp, Loader2, CheckCircle2, AlertTriangle, Upload } from "lucide-react";
 import { toast } from "sonner";
-import type { ResumeContent } from "@/lib/resume-schema";
 import type { ImportResult } from "@/lib/resume-import";
 
 type Step = "idle" | "uploading" | "success" | "error";

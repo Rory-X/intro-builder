@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { usePathname } from "next/navigation";
 
 /**
@@ -11,13 +11,20 @@ export function NavigationProgress() {
   const pathname = usePathname();
   const [loading, setLoading] = useState(false);
   const [progress, setProgress] = useState(0);
+  const prevPathname = useRef(pathname);
 
   useEffect(() => {
-    // When pathname changes, the navigation completed
-    setLoading(false);
-    setProgress(100);
-    const timer = setTimeout(() => setProgress(0), 200);
-    return () => clearTimeout(timer);
+    // Only react when pathname actually changes (not on mount)
+    if (prevPathname.current === pathname) return;
+    prevPathname.current = pathname;
+
+    // When pathname changes, the navigation completed — schedule state update
+    const frame = requestAnimationFrame(() => {
+      setLoading(false);
+      setProgress(100);
+    });
+    const timer = setTimeout(() => setProgress(0), 400);
+    return () => { cancelAnimationFrame(frame); clearTimeout(timer); };
   }, [pathname]);
 
   useEffect(() => {

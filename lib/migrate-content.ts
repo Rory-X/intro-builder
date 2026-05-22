@@ -34,7 +34,9 @@ function migrateFontSizeMarks(node: Record<string, unknown>): Record<string, unk
         const emValue = pxToEm(fontSize);
         if (!emValue) {
           // Default size — remove fontSize attr; if no other attrs, remove the mark entirely
-          const { fontSize: _fs, ...restAttrs } = attrs;
+          const restAttrs = Object.fromEntries(
+            Object.entries(attrs).filter(([k]) => k !== "fontSize"),
+          );
           if (Object.keys(restAttrs).length === 0) return null; // remove mark
           return { ...mark, attrs: restAttrs };
         }

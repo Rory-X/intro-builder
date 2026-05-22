@@ -10,7 +10,6 @@ import {
   ExperienceSectionShell,
   ProjectsSectionShell,
   SkillsSectionShell,
-  SummarySectionShell,
 } from "./section-shell";
 import { renderResumeEntry, wrapProfessionalEntry } from "./professional-wrap";
 
