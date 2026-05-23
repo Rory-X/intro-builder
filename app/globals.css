@@ -213,7 +213,7 @@
   pointer-events: none;
 }
 #nprogress .bar {
-  background: hsl(var(--primary));
+  background: var(--primary);
   position: fixed;
   z-index: 99999;
   top: 0;
@@ -227,7 +227,7 @@
   right: 0;
   width: 100px;
   height: 100%;
-  box-shadow: 0 0 10px hsl(var(--primary)), 0 0 5px hsl(var(--primary));
+  box-shadow: 0 0 10px var(--primary), 0 0 5px var(--primary);
   opacity: 1;
   transform: rotate(3deg) translate(0px, -4px);
 }
@@ -243,8 +243,8 @@
   height: 18px;
   box-sizing: border-box;
   border: solid 2px transparent;
-  border-top-color: hsl(var(--primary));
-  border-left-color: hsl(var(--primary));
+  border-top-color: var(--primary);
+  border-left-color: var(--primary);
   border-radius: 50%;
   animation: nprogress-spinner 400ms linear infinite;
 }
