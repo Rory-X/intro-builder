@@ -34,7 +34,9 @@ type CollabConfig = {
   role: "owner" | "mentor";
 };
 
-const PARTYKIT_HOST = process.env.NEXT_PUBLIC_PARTYKIT_HOST || "127.0.0.1:1999";
+// NEXT_PUBLIC_* is inlined at build time. Hardcode production value as fallback
+// to handle cases where env var was missing during Vercel build.
+const PARTYKIT_HOST = process.env.NEXT_PUBLIC_PARTYKIT_HOST || "intro-collab.rory-x.partykit.dev";
 
 export function useCollabProvider(config: CollabConfig | null): CollabState | null {
   const [state, setState] = useState<CollabState | null>(null);
