@@ -134,16 +134,15 @@ export function ImportResumeButton() {
     setProgress("");
   }
 
-  // During uploading/success, only allow the trigger button to close;
-  // in idle/error states, any close reason (outside click, escape, trigger) works.
+  // Only allow closing via the trigger button press (not outside click, not escape).
   const handleOpenChange = useCallback((v: boolean, details: { reason?: string }) => {
-    if (!v && (step === "uploading" || step === "success")) {
-      // Only allow trigger-press to close during processing
-      if (details.reason !== "trigger-press") return;
+    if (!v && details.reason !== "trigger-press") {
+      // Block all close attempts except clicking the trigger button
+      return;
     }
     setOpen(v);
     if (!v) reset();
-  }, [step]);
+  }, []);
 
   return (
     <>

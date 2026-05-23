@@ -29,15 +29,10 @@ export function isSupportedType(mimeType: string): boolean {
 // ─── Text Extraction ────────────────────────────────────────
 
 async function extractFromPdf(buffer: Buffer): Promise<{ text: string; isScanned: boolean }> {
-  const { PDFParse } = await import("pdf-parse");
-  const parser = new PDFParse({ data: buffer });
-  try {
-    const result = await parser.getText();
-    const text = result.text.trim();
-    return { text, isScanned: text.length < 50 };
-  } finally {
-    await parser.destroy();
-  }
+  const { extractText } = await import("unpdf");
+  const { text: pages } = await extractText(new Uint8Array(buffer));
+  const text = pages.join("\n").trim();
+  return { text, isScanned: text.length < 50 };
 }
 
 async function extractFromDocx(buffer: Buffer): Promise<string> {
