@@ -43,7 +43,6 @@ export const tiptapExtensions = [
 export function createCollabExtensions(ydoc: import("yjs").Doc, _provider: unknown, _user: { name: string; color: string }) {
   return [
     StarterKit.configure({
-      heading: false,
       codeBlock: false,
       blockquote: false,
       horizontalRule: false,

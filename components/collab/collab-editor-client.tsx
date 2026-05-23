@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useMemo } from "react";
+import { useEffect, useState, useMemo, useRef } from "react";
 import { useEditor, EditorContent } from "@tiptap/react";
 import { useCollabProvider, type CollabConfig } from "@/hooks/use-collab-provider";
 import { createCollabExtensions } from "@/lib/tiptap-extensions";
@@ -19,7 +19,7 @@ type Props = {
   role: "mentor";
 };
 
-export function CollabEditorClient({ resumeTitle, mode }: Props) {
+export function CollabEditorClient({ resumeTitle, resumeContent, mode }: Props) {
   const [config, setConfig] = useState<CollabConfig | null>(null);
 
   // Load collab config from sessionStorage on mount
@@ -56,6 +56,7 @@ export function CollabEditorClient({ resumeTitle, mode }: Props) {
   return (
     <CollabEditorInner
       resumeTitle={resumeTitle}
+      resumeContent={resumeContent}
       mode={mode}
       ydoc={collabState.ydoc}
       provider={collabState.provider}
@@ -69,6 +70,7 @@ export function CollabEditorClient({ resumeTitle, mode }: Props) {
 // Inner component — only mounted when Y.js is ready
 function CollabEditorInner({
   resumeTitle,
+  resumeContent,
   mode,
   ydoc,
   provider,
@@ -77,6 +79,7 @@ function CollabEditorInner({
   isConnected,
 }: {
   resumeTitle: string;
+  resumeContent: ResumeContent;
   mode: "edit" | "comment";
   ydoc: Doc;
   provider: unknown;
@@ -84,6 +87,8 @@ function CollabEditorInner({
   presenceUsers: { userId: string; displayName: string; role: "owner" | "mentor"; color: string }[];
   isConnected: boolean;
 }) {
+  const seededRef = useRef(false);
+
   const extensions = useMemo(
     () => createCollabExtensions(ydoc, provider, { name: displayName, color: "#8B5CF6" }),
     [ydoc, provider, displayName],
@@ -102,6 +107,30 @@ function CollabEditorInner({
     },
     immediatelyRender: false,
   });
+
+  // Seed Y.js document with resume content when it's empty
+  useEffect(() => {
+    if (!editor || seededRef.current) return;
+
+    // Wait a tick for Y.js sync to complete
+    const timer = setTimeout(() => {
+      if (seededRef.current) return;
+
+      // Check if Y.js fragment is empty
+      const fragment = ydoc.getXmlFragment("default");
+      if (fragment.length === 0) {
+        // Build a flat TipTap document from resume content
+        const doc = resumeContentToCollabDoc(resumeContent, resumeTitle);
+        editor.commands.setContent(doc);
+        seededRef.current = true;
+      } else {
+        // Already has content from another peer or persisted state
+        seededRef.current = true;
+      }
+    }, 500);
+
+    return () => clearTimeout(timer);
+  }, [editor, ydoc, resumeContent, resumeTitle]);
 
   return (
     <div className="flex min-h-screen flex-col">
@@ -135,4 +164,104 @@ function CollabEditorInner({
       </main>
     </div>
   );
+}
+
+/**
+ * Convert structured ResumeContent into a flat TipTap document for collaborative editing.
+ * Creates a readable document with section headings and content.
+ */
+function resumeContentToCollabDoc(content: ResumeContent, title: string) {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const nodes: any[] = [];
+
+  // Helper to create a heading node
+  const heading = (text: string, level: number = 2) => ({
+    type: "heading",
+    attrs: { level },
+    content: text ? [{ type: "text", text }] : [],
+  });
+
+  // Helper to create a paragraph
+  const para = (text: string) => ({
+    type: "paragraph",
+    content: text ? [{ type: "text", text }] : [],
+  });
+
+  // Helper to extract text content from TipTap JSON
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const extractNodes = (doc: any) => {
+    if (!doc || !doc.content || !Array.isArray(doc.content)) return [];
+    return doc.content;
+  };
+
+  // Title
+  nodes.push(heading(title, 1));
+
+  // Basics
+  const { basics } = content;
+  if (basics.name) nodes.push(para(`姓名：${basics.name}`));
+  if (basics.title) nodes.push(para(`目标岗位：${basics.title}`));
+  if (basics.email) nodes.push(para(`邮箱：${basics.email}`));
+  if (basics.phone) nodes.push(para(`电话：${basics.phone}`));
+  if (basics.location) nodes.push(para(`所在地：${basics.location}`));
+  if (basics.summary) {
+    nodes.push({ type: "paragraph" });
+    nodes.push(heading("个人总结"));
+    nodes.push(para(basics.summary));
+  }
+
+  // Experience
+  if (content.experience.length > 0) {
+    nodes.push({ type: "paragraph" });
+    nodes.push(heading("工作经历"));
+    for (const exp of content.experience) {
+      const titleLine = [exp.company, exp.title].filter(Boolean).join(" · ");
+      const dateLine = [exp.start, exp.end].filter(Boolean).join(" - ");
+      if (titleLine) nodes.push(para(`【${titleLine}】${dateLine ? `  ${dateLine}` : ""}`));
+      if (exp.content) nodes.push(...extractNodes(exp.content));
+    }
+  }
+
+  // Education
+  if (content.education.length > 0) {
+    nodes.push({ type: "paragraph" });
+    nodes.push(heading("教育经历"));
+    for (const edu of content.education) {
+      const titleLine = [edu.school, edu.degree, edu.major].filter(Boolean).join(" · ");
+      const dateLine = [edu.start, edu.end].filter(Boolean).join(" - ");
+      if (titleLine) nodes.push(para(`【${titleLine}】${dateLine ? `  ${dateLine}` : ""}`));
+      if (edu.highlights) nodes.push(...extractNodes(edu.highlights));
+    }
+  }
+
+  // Projects
+  if (content.projects.length > 0) {
+    nodes.push({ type: "paragraph" });
+    nodes.push(heading("项目经历"));
+    for (const proj of content.projects) {
+      const titleLine = [proj.name, proj.role].filter(Boolean).join(" · ");
+      const dateLine = [proj.start, proj.end].filter(Boolean).join(" - ");
+      if (titleLine) nodes.push(para(`【${titleLine}】${dateLine ? `  ${dateLine}` : ""}`));
+      if (proj.content) nodes.push(...extractNodes(proj.content));
+    }
+  }
+
+  // Skills
+  if (content.skills.length > 0) {
+    nodes.push({ type: "paragraph" });
+    nodes.push(heading("技能"));
+    for (const group of content.skills) {
+      const items = group.items?.join("、") || "";
+      if (group.category || items) {
+        nodes.push(para(`${group.category ? group.category + "：" : ""}${items}`));
+      }
+    }
+  }
+
+  // Ensure at least one node
+  if (nodes.length === 0) {
+    nodes.push(para("在此开始编辑简历内容…"));
+  }
+
+  return { type: "doc", content: nodes };
 }
