@@ -60,9 +60,7 @@ export function InviteCollabDialog({ resumeId, onSessionCreated }: Props) {
 
   function handleOpen() {
     setOpen(true);
-    if (!inviteUrl) {
-      void handleCreate();
-    }
+    // Don't auto-create — let user pick mode first
   }
 
   return (
@@ -83,23 +81,28 @@ export function InviteCollabDialog({ resumeId, onSessionCreated }: Props) {
 
           {/* Mode selector */}
           {!inviteUrl && !loading && (
-            <div className="flex gap-2">
-              <button
-                type="button"
-                onClick={() => setMode("edit")}
-                className={`flex-1 rounded-lg border-2 p-3 text-left transition-colors ${mode === "edit" ? "border-primary bg-primary/5" : "border-border hover:border-primary/50"}`}
-              >
-                <p className="text-sm font-medium">帮改模式</p>
-                <p className="mt-0.5 text-xs text-muted-foreground">导师可直接编辑简历内容</p>
-              </button>
-              <button
-                type="button"
-                onClick={() => setMode("comment")}
-                className={`flex-1 rounded-lg border-2 p-3 text-left transition-colors ${mode === "comment" ? "border-primary bg-primary/5" : "border-border hover:border-primary/50"}`}
-              >
-                <p className="text-sm font-medium">批注模式</p>
-                <p className="mt-0.5 text-xs text-muted-foreground">导师选中文字添加评论建议</p>
-              </button>
+            <div className="space-y-3">
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => setMode("edit")}
+                  className={`flex-1 rounded-lg border-2 p-3 text-left transition-colors ${mode === "edit" ? "border-primary bg-primary/5" : "border-border hover:border-primary/50"}`}
+                >
+                  <p className="text-sm font-medium">帮改模式</p>
+                  <p className="mt-0.5 text-xs text-muted-foreground">导师可直接编辑简历内容</p>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setMode("comment")}
+                  className={`flex-1 rounded-lg border-2 p-3 text-left transition-colors ${mode === "comment" ? "border-primary bg-primary/5" : "border-border hover:border-primary/50"}`}
+                >
+                  <p className="text-sm font-medium">批注模式</p>
+                  <p className="mt-0.5 text-xs text-muted-foreground">导师选中文字添加评论建议</p>
+                </button>
+              </div>
+              <Button onClick={handleCreate} className="w-full">
+                生成邀请链接
+              </Button>
             </div>
           )}
 
