@@ -22,6 +22,7 @@ import { PresenceBar } from "@/components/collab/presence-bar";
 import { VoiceChatControls } from "@/components/collab/voice-chat-controls";
 import { AnnotationPopover } from "@/components/collab/annotation-popover";
 import { AnnotationList } from "@/components/collab/annotation-list";
+import { AnnotationHighlights } from "@/components/collab/annotation-highlights";
 import { useCollabProvider, type CollabConfig } from "@/hooks/use-collab-provider";
 import { useCollabFormSync } from "@/hooks/use-collab-form-sync";
 import { useAnnotations } from "@/hooks/use-annotations";
@@ -213,6 +214,7 @@ function MentorEditorInner({
             {/* Right: preview with annotation popover (批注模式) */}
             <div ref={previewRef} className="thin-scrollbar relative flex-1 overflow-y-auto bg-muted p-6">
               <LivePreview templateId={templateId} />
+              <AnnotationHighlights previewRef={previewRef} annotations={annotations} />
               <AnnotationPopover
                 previewRef={previewRef}
                 onSubmit={(data) => addAnnotation({ ...data, authorName: displayNameRef.current })}

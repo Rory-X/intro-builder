@@ -41,8 +41,11 @@ import { ExportButton } from "@/components/editor/export-button";
 import { InviteCollabDialog } from "@/components/collab/invite-collab-dialog";
 import { useCollabProvider } from "@/hooks/use-collab-provider";
 import { useCollabFormSync } from "@/hooks/use-collab-form-sync";
+import { useAnnotations } from "@/hooks/use-annotations";
 import { PresenceBar } from "@/components/collab/presence-bar";
 import { VoiceChatControls } from "@/components/collab/voice-chat-controls";
+import { AnnotationHighlights } from "@/components/collab/annotation-highlights";
+import { AnnotationList } from "@/components/collab/annotation-list";
 
 type Props = {
   id: string;
@@ -213,6 +216,12 @@ export default function EditorClient({ id, initialTitle, initialTemplate, initia
     ydoc: collabState?.ydoc ?? null,
     form,
     role: "owner",
+    enabled: !!collabState?.isConnected,
+  });
+
+  // Annotations for comment mode (owner sees mentor's annotations)
+  const { annotations: collabAnnotations, updateStatus: updateAnnotationStatus } = useAnnotations({
+    ydoc: collabState?.ydoc ?? null,
     enabled: !!collabState?.isConnected,
   });
 
@@ -519,7 +528,24 @@ export default function EditorClient({ id, initialTitle, initialTemplate, initia
             style={{ width: `${100 - splitPercent}%` }}
           >
             <LivePreview ref={previewRootRef} templateId={template} />
+            {/* Annotation highlights on preview (when collab active) */}
+            {collabAnnotations.length > 0 && (
+              <AnnotationHighlights
+                previewRef={previewRootRef}
+                annotations={collabAnnotations}
+              />
+            )}
           </div>
+          {/* Annotation panel (when there are annotations from mentor) */}
+          {collabAnnotations.length > 0 && (
+            <div className="thin-scrollbar w-[300px] shrink-0 overflow-y-auto border-l bg-background p-3">
+              <AnnotationList
+                annotations={collabAnnotations}
+                canManage
+                onUpdateStatus={updateAnnotationStatus}
+              />
+            </div>
+          )}
         </div>
       ) : (
         <div className="flex min-h-[60vh] flex-col items-center justify-center gap-4 px-6 text-center">
