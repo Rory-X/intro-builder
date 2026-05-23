@@ -57,6 +57,11 @@ export async function POST(request: Request) {
         controller.enqueue(encoder.encode(`data: ${JSON.stringify(data)}\n\n`));
       }
 
+      // Heartbeat keeps the connection alive during long operations
+      const heartbeat = setInterval(() => {
+        try { sendEvent({ step: "heartbeat" }); } catch { /* stream closed */ }
+      }, 5_000);
+
       try {
         sendEvent({ step: "extracting", message: "正在提取文件内容…" });
 
@@ -75,6 +80,7 @@ export async function POST(request: Request) {
           },
         });
       } finally {
+        clearInterval(heartbeat);
         controller.close();
       }
     },
