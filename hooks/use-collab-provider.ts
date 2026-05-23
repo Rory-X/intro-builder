@@ -42,12 +42,16 @@ export function useCollabProvider(config: CollabConfig | null): CollabState | nu
     let pollTimer: ReturnType<typeof setInterval> | null = null;
 
     async function connect() {
-      const { WebsocketProvider } = await import("y-partykit/provider");
+      // Use YPartyKitProvider (default export) — NOT the base WebsocketProvider.
+      // YPartyKitProvider correctly constructs: wss://{host}/parties/main/{room}?_pk=...&token=...
+      // The base WebsocketProvider treats the host as a raw serverUrl (no protocol added),
+      // causing the browser to resolve it as a relative URL → connects to the wrong domain.
+      const { default: YPartyKitProvider } = await import("y-partykit/provider");
       if (cancelled) return;
 
       const ydoc = new Y.Doc();
 
-      const provider = new WebsocketProvider(
+      const provider = new YPartyKitProvider(
         PARTYKIT_HOST,
         config!.roomId,
         ydoc,
