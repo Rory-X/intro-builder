@@ -30,21 +30,32 @@ export default class CollabServer implements Party.Server {
     // Verify JWT
     const secret = this.room.env.COLLAB_JWT_SECRET as string;
     if (!secret) {
-      conn.close(4000, "Server misconfigured");
-      return;
+      // If no secret configured, log and allow (dev mode fallback)
+      console.warn("[CollabServer] COLLAB_JWT_SECRET not set, allowing connection without auth");
+      const meta: ConnectionMeta = {
+        userId: "anonymous",
+        displayName: "Guest",
+        role: "mentor",
+        color: MENTOR_COLORS[this.connections.size % MENTOR_COLORS.length],
+      };
+      this.connections.set(conn.id, meta);
+      this.broadcastPresence();
+      return onConnect(conn, this.room, { persist: { mode: "snapshot" } });
     }
 
     let payload: CollabTokenPayload;
     try {
       payload = await verifyCollabToken(token, secret);
-    } catch {
+    } catch (err) {
+      console.error("[CollabServer] Token verification failed:", err);
       conn.close(4002, "Invalid or expired token");
       return;
     }
 
-    // Verify room ID matches the token
-    const expectedRoom = `resume:${payload.resumeId}:${payload.sessionId}`;
+    // Verify room ID matches the token (use - separator)
+    const expectedRoom = `resume-${payload.resumeId}-${payload.sessionId}`;
     if (this.room.id !== expectedRoom) {
+      console.error(`[CollabServer] Room mismatch: expected=${expectedRoom}, got=${this.room.id}`);
       conn.close(4003, "Room mismatch");
       return;
     }

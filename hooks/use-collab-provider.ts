@@ -62,7 +62,11 @@ export function useCollabProvider(config: CollabConfig | null): CollabState | nu
         PARTYKIT_HOST,
         config.roomId,
         ydoc,
-        { params: { token: config.partyToken } },
+        {
+          params: { token: config.partyToken },
+          maxBackoffTime: 10000, // Max 10s between retries (not infinite)
+          disableBc: true, // Disable broadcast channel (not needed for 1-on-1)
+        },
       ) as unknown as WebSocketProvider;
       providerRef.current = provider;
 

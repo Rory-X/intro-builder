@@ -48,6 +48,6 @@ export async function POST(req: Request) {
 
   return NextResponse.json({
     partyToken,
-    roomId: `resume:${collab.resumeId}:${collab.id}`,
+    roomId: `resume-${collab.resumeId}-${collab.id}`,
   });
 }

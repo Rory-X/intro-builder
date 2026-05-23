@@ -48,6 +48,6 @@ export async function POST(req: Request) {
     resumeId: session.resumeId,
     sessionId: session.id,
     mode: session.mode,
-    roomId: `resume:${session.resumeId}:${session.id}`,
+    roomId: `resume-${session.resumeId}-${session.id}`,
   });
 }
