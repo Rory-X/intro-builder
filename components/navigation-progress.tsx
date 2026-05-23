@@ -1,87 +1,134 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { Suspense, useEffect, useRef } from "react";
+import { usePathname, useSearchParams } from "next/navigation";
 import NProgress from "nprogress";
 
 /**
  * Top progress bar + spinner using NProgress.
- * Detects navigation by monkey-patching history.pushState/replaceState
- * (which Next.js App Router uses under the hood).
+ *
+ * Detection strategy:
+ * - START: intercept clicks on <a> elements targeting internal routes
+ * - COMPLETE: when usePathname()/useSearchParams() changes (page rendered)
+ * - Also exports startProgress/doneProgress for programmatic navigation
  */
 
-// Configure NProgress once
 NProgress.configure({
   showSpinner: true,
-  minimum: 0.1,
+  minimum: 0.08,
   trickleSpeed: 200,
-  speed: 300,
+  speed: 200,
 });
 
-export function NavigationProgress() {
-  const isPatched = useRef(false);
+// Export for programmatic use (e.g., router.push in event handlers)
+export function startProgress() {
+  NProgress.start();
+}
+export function doneProgress() {
+  NProgress.done();
+}
 
+function NavigationProgressInner() {
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const prevUrl = useRef("");
+  const listening = useRef(false);
+
+  // COMPLETE: when route changes, finish the progress bar
   useEffect(() => {
-    if (isPatched.current) return;
-    isPatched.current = true;
+    const url = `${pathname}?${searchParams?.toString() ?? ""}`;
+    if (prevUrl.current && prevUrl.current !== url) {
+      NProgress.done();
+    }
+    prevUrl.current = url;
+  }, [pathname, searchParams]);
 
+  // START: listen for link clicks on internal routes
+  useEffect(() => {
+    if (listening.current) return;
+    listening.current = true;
+
+    function handleClick(e: MouseEvent) {
+      // Find the closest <a> element from the click target
+      const anchor = (e.target as HTMLElement)?.closest?.("a");
+      if (!anchor) return;
+
+      const href = anchor.getAttribute("href");
+      if (!href) return;
+
+      // Skip external links, hash links, download links, new tab links
+      if (
+        anchor.target === "_blank" ||
+        anchor.hasAttribute("download") ||
+        href.startsWith("#") ||
+        href.startsWith("mailto:") ||
+        href.startsWith("tel:") ||
+        e.ctrlKey || e.metaKey || e.shiftKey || e.altKey
+      ) {
+        return;
+      }
+
+      // Check if it's an internal link
+      try {
+        const url = new URL(href, location.origin);
+        if (url.origin !== location.origin) return;
+        // Skip if same page
+        if (url.pathname === location.pathname && url.search === location.search) return;
+      } catch {
+        return;
+      }
+
+      NProgress.start();
+    }
+
+    // Also patch pushState/replaceState for programmatic navigation
     const originalPushState = history.pushState.bind(history);
     const originalReplaceState = history.replaceState.bind(history);
-    let currentUrl = location.href;
-    let doneTimer: ReturnType<typeof setTimeout> | null = null;
-
-    function scheduleComplete() {
-      // Ensure the progress bar is visible for at least 300ms,
-      // then wait for browser idle (React rendering finished)
-      if (doneTimer) clearTimeout(doneTimer);
-      doneTimer = setTimeout(() => {
-        if ("requestIdleCallback" in window) {
-          requestIdleCallback(() => NProgress.done(), { timeout: 1000 });
-        } else {
-          NProgress.done();
-        }
-      }, 300);
-    }
 
     history.pushState = function (...args: Parameters<typeof history.pushState>) {
       const result = originalPushState(...args);
-      const newUrl = args[2]?.toString();
-      if (newUrl && new URL(newUrl, location.origin).href !== currentUrl) {
-        currentUrl = new URL(newUrl, location.origin).href;
-        NProgress.start();
-        scheduleComplete();
+      // Start progress if URL actually changed and not already started
+      if (args[2]) {
+        try {
+          const newHref = new URL(args[2].toString(), location.origin).href;
+          if (newHref !== prevUrl.current) {
+            NProgress.start();
+          }
+        } catch { /* ignore invalid URLs */ }
       }
       return result;
     };
 
     history.replaceState = function (...args: Parameters<typeof history.replaceState>) {
       const result = originalReplaceState(...args);
-      const newUrl = args[2]?.toString();
-      if (newUrl && new URL(newUrl, location.origin).href !== currentUrl) {
-        currentUrl = new URL(newUrl, location.origin).href;
-        NProgress.start();
-        scheduleComplete();
+      if (args[2]) {
+        try {
+          const newHref = new URL(args[2].toString(), location.origin).href;
+          if (newHref !== prevUrl.current) {
+            NProgress.start();
+          }
+        } catch { /* ignore */ }
       }
       return result;
     };
 
-    const handlePopState = () => {
-      if (location.href !== currentUrl) {
-        currentUrl = location.href;
-        NProgress.start();
-        scheduleComplete();
-      }
-    };
-
-    window.addEventListener("popstate", handlePopState);
+    document.addEventListener("click", handleClick, true); // capture phase
 
     return () => {
+      document.removeEventListener("click", handleClick, true);
       history.pushState = originalPushState;
       history.replaceState = originalReplaceState;
-      window.removeEventListener("popstate", handlePopState);
-      if (doneTimer) clearTimeout(doneTimer);
-      isPatched.current = false;
+      listening.current = false;
     };
   }, []);
 
-  return null; // NProgress manages its own DOM
+  return null;
+}
+
+export function NavigationProgress() {
+  return (
+    <Suspense fallback={null}>
+      <NavigationProgressInner />
+    </Suspense>
+  );
 }

@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { FileUp, Loader2, CheckCircle2, AlertTriangle, Upload } from "lucide-react";
 import { toast } from "sonner";
+import { startProgress } from "@/components/navigation-progress";
 import type { ImportResult } from "@/lib/resume-import";
 
 type Step = "idle" | "uploading" | "success" | "error";
@@ -106,6 +107,7 @@ export function ImportResumeButton() {
         toast.success("简历导入成功");
         setTimeout(() => {
           setOpen(false);
+          startProgress();
           router.push(`/resume/${id}/edit`);
         }, 500);
       } else if (result.status === "ocr-failed") {
