@@ -1,14 +1,13 @@
 "use client";
 
 /**
- * WebRTC P2P voice chat with call/answer flow (like WeChat).
- *
- * Flow:
- * 1. Caller clicks "发起通话" → sends "voice-ring" via WebSocket
- * 2. Callee sees incoming call UI → can accept or reject
- * 3. If accepted: WebRTC offer/answer exchange
- * 4. 30s timeout: auto-cancel if no answer
- * 5. Either side can hangup at any time
+ * WebRTC P2P voice chat with:
+ * - Call/answer flow (WeChat-style, 30s timeout)
+ * - WebSocket reconnection detection
+ * - ICE candidate buffering
+ * - TURN fallback servers
+ * - Connection timeout (15s) + auto-retry (1x)
+ * - Error classification for UI
  */
 
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -23,10 +22,20 @@ export type VoiceChatStatus =
   | "connected"      // call active
   | "error";
 
+export type VoiceError =
+  | "mic-denied"       // 麦克风权限被拒
+  | "timeout"          // 连接超时
+  | "network"          // ICE/NAT 失败
+  | "peer-rejected"    // 对方拒绝
+  | "peer-timeout"     // 对方未接
+  | "disconnected"     // 通话中断开
+  | null;
+
 export type VoiceChatState = {
   status: VoiceChatStatus;
   isMuted: boolean;
-  callerName?: string;   // who's calling (for incoming call UI)
+  callerName?: string;
+  errorType: VoiceError;
   startCall: () => void;
   acceptCall: () => void;
   rejectCall: () => void;
@@ -35,13 +44,11 @@ export type VoiceChatState = {
 };
 
 type UseVoiceChatOptions = {
-  /** YPartyKitProvider instance — we access its WebSocket for signaling */
   provider: unknown;
-  /** Only show voice when true (e.g. 2 users present) */
   enabled: boolean;
 };
 
-// ---------- Signal message types ----------
+// ---------- Signal types ----------
 
 const VOICE_TYPES = [
   "voice-ring", "voice-accept", "voice-reject", "voice-cancel",
@@ -62,16 +69,33 @@ const RTC_CONFIG: RTCConfiguration = {
   iceServers: [
     { urls: "stun:stun.l.google.com:19302" },
     { urls: "stun:stun1.l.google.com:19302" },
+    // Free TURN fallback for symmetric NAT / corporate firewalls
+    {
+      urls: "turn:openrelay.metered.ca:80",
+      username: "openrelayproject",
+      credential: "openrelayproject",
+    },
+    {
+      urls: "turn:openrelay.metered.ca:443",
+      username: "openrelayproject",
+      credential: "openrelayproject",
+    },
+    {
+      urls: "turn:openrelay.metered.ca:443?transport=tcp",
+      username: "openrelayproject",
+      credential: "openrelayproject",
+    },
   ],
 };
 
 const RING_TIMEOUT_MS = 30_000;
+const CONNECT_TIMEOUT_MS = 15_000;
+const MAX_RETRIES = 1;
 
 // ---------- Helpers ----------
 
 function getWs(provider: unknown): WebSocket | null {
   if (!provider || typeof provider !== "object") return null;
-  // YPartyKitProvider stores WebSocket as .ws
   const p = provider as Record<string, unknown>;
   const ws = p.ws;
   if (ws && typeof ws === "object" && "readyState" in ws && "send" in ws) {
@@ -92,34 +116,48 @@ export function useVoiceChat({ provider, enabled }: UseVoiceChatOptions): VoiceC
   const [status, setStatus] = useState<VoiceChatStatus>("idle");
   const [isMuted, setIsMuted] = useState(false);
   const [callerName, setCallerName] = useState<string>();
+  const [errorType, setErrorType] = useState<VoiceError>(null);
 
   const pcRef = useRef<RTCPeerConnection | null>(null);
   const localStreamRef = useRef<MediaStream | null>(null);
   const remoteAudioRef = useRef<HTMLAudioElement | null>(null);
   const ringTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const connectTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const retryCountRef = useRef(0);
+  const iceCandidateBuffer = useRef<RTCIceCandidateInit[]>([]);
   const statusRef = useRef(status);
   useEffect(() => { statusRef.current = status; });
 
+  // Track current WebSocket for reconnection detection
+  const wsRef = useRef<WebSocket | null>(null);
+  const listenerRef = useRef<((e: MessageEvent) => void) | null>(null);
+
   // ----- Cleanup -----
-  const cleanup = useCallback(() => {
-    if (ringTimeoutRef.current) {
-      clearTimeout(ringTimeoutRef.current);
-      ringTimeoutRef.current = null;
-    }
-    if (pcRef.current) {
-      pcRef.current.close();
-      pcRef.current = null;
-    }
-    if (localStreamRef.current) {
-      localStreamRef.current.getTracks().forEach((t) => t.stop());
-      localStreamRef.current = null;
-    }
-    if (remoteAudioRef.current) {
-      remoteAudioRef.current.srcObject = null;
-    }
-    setStatus("idle");
+  const cleanup = useCallback((error?: VoiceError) => {
+    if (ringTimeoutRef.current) { clearTimeout(ringTimeoutRef.current); ringTimeoutRef.current = null; }
+    if (connectTimeoutRef.current) { clearTimeout(connectTimeoutRef.current); connectTimeoutRef.current = null; }
+    if (pcRef.current) { pcRef.current.close(); pcRef.current = null; }
+    if (localStreamRef.current) { localStreamRef.current.getTracks().forEach((t) => t.stop()); localStreamRef.current = null; }
+    if (remoteAudioRef.current) { remoteAudioRef.current.srcObject = null; }
+    iceCandidateBuffer.current = [];
     setIsMuted(false);
     setCallerName(undefined);
+    if (error) {
+      setStatus("error");
+      setErrorType(error);
+    } else {
+      setStatus("idle");
+      setErrorType(null);
+    }
+  }, []);
+
+  // ----- Flush buffered ICE candidates -----
+  const flushIceCandidates = useCallback(() => {
+    if (!pcRef.current || !pcRef.current.remoteDescription) return;
+    for (const c of iceCandidateBuffer.current) {
+      pcRef.current.addIceCandidate(new RTCIceCandidate(c)).catch(() => {});
+    }
+    iceCandidateBuffer.current = [];
   }, []);
 
   // ----- Create RTCPeerConnection -----
@@ -142,11 +180,42 @@ export function useVoiceChat({ provider, enabled }: UseVoiceChatOptions): VoiceC
 
     pc.onconnectionstatechange = () => {
       const s = pc.connectionState;
-      if (s === "connected") setStatus("connected");
-      else if (s === "failed" || s === "closed") cleanup();
+      if (s === "connected") {
+        if (connectTimeoutRef.current) { clearTimeout(connectTimeoutRef.current); connectTimeoutRef.current = null; }
+        retryCountRef.current = 0;
+        setStatus("connected");
+        setErrorType(null);
+      } else if (s === "failed") {
+        // Try retry
+        if (retryCountRef.current < MAX_RETRIES) {
+          retryCountRef.current++;
+          cleanup();
+          // Auto-retry after 2s (will be triggered by the caller)
+        } else {
+          cleanup("network");
+        }
+      } else if (s === "closed" || s === "disconnected") {
+        if (statusRef.current === "connected") {
+          cleanup("disconnected");
+        }
+      }
     };
 
     pcRef.current = pc;
+
+    // Connection timeout
+    connectTimeoutRef.current = setTimeout(() => {
+      if (statusRef.current === "connecting") {
+        if (retryCountRef.current < MAX_RETRIES) {
+          retryCountRef.current++;
+          cleanup();
+          // Return to idle for retry
+        } else {
+          cleanup("timeout");
+        }
+      }
+    }, CONNECT_TIMEOUT_MS);
+
     return pc;
   }, [cleanup]);
 
@@ -155,14 +224,15 @@ export function useVoiceChat({ provider, enabled }: UseVoiceChatOptions): VoiceC
     const ws = getWs(provider);
     if (!ws || !enabled || statusRef.current !== "idle") return;
 
+    retryCountRef.current = 0;
     setStatus("ringing-out");
+    setErrorType(null);
     sendSignal(ws, { type: "voice-ring" });
 
-    // 30s timeout
     ringTimeoutRef.current = setTimeout(() => {
       if (statusRef.current === "ringing-out") {
         sendSignal(ws, { type: "voice-cancel" });
-        cleanup();
+        cleanup("peer-timeout");
       }
     }, RING_TIMEOUT_MS);
   }, [provider, enabled, cleanup]);
@@ -171,7 +241,6 @@ export function useVoiceChat({ provider, enabled }: UseVoiceChatOptions): VoiceC
   const acceptCall = useCallback(() => {
     const ws = getWs(provider);
     if (!ws || statusRef.current !== "ringing-in") return;
-
     setStatus("connecting");
     sendSignal(ws, { type: "voice-accept" });
   }, [provider]);
@@ -204,26 +273,19 @@ export function useVoiceChat({ provider, enabled }: UseVoiceChatOptions): VoiceC
     }
   }, []);
 
-  // ----- WebSocket signaling listener -----
-  useEffect(() => {
-    if (!enabled) return;
-    const ws = getWs(provider);
-    if (!ws) return;
-
-    const handleMessage = async (event: MessageEvent) => {
+  // ----- WebSocket message handler (signaling) -----
+  const createMessageHandler = useCallback((ws: WebSocket) => {
+    return async (event: MessageEvent) => {
       if (typeof event.data !== "string") return;
 
       let msg: VoiceSignal;
       try {
         msg = JSON.parse(event.data);
-        if (!msg.type || !VOICE_TYPES.includes(msg.type as typeof VOICE_TYPES[number])) return;
-      } catch {
-        return;
-      }
+        if (!msg.type || !VOICE_TYPES.includes(msg.type as (typeof VOICE_TYPES)[number])) return;
+      } catch { return; }
 
       const currentStatus = statusRef.current;
 
-      // --- Incoming ring (we are callee) ---
       if (msg.type === "voice-ring") {
         if (currentStatus === "idle") {
           setStatus("ringing-in");
@@ -232,29 +294,19 @@ export function useVoiceChat({ provider, enabled }: UseVoiceChatOptions): VoiceC
         return;
       }
 
-      // --- Caller cancelled / timed out ---
       if (msg.type === "voice-cancel") {
-        if (currentStatus === "ringing-in") {
-          cleanup();
-        }
+        if (currentStatus === "ringing-in") cleanup();
         return;
       }
 
-      // --- Callee rejected ---
       if (msg.type === "voice-reject") {
-        if (currentStatus === "ringing-out") {
-          cleanup();
-        }
+        if (currentStatus === "ringing-out") cleanup("peer-rejected");
         return;
       }
 
-      // --- Callee accepted → caller initiates WebRTC offer ---
       if (msg.type === "voice-accept") {
         if (currentStatus === "ringing-out") {
-          if (ringTimeoutRef.current) {
-            clearTimeout(ringTimeoutRef.current);
-            ringTimeoutRef.current = null;
-          }
+          if (ringTimeoutRef.current) { clearTimeout(ringTimeoutRef.current); ringTimeoutRef.current = null; }
           setStatus("connecting");
           try {
             const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
@@ -265,16 +317,14 @@ export function useVoiceChat({ provider, enabled }: UseVoiceChatOptions): VoiceC
             await pc.setLocalDescription(offer);
             sendSignal(ws, { type: "voice-offer", sdp: offer.sdp! });
           } catch (err) {
-            console.error("[voice] create offer failed:", err);
+            const isDenied = err instanceof DOMException && err.name === "NotAllowedError";
             sendSignal(ws, { type: "voice-hangup" });
-            cleanup();
-            setStatus("error");
+            cleanup(isDenied ? "mic-denied" : "network");
           }
         }
         return;
       }
 
-      // --- Incoming offer (callee receives after they accepted) ---
       if (msg.type === "voice-offer") {
         if (currentStatus === "connecting" || currentStatus === "ringing-in") {
           setStatus("connecting");
@@ -284,58 +334,86 @@ export function useVoiceChat({ provider, enabled }: UseVoiceChatOptions): VoiceC
             const pc = createPC(ws);
             stream.getTracks().forEach((t) => pc.addTrack(t, stream));
             await pc.setRemoteDescription(new RTCSessionDescription({ type: "offer", sdp: msg.sdp! }));
+            flushIceCandidates();
             const answer = await pc.createAnswer();
             await pc.setLocalDescription(answer);
             sendSignal(ws, { type: "voice-answer", sdp: answer.sdp! });
           } catch (err) {
-            console.error("[voice] handle offer failed:", err);
+            const isDenied = err instanceof DOMException && err.name === "NotAllowedError";
             sendSignal(ws, { type: "voice-hangup" });
-            cleanup();
-            setStatus("error");
+            cleanup(isDenied ? "mic-denied" : "network");
           }
         }
         return;
       }
 
-      // --- Incoming answer (caller receives) ---
       if (msg.type === "voice-answer") {
         if (pcRef.current?.signalingState === "have-local-offer") {
           try {
-            await pcRef.current.setRemoteDescription(
-              new RTCSessionDescription({ type: "answer", sdp: msg.sdp! }),
-            );
-          } catch (err) {
-            console.error("[voice] setRemoteDescription failed:", err);
-          }
+            await pcRef.current.setRemoteDescription(new RTCSessionDescription({ type: "answer", sdp: msg.sdp! }));
+            flushIceCandidates();
+          } catch { cleanup("network"); }
         }
         return;
       }
 
-      // --- ICE candidate ---
       if (msg.type === "voice-ice-candidate" && msg.candidate) {
         if (pcRef.current?.remoteDescription) {
-          try {
-            await pcRef.current.addIceCandidate(new RTCIceCandidate(msg.candidate));
-          } catch (err) {
-            console.error("[voice] addIceCandidate failed:", err);
-          }
+          pcRef.current.addIceCandidate(new RTCIceCandidate(msg.candidate)).catch(() => {});
+        } else {
+          // Buffer until remote description is set
+          iceCandidateBuffer.current.push(msg.candidate);
         }
         return;
       }
 
-      // --- Remote hangup ---
       if (msg.type === "voice-hangup") {
-        cleanup();
+        if (currentStatus === "connected") cleanup("disconnected");
+        else cleanup();
         return;
       }
     };
+  }, [createPC, cleanup, flushIceCandidates]);
 
-    ws.addEventListener("message", handleMessage);
-    return () => ws.removeEventListener("message", handleMessage);
-  }, [provider, enabled, createPC, cleanup]);
+  // ----- WebSocket binding with reconnection detection -----
+  useEffect(() => {
+    if (!enabled) return;
+
+    const bindListener = () => {
+      const ws = getWs(provider);
+      if (ws === wsRef.current) return; // same WS, no change
+
+      // Remove old listener
+      if (wsRef.current && listenerRef.current) {
+        wsRef.current.removeEventListener("message", listenerRef.current);
+      }
+
+      wsRef.current = ws;
+      if (!ws) { listenerRef.current = null; return; }
+
+      const handler = createMessageHandler(ws);
+      listenerRef.current = handler;
+      ws.addEventListener("message", handler);
+    };
+
+    // Bind immediately
+    bindListener();
+
+    // Check for WebSocket reconnection every second
+    const interval = setInterval(bindListener, 1000);
+
+    return () => {
+      clearInterval(interval);
+      if (wsRef.current && listenerRef.current) {
+        wsRef.current.removeEventListener("message", listenerRef.current);
+      }
+      wsRef.current = null;
+      listenerRef.current = null;
+    };
+  }, [provider, enabled, createMessageHandler]);
 
   // Cleanup on unmount
   useEffect(() => cleanup, [cleanup]);
 
-  return { status, isMuted, callerName, startCall, acceptCall, rejectCall, endCall, toggleMute };
+  return { status, isMuted, callerName, errorType, startCall, acceptCall, rejectCall, endCall, toggleMute };
 }

@@ -1,17 +1,52 @@
 "use client";
 
-import { useVoiceChat } from "@/hooks/use-voice-chat";
+import { useEffect, useRef } from "react";
+import { useVoiceChat, type VoiceError } from "@/hooks/use-voice-chat";
 import { Button } from "@/components/ui/button";
-import { Phone, PhoneOff, Mic, MicOff, PhoneIncoming, X } from "lucide-react";
-import { cn } from "@/lib/utils";
+import { Phone, PhoneOff, Mic, MicOff, PhoneIncoming, X, AlertTriangle } from "lucide-react";
+import { toast } from "sonner";
 
 type Props = {
   provider: unknown;
   enabled: boolean;
 };
 
+const ERROR_MESSAGES: Record<NonNullable<VoiceError>, { title: string; desc: string }> = {
+  "mic-denied": { title: "麦克风权限被拒", desc: "请在浏览器设置中允许麦克风访问" },
+  "timeout": { title: "连接超时", desc: "网络环境可能不支持，建议使用微信语音" },
+  "network": { title: "网络连接失败", desc: "当前网络不支持P2P通话，建议使用微信语音" },
+  "peer-rejected": { title: "对方已拒绝", desc: "" },
+  "peer-timeout": { title: "对方未接听", desc: "" },
+  "disconnected": { title: "通话已断开", desc: "" },
+};
+
 export function VoiceChatControls({ provider, enabled }: Props) {
   const voice = useVoiceChat({ provider, enabled });
+  const prevStatusRef = useRef(voice.status);
+  const prevErrorRef = useRef(voice.errorType);
+
+  // Show toast on status transitions
+  useEffect(() => {
+    const prevStatus = prevStatusRef.current;
+    const prevError = prevErrorRef.current;
+    prevStatusRef.current = voice.status;
+    prevErrorRef.current = voice.errorType;
+
+    // Show toast when entering error state
+    if (voice.status === "error" && voice.errorType && voice.errorType !== prevError) {
+      const msg = ERROR_MESSAGES[voice.errorType];
+      if (msg.desc) {
+        toast.error(msg.title, { description: msg.desc });
+      } else {
+        toast.info(msg.title);
+      }
+    }
+
+    // Show toast when call ends unexpectedly from connected
+    if (prevStatus === "connected" && voice.status === "idle") {
+      toast.info("通话已结束");
+    }
+  }, [voice.status, voice.errorType]);
 
   if (!enabled) return null;
 
@@ -19,12 +54,10 @@ export function VoiceChatControls({ provider, enabled }: Props) {
   if (voice.status === "ringing-in") {
     return (
       <>
-        {/* Inline indicator in toolbar */}
         <span className="flex items-center gap-1.5 text-xs font-medium text-green-600 animate-pulse">
           <PhoneIncoming className="h-3.5 w-3.5" />
           来电…
         </span>
-        {/* Full-screen modal */}
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm">
           <div className="w-72 rounded-2xl bg-background p-6 shadow-2xl ring-1 ring-border">
             <div className="flex flex-col items-center gap-4">
@@ -61,7 +94,7 @@ export function VoiceChatControls({ provider, enabled }: Props) {
     );
   }
 
-  // --- Outgoing call (ringing, waiting for answer) ---
+  // --- Outgoing call ---
   if (voice.status === "ringing-out") {
     return (
       <div className="flex items-center gap-2">
@@ -69,12 +102,7 @@ export function VoiceChatControls({ provider, enabled }: Props) {
           <span className="h-2 w-2 animate-pulse rounded-full bg-orange-500" />
           等待接听…
         </span>
-        <Button
-          onClick={voice.endCall}
-          variant="destructive"
-          size="sm"
-          className="h-7 gap-1 px-2 text-xs"
-        >
+        <Button onClick={voice.endCall} variant="destructive" size="sm" className="h-7 gap-1 px-2 text-xs">
           <PhoneOff className="h-3 w-3" />
           取消
         </Button>
@@ -82,17 +110,20 @@ export function VoiceChatControls({ provider, enabled }: Props) {
     );
   }
 
-  // --- Connecting (WebRTC negotiating) ---
+  // --- Connecting ---
   if (voice.status === "connecting") {
     return (
       <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
         <span className="h-2 w-2 animate-pulse rounded-full bg-yellow-500" />
         正在连接…
+        <Button onClick={voice.endCall} variant="ghost" size="sm" className="h-6 px-1.5 text-[10px]">
+          取消
+        </Button>
       </div>
     );
   }
 
-  // --- Connected (active call) ---
+  // --- Connected ---
   if (voice.status === "connected") {
     return (
       <div className="flex items-center gap-1.5">
@@ -109,36 +140,41 @@ export function VoiceChatControls({ provider, enabled }: Props) {
         >
           {voice.isMuted ? <MicOff className="h-3.5 w-3.5 text-destructive" /> : <Mic className="h-3.5 w-3.5" />}
         </Button>
-        <Button
-          onClick={voice.endCall}
-          variant="destructive"
-          size="sm"
-          className="h-7 w-7 p-0"
-          title="挂断"
-        >
+        <Button onClick={voice.endCall} variant="destructive" size="sm" className="h-7 w-7 p-0" title="挂断">
           <PhoneOff className="h-3.5 w-3.5" />
         </Button>
       </div>
     );
   }
 
-  // --- Error ---
+  // --- Error with details ---
   if (voice.status === "error") {
+    const errInfo = voice.errorType ? ERROR_MESSAGES[voice.errorType] : null;
+    const isNetworkError = voice.errorType === "timeout" || voice.errorType === "network";
+
     return (
-      <Button
-        onClick={voice.startCall}
-        variant="outline"
-        size="sm"
-        className={cn("h-7 gap-1 px-2 text-xs text-destructive")}
-        title="连接失败，点击重试"
-      >
-        <Phone className="h-3 w-3" />
-        重试
-      </Button>
+      <div className="flex items-center gap-1.5">
+        {isNetworkError ? (
+          <span className="flex items-center gap-1 text-[10px] text-muted-foreground">
+            <AlertTriangle className="h-3 w-3 text-orange-500" />
+            {errInfo?.title || "连接失败"}
+          </span>
+        ) : null}
+        <Button
+          onClick={voice.startCall}
+          variant="outline"
+          size="sm"
+          className="h-7 gap-1 px-2 text-xs"
+          title={errInfo?.desc || "点击重试"}
+        >
+          <Phone className="h-3 w-3" />
+          重试
+        </Button>
+      </div>
     );
   }
 
-  // --- Idle (default) ---
+  // --- Idle ---
   return (
     <Button
       onClick={voice.startCall}
