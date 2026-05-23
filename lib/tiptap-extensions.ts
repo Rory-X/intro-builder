@@ -4,7 +4,6 @@ import Underline from "@tiptap/extension-underline";
 import TextAlign from "@tiptap/extension-text-align";
 import { TextStyleKit } from "@tiptap/extension-text-style";
 import Collaboration from "@tiptap/extension-collaboration";
-import CollaborationCursor from "@tiptap/extension-collaboration-cursor";
 
 export const tiptapExtensions = [
   StarterKit.configure({
@@ -34,8 +33,14 @@ export const tiptapExtensions = [
 /**
  * Create TipTap extensions for collaborative mode.
  * Disables built-in undo/redo (Y.js has its own undo manager).
+ *
+ * NOTE: CollaborationCursor is temporarily disabled due to incompatibility
+ * between @tiptap/y-tiptap (used by Collaboration@3.22) and y-prosemirror
+ * (used by CollaborationCursor@3.0). They use different PluginKey instances
+ * for ySyncPlugin, causing a crash. Real-time editing still works; cursor
+ * positions are just not shown.
  */
-export function createCollabExtensions(ydoc: import("yjs").Doc, provider: unknown, user: { name: string; color: string }) {
+export function createCollabExtensions(ydoc: import("yjs").Doc, _provider: unknown, _user: { name: string; color: string }) {
   return [
     StarterKit.configure({
       heading: false,
@@ -59,9 +64,7 @@ export function createCollabExtensions(ydoc: import("yjs").Doc, provider: unknow
     Collaboration.configure({
       document: ydoc,
     }),
-    CollaborationCursor.configure({
-      provider,
-      user,
-    }),
+    // TODO: Re-enable cursor once we resolve @tiptap/y-tiptap vs y-prosemirror incompatibility
+    // CollaborationCursor.configure({ provider, user }),
   ];
 }
