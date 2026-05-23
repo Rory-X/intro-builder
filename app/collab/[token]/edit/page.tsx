@@ -2,8 +2,9 @@ import { db } from "@/db";
 import { collabSessions, resumes } from "@/db/schema";
 import { eq } from "drizzle-orm";
 import { notFound } from "next/navigation";
-import { CollabEditorClient } from "@/components/collab/collab-editor-client";
+import { MentorEditorClient } from "@/components/collab/mentor-editor-client";
 import { migrateContent } from "@/lib/migrate-content";
+import { resolveTemplateId } from "@/lib/templates/registry";
 import type { Metadata } from "next";
 
 export const metadata: Metadata = { title: "协作编辑" };
@@ -26,12 +27,11 @@ export default async function MentorEditPage({ params }: { params: Promise<{ tok
   const content = migrateContent(resume.content);
 
   return (
-    <CollabEditorClient
+    <MentorEditorClient
       resumeTitle={resume.title}
-      resumeContent={content}
-      templateId={resume.templateId}
+      initialContent={content}
+      templateId={resolveTemplateId(resume.templateId)}
       mode={session.mode as "edit" | "comment"}
-      role="mentor"
     />
   );
 }

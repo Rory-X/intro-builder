@@ -39,6 +39,9 @@ import { CompletenessScore } from "@/components/editor/completeness-score";
 import { SmartLayoutButton } from "@/components/editor/smart-layout-button";
 import { ExportButton } from "@/components/editor/export-button";
 import { InviteCollabDialog } from "@/components/collab/invite-collab-dialog";
+import { useCollabProvider } from "@/hooks/use-collab-provider";
+import { useCollabFormSync } from "@/hooks/use-collab-form-sync";
+import { PresenceBar } from "@/components/collab/presence-bar";
 
 type Props = {
   id: string;
@@ -153,6 +156,63 @@ export default function EditorClient({ id, initialTitle, initialTemplate, initia
     title,
     onSave: handleAutosaveSave,
     onError: handleAutosaveError,
+  });
+
+  // --- Collab state ---
+  const [collabSessionId, setCollabSessionId] = useState<string | null>(null);
+  const [collabConfig, setCollabConfig] = useState<{
+    roomId: string;
+    partyToken: string;
+    displayName: string;
+    role: "owner" | "mentor";
+  } | null>(null);
+
+  // Poll session status when invite is created, connect when mentor joins
+  useEffect(() => {
+    if (!collabSessionId) return;
+    let cancelled = false;
+    let timer: ReturnType<typeof setInterval> | null = null;
+
+    async function pollStatus() {
+      if (cancelled) return;
+      try {
+        const res = await fetch(`/api/collab/session-status?sessionId=${collabSessionId}`);
+        if (!res.ok) return;
+        const data = await res.json();
+        if (data.status === "active" && !collabConfig) {
+          // Mentor joined! Get owner token and connect
+          const tokenRes = await fetch("/api/collab/owner-token", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ sessionId: collabSessionId }),
+          });
+          if (tokenRes.ok) {
+            const { partyToken, roomId } = await tokenRes.json();
+            setCollabConfig({ roomId, partyToken, displayName: "我", role: "owner" });
+            if (timer) { clearInterval(timer); timer = null; }
+            toast.success(`导师「${data.mentorName || "匿名"}」已加入协作`);
+          }
+        }
+      } catch { /* ignore network errors */ }
+    }
+
+    // Start polling every 3s
+    void pollStatus();
+    timer = setInterval(pollStatus, 3000);
+
+    return () => {
+      cancelled = true;
+      if (timer) clearInterval(timer);
+    };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [collabSessionId, collabConfig]);
+
+  const collabState = useCollabProvider(collabConfig);
+  useCollabFormSync({
+    ydoc: collabState?.ydoc ?? null,
+    form,
+    role: "owner",
+    enabled: !!collabState?.isConnected,
   });
 
   useEffect(() => {
@@ -382,7 +442,13 @@ export default function EditorClient({ id, initialTitle, initialTemplate, initia
               isExportingImage={isExportingImage}
             />
             <Separator orientation="vertical" className="h-6" />
-            <InviteCollabDialog resumeId={id} onSessionCreated={() => {}} />
+            <InviteCollabDialog resumeId={id} onSessionCreated={(sid) => setCollabSessionId(sid)} />
+            {collabState?.isConnected && (
+              <>
+                <Separator orientation="vertical" className="h-6" />
+                <PresenceBar users={collabState.presenceUsers} isConnected={collabState.isConnected} />
+              </>
+            )}
           </div>
         </div>
       </div>
