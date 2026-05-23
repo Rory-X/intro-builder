@@ -22,6 +22,7 @@ import { PresenceBar } from "@/components/collab/presence-bar";
 import { useCollabProvider, type CollabConfig } from "@/hooks/use-collab-provider";
 import { useCollabFormSync } from "@/hooks/use-collab-form-sync";
 import { Loader2 } from "lucide-react";
+import { cn } from "@/lib/utils";
 import type { TemplateId } from "@/lib/templates/registry";
 import type { ResumeContent as ResumeContentType } from "@/lib/resume-schema";
 
@@ -104,7 +105,7 @@ function MentorEditorInner({
   });
 
   // Bidirectional form sync via Y.Map
-  useCollabFormSync({
+  const collabSync = useCollabFormSync({
     ydoc,
     form,
     role: "mentor",
@@ -132,19 +133,46 @@ function MentorEditorInner({
         </div>
       </div>
 
+      {/* Collab activity bar */}
+      {collabSync.changeLog.length > 0 && (
+        <div className="border-b border-blue-200 bg-blue-50/50 px-4 py-1.5 dark:border-blue-800 dark:bg-blue-950/30">
+          <div className="flex items-center gap-2 text-xs">
+            <span className="font-medium text-blue-700 dark:text-blue-300">协作动态</span>
+            <span className="text-blue-500 dark:text-blue-400">
+              {collabSync.changeLog.slice(-3).map((entry) => (
+                <span key={entry.id} className="mr-3">
+                  [{new Date(entry.timestamp).toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" })}]
+                  {" "}{entry.author === "owner" ? "对方" : "你"}修改了「{entry.subfield}」
+                </span>
+              ))}
+            </span>
+          </div>
+        </div>
+      )}
+
       {/* Dual-panel layout: editors + preview */}
       <div className="flex h-[calc(100vh-3rem)]">
         {/* Left: form editors */}
         <div className="thin-scrollbar w-1/2 space-y-6 overflow-y-auto border-r p-6">
-          <BasicsEditor />
+          <div className={cn(
+            "rounded-lg transition-all duration-500",
+            collabSync.highlightedFields.has("basics") && "ring-2 ring-blue-400/60 bg-blue-50/30 dark:bg-blue-950/20"
+          )}>
+            <BasicsEditor />
+          </div>
           {sectionOrder.filter((k: string) => k !== "basics").map((key: string) => (
-            <SectionWrapper key={key} id={key}>
-              {key === "experience" && <ExperienceEditor />}
-              {key === "education" && <EducationEditor />}
-              {key === "projects" && <ProjectsEditor />}
-              {key === "skills" && <SkillsEditor />}
-              {isCustomSection(key) && <CustomSectionEditor sectionId={key} />}
-            </SectionWrapper>
+            <div key={key} className={cn(
+              "rounded-lg transition-all duration-500",
+              collabSync.highlightedFields.has(key) && "ring-2 ring-blue-400/60 bg-blue-50/30 dark:bg-blue-950/20"
+            )}>
+              <SectionWrapper id={key}>
+                {key === "experience" && <ExperienceEditor />}
+                {key === "education" && <EducationEditor />}
+                {key === "projects" && <ProjectsEditor />}
+                {key === "skills" && <SkillsEditor />}
+                {isCustomSection(key) && <CustomSectionEditor sectionId={key} />}
+              </SectionWrapper>
+            </div>
           ))}
         </div>
         {/* Right: live preview */}

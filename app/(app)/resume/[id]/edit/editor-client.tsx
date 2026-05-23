@@ -208,7 +208,7 @@ export default function EditorClient({ id, initialTitle, initialTemplate, initia
   }, [collabSessionId, collabConfig]);
 
   const collabState = useCollabProvider(collabConfig);
-  useCollabFormSync({
+  const collabSync = useCollabFormSync({
     ydoc: collabState?.ydoc ?? null,
     form,
     role: "owner",
@@ -454,21 +454,51 @@ export default function EditorClient({ id, initialTitle, initialTemplate, initia
       </div>
       )}
 
+      {/* Collab activity bar — shown when collab is active */}
+      {isDesktop && collabSync.isSyncing && collabSync.changeLog.length > 0 && (
+        <div className="border-b border-violet-200 bg-violet-50/50 px-4 py-1.5 dark:border-violet-800 dark:bg-violet-950/30">
+          <div className="mx-auto flex max-w-6xl items-center gap-2 text-xs">
+            <span className="font-medium text-violet-700 dark:text-violet-300">协作动态</span>
+            <span className="text-violet-500 dark:text-violet-400">
+              {collabSync.changeLog.slice(-3).map((entry) => (
+                <span key={entry.id} className="mr-3">
+                  [{new Date(entry.timestamp).toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" })}]
+                  {" "}{entry.author === "mentor" ? "导师" : "你"}修改了「{entry.subfield}」
+                </span>
+              ))}
+            </span>
+            <span className="ml-auto text-violet-400">
+              共 {collabSync.changeLog.filter(e => e.author === "mentor").length} 处导师修改
+            </span>
+          </div>
+        </div>
+      )}
+
       {isDesktop ? (
         <div className="flex h-[calc(100vh-3.5rem-4rem)]">
           <div
             className="thin-scrollbar space-y-6 overflow-y-auto border-r p-6"
             style={{ width: `${splitPercent}%` }}
           >
-            <BasicsEditor />
+            <div className={cn(
+              "rounded-lg transition-all duration-500",
+              collabSync.highlightedFields.has("basics") && "ring-2 ring-violet-400/60 bg-violet-50/30 dark:bg-violet-950/20"
+            )}>
+              <BasicsEditor />
+            </div>
             {sectionOrder.filter(k => k !== "basics").map((key) => (
-              <SectionWrapper key={key} id={key}>
-                {key === "experience" && <ExperienceEditor />}
-                {key === "education" && <EducationEditor />}
-                {key === "projects" && <ProjectsEditor />}
-                {key === "skills" && <SkillsEditor />}
-                {isCustomSection(key) && <CustomSectionEditor sectionId={key} />}
-              </SectionWrapper>
+              <div key={key} className={cn(
+                "rounded-lg transition-all duration-500",
+                collabSync.highlightedFields.has(key) && "ring-2 ring-violet-400/60 bg-violet-50/30 dark:bg-violet-950/20"
+              )}>
+                <SectionWrapper id={key}>
+                  {key === "experience" && <ExperienceEditor />}
+                  {key === "education" && <EducationEditor />}
+                  {key === "projects" && <ProjectsEditor />}
+                  {key === "skills" && <SkillsEditor />}
+                  {isCustomSection(key) && <CustomSectionEditor sectionId={key} />}
+                </SectionWrapper>
+              </div>
             ))}
           </div>
           {/* Resize handle */}
