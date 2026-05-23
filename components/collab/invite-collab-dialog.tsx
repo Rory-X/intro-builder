@@ -24,6 +24,7 @@ export function InviteCollabDialog({ resumeId, onSessionCreated }: Props) {
   const [inviteUrl, setInviteUrl] = useState("");
   const [copied, setCopied] = useState(false);
   const [error, setError] = useState("");
+  const [mode, setMode] = useState<"edit" | "comment">("edit");
 
   async function handleCreate() {
     setLoading(true);
@@ -33,7 +34,7 @@ export function InviteCollabDialog({ resumeId, onSessionCreated }: Props) {
       const res = await fetch("/api/collab/invite", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ resumeId, mode: "edit" }),
+        body: JSON.stringify({ resumeId, mode }),
       });
 
       if (!res.ok) {
@@ -76,9 +77,31 @@ export function InviteCollabDialog({ resumeId, onSessionCreated }: Props) {
           <DialogHeader>
             <DialogTitle>邀请导师协作</DialogTitle>
             <DialogDescription>
-              生成邀请链接发送给导师，对方无需注册即可进入帮改
+              选择协作模式，生成邀请链接发送给导师
             </DialogDescription>
           </DialogHeader>
+
+          {/* Mode selector */}
+          {!inviteUrl && !loading && (
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={() => setMode("edit")}
+                className={`flex-1 rounded-lg border-2 p-3 text-left transition-colors ${mode === "edit" ? "border-primary bg-primary/5" : "border-border hover:border-primary/50"}`}
+              >
+                <p className="text-sm font-medium">帮改模式</p>
+                <p className="mt-0.5 text-xs text-muted-foreground">导师可直接编辑简历内容</p>
+              </button>
+              <button
+                type="button"
+                onClick={() => setMode("comment")}
+                className={`flex-1 rounded-lg border-2 p-3 text-left transition-colors ${mode === "comment" ? "border-primary bg-primary/5" : "border-border hover:border-primary/50"}`}
+              >
+                <p className="text-sm font-medium">批注模式</p>
+                <p className="mt-0.5 text-xs text-muted-foreground">导师选中文字添加评论建议</p>
+              </button>
+            </div>
+          )}
 
           {loading && (
             <div className="flex items-center justify-center py-6">

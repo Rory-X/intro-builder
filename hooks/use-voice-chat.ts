@@ -98,7 +98,7 @@ export function useVoiceChat({ provider, enabled }: UseVoiceChatOptions): VoiceC
   const remoteAudioRef = useRef<HTMLAudioElement | null>(null);
   const ringTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const statusRef = useRef(status);
-  statusRef.current = status;
+  useEffect(() => { statusRef.current = status; });
 
   // ----- Cleanup -----
   const cleanup = useCallback(() => {
