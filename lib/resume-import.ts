@@ -10,17 +10,6 @@ function getDeepSeekClient() {
   });
 }
 
-function getVisionClient() {
-  // Use a dedicated vision API if configured, otherwise fall back to DeepSeek
-  const baseURL = process.env.VISION_API_BASE_URL || "https://api.deepseek.com";
-  const apiKey = process.env.VISION_API_KEY || process.env.DEEPSEEK_API_KEY || "";
-  return new OpenAI({ baseURL, apiKey });
-}
-
-function getVisionModel(): string {
-  return process.env.VISION_MODEL || "deepseek-chat";
-}
-
 export type ImportResult =
   | { status: "success"; data: ResumeContent; warnings?: string[] }
   | { status: "ocr-failed"; error: string }
@@ -57,52 +46,26 @@ async function extractFromDocx(buffer: Buffer): Promise<string> {
   return result.value.trim();
 }
 
-async function ocrImage(buffer: Buffer, mimeType: string): Promise<{ text: string; confidence: number }> {
-  // Use vision-capable LLM to extract text from images.
-  // This is faster and more accurate than Tesseract.js on serverless.
-  const base64 = buffer.toString("base64");
-  const dataUrl = `data:${mimeType};base64,${base64}`;
-
-  const client = getVisionClient();
-  const model = getVisionModel();
-
+async function ocrImage(buffer: Buffer): Promise<{ text: string; confidence: number }> {
+  const { createWorker } = await import("tesseract.js");
+  const worker = await createWorker("chi_sim+eng");
   try {
-    const response = await client.chat.completions.create({
-      model,
-      messages: [
-        {
-          role: "user",
-          content: [
-            {
-              type: "image_url",
-              image_url: { url: dataUrl },
-            },
-            {
-              type: "text",
-              text: "请将这张图片中的所有文字内容完整提取出来，保持原始格式和段落结构。只输出提取的文字，不要加任何说明或标注。",
-            },
-          ],
-        },
-      ],
-      temperature: 0.1,
-      max_tokens: 4000,
-    });
-
-    const text = response.choices[0]?.message?.content?.trim() || "";
-    if (!text || text.length < 10) {
-      return { text: "", confidence: 0 };
-    }
-    // Vision LLM extraction is generally high confidence
-    return { text, confidence: 85 };
-  } catch (err) {
-    console.error("[ocrImage] Vision API failed:", err);
-    // If the model doesn't support vision, throw a clear error
-    const msg = err instanceof Error ? err.message : String(err);
-    if (msg.includes("vision") || msg.includes("image") || msg.includes("multimodal") || msg.includes("content type")) {
-      throw new Error("当前 AI 模型不支持图片识别，请配置支持视觉的模型（VISION_MODEL / VISION_API_KEY）或上传文本型 PDF / Word 文件");
-    }
-    throw new Error(`图片识别失败: ${msg}`);
+    const { data } = await worker.recognize(buffer);
+    return { text: data.text.trim(), confidence: data.confidence };
+  } finally {
+    await worker.terminate();
   }
+}
+
+/** Wrap an async operation with a timeout. Rejects with a clear error if exceeded. */
+function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error(`${label}超时（超过 ${Math.round(ms / 1000)} 秒），请尝试上传更小的文件或文本型 PDF`)), ms);
+    promise.then(
+      (v) => { clearTimeout(timer); resolve(v); },
+      (e) => { clearTimeout(timer); reject(e); },
+    );
+  });
 }
 
 // ─── LLM Structuring ────────────────────────────────────────
@@ -293,31 +256,23 @@ export async function importResume(
     if (mimeType === "application/pdf") {
       const { text: pdfText, isScanned } = await extractFromPdf(buffer);
       if (isScanned) {
-        // Scanned PDF — use vision API to extract text
-        onProgress?.("ocr");
-        const ocr = await ocrImage(buffer, "application/pdf");
-        if (ocr.confidence < 60) {
-          return {
-            status: "ocr-failed",
-            error: "无法从扫描版 PDF 中提取文字，请上传文本型 PDF、Word 文件或清晰的图片截图",
-          };
-        }
-        if (ocr.confidence < 75) {
-          warnings.push("部分内容可能识别不准确，导入后请仔细检查");
-        }
-        text = ocr.text;
-      } else {
-        text = pdfText;
+        // Scanned PDF — cannot OCR raw PDF bytes directly.
+        // User should upload as image instead.
+        return {
+          status: "ocr-failed",
+          error: "检测到扫描版 PDF（无可提取文字）。请将简历截图为图片（.jpg/.png）后重新上传，或使用文本型 PDF / Word 文件。",
+        };
       }
+      text = pdfText;
     } else if (mimeType === "application/vnd.openxmlformats-officedocument.wordprocessingml.document") {
       text = await extractFromDocx(buffer);
     } else if (mimeType === "image/jpeg" || mimeType === "image/png") {
       onProgress?.("ocr");
-      const ocr = await ocrImage(buffer, mimeType);
+      const ocr = await withTimeout(ocrImage(buffer), 50_000, "OCR 识别");
       if (ocr.confidence < 60) {
         return {
           status: "ocr-failed",
-          error: "无法从图片中提取文字，请上传更清晰的图片或文本型 PDF",
+          error: `图片识别质量过低（置信度 ${Math.round(ocr.confidence)}%），请上传更清晰的图片`,
         };
       }
       if (ocr.confidence < 75) {

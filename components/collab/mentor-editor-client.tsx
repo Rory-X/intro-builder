@@ -6,7 +6,7 @@
  * Form state is synced via Y.Map through PartyKit.
  */
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { useForm, FormProvider } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { ResumeContent, DEFAULT_SECTION_ORDER, BUILTIN_SECTION_KEYS } from "@/lib/resume-schema";
@@ -20,8 +20,11 @@ import { SectionWrapper } from "@/components/editor/section-wrapper";
 import { CustomSectionEditor } from "@/components/editor/custom-section-editor";
 import { PresenceBar } from "@/components/collab/presence-bar";
 import { VoiceChatControls } from "@/components/collab/voice-chat-controls";
+import { AnnotationPopover } from "@/components/collab/annotation-popover";
+import { AnnotationList } from "@/components/collab/annotation-list";
 import { useCollabProvider, type CollabConfig } from "@/hooks/use-collab-provider";
 import { useCollabFormSync } from "@/hooks/use-collab-form-sync";
+import { useAnnotations } from "@/hooks/use-annotations";
 import { Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { TemplateId } from "@/lib/templates/registry";
@@ -91,6 +94,7 @@ function MentorEditorInner({
   provider,
   presenceUsers,
   isConnected,
+  displayName,
 }: {
   resumeTitle: string;
   initialContent: ResumeContentType;
@@ -108,13 +112,23 @@ function MentorEditorInner({
     mode: "onChange",
   });
 
-  // Bidirectional form sync via Y.Map
+  // Bidirectional form sync via Y.Map (only for edit mode)
   const collabSync = useCollabFormSync({
     ydoc,
     form,
     role: "mentor",
-    enabled: isConnected,
+    enabled: isConnected && mode === "edit",
   });
+
+  // Annotations (for comment mode)
+  const { annotations, addAnnotation, updateStatus } = useAnnotations({
+    ydoc,
+    enabled: isConnected && mode === "comment",
+  });
+
+  const previewRef = useRef<HTMLDivElement>(null);
+  const displayNameRef = useRef(displayName);
+  displayNameRef.current = displayName;
 
   const sectionOrder = form.watch("sectionOrder") ?? [...DEFAULT_SECTION_ORDER];
 
@@ -155,35 +169,58 @@ function MentorEditorInner({
         </div>
       )}
 
-      {/* Dual-panel layout: editors + preview */}
+      {/* Dual-panel layout */}
       <div className="flex h-[calc(100vh-3rem)]">
-        {/* Left: form editors */}
-        <div className="thin-scrollbar w-1/2 space-y-6 overflow-y-auto border-r p-6">
-          <div className={cn(
-            "rounded-lg transition-all duration-500",
-            collabSync.highlightedFields.has("basics") && "ring-2 ring-blue-400/60 bg-blue-50/30 dark:bg-blue-950/20"
-          )}>
-            <BasicsEditor />
-          </div>
-          {sectionOrder.filter((k: string) => k !== "basics").map((key: string) => (
-            <div key={key} className={cn(
-              "rounded-lg transition-all duration-500",
-              collabSync.highlightedFields.has(key) && "ring-2 ring-blue-400/60 bg-blue-50/30 dark:bg-blue-950/20"
-            )}>
-              <SectionWrapper id={key}>
-                {key === "experience" && <ExperienceEditor />}
-                {key === "education" && <EducationEditor />}
-                {key === "projects" && <ProjectsEditor />}
-                {key === "skills" && <SkillsEditor />}
-                {isCustomSection(key) && <CustomSectionEditor sectionId={key} />}
-              </SectionWrapper>
+        {mode === "edit" ? (
+          <>
+            {/* Left: form editors (帮改模式) */}
+            <div className="thin-scrollbar w-1/2 space-y-6 overflow-y-auto border-r p-6">
+              <div className={cn(
+                "rounded-lg transition-all duration-500",
+                collabSync.highlightedFields.has("basics") && "ring-2 ring-blue-400/60 bg-blue-50/30 dark:bg-blue-950/20"
+              )}>
+                <BasicsEditor />
+              </div>
+              {sectionOrder.filter((k: string) => k !== "basics").map((key: string) => (
+                <div key={key} className={cn(
+                  "rounded-lg transition-all duration-500",
+                  collabSync.highlightedFields.has(key) && "ring-2 ring-blue-400/60 bg-blue-50/30 dark:bg-blue-950/20"
+                )}>
+                  <SectionWrapper id={key}>
+                    {key === "experience" && <ExperienceEditor />}
+                    {key === "education" && <EducationEditor />}
+                    {key === "projects" && <ProjectsEditor />}
+                    {key === "skills" && <SkillsEditor />}
+                    {isCustomSection(key) && <CustomSectionEditor sectionId={key} />}
+                  </SectionWrapper>
+                </div>
+              ))}
             </div>
-          ))}
-        </div>
-        {/* Right: live preview */}
-        <div className="thin-scrollbar w-1/2 overflow-y-auto bg-muted p-6">
-          <LivePreview templateId={templateId} />
-        </div>
+            {/* Right: live preview (帮改模式) */}
+            <div className="thin-scrollbar w-1/2 overflow-y-auto bg-muted p-6">
+              <LivePreview templateId={templateId} />
+            </div>
+          </>
+        ) : (
+          <>
+            {/* Left: annotation list (批注模式) */}
+            <div className="thin-scrollbar w-[360px] shrink-0 overflow-y-auto border-r p-4">
+              <AnnotationList
+                annotations={annotations}
+                canManage={false}
+              />
+            </div>
+            {/* Right: preview with annotation popover (批注模式) */}
+            <div ref={previewRef} className="thin-scrollbar relative flex-1 overflow-y-auto bg-muted p-6">
+              <LivePreview templateId={templateId} />
+              <AnnotationPopover
+                previewRef={previewRef}
+                onSubmit={(data) => addAnnotation({ ...data, authorName: displayNameRef.current })}
+                enabled
+              />
+            </div>
+          </>
+        )}
       </div>
 
       {/* Footer */}
