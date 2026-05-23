@@ -9,6 +9,7 @@ import type { ResumeContent } from "@/lib/resume-schema";
 import { Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { RICH_TEXT_EDITOR_PROSE_CLASS } from "@/lib/rich-text-prose";
+import type { Doc } from "yjs";
 
 type Props = {
   resumeTitle: string;
@@ -18,7 +19,7 @@ type Props = {
   role: "mentor";
 };
 
-export function CollabEditorClient({ resumeTitle, resumeContent, mode }: Props) {
+export function CollabEditorClient({ resumeTitle, mode }: Props) {
   const [config, setConfig] = useState<CollabConfig | null>(null);
 
   // Load collab config from sessionStorage on mount
@@ -34,22 +35,64 @@ export function CollabEditorClient({ resumeTitle, resumeContent, mode }: Props) 
 
   const collabState = useCollabProvider(config);
 
-  const ydoc = collabState?.ydoc ?? null;
-  const provider = collabState?.provider ?? null;
-  const displayName = config?.displayName ?? "";
-
-  // Build collab extensions once we have a Y.js doc and provider
-  const extensions = useMemo(() => {
-    if (!ydoc || !provider || !displayName) return null;
-    return createCollabExtensions(
-      ydoc,
-      provider,
-      { name: displayName, color: "#8B5CF6" },
+  if (!config) {
+    return (
+      <div className="flex min-h-screen items-center justify-center">
+        <p className="text-muted-foreground">协作信息丢失，请重新通过邀请链接进入</p>
+      </div>
     );
-  }, [ydoc, provider, displayName]);
+  }
+
+  if (!collabState?.isSynced || !collabState?.ydoc || !collabState?.provider) {
+    return (
+      <div className="flex min-h-screen flex-col items-center justify-center gap-3">
+        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+        <p className="text-sm text-muted-foreground">
+          {collabState?.isConnected ? "正在同步文档…" : "正在连接协作空间…"}
+        </p>
+      </div>
+    );
+  }
+
+  // Only render editor once Y.js is synced
+  return (
+    <CollabEditorInner
+      resumeTitle={resumeTitle}
+      mode={mode}
+      ydoc={collabState.ydoc}
+      provider={collabState.provider}
+      displayName={config.displayName}
+      presenceUsers={collabState.presenceUsers}
+      isConnected={collabState.isConnected}
+    />
+  );
+}
+
+// Inner component — only mounted when Y.js is ready
+function CollabEditorInner({
+  resumeTitle,
+  mode,
+  ydoc,
+  provider,
+  displayName,
+  presenceUsers,
+  isConnected,
+}: {
+  resumeTitle: string;
+  mode: "edit" | "comment";
+  ydoc: Doc;
+  provider: unknown;
+  displayName: string;
+  presenceUsers: { userId: string; displayName: string; role: "owner" | "mentor"; color: string }[];
+  isConnected: boolean;
+}) {
+  const extensions = useMemo(
+    () => createCollabExtensions(ydoc, provider, { name: displayName, color: "#8B5CF6" }),
+    [ydoc, provider, displayName],
+  );
 
   const editor = useEditor({
-    extensions: extensions || [],
+    extensions,
     editable: mode === "edit",
     editorProps: {
       attributes: {
@@ -60,26 +103,7 @@ export function CollabEditorClient({ resumeTitle, resumeContent, mode }: Props) 
       },
     },
     immediatelyRender: false,
-  }, [extensions]);
-
-  if (!config) {
-    return (
-      <div className="flex min-h-screen items-center justify-center">
-        <p className="text-muted-foreground">协作信息丢失，请重新通过邀请链接进入</p>
-      </div>
-    );
-  }
-
-  if (!collabState?.isSynced || !extensions) {
-    return (
-      <div className="flex min-h-screen flex-col items-center justify-center gap-3">
-        <Loader2 className="h-8 w-8 animate-spin text-primary" />
-        <p className="text-sm text-muted-foreground">
-          {collabState?.isConnected ? "正在同步文档…" : "正在连接协作空间…"}
-        </p>
-      </div>
-    );
-  }
+  });
 
   return (
     <div className="flex min-h-screen flex-col">
@@ -91,10 +115,7 @@ export function CollabEditorClient({ resumeTitle, resumeContent, mode }: Props) 
             {mode === "edit" ? "帮改模式" : "批注模式"}
           </span>
         </div>
-        <PresenceBar
-          users={collabState.presenceUsers}
-          isConnected={collabState.isConnected}
-        />
+        <PresenceBar users={presenceUsers} isConnected={isConnected} />
       </header>
 
       {/* Editor */}
