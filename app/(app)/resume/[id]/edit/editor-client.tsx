@@ -44,7 +44,7 @@ import { useCollabFormSync } from "@/hooks/use-collab-form-sync";
 import { useAnnotations } from "@/hooks/use-annotations";
 import { PresenceBar } from "@/components/collab/presence-bar";
 import { VoiceChatControls } from "@/components/collab/voice-chat-controls";
-import { AnnotationHighlights } from "@/components/collab/annotation-highlights";
+import { AnnotationHighlights, flashAnnotation } from "@/components/collab/annotation-highlights";
 import { AnnotationList } from "@/components/collab/annotation-list";
 
 type Props = {
@@ -538,11 +538,12 @@ export default function EditorClient({ id, initialTitle, initialTemplate, initia
           </div>
           {/* Annotation panel (when there are annotations from mentor) */}
           {collabAnnotations.length > 0 && (
-            <div className="thin-scrollbar w-[300px] shrink-0 overflow-y-auto border-l bg-background p-3">
+            <div className="thin-scrollbar w-[280px] min-w-[200px] max-w-[400px] shrink-0 resize-x overflow-y-auto overflow-x-hidden border-l bg-background p-3">
               <AnnotationList
                 annotations={collabAnnotations}
                 canManage
                 onUpdateStatus={updateAnnotationStatus}
+                onClickAnnotation={(ann) => flashAnnotation(ann.id)}
               />
             </div>
           )}

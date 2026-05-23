@@ -2,7 +2,7 @@
 
 /**
  * Annotation popover: appears when user selects text in the preview.
- * Shows the selected text + comment textarea + submit button.
+ * Smart positioning: prefers right side of selection, falls back to below.
  */
 
 import { useEffect, useState, useRef, useCallback } from "react";
@@ -10,53 +10,93 @@ import { Button } from "@/components/ui/button";
 import { MessageSquarePlus, Send } from "lucide-react";
 
 type Props = {
-  /** The preview container ref to attach selection listener */
   previewRef: React.RefObject<HTMLDivElement | null>;
-  /** Called when user submits an annotation */
   onSubmit: (data: {
     selectedText: string;
     comment: string;
     sectionKey: string;
     itemIndex?: number;
   }) => void;
-  /** Whether annotation is enabled */
   enabled: boolean;
+};
+
+type PopoverPosition = {
+  top: number;
+  left: number;
+  placement: "right" | "below";
 };
 
 type PopoverState = {
   visible: boolean;
-  x: number;
-  y: number;
+  position: PopoverPosition;
   selectedText: string;
   sectionKey: string;
   itemIndex?: number;
 };
 
+const POPOVER_WIDTH = 288; // w-72 = 18rem = 288px
+const POPOVER_HEIGHT_ESTIMATE = 220;
+const GAP = 12;
+
 export function AnnotationPopover({ previewRef, onSubmit, enabled }: Props) {
   const [popover, setPopover] = useState<PopoverState>({
-    visible: false, x: 0, y: 0, selectedText: "", sectionKey: "",
+    visible: false,
+    position: { top: 0, left: 0, placement: "right" },
+    selectedText: "",
+    sectionKey: "",
   });
   const [comment, setComment] = useState("");
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const popoverRef = useRef<HTMLDivElement>(null);
+
+  const computePosition = useCallback((selectionRect: DOMRect, containerRect: DOMRect): PopoverPosition => {
+    const relTop = selectionRect.top - containerRect.top;
+    const relRight = selectionRect.right - containerRect.left;
+    const relBottom = selectionRect.bottom - containerRect.top;
+    const relCenterY = relTop + selectionRect.height / 2;
+
+    // Try right side first
+    const spaceRight = containerRect.width - relRight;
+    if (spaceRight >= POPOVER_WIDTH + GAP) {
+      return {
+        top: Math.max(0, relCenterY - POPOVER_HEIGHT_ESTIMATE / 2),
+        left: relRight + GAP,
+        placement: "right",
+      };
+    }
+
+    // Try left side
+    const relLeft = selectionRect.left - containerRect.left;
+    if (relLeft >= POPOVER_WIDTH + GAP) {
+      return {
+        top: Math.max(0, relCenterY - POPOVER_HEIGHT_ESTIMATE / 2),
+        left: relLeft - POPOVER_WIDTH - GAP,
+        placement: "right",
+      };
+    }
+
+    // Fall back to below selection
+    return {
+      top: relBottom + GAP,
+      left: Math.max(GAP, (selectionRect.left - containerRect.left) - POPOVER_WIDTH / 2 + selectionRect.width / 2),
+      placement: "below",
+    };
+  }, []);
 
   const handleMouseUp = useCallback(() => {
     if (!enabled) return;
 
     const selection = window.getSelection();
-    if (!selection || selection.isCollapsed || !selection.toString().trim()) {
-      return;
-    }
+    if (!selection || selection.isCollapsed || !selection.toString().trim()) return;
 
     const text = selection.toString().trim();
-    if (text.length < 2) return; // too short
+    if (text.length < 2) return;
 
-    // Check if selection is within the preview container
     const range = selection.getRangeAt(0);
     const container = previewRef.current;
     if (!container || !container.contains(range.commonAncestorContainer)) return;
 
-    // Get position for popover
-    const rect = range.getBoundingClientRect();
+    const selectionRect = range.getBoundingClientRect();
     const containerRect = container.getBoundingClientRect();
 
     // Find section context
@@ -69,22 +109,22 @@ export function AnnotationPopover({ previewRef, onSubmit, enabled }: Props) {
       ? parseInt(itemEl.getAttribute("data-pagination-item")!, 10)
       : undefined;
 
+    const position = computePosition(selectionRect, containerRect);
+
     setPopover({
       visible: true,
-      x: rect.left - containerRect.left + rect.width / 2,
-      y: rect.top - containerRect.top - 10,
-      selectedText: text.slice(0, 200), // cap at 200 chars
+      position,
+      selectedText: text.slice(0, 200),
       sectionKey,
       itemIndex,
     });
     setComment("");
-  }, [enabled, previewRef]);
+  }, [enabled, previewRef, computePosition]);
 
   // Attach listener
   useEffect(() => {
     const container = previewRef.current;
     if (!container || !enabled) return;
-
     container.addEventListener("mouseup", handleMouseUp);
     return () => container.removeEventListener("mouseup", handleMouseUp);
   }, [previewRef, enabled, handleMouseUp]);
@@ -92,29 +132,18 @@ export function AnnotationPopover({ previewRef, onSubmit, enabled }: Props) {
   // Close on click outside
   useEffect(() => {
     if (!popover.visible) return;
-
     const handleClickOutside = (e: MouseEvent) => {
       const target = e.target as HTMLElement;
       if (target.closest("[data-annotation-popover]")) return;
       setPopover((p) => ({ ...p, visible: false }));
     };
-
-    // Delay to avoid immediate close from the mouseup that opened it
-    const timer = setTimeout(() => {
-      document.addEventListener("mousedown", handleClickOutside);
-    }, 100);
-
-    return () => {
-      clearTimeout(timer);
-      document.removeEventListener("mousedown", handleClickOutside);
-    };
+    const timer = setTimeout(() => document.addEventListener("mousedown", handleClickOutside), 100);
+    return () => { clearTimeout(timer); document.removeEventListener("mousedown", handleClickOutside); };
   }, [popover.visible]);
 
-  // Focus textarea when popover opens
+  // Focus textarea
   useEffect(() => {
-    if (popover.visible) {
-      setTimeout(() => textareaRef.current?.focus(), 50);
-    }
+    if (popover.visible) setTimeout(() => textareaRef.current?.focus(), 50);
   }, [popover.visible]);
 
   const handleSubmit = () => {
@@ -127,7 +156,6 @@ export function AnnotationPopover({ previewRef, onSubmit, enabled }: Props) {
     });
     setPopover((p) => ({ ...p, visible: false }));
     setComment("");
-    // Clear selection
     window.getSelection()?.removeAllRanges();
   };
 
@@ -135,18 +163,14 @@ export function AnnotationPopover({ previewRef, onSubmit, enabled }: Props) {
 
   return (
     <div
+      ref={popoverRef}
       data-annotation-popover
-      className="absolute z-50 w-72 rounded-xl border bg-background p-3 shadow-xl"
+      className="absolute z-50 w-72 rounded-xl border bg-background p-3 shadow-xl ring-1 ring-black/5"
       style={{
-        left: `${popover.x}px`,
-        top: `${popover.y}px`,
-        transform: "translate(-50%, -100%)",
+        top: `${popover.position.top}px`,
+        left: `${popover.position.left}px`,
       }}
     >
-      {/* Arrow */}
-      <div className="absolute left-1/2 top-full -translate-x-1/2 border-8 border-transparent border-t-border" />
-      <div className="absolute left-1/2 top-full -translate-x-1/2 -mt-px border-8 border-transparent border-t-background" />
-
       {/* Selected text preview */}
       <div className="mb-2 flex items-start gap-1.5">
         <MessageSquarePlus className="mt-0.5 h-3.5 w-3.5 shrink-0 text-primary" />

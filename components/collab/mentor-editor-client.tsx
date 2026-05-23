@@ -22,7 +22,7 @@ import { PresenceBar } from "@/components/collab/presence-bar";
 import { VoiceChatControls } from "@/components/collab/voice-chat-controls";
 import { AnnotationPopover } from "@/components/collab/annotation-popover";
 import { AnnotationList } from "@/components/collab/annotation-list";
-import { AnnotationHighlights } from "@/components/collab/annotation-highlights";
+import { AnnotationHighlights, flashAnnotation } from "@/components/collab/annotation-highlights";
 import { useCollabProvider, type CollabConfig } from "@/hooks/use-collab-provider";
 import { useCollabFormSync } from "@/hooks/use-collab-form-sync";
 import { useAnnotations } from "@/hooks/use-annotations";
@@ -209,6 +209,7 @@ function MentorEditorInner({
               <AnnotationList
                 annotations={annotations}
                 canManage={false}
+                onClickAnnotation={(ann) => flashAnnotation(ann.id)}
               />
             </div>
             {/* Right: preview with annotation popover (批注模式) */}

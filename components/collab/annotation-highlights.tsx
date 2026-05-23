@@ -2,44 +2,45 @@
 
 /**
  * Renders highlight marks over the preview for annotated text.
- * Uses TreeWalker to find matching text nodes and wraps them with <mark>.
+ * Supports: flash animation when clicking annotation in the list.
  */
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useCallback } from "react";
 import type { Annotation } from "@/hooks/use-annotations";
 
 type Props = {
   previewRef: React.RefObject<HTMLDivElement | null>;
   annotations: Annotation[];
   onClickAnnotation?: (annotation: Annotation) => void;
+  /** Set this to an annotation ID to scroll to it and flash */
+  flashAnnotationId?: string | null;
 };
 
-export function AnnotationHighlights({ previewRef, annotations, onClickAnnotation }: Props) {
-  const marksRef = useRef<HTMLElement[]>([]);
+export function AnnotationHighlights({ previewRef, annotations, onClickAnnotation, flashAnnotationId }: Props) {
+  const marksRef = useRef<Map<string, HTMLElement>>(new Map());
 
+  // Apply/refresh highlights
   useEffect(() => {
     const container = previewRef.current;
     if (!container) return;
 
     // Clean previous marks
-    for (const mark of marksRef.current) {
+    for (const mark of marksRef.current.values()) {
       const parent = mark.parentNode;
       if (parent) {
         parent.replaceChild(document.createTextNode(mark.textContent || ""), mark);
         parent.normalize();
       }
     }
-    marksRef.current = [];
+    marksRef.current.clear();
 
-    // Apply highlights for pending annotations
+    // Apply highlights for non-dismissed annotations
     const activeAnnotations = annotations.filter((a) => a.status !== "dismissed");
 
     for (const ann of activeAnnotations) {
-      const marks = highlightTextInContainer(container, ann);
-      marksRef.current.push(...marks);
-
-      // Attach click handler
-      for (const mark of marks) {
+      const mark = highlightTextInContainer(container, ann);
+      if (mark) {
+        marksRef.current.set(ann.id, mark);
         mark.addEventListener("click", (e) => {
           e.stopPropagation();
           onClickAnnotation?.(ann);
@@ -48,31 +49,54 @@ export function AnnotationHighlights({ previewRef, annotations, onClickAnnotatio
     }
 
     return () => {
-      // Cleanup on unmount
-      for (const mark of marksRef.current) {
+      for (const mark of marksRef.current.values()) {
         const parent = mark.parentNode;
         if (parent) {
           parent.replaceChild(document.createTextNode(mark.textContent || ""), mark);
           parent.normalize();
         }
       }
-      marksRef.current = [];
+      marksRef.current.clear();
     };
   }, [previewRef, annotations, onClickAnnotation]);
 
-  return null; // This component only manipulates DOM imperatively
+  // Flash and scroll to annotation when flashAnnotationId changes
+  useEffect(() => {
+    if (!flashAnnotationId) return;
+    const mark = marksRef.current.get(flashAnnotationId);
+    if (!mark) return;
+
+    // Scroll into view
+    mark.scrollIntoView({ behavior: "smooth", block: "center" });
+
+    // Flash animation
+    mark.classList.add("annotation-flash");
+    const timer = setTimeout(() => mark.classList.remove("annotation-flash"), 1500);
+    return () => clearTimeout(timer);
+  }, [flashAnnotationId]);
+
+  return (
+    // Inject flash animation CSS
+    <style>{`
+      @keyframes annotation-flash {
+        0%, 100% { opacity: 1; }
+        25% { opacity: 0.3; background-color: rgba(59, 130, 246, 0.5); }
+        50% { opacity: 1; background-color: rgba(59, 130, 246, 0.3); }
+        75% { opacity: 0.3; background-color: rgba(59, 130, 246, 0.5); }
+      }
+      .annotation-flash {
+        animation: annotation-flash 1.5s ease-in-out;
+      }
+    `}</style>
+  );
 }
 
 /**
- * Find and highlight text within a container element.
- * Returns the <mark> elements created.
+ * Find and highlight text within a container, returns the <mark> element or null.
  */
-function highlightTextInContainer(
-  container: HTMLElement,
-  annotation: Annotation,
-): HTMLElement[] {
+function highlightTextInContainer(container: HTMLElement, annotation: Annotation): HTMLElement | null {
   const { selectedText, sectionKey, status } = annotation;
-  if (!selectedText || selectedText.length < 2) return [];
+  if (!selectedText || selectedText.length < 2) return null;
 
   // Try to scope to the section
   let scope: HTMLElement = container;
@@ -81,10 +105,9 @@ function highlightTextInContainer(
     if (sectionEl instanceof HTMLElement) scope = sectionEl;
   }
 
-  const marks: HTMLElement[] = [];
-  const searchText = selectedText.slice(0, 100); // Limit search length
+  const searchText = selectedText.slice(0, 100);
 
-  // Walk text nodes to find matches
+  // Walk text nodes to find match
   const walker = document.createTreeWalker(scope, NodeFilter.SHOW_TEXT);
   let node: Text | null;
 
@@ -92,10 +115,9 @@ function highlightTextInContainer(
     const idx = node.textContent?.indexOf(searchText) ?? -1;
     if (idx === -1) continue;
 
-    // Split text node and wrap match in <mark>
+    // Split and wrap
     const before = node.splitText(idx);
-    const match = before.splitText(searchText.length);
-    void match; // remaining text after match
+    before.splitText(searchText.length);
 
     const mark = document.createElement("mark");
     mark.textContent = before.textContent;
@@ -104,21 +126,28 @@ function highlightTextInContainer(
     mark.dataset.annotationId = annotation.id;
 
     before.parentNode?.replaceChild(mark, before);
-    marks.push(mark);
-
-    break; // Only highlight first occurrence
+    return mark;
   }
 
-  return marks;
+  return null;
 }
 
 function getHighlightClass(status: Annotation["status"]): string {
   switch (status) {
     case "pending":
-      return "bg-yellow-200/70 dark:bg-yellow-800/40 cursor-pointer rounded-sm px-0.5 border-b-2 border-yellow-400 hover:bg-yellow-300/70 transition-colors";
+      return "bg-yellow-200/70 dark:bg-yellow-700/50 cursor-pointer rounded-sm px-0.5 border-b-2 border-yellow-400 hover:bg-yellow-300/80 transition-colors";
     case "accepted":
-      return "bg-green-200/50 dark:bg-green-800/30 cursor-pointer rounded-sm px-0.5 border-b-2 border-green-400";
+      return "bg-green-200/60 dark:bg-green-700/40 cursor-pointer rounded-sm px-0.5 border-b-2 border-green-400";
     case "dismissed":
       return "bg-gray-200/30 dark:bg-gray-700/20 cursor-pointer rounded-sm px-0.5 line-through opacity-50";
   }
+}
+
+/** Exported for use from parent: trigger flash on a specific annotation */
+export function flashAnnotation(id: string) {
+  const mark = document.querySelector(`[data-annotation-id="${id}"]`);
+  if (!mark) return;
+  mark.scrollIntoView({ behavior: "smooth", block: "center" });
+  mark.classList.add("annotation-flash");
+  setTimeout(() => mark.classList.remove("annotation-flash"), 1500);
 }
