@@ -61,14 +61,14 @@ export default class CollabServer implements Party.Server {
     try {
       const data = JSON.parse(message);
 
-      // Relay WebRTC signaling messages to all OTHER connections in the room (1:1)
-      if (
-        data.type === "voice-offer" ||
-        data.type === "voice-answer" ||
-        data.type === "voice-ice-candidate" ||
-        data.type === "voice-hangup"
-      ) {
-        const relay = JSON.stringify({ ...data, from: sender.id });
+      // Relay WebRTC voice signaling messages to all OTHER connections
+      const voiceTypes = [
+        "voice-ring", "voice-accept", "voice-reject", "voice-cancel",
+        "voice-offer", "voice-answer", "voice-ice-candidate", "voice-hangup",
+      ];
+      if (voiceTypes.includes(data.type)) {
+        const meta = this.connections.get(sender.id);
+        const relay = JSON.stringify({ ...data, from: sender.id, callerName: meta?.displayName });
         for (const conn of this.room.getConnections()) {
           if (conn.id !== sender.id) {
             conn.send(relay);
