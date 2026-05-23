@@ -46,26 +46,62 @@ async function extractFromDocx(buffer: Buffer): Promise<string> {
   return result.value.trim();
 }
 
-async function ocrImage(buffer: Buffer): Promise<{ text: string; confidence: number }> {
-  const { createWorker } = await import("tesseract.js");
-  const worker = await createWorker("chi_sim+eng");
-  try {
-    const { data } = await worker.recognize(buffer);
-    return { text: data.text.trim(), confidence: data.confidence };
-  } finally {
-    await worker.terminate();
-  }
-}
+async function ocrImage(buffer: Buffer, mimeType: string): Promise<{ text: string; confidence: number }> {
+  // Use OCR.space free API — fast cloud OCR, works within Vercel Hobby 10s limit
+  const apiKey = process.env.OCR_SPACE_API_KEY || "helloworld";
+  const base64 = `data:${mimeType};base64,${buffer.toString("base64")}`;
 
-/** Wrap an async operation with a timeout. Rejects with a clear error if exceeded. */
-function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
-  return new Promise((resolve, reject) => {
-    const timer = setTimeout(() => reject(new Error(`${label}超时（超过 ${Math.round(ms / 1000)} 秒），请尝试上传更小的文件或文本型 PDF`)), ms);
-    promise.then(
-      (v) => { clearTimeout(timer); resolve(v); },
-      (e) => { clearTimeout(timer); reject(e); },
-    );
+  const formData = new URLSearchParams();
+  formData.append("base64Image", base64);
+  formData.append("language", "chs"); // Simplified Chinese + English
+  formData.append("isOverlayRequired", "false");
+  formData.append("OCREngine", "2"); // Engine 2: better for Chinese, auto-detect language
+  formData.append("scale", "true"); // Upscale for better recognition
+  formData.append("isTable", "true"); // Better table/layout handling
+
+  const response = await fetch("https://api.ocr.space/parse/image", {
+    method: "POST",
+    headers: {
+      apikey: apiKey,
+      "Content-Type": "application/x-www-form-urlencoded",
+    },
+    body: formData.toString(),
   });
+
+  if (!response.ok) {
+    throw new Error(`OCR 服务请求失败 (${response.status})`);
+  }
+
+  const result = await response.json() as {
+    ParsedResults?: Array<{
+      ParsedText: string;
+      ErrorMessage?: string;
+      TextOverlay?: { HasOverlay: boolean };
+    }>;
+    IsErroredOnProcessing: boolean;
+    ErrorMessage?: string[];
+    OCRExitCode: number;
+  };
+
+  if (result.IsErroredOnProcessing || result.OCRExitCode !== 1) {
+    const errMsg = result.ErrorMessage?.join("; ") || result.ParsedResults?.[0]?.ErrorMessage || "OCR 处理失败";
+    // Check for file size limit
+    if (errMsg.includes("size") || errMsg.includes("limit")) {
+      throw new Error("图片文件过大，OCR 服务限制 1MB。请压缩图片后重试");
+    }
+    throw new Error(`OCR 识别失败: ${errMsg}`);
+  }
+
+  const parsed = result.ParsedResults?.[0];
+  if (!parsed || !parsed.ParsedText) {
+    return { text: "", confidence: 0 };
+  }
+
+  // OCR.space doesn't return a confidence percentage per se,
+  // but successful parsing with text means high confidence
+  const text = parsed.ParsedText.trim();
+  const confidence = text.length > 20 ? 80 : text.length > 5 ? 65 : 30;
+  return { text, confidence };
 }
 
 // ─── LLM Structuring ────────────────────────────────────────
@@ -256,23 +292,31 @@ export async function importResume(
     if (mimeType === "application/pdf") {
       const { text: pdfText, isScanned } = await extractFromPdf(buffer);
       if (isScanned) {
-        // Scanned PDF — cannot OCR raw PDF bytes directly.
-        // User should upload as image instead.
-        return {
-          status: "ocr-failed",
-          error: "检测到扫描版 PDF（无可提取文字）。请将简历截图为图片（.jpg/.png）后重新上传，或使用文本型 PDF / Word 文件。",
-        };
+        // Scanned PDF — use cloud OCR service which supports PDF
+        onProgress?.("ocr");
+        const ocr = await ocrImage(buffer, mimeType);
+        if (ocr.confidence < 60) {
+          return {
+            status: "ocr-failed",
+            error: "无法从扫描版 PDF 中提取文字，请上传更清晰的文件或图片截图",
+          };
+        }
+        if (ocr.confidence < 75) {
+          warnings.push("部分内容可能识别不准确，导入后请仔细检查");
+        }
+        text = ocr.text;
+      } else {
+        text = pdfText;
       }
-      text = pdfText;
     } else if (mimeType === "application/vnd.openxmlformats-officedocument.wordprocessingml.document") {
       text = await extractFromDocx(buffer);
     } else if (mimeType === "image/jpeg" || mimeType === "image/png") {
       onProgress?.("ocr");
-      const ocr = await withTimeout(ocrImage(buffer), 50_000, "OCR 识别");
+      const ocr = await ocrImage(buffer, mimeType);
       if (ocr.confidence < 60) {
         return {
           status: "ocr-failed",
-          error: `图片识别质量过低（置信度 ${Math.round(ocr.confidence)}%），请上传更清晰的图片`,
+          error: `图片识别质量过低，请上传更清晰的图片`,
         };
       }
       if (ocr.confidence < 75) {

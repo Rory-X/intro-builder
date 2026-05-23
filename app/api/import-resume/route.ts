@@ -1,8 +1,8 @@
 import { auth } from "@/lib/auth";
 import { importResume, isSupportedType } from "@/lib/resume-import";
 
-// Allow longer execution for OCR + LLM processing
-export const maxDuration = 120;
+// Allow longer execution for OCR API + LLM processing
+export const maxDuration = 60;
 
 const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5MB
 
