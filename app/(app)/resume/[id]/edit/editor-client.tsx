@@ -42,6 +42,7 @@ import { InviteCollabDialog } from "@/components/collab/invite-collab-dialog";
 import { useCollabProvider } from "@/hooks/use-collab-provider";
 import { useCollabFormSync } from "@/hooks/use-collab-form-sync";
 import { PresenceBar } from "@/components/collab/presence-bar";
+import { VoiceChatControls } from "@/components/collab/voice-chat-controls";
 
 type Props = {
   id: string;
@@ -445,6 +446,11 @@ export default function EditorClient({ id, initialTitle, initialTemplate, initia
             <InviteCollabDialog resumeId={id} onSessionCreated={(sid) => setCollabSessionId(sid)} />
             {collabState?.isConnected && (
               <>
+                <Separator orientation="vertical" className="h-6" />
+                <VoiceChatControls
+                  provider={collabState.provider}
+                  enabled={collabState.presenceUsers.length >= 2}
+                />
                 <Separator orientation="vertical" className="h-6" />
                 <PresenceBar users={collabState.presenceUsers} isConnected={collabState.isConnected} />
               </>

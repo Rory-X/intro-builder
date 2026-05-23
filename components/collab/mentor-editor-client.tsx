@@ -19,6 +19,7 @@ import { SkillsEditor } from "@/components/editor/skills-editor";
 import { SectionWrapper } from "@/components/editor/section-wrapper";
 import { CustomSectionEditor } from "@/components/editor/custom-section-editor";
 import { PresenceBar } from "@/components/collab/presence-bar";
+import { VoiceChatControls } from "@/components/collab/voice-chat-controls";
 import { useCollabProvider, type CollabConfig } from "@/hooks/use-collab-provider";
 import { useCollabFormSync } from "@/hooks/use-collab-form-sync";
 import { Loader2 } from "lucide-react";
@@ -73,6 +74,7 @@ export function MentorEditorClient({ resumeTitle, initialContent, templateId, mo
       templateId={templateId}
       mode={mode}
       ydoc={collabState.ydoc}
+      provider={collabState.provider}
       presenceUsers={collabState.presenceUsers}
       isConnected={collabState.isConnected}
       displayName={config.displayName}
@@ -86,6 +88,7 @@ function MentorEditorInner({
   templateId,
   mode,
   ydoc,
+  provider,
   presenceUsers,
   isConnected,
 }: {
@@ -94,6 +97,7 @@ function MentorEditorInner({
   templateId: TemplateId;
   mode: "edit" | "comment";
   ydoc: import("yjs").Doc;
+  provider: unknown;
   presenceUsers: { userId: string; displayName: string; role: "owner" | "mentor"; color: string }[];
   isConnected: boolean;
   displayName: string;
@@ -127,7 +131,8 @@ function MentorEditorInner({
           <span className="rounded-full bg-primary/10 px-2.5 py-0.5 text-xs font-medium text-primary">
             {mode === "edit" ? "帮改模式" : "批注模式"}
           </span>
-          <div className="ml-auto">
+          <div className="ml-auto flex items-center gap-2">
+            <VoiceChatControls provider={provider} enabled={presenceUsers.length >= 2} />
             <PresenceBar users={presenceUsers} isConnected={isConnected} />
           </div>
         </div>

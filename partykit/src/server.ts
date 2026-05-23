@@ -54,6 +54,32 @@ export default class CollabServer implements Party.Server {
     });
   }
 
+  onMessage(message: string | ArrayBuffer, sender: Party.Connection) {
+    // Only handle text (JSON) messages; binary messages are Y.js sync
+    if (typeof message !== "string") return;
+
+    try {
+      const data = JSON.parse(message);
+
+      // Relay WebRTC signaling messages to all OTHER connections in the room (1:1)
+      if (
+        data.type === "voice-offer" ||
+        data.type === "voice-answer" ||
+        data.type === "voice-ice-candidate" ||
+        data.type === "voice-hangup"
+      ) {
+        const relay = JSON.stringify({ ...data, from: sender.id });
+        for (const conn of this.room.getConnections()) {
+          if (conn.id !== sender.id) {
+            conn.send(relay);
+          }
+        }
+      }
+    } catch {
+      // Not JSON — ignore (could be y-partykit internal text messages)
+    }
+  }
+
   onClose(conn: Party.Connection) {
     this.connections.delete(conn.id);
     this.broadcastPresence();
