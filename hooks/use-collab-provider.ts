@@ -74,17 +74,24 @@ export function useCollabProvider(config: CollabConfig | null): CollabState | nu
       let isSynced = false;
       let presenceUsers: PresenceUser[] = [];
 
+      // y-partykit events
       provider.on("status", (payload: unknown) => {
         if (cancelled) return;
-        const { status } = payload as { status: string };
-        isConnected = status === "connected";
+        const p = payload as { status: string };
+        isConnected = p.status === "connected";
         setState({ ydoc, provider, isConnected, isSynced, presenceUsers });
       });
 
       provider.on("synced", (payload: unknown) => {
         if (cancelled) return;
-        const { synced } = payload as { synced: boolean };
-        isSynced = synced;
+        isSynced = true;
+        setState({ ydoc, provider, isConnected, isSynced, presenceUsers });
+      });
+
+      // Also listen for "sync" event (some versions use this name)
+      provider.on("sync", (payload: unknown) => {
+        if (cancelled) return;
+        isSynced = true;
         setState({ ydoc, provider, isConnected, isSynced, presenceUsers });
       });
 
@@ -104,13 +111,18 @@ export function useCollabProvider(config: CollabConfig | null): CollabState | nu
 
       // Attach message listener when ws connects
       provider.on("status", (payload: unknown) => {
-        const { status } = payload as { status: string };
-        if (status === "connected" && provider.ws) {
+        const p = payload as { status: string };
+        if (p.status === "connected" && provider.ws) {
           provider.ws.addEventListener("message", onWsMessage);
         }
       });
       if (provider.ws) {
         provider.ws.addEventListener("message", onWsMessage);
+      }
+
+      // Set initial connected state (provider might already be connected)
+      if ((provider as unknown as { wsconnected?: boolean }).wsconnected) {
+        isConnected = true;
       }
 
       setState({ ydoc, provider, isConnected, isSynced, presenceUsers });

@@ -43,13 +43,11 @@ export function CollabEditorClient({ resumeTitle, mode }: Props) {
     );
   }
 
-  if (!collabState?.isSynced || !collabState?.ydoc || !collabState?.provider) {
+  if (!collabState?.isConnected || !collabState?.ydoc || !collabState?.provider) {
     return (
       <div className="flex min-h-screen flex-col items-center justify-center gap-3">
         <Loader2 className="h-8 w-8 animate-spin text-primary" />
-        <p className="text-sm text-muted-foreground">
-          {collabState?.isConnected ? "正在同步文档…" : "正在连接协作空间…"}
-        </p>
+        <p className="text-sm text-muted-foreground">正在连接协作空间…</p>
       </div>
     );
   }
