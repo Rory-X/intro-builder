@@ -30,7 +30,7 @@ export function AnnotationHighlights({
 }: Props) {
   const marksRef = useRef<Map<string, HTMLElement[]>>(new Map());
   const annotationsRef = useRef(annotations);
-  annotationsRef.current = annotations;
+  useEffect(() => { annotationsRef.current = annotations; });
 
   // Popover state for clicking a highlight
   const [activePopover, setActivePopover] = useState<{

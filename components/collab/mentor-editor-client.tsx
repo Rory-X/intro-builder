@@ -123,7 +123,7 @@ function MentorEditorInner({
   });
 
   // Annotations (for comment mode)
-  const { annotations, addAnnotation, updateStatus } = useAnnotations({
+  const { annotations, addAnnotation } = useAnnotations({
     ydoc,
     enabled: isConnected && mode === "comment",
   });
