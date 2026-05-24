@@ -257,15 +257,15 @@ function isPointInRange(x: number, y: number, range: Range): boolean {
  * its center point is outside the page container's visible area.
  */
 function isRectVisible(rect: DOMRect, scope: HTMLElement): boolean {
-  // Find the page containers (overflow:hidden divs with fixed A4 height)
-  const pageContainers = scope.querySelectorAll("[data-testid='resume-export-preview'] > div");
+  // The page containers are direct children of the preview root (scope).
+  // They have overflow:hidden and fixed A4 dimensions.
+  // scope itself is [data-testid="resume-export-preview"]
+  const pageContainers = scope.querySelectorAll(":scope > div");
 
   if (pageContainers.length === 0) {
-    // Fallback: just check if rect is within viewport area
-    const centerY = rect.top + rect.height / 2;
-    const centerX = rect.left + rect.width / 2;
-    return centerX > 0 && centerX < window.innerWidth &&
-           centerY > -500 && centerY < window.innerHeight + 5000;
+    // No pages found — fallback: check if rect is roughly on screen
+    return rect.left > -100 && rect.top > -100 &&
+           rect.top < window.innerHeight + 2000;
   }
 
   // Check if rect center is within any page container's bounds
@@ -274,6 +274,8 @@ function isRectVisible(rect: DOMRect, scope: HTMLElement): boolean {
 
   for (const page of pageContainers) {
     const pageRect = page.getBoundingClientRect();
+    // Page must have reasonable dimensions (skip tiny/collapsed elements)
+    if (pageRect.height < 100) continue;
     if (centerX >= pageRect.left && centerX <= pageRect.right &&
         centerY >= pageRect.top && centerY <= pageRect.bottom) {
       return true;
