@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { existsSync } from "node:fs";
 
-export const PDF_NAVIGATION_TIMEOUT_MS = 8000;
+export const PDF_NAVIGATION_TIMEOUT_MS = 30000;
 
 type FontReadyPage = {
   evaluate: (fn: () => Promise<void>) => Promise<void>;

@@ -14,7 +14,7 @@ import {
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
-export const maxDuration = 10;
+export const maxDuration = 60;
 
 export async function GET(req: Request, ctx: { params: Promise<{ id: string }> }) {
   const { id } = await ctx.params;
@@ -40,7 +40,7 @@ export async function GET(req: Request, ctx: { params: Promise<{ id: string }> }
     });
     const page = await browser.newPage();
     await page.setExtraHTTPHeaders({ cookie: cookieHeader });
-    await page.goto(previewUrl, { waitUntil: "networkidle0", timeout: PDF_NAVIGATION_TIMEOUT_MS });
+    await page.goto(previewUrl, { waitUntil: "networkidle2", timeout: PDF_NAVIGATION_TIMEOUT_MS });
     await waitForPdfFonts(page);
     const pdfBuffer = await page.pdf({
       format: "A4",
