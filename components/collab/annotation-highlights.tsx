@@ -2,9 +2,9 @@
 
 /**
  * Renders highlight marks over the preview for annotated text.
- * - Diff-based update: only adds/removes changed annotations (no jitter)
- * - MutationObserver: re-applies if React wipes the DOM
- * - Click handler: shows annotation detail popover
+ * Strategy: always full re-apply (remove all → re-insert all) in a single
+ * requestAnimationFrame so the browser paints in one frame (no visible jitter).
+ * MutationObserver re-applies when React wipes the DOM.
  */
 
 import { useEffect, useRef, useCallback, useState } from "react";
@@ -16,7 +16,6 @@ type Props = {
   previewRef: React.RefObject<HTMLDivElement | null>;
   annotations: Annotation[];
   onClickAnnotation?: (annotation: Annotation) => void;
-  /** Owner can manage status from the popover */
   canManage?: boolean;
   onUpdateStatus?: (id: string, status: "accepted" | "dismissed") => void;
 };
@@ -31,80 +30,69 @@ export function AnnotationHighlights({
   const marksRef = useRef<Map<string, HTMLElement[]>>(new Map());
   const annotationsRef = useRef(annotations);
   useEffect(() => { annotationsRef.current = annotations; });
+  const onClickRef = useRef(onClickAnnotation);
+  useEffect(() => { onClickRef.current = onClickAnnotation; });
 
-  // Popover state for clicking a highlight
   const [activePopover, setActivePopover] = useState<{
     annotation: Annotation;
     x: number;
     y: number;
   } | null>(null);
 
-  const applyHighlights = useCallback((forceAll = false) => {
+  // Disconnect observer during our own DOM mutations to avoid loops
+  const observerRef = useRef<MutationObserver | null>(null);
+  const isMutatingRef = useRef(false);
+
+  const applyHighlights = useCallback(() => {
     const container = previewRef.current;
     if (!container) return;
 
-    const visible = annotationsRef.current.filter((a) => a.status !== "dismissed");
-    const visibleIds = new Set(visible.map((a) => a.id));
+    isMutatingRef.current = true;
 
-    if (forceAll) {
-      // Full re-apply (used when React wiped DOM)
-      removeAllMarks(marksRef.current);
-      marksRef.current.clear();
-
-      for (const ann of visible) {
-        applyOne(container, ann);
-      }
-    } else {
-      // Diff-based: only add new, remove deleted
-      // Remove marks for annotations that are no longer visible
-      for (const [id, marks] of marksRef.current) {
-        if (!visibleIds.has(id)) {
-          for (const mark of marks) {
-            if (mark.parentNode) {
-              mark.parentNode.replaceChild(document.createTextNode(mark.textContent || ""), mark);
-              mark.parentNode.normalize();
-            }
-          }
-          marksRef.current.delete(id);
-        }
-      }
-
-      // Add marks for new annotations only
-      for (const ann of visible) {
-        if (!marksRef.current.has(ann.id)) {
-          applyOne(container, ann);
+    // 1. Remove all existing marks (unwrap back to text)
+    for (const marks of marksRef.current.values()) {
+      for (const mark of marks) {
+        if (mark.parentNode) {
+          const text = document.createTextNode(mark.textContent || "");
+          mark.parentNode.replaceChild(text, mark);
         }
       }
     }
+    // Normalize to merge adjacent text nodes (clean slate)
+    container.normalize();
+    marksRef.current.clear();
 
-    function applyOne(cont: HTMLElement, ann: Annotation) {
-      const marks = highlightText(cont, ann);
+    // 2. Re-apply all visible annotations
+    const visible = annotationsRef.current.filter((a) => a.status !== "dismissed");
+    for (const ann of visible) {
+      const marks = highlightText(container, ann);
       if (marks.length > 0) {
         marksRef.current.set(ann.id, marks);
         for (const mark of marks) {
           mark.addEventListener("click", (e) => {
             e.stopPropagation();
-            // Use viewport coordinates (fixed positioning)
             const rect = mark.getBoundingClientRect();
             setActivePopover({
               annotation: ann,
               x: rect.right + 8,
               y: rect.top,
             });
-            onClickAnnotation?.(ann);
+            onClickRef.current?.(ann);
           });
         }
       }
     }
-  }, [previewRef, onClickAnnotation]);
 
-  // Apply on annotations change (diff-based, no jitter)
+    isMutatingRef.current = false;
+  }, [previewRef]);
+
+  // Re-apply whenever annotations change (single rAF — no visible flash)
   useEffect(() => {
-    const timer = setTimeout(() => applyHighlights(false), 100);
-    return () => clearTimeout(timer);
+    const id = requestAnimationFrame(applyHighlights);
+    return () => cancelAnimationFrame(id);
   }, [annotations, applyHighlights]);
 
-  // MutationObserver: full re-apply only when marks are wiped by React
+  // MutationObserver: re-apply when React wipes our marks
   useEffect(() => {
     const container = previewRef.current;
     if (!container) return;
@@ -112,27 +100,42 @@ export function AnnotationHighlights({
     let debounceTimer: ReturnType<typeof setTimeout> | null = null;
 
     const observer = new MutationObserver(() => {
+      if (isMutatingRef.current) return; // ignore our own mutations
       if (debounceTimer) clearTimeout(debounceTimer);
       debounceTimer = setTimeout(() => {
-        // Only re-apply if marks are gone
+        // Check if marks still exist in DOM
         for (const marks of marksRef.current.values()) {
           if (marks[0] && !container.contains(marks[0])) {
-            applyHighlights(true);
+            applyHighlights();
             break;
           }
         }
       }, 300);
     });
 
-    observer.observe(container, { childList: true, subtree: true, characterData: true });
+    observerRef.current = observer;
+    observer.observe(container, { childList: true, subtree: true });
 
     return () => {
       observer.disconnect();
+      observerRef.current = null;
       if (debounceTimer) clearTimeout(debounceTimer);
-      removeAllMarks(marksRef.current);
-      marksRef.current.clear();
     };
   }, [previewRef, applyHighlights]);
+
+  // Cleanup marks on unmount
+  useEffect(() => {
+    return () => {
+      for (const marks of marksRef.current.values()) {
+        for (const mark of marks) {
+          if (mark.parentNode) {
+            mark.parentNode.replaceChild(document.createTextNode(mark.textContent || ""), mark);
+          }
+        }
+      }
+      marksRef.current.clear();
+    };
+  }, []);
 
   // Close popover on outside click
   useEffect(() => {
@@ -160,7 +163,6 @@ export function AnnotationHighlights({
         }
       `}</style>
 
-      {/* Annotation detail popover (appears on click) */}
       {activePopover && (
         <div
           data-annotation-detail
@@ -201,7 +203,7 @@ export function AnnotationHighlights({
   );
 }
 
-// --- Highlight logic (unchanged from previous fix) ---
+// --- Highlight logic ---
 
 function highlightText(container: HTMLElement, annotation: Annotation): HTMLElement[] {
   const { selectedText, sectionKey } = annotation;
@@ -215,6 +217,7 @@ function highlightText(container: HTMLElement, annotation: Annotation): HTMLElem
 
   const searchText = selectedText.slice(0, 100);
 
+  // Collect all text nodes
   const textNodes: Text[] = [];
   const walker = document.createTreeWalker(scope, NodeFilter.SHOW_TEXT);
   let n: Text | null;
@@ -222,10 +225,12 @@ function highlightText(container: HTMLElement, annotation: Annotation): HTMLElem
     textNodes.push(n);
   }
 
+  // Build combined string and find match
   const combined = textNodes.map((t) => t.textContent || "").join("");
   const matchIdx = combined.indexOf(searchText);
   if (matchIdx === -1) return [];
 
+  // Map back to text node ranges
   const matchEnd = matchIdx + searchText.length;
   let charOffset = 0;
   const ranges: { node: Text; start: number; end: number }[] = [];
@@ -236,11 +241,6 @@ function highlightText(container: HTMLElement, annotation: Annotation): HTMLElem
     const nodeEnd = charOffset + len;
 
     if (nodeEnd > matchIdx && nodeStart < matchEnd) {
-      if (textNode.parentElement?.tagName === "MARK" &&
-          textNode.parentElement.dataset.annotationId) {
-        charOffset += len;
-        continue;
-      }
       const start = Math.max(0, matchIdx - nodeStart);
       const end = Math.min(len, matchEnd - nodeStart);
       ranges.push({ node: textNode, start, end });
@@ -252,13 +252,14 @@ function highlightText(container: HTMLElement, annotation: Annotation): HTMLElem
 
   if (ranges.length === 0) return [];
 
+  // Apply from last to first (preserve earlier offsets)
   const marks: HTMLElement[] = [];
   for (let i = ranges.length - 1; i >= 0; i--) {
     const { node, start, end } = ranges[i];
     let target: Text = node;
     if (start > 0) target = node.splitText(start);
-    const actualEnd = end - start;
-    if (actualEnd < (target.textContent?.length || 0)) target.splitText(actualEnd);
+    const len = end - start;
+    if (len < (target.textContent?.length || 0)) target.splitText(len);
 
     const mark = document.createElement("mark");
     mark.textContent = target.textContent;
@@ -273,7 +274,7 @@ function highlightText(container: HTMLElement, annotation: Annotation): HTMLElem
 }
 
 function getHighlightClass(status: Annotation["status"]): string {
-  const base = "cursor-pointer rounded-sm px-0.5 transition-colors inline";
+  const base = "cursor-pointer rounded-sm px-0.5 inline";
   switch (status) {
     case "pending":
       return `${base} bg-yellow-200/80 dark:bg-yellow-600/40 border-b-2 border-yellow-500 hover:bg-yellow-300`;
@@ -281,17 +282,6 @@ function getHighlightClass(status: Annotation["status"]): string {
       return `${base} bg-green-200/70 dark:bg-green-600/30 border-b-2 border-green-500`;
     case "dismissed":
       return `${base} bg-gray-200/30 dark:bg-gray-700/20 line-through opacity-40`;
-  }
-}
-
-function removeAllMarks(marksMap: Map<string, HTMLElement[]>) {
-  for (const marks of marksMap.values()) {
-    for (const mark of marks) {
-      if (mark.parentNode) {
-        mark.parentNode.replaceChild(document.createTextNode(mark.textContent || ""), mark);
-        mark.parentNode.normalize();
-      }
-    }
   }
 }
 
