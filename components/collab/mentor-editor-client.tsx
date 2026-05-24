@@ -113,12 +113,13 @@ function MentorEditorInner({
     mode: "onChange",
   });
 
-  // Bidirectional form sync via Y.Map (only for edit mode)
+  // Bidirectional form sync via Y.Map
+  // In edit mode: mentor can write. In comment mode: mentor only receives owner's edits.
   const collabSync = useCollabFormSync({
     ydoc,
     form,
     role: "mentor",
-    enabled: isConnected && mode === "edit",
+    enabled: isConnected,
   });
 
   // Annotations (for comment mode)
