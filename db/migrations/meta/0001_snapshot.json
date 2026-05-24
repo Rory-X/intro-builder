@@ -1,5 +1,5 @@
 {
-  "id": "a4af9aa0-ff3a-4a6e-bc8f-7659870281e1",
+  "id": "95266121-6120-4181-8de4-a57435cc4f94",
   "prevId": "3b3ef5d0-0404-495e-82d0-75b06e8cd1ad",
   "version": "7",
   "dialect": "postgresql",
@@ -417,8 +417,8 @@
           "primaryKey": false,
           "notNull": false
         },
-        "thumbnail_url": {
-          "name": "thumbnail_url",
+        "thumbnailUrl": {
+          "name": "thumbnailUrl",
           "type": "text",
           "primaryKey": false,
           "notNull": false
@@ -448,21 +448,21 @@
           "notNull": true,
           "default": "'draft'"
         },
-        "created_by": {
-          "name": "created_by",
+        "createdBy": {
+          "name": "createdBy",
           "type": "text",
           "primaryKey": false,
           "notNull": false
         },
-        "created_at": {
-          "name": "created_at",
+        "createdAt": {
+          "name": "createdAt",
           "type": "timestamp",
           "primaryKey": false,
           "notNull": true,
           "default": "now()"
         },
-        "updated_at": {
-          "name": "updated_at",
+        "updatedAt": {
+          "name": "updatedAt",
           "type": "timestamp",
           "primaryKey": false,
           "notNull": true,

@@ -84,14 +84,14 @@ export const templates = pgTable("templates", {
   id: text("id").primaryKey(),
   name: text("name").notNull(),
   description: text("description"),
-  thumbnailUrl: text("thumbnail_url"),
-  source: text("source").notNull(),            // 'builtin' | 'uploaded'
+  thumbnailUrl: text("thumbnailUrl"),
+  source: text("source").notNull(),
   decoration: jsonb("decoration"),
   layout: jsonb("layout").notNull(),
-  status: text("status").notNull().default("draft"),  // 'draft' | 'published'
-  createdBy: text("created_by"),
-  createdAt: timestamp("created_at").defaultNow().notNull(),
-  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  status: text("status").notNull().default("draft"),
+  createdBy: text("createdBy"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().notNull(),
 });
 
 export type DbTemplate = typeof templates.$inferSelect;
