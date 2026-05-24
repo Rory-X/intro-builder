@@ -129,6 +129,7 @@ function MentorEditorInner({
   });
 
   const previewRef = useRef<HTMLDivElement>(null);
+  const previewContentRef = useRef<HTMLDivElement>(null);
   const displayNameRef = useRef(displayName);
   displayNameRef.current = displayName;
 
@@ -215,8 +216,8 @@ function MentorEditorInner({
             </div>
             {/* Right: preview with annotation popover (批注模式) */}
             <div ref={previewRef} className="thin-scrollbar relative flex-1 overflow-y-auto bg-muted p-6">
-              <LivePreview templateId={templateId} />
-              <AnnotationHighlights previewRef={previewRef} annotations={annotations} />
+              <LivePreview ref={previewContentRef} templateId={templateId} />
+              <AnnotationHighlights previewRef={previewContentRef} annotations={annotations} />
               <AnnotationPopover
                 previewRef={previewRef}
                 onSubmit={(data) => addAnnotation({ ...data, authorName: displayNameRef.current })}
