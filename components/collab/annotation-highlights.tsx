@@ -248,6 +248,41 @@ function isPointInRange(x: number, y: number, range: Range): boolean {
   return false;
 }
 
+// --- Visibility check ---
+
+/**
+ * Check if a rect is truly visible — not just has dimensions, but is inside
+ * a visible page container. The paginated preview renders each page as an
+ * overflow:hidden div. Clipped content has valid getBoundingClientRect but
+ * its center point is outside the page container's visible area.
+ */
+function isRectVisible(rect: DOMRect, scope: HTMLElement): boolean {
+  // Find the page containers (overflow:hidden divs with fixed A4 height)
+  const pageContainers = scope.querySelectorAll("[data-testid='resume-export-preview'] > div");
+
+  if (pageContainers.length === 0) {
+    // Fallback: just check if rect is within viewport area
+    const centerY = rect.top + rect.height / 2;
+    const centerX = rect.left + rect.width / 2;
+    return centerX > 0 && centerX < window.innerWidth &&
+           centerY > -500 && centerY < window.innerHeight + 5000;
+  }
+
+  // Check if rect center is within any page container's bounds
+  const centerY = rect.top + rect.height / 2;
+  const centerX = rect.left + rect.width / 2;
+
+  for (const page of pageContainers) {
+    const pageRect = page.getBoundingClientRect();
+    if (centerX >= pageRect.left && centerX <= pageRect.right &&
+        centerY >= pageRect.top && centerY <= pageRect.bottom) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
 // --- Text range finding ---
 
 function findRangeInScope(scope: HTMLElement, selectedText: string): Range | null {
@@ -311,9 +346,11 @@ function findRangeInScope(scope: HTMLElement, selectedText: string): Range | nul
       range.setStart(textNodes[startChar.nodeIdx], startChar.charIdx);
       range.setEnd(textNodes[endChar.nodeIdx], endChar.charIdx + 1);
 
-      // Check if this range is actually visible (not in a hidden measurement area)
+      // Check if this range is actually visible (not clipped by overflow:hidden)
+      // Each page is overflow:hidden, so clipped text still has dimensions
+      // but its rect center won't be inside any visible page container
       const rect = range.getBoundingClientRect();
-      if (rect.height > 0 && rect.width > 0) {
+      if (rect.height > 0 && rect.width > 0 && isRectVisible(rect, scope)) {
         return range;
       }
     } catch { /* skip invalid ranges */ }
