@@ -84,12 +84,12 @@ export function AnnotationHighlights({
         for (const mark of marks) {
           mark.addEventListener("click", (e) => {
             e.stopPropagation();
+            // Use viewport coordinates (fixed positioning)
             const rect = mark.getBoundingClientRect();
-            const containerRect = cont.getBoundingClientRect();
             setActivePopover({
               annotation: ann,
-              x: rect.right - containerRect.left + 8,
-              y: rect.top - containerRect.top,
+              x: rect.right + 8,
+              y: rect.top,
             });
             onClickAnnotation?.(ann);
           });
@@ -164,7 +164,7 @@ export function AnnotationHighlights({
       {activePopover && (
         <div
           data-annotation-detail
-          className="absolute z-50 w-64 rounded-lg border bg-background p-3 shadow-lg"
+          className="fixed z-50 w-64 rounded-lg border bg-background p-3 shadow-lg"
           style={{ top: activePopover.y, left: activePopover.x }}
         >
           <p className="mb-1 line-clamp-2 text-xs text-muted-foreground">
