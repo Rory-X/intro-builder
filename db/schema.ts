@@ -77,3 +77,22 @@ export const collabSessions = pgTable("collab_session", {
   tokenIdx: uniqueIndex("collab_session_token_idx").on(t.inviteToken),
   resumeIdx: index("collab_session_resume_idx").on(t.resumeId),
 }));
+
+// ─── Templates (template-studio middle platform) ─────────────
+
+export const templates = pgTable("templates", {
+  id: text("id").primaryKey(),
+  name: text("name").notNull(),
+  description: text("description"),
+  thumbnailUrl: text("thumbnail_url"),
+  source: text("source").notNull(),            // 'builtin' | 'uploaded'
+  decoration: jsonb("decoration"),
+  layout: jsonb("layout").notNull(),
+  status: text("status").notNull().default("draft"),  // 'draft' | 'published'
+  createdBy: text("created_by"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export type DbTemplate = typeof templates.$inferSelect;
+export type NewDbTemplate = typeof templates.$inferInsert;
