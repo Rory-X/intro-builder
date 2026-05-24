@@ -24,7 +24,7 @@ import { SkillsEditor } from "@/components/editor/skills-editor";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
-import { Loader2, Share2 } from "lucide-react";
+import { Loader2, Share2, PanelRightClose, PanelRightOpen, MessageSquare } from "lucide-react";
 import { resolveTemplateId, type TemplateId } from "@/lib/templates/registry";
 import { monitorForElements } from "@atlaskit/pragmatic-drag-and-drop/element/adapter";
 import { SectionWrapper } from "@/components/editor/section-wrapper";
@@ -533,19 +533,17 @@ export default function EditorClient({ id, initialTitle, initialTemplate, initia
               <AnnotationHighlights
                 previewRef={previewRootRef}
                 annotations={collabAnnotations}
+                canManage
+                onUpdateStatus={updateAnnotationStatus}
               />
             )}
           </div>
-          {/* Annotation panel (when there are annotations from mentor) */}
+          {/* Collapsible annotation panel */}
           {collabAnnotations.length > 0 && (
-            <div className="thin-scrollbar w-[280px] min-w-[200px] max-w-[400px] shrink-0 resize-x overflow-y-auto overflow-x-hidden border-l bg-background p-3">
-              <AnnotationList
-                annotations={collabAnnotations}
-                canManage
-                onUpdateStatus={updateAnnotationStatus}
-                onClickAnnotation={(ann) => flashAnnotation(ann.id)}
-              />
-            </div>
+            <AnnotationPanel
+              annotations={collabAnnotations}
+              onUpdateStatus={updateAnnotationStatus}
+            />
           )}
         </div>
       ) : (
@@ -565,5 +563,62 @@ export default function EditorClient({ id, initialTitle, initialTemplate, initia
         </div>
       )}
     </FormProvider>
+  );
+}
+
+/** Collapsible annotation panel for owner */
+function AnnotationPanel({
+  annotations,
+  onUpdateStatus,
+}: {
+  annotations: import("@/hooks/use-annotations").Annotation[];
+  onUpdateStatus: (id: string, status: "accepted" | "dismissed") => void;
+}) {
+  const [collapsed, setCollapsed] = useState(false);
+  const pendingCount = annotations.filter((a) => a.status === "pending").length;
+
+  if (collapsed) {
+    return (
+      <div className="flex shrink-0 flex-col items-center gap-2 border-l bg-background px-2 py-3">
+        <button
+          onClick={() => setCollapsed(false)}
+          className="rounded-md p-1.5 hover:bg-accent"
+          title="展开批注面板"
+        >
+          <PanelRightOpen className="h-4 w-4" />
+        </button>
+        <div className="flex flex-col items-center gap-1">
+          <MessageSquare className="h-4 w-4 text-muted-foreground" />
+          {pendingCount > 0 && (
+            <span className="rounded-full bg-orange-100 px-1.5 py-0.5 text-[10px] font-medium text-orange-700 dark:bg-orange-900/40 dark:text-orange-300">
+              {pendingCount}
+            </span>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="thin-scrollbar w-[280px] shrink-0 overflow-y-auto border-l bg-background">
+      <div className="sticky top-0 z-10 flex items-center justify-between border-b bg-background px-3 py-2">
+        <span className="text-xs font-medium">批注 ({annotations.length})</span>
+        <button
+          onClick={() => setCollapsed(true)}
+          className="rounded-md p-1 hover:bg-accent"
+          title="收起面板"
+        >
+          <PanelRightClose className="h-4 w-4" />
+        </button>
+      </div>
+      <div className="p-3">
+        <AnnotationList
+          annotations={annotations}
+          canManage
+          onUpdateStatus={onUpdateStatus}
+          onClickAnnotation={(ann) => flashAnnotation(ann.id)}
+        />
+      </div>
+    </div>
   );
 }

@@ -2,60 +2,109 @@
 
 /**
  * Renders highlight marks over the preview for annotated text.
- * Uses MutationObserver to re-apply when React re-renders the preview.
- *
- * Key fix: uses textContent-based search to handle text spanning multiple
- * DOM nodes (e.g., bold/italic text splits into separate text nodes).
+ * - Diff-based update: only adds/removes changed annotations (no jitter)
+ * - MutationObserver: re-applies if React wipes the DOM
+ * - Click handler: shows annotation detail popover
  */
 
-import { useEffect, useRef, useCallback } from "react";
+import { useEffect, useRef, useCallback, useState } from "react";
 import type { Annotation } from "@/hooks/use-annotations";
+import { Button } from "@/components/ui/button";
+import { Check, X } from "lucide-react";
 
 type Props = {
   previewRef: React.RefObject<HTMLDivElement | null>;
   annotations: Annotation[];
   onClickAnnotation?: (annotation: Annotation) => void;
+  /** Owner can manage status from the popover */
+  canManage?: boolean;
+  onUpdateStatus?: (id: string, status: "accepted" | "dismissed") => void;
 };
 
-export function AnnotationHighlights({ previewRef, annotations, onClickAnnotation }: Props) {
+export function AnnotationHighlights({
+  previewRef,
+  annotations,
+  onClickAnnotation,
+  canManage,
+  onUpdateStatus,
+}: Props) {
   const marksRef = useRef<Map<string, HTMLElement[]>>(new Map());
   const annotationsRef = useRef(annotations);
   annotationsRef.current = annotations;
-  const onClickRef = useRef(onClickAnnotation);
-  onClickRef.current = onClickAnnotation;
 
-  const applyHighlights = useCallback(() => {
+  // Popover state for clicking a highlight
+  const [activePopover, setActivePopover] = useState<{
+    annotation: Annotation;
+    x: number;
+    y: number;
+  } | null>(null);
+
+  const applyHighlights = useCallback((forceAll = false) => {
     const container = previewRef.current;
     if (!container) return;
 
-    // Remove existing marks
-    removeAllMarks(marksRef.current);
-    marksRef.current.clear();
-
-    // Only highlight non-dismissed annotations
     const visible = annotationsRef.current.filter((a) => a.status !== "dismissed");
+    const visibleIds = new Set(visible.map((a) => a.id));
 
-    for (const ann of visible) {
-      const marks = highlightText(container, ann);
+    if (forceAll) {
+      // Full re-apply (used when React wiped DOM)
+      removeAllMarks(marksRef.current);
+      marksRef.current.clear();
+
+      for (const ann of visible) {
+        applyOne(container, ann);
+      }
+    } else {
+      // Diff-based: only add new, remove deleted
+      // Remove marks for annotations that are no longer visible
+      for (const [id, marks] of marksRef.current) {
+        if (!visibleIds.has(id)) {
+          for (const mark of marks) {
+            if (mark.parentNode) {
+              mark.parentNode.replaceChild(document.createTextNode(mark.textContent || ""), mark);
+              mark.parentNode.normalize();
+            }
+          }
+          marksRef.current.delete(id);
+        }
+      }
+
+      // Add marks for new annotations only
+      for (const ann of visible) {
+        if (!marksRef.current.has(ann.id)) {
+          applyOne(container, ann);
+        }
+      }
+    }
+
+    function applyOne(cont: HTMLElement, ann: Annotation) {
+      const marks = highlightText(cont, ann);
       if (marks.length > 0) {
         marksRef.current.set(ann.id, marks);
         for (const mark of marks) {
           mark.addEventListener("click", (e) => {
             e.stopPropagation();
-            onClickRef.current?.(ann);
+            const rect = mark.getBoundingClientRect();
+            const containerRect = cont.getBoundingClientRect();
+            setActivePopover({
+              annotation: ann,
+              x: rect.right - containerRect.left + 8,
+              y: rect.top - containerRect.top,
+            });
+            onClickAnnotation?.(ann);
           });
         }
       }
     }
-  }, [previewRef]);
+  }, [previewRef, onClickAnnotation]);
 
-  // Apply on annotations change
+  // Apply on annotations change (diff-based, no jitter)
   useEffect(() => {
-    const timer = setTimeout(applyHighlights, 150);
+    const timer = setTimeout(() => applyHighlights(false), 100);
     return () => clearTimeout(timer);
   }, [annotations, applyHighlights]);
 
-  // MutationObserver: re-apply when preview DOM changes
+  // MutationObserver: full re-apply only when marks are wiped by React
   useEffect(() => {
     const container = previewRef.current;
     if (!container) return;
@@ -65,14 +114,14 @@ export function AnnotationHighlights({ previewRef, annotations, onClickAnnotatio
     const observer = new MutationObserver(() => {
       if (debounceTimer) clearTimeout(debounceTimer);
       debounceTimer = setTimeout(() => {
-        // Check if any mark is no longer in DOM
+        // Only re-apply if marks are gone
         for (const marks of marksRef.current.values()) {
           if (marks[0] && !container.contains(marks[0])) {
-            applyHighlights();
+            applyHighlights(true);
             break;
           }
         }
-      }, 250);
+      }, 300);
     });
 
     observer.observe(container, { childList: true, subtree: true, characterData: true });
@@ -85,34 +134,79 @@ export function AnnotationHighlights({ previewRef, annotations, onClickAnnotatio
     };
   }, [previewRef, applyHighlights]);
 
+  // Close popover on outside click
+  useEffect(() => {
+    if (!activePopover) return;
+    const handle = (e: MouseEvent) => {
+      if (!(e.target as HTMLElement).closest("[data-annotation-detail]")) {
+        setActivePopover(null);
+      }
+    };
+    setTimeout(() => document.addEventListener("mousedown", handle), 50);
+    return () => document.removeEventListener("mousedown", handle);
+  }, [activePopover]);
+
   return (
-    <style>{`
-      @keyframes annotation-pulse {
-        0% { box-shadow: 0 0 0 0 rgba(59, 130, 246, 0.6); }
-        50% { box-shadow: 0 0 0 4px rgba(59, 130, 246, 0.3); }
-        100% { box-shadow: 0 0 0 0 rgba(59, 130, 246, 0); }
-      }
-      .annotation-flash {
-        animation: annotation-pulse 0.6s ease-out 3;
-        border-radius: 2px;
-      }
-    `}</style>
+    <>
+      <style>{`
+        @keyframes annotation-pulse {
+          0% { box-shadow: 0 0 0 0 rgba(59, 130, 246, 0.6); }
+          50% { box-shadow: 0 0 0 4px rgba(59, 130, 246, 0.3); }
+          100% { box-shadow: 0 0 0 0 rgba(59, 130, 246, 0); }
+        }
+        .annotation-flash {
+          animation: annotation-pulse 0.6s ease-out 3;
+          border-radius: 2px;
+        }
+      `}</style>
+
+      {/* Annotation detail popover (appears on click) */}
+      {activePopover && (
+        <div
+          data-annotation-detail
+          className="absolute z-50 w-64 rounded-lg border bg-background p-3 shadow-lg"
+          style={{ top: activePopover.y, left: activePopover.x }}
+        >
+          <p className="mb-1 line-clamp-2 text-xs text-muted-foreground">
+            「{activePopover.annotation.selectedText}」
+          </p>
+          <p className="text-sm">{activePopover.annotation.comment}</p>
+          <div className="mt-2 flex items-center justify-between text-[10px] text-muted-foreground">
+            <span>— {activePopover.annotation.authorName}</span>
+            <span>{new Date(activePopover.annotation.timestamp).toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" })}</span>
+          </div>
+          {canManage && activePopover.annotation.status === "pending" && (
+            <div className="mt-2 flex gap-1.5 border-t pt-2">
+              <Button
+                size="sm"
+                variant="outline"
+                className="h-6 gap-1 px-2 text-[10px] text-green-700"
+                onClick={() => { onUpdateStatus?.(activePopover.annotation.id, "accepted"); setActivePopover(null); }}
+              >
+                <Check className="h-3 w-3" /> 采纳
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                className="h-6 gap-1 px-2 text-[10px] text-gray-500"
+                onClick={() => { onUpdateStatus?.(activePopover.annotation.id, "dismissed"); setActivePopover(null); }}
+              >
+                <X className="h-3 w-3" /> 忽略
+              </Button>
+            </div>
+          )}
+        </div>
+      )}
+    </>
   );
 }
 
-// --- Core highlight logic ---
+// --- Highlight logic (unchanged from previous fix) ---
 
-/**
- * Two-pass approach to highlight multiple annotations:
- * 1. First pass: find all match positions in the unmodified DOM
- * 2. Second pass: apply highlights from END to START (later offsets first)
- *    so that earlier DOM modifications don't shift later positions.
- */
 function highlightText(container: HTMLElement, annotation: Annotation): HTMLElement[] {
   const { selectedText, sectionKey } = annotation;
   if (!selectedText || selectedText.length < 2) return [];
 
-  // Determine scope
   let scope: HTMLElement = container;
   if (sectionKey && sectionKey !== "unknown") {
     const el = container.querySelector(`[data-pagination-section="${sectionKey}"]`);
@@ -121,7 +215,6 @@ function highlightText(container: HTMLElement, annotation: Annotation): HTMLElem
 
   const searchText = selectedText.slice(0, 100);
 
-  // Get all text nodes (including those already in marks — we need full text)
   const textNodes: Text[] = [];
   const walker = document.createTreeWalker(scope, NodeFilter.SHOW_TEXT);
   let n: Text | null;
@@ -129,12 +222,10 @@ function highlightText(container: HTMLElement, annotation: Annotation): HTMLElem
     textNodes.push(n);
   }
 
-  // Build combined text
   const combined = textNodes.map((t) => t.textContent || "").join("");
   const matchIdx = combined.indexOf(searchText);
   if (matchIdx === -1) return [];
 
-  // Map character offset back to text nodes
   const matchEnd = matchIdx + searchText.length;
   let charOffset = 0;
   const ranges: { node: Text; start: number; end: number }[] = [];
@@ -145,7 +236,6 @@ function highlightText(container: HTMLElement, annotation: Annotation): HTMLElem
     const nodeEnd = charOffset + len;
 
     if (nodeEnd > matchIdx && nodeStart < matchEnd) {
-      // Skip nodes already inside a mark for THIS annotation
       if (textNode.parentElement?.tagName === "MARK" &&
           textNode.parentElement.dataset.annotationId) {
         charOffset += len;
@@ -162,20 +252,13 @@ function highlightText(container: HTMLElement, annotation: Annotation): HTMLElem
 
   if (ranges.length === 0) return [];
 
-  // Apply from LAST to FIRST to preserve offsets
   const marks: HTMLElement[] = [];
   for (let i = ranges.length - 1; i >= 0; i--) {
     const { node, start, end } = ranges[i];
-    const text = node.textContent || "";
-
     let target: Text = node;
-    if (start > 0) {
-      target = node.splitText(start);
-    }
+    if (start > 0) target = node.splitText(start);
     const actualEnd = end - start;
-    if (actualEnd < (target.textContent?.length || 0)) {
-      target.splitText(actualEnd);
-    }
+    if (actualEnd < (target.textContent?.length || 0)) target.splitText(actualEnd);
 
     const mark = document.createElement("mark");
     mark.textContent = target.textContent;
@@ -183,14 +266,14 @@ function highlightText(container: HTMLElement, annotation: Annotation): HTMLElem
     mark.title = annotation.comment;
     mark.dataset.annotationId = annotation.id;
     target.parentNode?.replaceChild(mark, target);
-    marks.unshift(mark); // maintain order
+    marks.unshift(mark);
   }
 
   return marks;
 }
 
 function getHighlightClass(status: Annotation["status"]): string {
-  const base = "cursor-pointer rounded-sm px-0.5 transition-all inline";
+  const base = "cursor-pointer rounded-sm px-0.5 transition-colors inline";
   switch (status) {
     case "pending":
       return `${base} bg-yellow-200/80 dark:bg-yellow-600/40 border-b-2 border-yellow-500 hover:bg-yellow-300`;
@@ -205,9 +288,8 @@ function removeAllMarks(marksMap: Map<string, HTMLElement[]>) {
   for (const marks of marksMap.values()) {
     for (const mark of marks) {
       if (mark.parentNode) {
-        const text = document.createTextNode(mark.textContent || "");
-        mark.parentNode.replaceChild(text, mark);
-        text.parentNode?.normalize();
+        mark.parentNode.replaceChild(document.createTextNode(mark.textContent || ""), mark);
+        mark.parentNode.normalize();
       }
     }
   }
@@ -217,17 +299,12 @@ function removeAllMarks(marksMap: Map<string, HTMLElement[]>) {
 export function flashAnnotation(id: string) {
   const marks = document.querySelectorAll(`[data-annotation-id="${id}"]`);
   if (marks.length === 0) return;
-
-  const firstMark = marks[0] as HTMLElement;
-  firstMark.scrollIntoView({ behavior: "smooth", block: "center" });
-
-  // Flash all marks for this annotation
+  const first = marks[0] as HTMLElement;
+  first.scrollIntoView({ behavior: "smooth", block: "center" });
   for (const mark of marks) {
     mark.classList.remove("annotation-flash");
-    void (mark as HTMLElement).offsetWidth; // force reflow
+    void (mark as HTMLElement).offsetWidth;
     mark.classList.add("annotation-flash");
   }
-  setTimeout(() => {
-    for (const mark of marks) mark.classList.remove("annotation-flash");
-  }, 2000);
+  setTimeout(() => { for (const m of marks) m.classList.remove("annotation-flash"); }, 2000);
 }
