@@ -76,7 +76,7 @@ function getDesktopSnapshot() {
 }
 
 function getServerDesktopSnapshot() {
-  return false;
+  return true; // Assume desktop for SSR (this page is desktop-only)
 }
 
 function formatRelativeSaveTime(savedAt: Date, now: Date): string {
