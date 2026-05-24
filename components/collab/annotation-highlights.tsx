@@ -25,6 +25,9 @@ type Props = {
 
 const hasHighlightAPI = typeof window !== "undefined" && "Highlight" in window && typeof CSS !== "undefined" && CSS.highlights !== undefined;
 
+// Global store for ranges so flashAnnotation can access them
+const globalRangesMap = new Map<string, Range>();
+
 export function AnnotationHighlights({
   previewRef,
   annotations,
@@ -55,6 +58,7 @@ export function AnnotationHighlights({
     CSS.highlights.delete("annotation-accepted");
     CSS.highlights.delete("annotation-flash");
     rangesMapRef.current.clear();
+    globalRangesMap.clear();
 
     const visible = annotationsRef.current.filter((a) => a.status !== "dismissed");
     const pendingRanges: Range[] = [];
@@ -65,6 +69,7 @@ export function AnnotationHighlights({
       const range = findRangeInScope(container, ann.selectedText);
       if (range) {
         rangesMapRef.current.set(ann.id, range);
+        globalRangesMap.set(ann.id, range);
         if (ann.status === "pending") pendingRanges.push(range);
         else if (ann.status === "accepted") acceptedRanges.push(range);
       }
@@ -174,7 +179,7 @@ export function AnnotationHighlights({
           background-color: rgba(74, 222, 128, 0.3);
         }
         ::highlight(annotation-flash) {
-          background-color: rgba(59, 130, 246, 0.5);
+          background-color: rgba(59, 130, 246, 0.6);
         }
       `}</style>
 
@@ -276,9 +281,6 @@ function findRangeInScope(scope: HTMLElement, selectedText: string): Range | nul
 
   if (normSearch.length < 2) return null;
 
-  const normMatchIdx = normFull.indexOf(normSearch);
-  if (normMatchIdx === -1) return null;
-
   // Map normalized → original indices
   const normToOrig: number[] = [];
   for (let i = 0; i < fullText.length; i++) {
@@ -287,44 +289,65 @@ function findRangeInScope(scope: HTMLElement, selectedText: string): Range | nul
     }
   }
 
-  const origStart = normToOrig[normMatchIdx];
-  const origEnd = normToOrig[normMatchIdx + normSearch.length - 1] + 1;
+  // Find ALL occurrences, pick the first one that's visually visible
+  let searchFrom = 0;
+  while (searchFrom < normFull.length) {
+    const normMatchIdx = normFull.indexOf(normSearch, searchFrom);
+    if (normMatchIdx === -1) break;
 
-  if (origStart === undefined || origEnd === undefined) return null;
+    const origStart = normToOrig[normMatchIdx];
+    const origEnd = normToOrig[normMatchIdx + normSearch.length - 1] + 1;
 
-  const startChar = charMap[origStart];
-  const endChar = charMap[origEnd - 1];
+    if (origStart === undefined || origEnd === undefined) {
+      searchFrom = normMatchIdx + 1;
+      continue;
+    }
 
-  try {
-    const range = document.createRange();
-    range.setStart(textNodes[startChar.nodeIdx], startChar.charIdx);
-    range.setEnd(textNodes[endChar.nodeIdx], endChar.charIdx + 1);
-    return range;
-  } catch {
-    return null;
+    const startChar = charMap[origStart];
+    const endChar = charMap[origEnd - 1];
+
+    try {
+      const range = document.createRange();
+      range.setStart(textNodes[startChar.nodeIdx], startChar.charIdx);
+      range.setEnd(textNodes[endChar.nodeIdx], endChar.charIdx + 1);
+
+      // Check if this range is actually visible (not in a hidden measurement area)
+      const rect = range.getBoundingClientRect();
+      if (rect.height > 0 && rect.width > 0) {
+        return range;
+      }
+    } catch { /* skip invalid ranges */ }
+
+    searchFrom = normMatchIdx + 1;
   }
+
+  return null;
 }
 
-/** Flash a specific annotation highlight (called from list click) */
+/** Flash a specific annotation highlight + scroll into view */
 export function flashAnnotation(id: string) {
   if (!hasHighlightAPI) return;
 
-  // Scroll the annotation card into view
-  const card = document.querySelector(`[data-annotation-card="${id}"]`);
-  if (card) {
-    card.scrollIntoView({ behavior: "smooth", block: "center" });
+  const range = globalRangesMap.get(id);
+  if (range) {
+    // Scroll the highlighted text into view
+    const rect = range.getBoundingClientRect();
+    const container = range.startContainer.parentElement?.closest("[class*='overflow-y-auto']");
+    if (container && (rect.top < 0 || rect.bottom > window.innerHeight)) {
+      // Need to scroll — find the element and scroll it
+      const el = range.startContainer.parentElement;
+      el?.scrollIntoView({ behavior: "smooth", block: "center" });
+    }
+
+    // Flash using a temporary CSS highlight group
+    CSS.highlights.set("annotation-flash", new Highlight(range));
+    setTimeout(() => CSS.highlights.delete("annotation-flash"), 1500);
   }
 
-  // Flash the highlight in the preview using a temporary highlight group
-  // We need to find the range again — access it from a global store
-  // Since rangesMapRef is inside the component, we use a DOM-based approach:
-  // find the text and create a temporary flash highlight
-  const allContainers = document.querySelectorAll("[data-preview-highlights]");
-  if (allContainers.length === 0) return;
-
-  // The component stores ranges in CSS.highlights — we can't access them directly
-  // Instead, just flash the card as visual feedback
+  // Also flash the card in the list
+  const card = document.querySelector(`[data-annotation-card="${id}"]`);
   if (card instanceof HTMLElement) {
+    card.scrollIntoView({ behavior: "smooth", block: "center" });
     card.style.transition = "box-shadow 0.3s";
     card.style.boxShadow = "0 0 0 3px rgba(59, 130, 246, 0.5)";
     setTimeout(() => {
