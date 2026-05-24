@@ -281,6 +281,7 @@ function highlightText(container: HTMLElement, annotation: Annotation): HTMLElem
 
   // Apply from last to first (preserve earlier offsets)
   const marks: HTMLElement[] = [];
+  const totalRanges = ranges.length;
   for (let i = ranges.length - 1; i >= 0; i--) {
     const { node, start, end } = ranges[i];
     let target: Text = node;
@@ -288,9 +289,11 @@ function highlightText(container: HTMLElement, annotation: Annotation): HTMLElem
     const len = end - start;
     if (len < (target.textContent?.length || 0)) target.splitText(len);
 
+    // Position in the mark sequence (for continuous styling)
+    const pos = ranges.length - 1 - i; // 0 = first, totalRanges-1 = last
     const mark = document.createElement("mark");
     mark.textContent = target.textContent;
-    mark.className = getHighlightClass(annotation.status);
+    mark.className = getHighlightClass(annotation.status, pos, totalRanges);
     mark.title = annotation.comment;
     mark.dataset.annotationId = annotation.id;
     target.parentNode?.replaceChild(mark, target);
@@ -300,8 +303,20 @@ function highlightText(container: HTMLElement, annotation: Annotation): HTMLElem
   return marks;
 }
 
-function getHighlightClass(status: Annotation["status"]): string {
-  const base = "cursor-pointer rounded-sm px-0.5 inline";
+function getHighlightClass(status: Annotation["status"], position: number, total: number): string {
+  // Determine rounding based on position in multi-mark sequence
+  let rounding: string;
+  if (total === 1) {
+    rounding = "rounded-sm px-0.5";
+  } else if (position === 0) {
+    rounding = "rounded-l-sm pl-0.5"; // first
+  } else if (position === total - 1) {
+    rounding = "rounded-r-sm pr-0.5"; // last
+  } else {
+    rounding = ""; // middle — no rounding, no padding
+  }
+
+  const base = `cursor-pointer inline ${rounding}`;
   switch (status) {
     case "pending":
       return `${base} bg-yellow-200/80 dark:bg-yellow-600/40 border-b-2 border-yellow-500 hover:bg-yellow-300`;
