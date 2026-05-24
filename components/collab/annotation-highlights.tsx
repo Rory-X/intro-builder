@@ -215,8 +215,6 @@ function highlightText(container: HTMLElement, annotation: Annotation): HTMLElem
     if (el instanceof HTMLElement) scope = el;
   }
 
-  const searchText = normalizeWhitespace(selectedText.slice(0, 100));
-
   // Collect all text nodes
   const textNodes: Text[] = [];
   const walker = document.createTreeWalker(scope, NodeFilter.SHOW_TEXT);
@@ -225,27 +223,66 @@ function highlightText(container: HTMLElement, annotation: Annotation): HTMLElem
     textNodes.push(n);
   }
 
-  // Build combined string with normalized whitespace for matching
-  // But track original lengths for offset mapping
-  const segments = textNodes.map((t) => t.textContent || "");
-  const combined = normalizeWhitespace(segments.join(""));
+  // Build char-to-node mapping for the full text
+  type CharRef = { nodeIdx: number; charIdx: number };
+  const charMap: CharRef[] = [];
+  for (let ni = 0; ni < textNodes.length; ni++) {
+    const text = textNodes[ni].textContent || "";
+    for (let ci = 0; ci < text.length; ci++) {
+      charMap.push({ nodeIdx: ni, charIdx: ci });
+    }
+  }
 
-  // Also build a mapping: normalized offset → (textNode index, offset within node)
-  // We need to find where in the original text nodes the match occurs
-  const matchIdx = combined.indexOf(searchText);
-  if (matchIdx === -1) return [];
+  const fullText = charMap.map((c) => (textNodes[c.nodeIdx].textContent || "")[c.charIdx]).join("");
 
-  // Strategy: re-search using the raw (non-normalized) combined with flexible matching
-  // Since normalization may shift offsets, use a simpler approach:
-  // Walk through text nodes and try to match the search text character by character,
-  // treating any whitespace in search as matching any whitespace sequence in DOM
-  const matchRanges = findFlexibleMatch(textNodes, searchText);
-  if (matchRanges.length === 0) return [];
+  // Normalize: strip all whitespace from both strings, then match
+  const normSearch = selectedText.slice(0, 150).replace(/\s/g, "");
+  const normFull = fullText.replace(/\s/g, "");
+
+  if (normSearch.length < 2) return [];
+
+  const normMatchIdx = normFull.indexOf(normSearch);
+  if (normMatchIdx === -1) return [];
+
+  // Map normalized match position back to original fullText positions
+  // Build mapping: normalized index → original index
+  const normToOrig: number[] = [];
+  for (let i = 0; i < fullText.length; i++) {
+    if (!/\s/.test(fullText[i])) {
+      normToOrig.push(i);
+    }
+  }
+
+  const origStart = normToOrig[normMatchIdx];
+  const origEnd = normToOrig[normMatchIdx + normSearch.length - 1] + 1;
+
+  // Map original char indices to text node ranges
+  const ranges: { node: Text; start: number; end: number }[] = [];
+  let currentNodeIdx = -1;
+  let rangeStart = 0;
+  let rangeEnd = 0;
+
+  for (let i = origStart; i < origEnd; i++) {
+    const { nodeIdx, charIdx } = charMap[i];
+    if (nodeIdx !== currentNodeIdx) {
+      if (currentNodeIdx !== -1) {
+        ranges.push({ node: textNodes[currentNodeIdx], start: rangeStart, end: rangeEnd });
+      }
+      currentNodeIdx = nodeIdx;
+      rangeStart = charIdx;
+    }
+    rangeEnd = charIdx + 1;
+  }
+  if (currentNodeIdx !== -1) {
+    ranges.push({ node: textNodes[currentNodeIdx], start: rangeStart, end: rangeEnd });
+  }
+
+  if (ranges.length === 0) return [];
 
   // Apply from last to first (preserve earlier offsets)
   const marks: HTMLElement[] = [];
-  for (let i = matchRanges.length - 1; i >= 0; i--) {
-    const { node, start, end } = matchRanges[i];
+  for (let i = ranges.length - 1; i >= 0; i--) {
+    const { node, start, end } = ranges[i];
     let target: Text = node;
     if (start > 0) target = node.splitText(start);
     const len = end - start;
@@ -261,69 +298,6 @@ function highlightText(container: HTMLElement, annotation: Annotation): HTMLElem
   }
 
   return marks;
-}
-
-/** Normalize whitespace: collapse \n, \r, \t, multiple spaces into single space */
-function normalizeWhitespace(s: string): string {
-  return s.replace(/\s+/g, " ").trim();
-}
-
-/**
- * Flexible match: find text across text nodes, treating any whitespace
- * in the search string as matching any amount of whitespace (or node boundaries).
- */
-function findFlexibleMatch(
-  textNodes: Text[],
-  searchText: string,
-): { node: Text; start: number; end: number }[] {
-  // Split search into non-whitespace tokens
-  const tokens = searchText.split(/\s+/).filter(Boolean);
-  if (tokens.length === 0) return [];
-
-  // Build a flat character array with node references
-  type CharInfo = { node: Text; indexInNode: number };
-  const chars: CharInfo[] = [];
-  for (const node of textNodes) {
-    const text = node.textContent || "";
-    for (let i = 0; i < text.length; i++) {
-      chars.push({ node, indexInNode: i });
-    }
-  }
-
-  // Try to find the token sequence in the char array
-  const fullText = chars.map((c) => (c.node.textContent || "")[c.indexInNode]).join("");
-
-  // Build regex pattern: tokens joined by \s* (whitespace between them is flexible)
-  const escapedTokens = tokens.map((t) => t.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
-  const pattern = new RegExp(escapedTokens.join("\\s*"));
-  const match = pattern.exec(fullText);
-  if (!match) return [];
-
-  const startIdx = match.index;
-  const endIdx = startIdx + match[0].length;
-
-  // Map char indices back to text node ranges
-  const ranges: { node: Text; start: number; end: number }[] = [];
-  let currentNode: Text | null = null;
-  let rangeStart = 0;
-  let rangeEnd = 0;
-
-  for (let i = startIdx; i < endIdx; i++) {
-    const { node, indexInNode } = chars[i];
-    if (node !== currentNode) {
-      if (currentNode) {
-        ranges.push({ node: currentNode, start: rangeStart, end: rangeEnd });
-      }
-      currentNode = node;
-      rangeStart = indexInNode;
-    }
-    rangeEnd = indexInNode + 1;
-  }
-  if (currentNode) {
-    ranges.push({ node: currentNode, start: rangeStart, end: rangeEnd });
-  }
-
-  return ranges;
 }
 
 function getHighlightClass(status: Annotation["status"]): string {
