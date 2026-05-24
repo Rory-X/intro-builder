@@ -2,12 +2,10 @@
 
 /**
  * Renders highlight marks over the preview for annotated text.
- * Uses MutationObserver to re-apply highlights when React re-renders the preview.
+ * Uses MutationObserver to re-apply when React re-renders the preview.
  *
- * Status colors:
- * - pending (待处理): 黄色高亮 + 黄色下边框
- * - accepted (已采纳): 绿色高亮 + 绿色下边框
- * - dismissed (已忽略): 不显示高亮
+ * Key fix: uses textContent-based search to handle text spanning multiple
+ * DOM nodes (e.g., bold/italic text splits into separate text nodes).
  */
 
 import { useEffect, useRef, useCallback } from "react";
@@ -20,7 +18,7 @@ type Props = {
 };
 
 export function AnnotationHighlights({ previewRef, annotations, onClickAnnotation }: Props) {
-  const marksRef = useRef<Map<string, HTMLElement>>(new Map());
+  const marksRef = useRef<Map<string, HTMLElement[]>>(new Map());
   const annotationsRef = useRef(annotations);
   annotationsRef.current = annotations;
   const onClickRef = useRef(onClickAnnotation);
@@ -30,39 +28,34 @@ export function AnnotationHighlights({ previewRef, annotations, onClickAnnotatio
     const container = previewRef.current;
     if (!container) return;
 
-    // Remove existing marks safely
-    for (const mark of marksRef.current.values()) {
-      if (mark.parentNode) {
-        const text = document.createTextNode(mark.textContent || "");
-        mark.parentNode.replaceChild(text, mark);
-        text.parentNode?.normalize();
-      }
-    }
+    // Remove existing marks
+    removeAllMarks(marksRef.current);
     marksRef.current.clear();
 
-    // Only highlight pending and accepted
+    // Only highlight non-dismissed annotations
     const visible = annotationsRef.current.filter((a) => a.status !== "dismissed");
 
     for (const ann of visible) {
-      const mark = highlightText(container, ann);
-      if (mark) {
-        marksRef.current.set(ann.id, mark);
-        mark.addEventListener("click", (e) => {
-          e.stopPropagation();
-          onClickRef.current?.(ann);
-        });
+      const marks = highlightText(container, ann);
+      if (marks.length > 0) {
+        marksRef.current.set(ann.id, marks);
+        for (const mark of marks) {
+          mark.addEventListener("click", (e) => {
+            e.stopPropagation();
+            onClickRef.current?.(ann);
+          });
+        }
       }
     }
   }, [previewRef]);
 
   // Apply on annotations change
   useEffect(() => {
-    // Small delay to let React finish rendering preview DOM
-    const timer = setTimeout(applyHighlights, 100);
+    const timer = setTimeout(applyHighlights, 150);
     return () => clearTimeout(timer);
   }, [annotations, applyHighlights]);
 
-  // MutationObserver: re-apply when preview DOM changes (React re-renders)
+  // MutationObserver: re-apply when preview DOM changes
   useEffect(() => {
     const container = previewRef.current;
     if (!container) return;
@@ -70,15 +63,16 @@ export function AnnotationHighlights({ previewRef, annotations, onClickAnnotatio
     let debounceTimer: ReturnType<typeof setTimeout> | null = null;
 
     const observer = new MutationObserver(() => {
-      // Debounce to avoid applying during rapid re-renders
       if (debounceTimer) clearTimeout(debounceTimer);
       debounceTimer = setTimeout(() => {
-        // Only re-apply if marks are gone (React wiped them)
-        const firstMark = marksRef.current.values().next().value;
-        if (firstMark && !container.contains(firstMark)) {
-          applyHighlights();
+        // Check if any mark is no longer in DOM
+        for (const marks of marksRef.current.values()) {
+          if (marks[0] && !container.contains(marks[0])) {
+            applyHighlights();
+            break;
+          }
         }
-      }, 200);
+      }, 250);
     });
 
     observer.observe(container, { childList: true, subtree: true, characterData: true });
@@ -86,13 +80,7 @@ export function AnnotationHighlights({ previewRef, annotations, onClickAnnotatio
     return () => {
       observer.disconnect();
       if (debounceTimer) clearTimeout(debounceTimer);
-      // Cleanup marks
-      for (const mark of marksRef.current.values()) {
-        if (mark.parentNode) {
-          mark.parentNode.replaceChild(document.createTextNode(mark.textContent || ""), mark);
-          mark.parentNode.normalize();
-        }
-      }
+      removeAllMarks(marksRef.current);
       marksRef.current.clear();
     };
   }, [previewRef, applyHighlights]);
@@ -112,44 +100,93 @@ export function AnnotationHighlights({ previewRef, annotations, onClickAnnotatio
   );
 }
 
-// --- Highlight logic ---
+// --- Core highlight logic ---
 
-function highlightText(container: HTMLElement, annotation: Annotation): HTMLElement | null {
+/**
+ * Highlights text that may span multiple DOM nodes.
+ * Strategy: get textContent of scope, find offset, map back to text nodes.
+ */
+function highlightText(container: HTMLElement, annotation: Annotation): HTMLElement[] {
   const { selectedText, sectionKey } = annotation;
-  if (!selectedText || selectedText.length < 2) return null;
+  if (!selectedText || selectedText.length < 2) return [];
 
+  // Determine scope
   let scope: HTMLElement = container;
   if (sectionKey && sectionKey !== "unknown") {
     const el = container.querySelector(`[data-pagination-section="${sectionKey}"]`);
     if (el instanceof HTMLElement) scope = el;
   }
 
-  const searchText = selectedText.slice(0, 80);
+  const searchText = selectedText.slice(0, 100);
+
+  // Get all text nodes in order
+  const textNodes: Text[] = [];
   const walker = document.createTreeWalker(scope, NodeFilter.SHOW_TEXT);
-  let node: Text | null;
-
-  while ((node = walker.nextNode() as Text | null)) {
-    const content = node.textContent || "";
-    const idx = content.indexOf(searchText);
-    if (idx === -1) continue;
-
-    // Don't re-highlight already marked text
-    if (node.parentElement?.tagName === "MARK") continue;
-
-    const before = node.splitText(idx);
-    before.splitText(searchText.length);
-
-    const mark = document.createElement("mark");
-    mark.textContent = before.textContent;
-    mark.className = getHighlightClass(annotation.status);
-    mark.title = annotation.comment;
-    mark.dataset.annotationId = annotation.id;
-
-    before.parentNode?.replaceChild(mark, before);
-    return mark;
+  let n: Text | null;
+  while ((n = walker.nextNode() as Text | null)) {
+    if (n.parentElement?.tagName === "MARK") continue; // skip existing marks
+    textNodes.push(n);
   }
 
-  return null;
+  // Build combined text and find the match
+  const combined = textNodes.map((t) => t.textContent || "").join("");
+  const matchIdx = combined.indexOf(searchText);
+  if (matchIdx === -1) return [];
+
+  // Map character offset back to text nodes
+  const matchEnd = matchIdx + searchText.length;
+  let charOffset = 0;
+  const ranges: { node: Text; start: number; end: number }[] = [];
+
+  for (const textNode of textNodes) {
+    const len = textNode.textContent?.length || 0;
+    const nodeStart = charOffset;
+    const nodeEnd = charOffset + len;
+
+    if (nodeEnd > matchIdx && nodeStart < matchEnd) {
+      // This node overlaps with the match
+      const start = Math.max(0, matchIdx - nodeStart);
+      const end = Math.min(len, matchEnd - nodeStart);
+      ranges.push({ node: textNode, start, end });
+    }
+
+    charOffset += len;
+    if (charOffset >= matchEnd) break;
+  }
+
+  // Wrap each range in <mark>
+  const marks: HTMLElement[] = [];
+  for (const { node, start, end } of ranges) {
+    const text = node.textContent || "";
+    if (start === 0 && end === text.length) {
+      // Wrap entire node
+      const mark = wrapInMark(node, annotation);
+      marks.push(mark);
+    } else {
+      // Split and wrap partial
+      let target = node;
+      if (start > 0) {
+        target = node.splitText(start);
+      }
+      if (end - start < (target.textContent?.length || 0)) {
+        target.splitText(end - start);
+      }
+      const mark = wrapInMark(target, annotation);
+      marks.push(mark);
+    }
+  }
+
+  return marks;
+}
+
+function wrapInMark(textNode: Text, annotation: Annotation): HTMLElement {
+  const mark = document.createElement("mark");
+  mark.textContent = textNode.textContent;
+  mark.className = getHighlightClass(annotation.status);
+  mark.title = annotation.comment;
+  mark.dataset.annotationId = annotation.id;
+  textNode.parentNode?.replaceChild(mark, textNode);
+  return mark;
 }
 
 function getHighlightClass(status: Annotation["status"]): string {
@@ -164,19 +201,33 @@ function getHighlightClass(status: Annotation["status"]): string {
   }
 }
 
-/** Scroll to and flash a specific annotation mark */
+function removeAllMarks(marksMap: Map<string, HTMLElement[]>) {
+  for (const marks of marksMap.values()) {
+    for (const mark of marks) {
+      if (mark.parentNode) {
+        const text = document.createTextNode(mark.textContent || "");
+        mark.parentNode.replaceChild(text, mark);
+        text.parentNode?.normalize();
+      }
+    }
+  }
+}
+
+/** Scroll to and flash a specific annotation */
 export function flashAnnotation(id: string) {
-  const mark = document.querySelector(`[data-annotation-id="${id}"]`);
-  if (!mark || !(mark instanceof HTMLElement)) return;
+  const marks = document.querySelectorAll(`[data-annotation-id="${id}"]`);
+  if (marks.length === 0) return;
 
-  // Scroll smoothly
-  mark.scrollIntoView({ behavior: "smooth", block: "center" });
+  const firstMark = marks[0] as HTMLElement;
+  firstMark.scrollIntoView({ behavior: "smooth", block: "center" });
 
-  // Remove any existing flash, then add
-  mark.classList.remove("annotation-flash");
-  // Force reflow to restart animation
-  void mark.offsetWidth;
-  mark.classList.add("annotation-flash");
-
-  setTimeout(() => mark.classList.remove("annotation-flash"), 2000);
+  // Flash all marks for this annotation
+  for (const mark of marks) {
+    mark.classList.remove("annotation-flash");
+    void (mark as HTMLElement).offsetWidth; // force reflow
+    mark.classList.add("annotation-flash");
+  }
+  setTimeout(() => {
+    for (const mark of marks) mark.classList.remove("annotation-flash");
+  }, 2000);
 }
