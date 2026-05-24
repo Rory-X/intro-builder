@@ -1,10 +1,13 @@
 "use client";
 
 /**
- * Renders highlight marks over the preview for annotated text.
- * Strategy: always full re-apply (remove all → re-insert all) in a single
- * requestAnimationFrame so the browser paints in one frame (no visible jitter).
- * MutationObserver re-applies when React wipes the DOM.
+ * Annotation highlights using the CSS Custom Highlight API.
+ * This approach NEVER modifies the preview DOM — it creates Range objects
+ * and registers them with CSS.highlights, which the browser renders as
+ * colored backgrounds without affecting layout or pagination.
+ *
+ * Fallback: for browsers without Highlight API support (Firefox < 132),
+ * highlights are not shown in preview (annotations still visible in list).
  */
 
 import { useEffect, useRef, useCallback, useState } from "react";
@@ -20,6 +23,9 @@ type Props = {
   onUpdateStatus?: (id: string, status: "accepted" | "dismissed") => void;
 };
 
+// Check if CSS Highlight API is available
+const hasHighlightAPI = typeof window !== "undefined" && "Highlight" in window && CSS.highlights !== undefined;
+
 export function AnnotationHighlights({
   previewRef,
   annotations,
@@ -27,11 +33,13 @@ export function AnnotationHighlights({
   canManage,
   onUpdateStatus,
 }: Props) {
-  const marksRef = useRef<Map<string, HTMLElement[]>>(new Map());
   const annotationsRef = useRef(annotations);
   useEffect(() => { annotationsRef.current = annotations; });
   const onClickRef = useRef(onClickAnnotation);
   useEffect(() => { onClickRef.current = onClickAnnotation; });
+
+  // Store ranges per annotation for click detection
+  const rangesMapRef = useRef<Map<string, Range[]>>(new Map());
 
   const [activePopover, setActivePopover] = useState<{
     annotation: Annotation;
@@ -39,103 +47,114 @@ export function AnnotationHighlights({
     y: number;
   } | null>(null);
 
-  // Disconnect observer during our own DOM mutations to avoid loops
-  const observerRef = useRef<MutationObserver | null>(null);
-  const isMutatingRef = useRef(false);
-
+  // Apply CSS highlights
   const applyHighlights = useCallback(() => {
+    if (!hasHighlightAPI) return;
     const container = previewRef.current;
     if (!container) return;
 
-    isMutatingRef.current = true;
+    // Clear all existing highlights
+    CSS.highlights.delete("annotation-pending");
+    CSS.highlights.delete("annotation-accepted");
+    rangesMapRef.current.clear();
 
-    // 1. Remove all existing marks (unwrap back to text)
-    for (const marks of marksRef.current.values()) {
-      for (const mark of marks) {
-        if (mark.parentNode) {
-          const text = document.createTextNode(mark.textContent || "");
-          mark.parentNode.replaceChild(text, mark);
-        }
-      }
-    }
-    // Normalize to merge adjacent text nodes (clean slate)
-    container.normalize();
-    marksRef.current.clear();
-
-    // 2. Re-apply all visible annotations
     const visible = annotationsRef.current.filter((a) => a.status !== "dismissed");
+    const pendingRanges: Range[] = [];
+    const acceptedRanges: Range[] = [];
+
     for (const ann of visible) {
-      const marks = highlightText(container, ann);
-      if (marks.length > 0) {
-        marksRef.current.set(ann.id, marks);
-        for (const mark of marks) {
-          mark.addEventListener("click", (e) => {
-            e.stopPropagation();
-            const rect = mark.getBoundingClientRect();
-            setActivePopover({
-              annotation: ann,
-              x: rect.right + 8,
-              y: rect.top,
-            });
-            onClickRef.current?.(ann);
-          });
+      const ranges = findTextRanges(container, ann);
+      if (ranges.length > 0) {
+        rangesMapRef.current.set(ann.id, ranges);
+        for (const range of ranges) {
+          if (ann.status === "pending") pendingRanges.push(range);
+          else if (ann.status === "accepted") acceptedRanges.push(range);
         }
       }
     }
 
-    isMutatingRef.current = false;
+    // Register highlights with the browser
+    if (pendingRanges.length > 0) {
+      CSS.highlights.set("annotation-pending", new Highlight(...pendingRanges));
+    }
+    if (acceptedRanges.length > 0) {
+      CSS.highlights.set("annotation-accepted", new Highlight(...acceptedRanges));
+    }
   }, [previewRef]);
 
-  // Re-apply whenever annotations change (single rAF — no visible flash)
+  // Re-apply on annotations change
   useEffect(() => {
     const id = requestAnimationFrame(applyHighlights);
     return () => cancelAnimationFrame(id);
   }, [annotations, applyHighlights]);
 
-  // MutationObserver: re-apply when React wipes our marks
+  // MutationObserver: re-apply when React re-renders preview
   useEffect(() => {
+    if (!hasHighlightAPI) return;
     const container = previewRef.current;
     if (!container) return;
 
     let debounceTimer: ReturnType<typeof setTimeout> | null = null;
-
     const observer = new MutationObserver(() => {
-      if (isMutatingRef.current) return; // ignore our own mutations
       if (debounceTimer) clearTimeout(debounceTimer);
-      debounceTimer = setTimeout(() => {
-        // Check if marks still exist in DOM
-        for (const marks of marksRef.current.values()) {
-          if (marks[0] && !container.contains(marks[0])) {
-            applyHighlights();
-            break;
-          }
-        }
-      }, 300);
+      debounceTimer = setTimeout(applyHighlights, 300);
     });
-
-    observerRef.current = observer;
     observer.observe(container, { childList: true, subtree: true });
 
     return () => {
       observer.disconnect();
-      observerRef.current = null;
       if (debounceTimer) clearTimeout(debounceTimer);
+      CSS.highlights.delete("annotation-pending");
+      CSS.highlights.delete("annotation-accepted");
     };
   }, [previewRef, applyHighlights]);
 
-  // Cleanup marks on unmount
+  // Click handler: detect which annotation was clicked
   useEffect(() => {
-    return () => {
-      for (const marks of marksRef.current.values()) {
-        for (const mark of marks) {
-          if (mark.parentNode) {
-            mark.parentNode.replaceChild(document.createTextNode(mark.textContent || ""), mark);
+    const container = previewRef.current;
+    if (!container) return;
+
+    const handleClick = (e: MouseEvent) => {
+      const sel = document.caretPositionFromPoint?.(e.clientX, e.clientY)
+        || document.caretRangeFromPoint(e.clientX, e.clientY);
+      if (!sel) return;
+
+      // Check if click is within any annotation range
+      for (const [id, ranges] of rangesMapRef.current) {
+        for (const range of ranges) {
+          const point = document.createRange();
+          if ("offsetNode" in sel) {
+            // caretPositionFromPoint result
+            const cp = sel as { offsetNode: Node; offset: number };
+            point.setStart(cp.offsetNode, cp.offset);
+            point.setEnd(cp.offsetNode, cp.offset);
+          } else {
+            // caretRangeFromPoint result (Range)
+            const cr = sel as Range;
+            point.setStart(cr.startContainer, cr.startOffset);
+            point.setEnd(cr.endContainer, cr.endOffset);
+          }
+
+          if (
+            range.compareBoundaryPoints(Range.START_TO_START, point) <= 0 &&
+            range.compareBoundaryPoints(Range.END_TO_END, point) >= 0
+          ) {
+            const ann = annotationsRef.current.find((a) => a.id === id);
+            if (ann) {
+              e.stopPropagation();
+              const rect = range.getBoundingClientRect();
+              setActivePopover({ annotation: ann, x: rect.right + 8, y: rect.top });
+              onClickRef.current?.(ann);
+              return;
+            }
           }
         }
       }
-      marksRef.current.clear();
     };
-  }, []);
+
+    container.addEventListener("click", handleClick);
+    return () => container.removeEventListener("click", handleClick);
+  }, [previewRef]);
 
   // Close popover on outside click
   useEffect(() => {
@@ -152,6 +171,12 @@ export function AnnotationHighlights({
   return (
     <>
       <style>{`
+        ::highlight(annotation-pending) {
+          background-color: rgba(250, 204, 21, 0.4);
+        }
+        ::highlight(annotation-accepted) {
+          background-color: rgba(74, 222, 128, 0.3);
+        }
         @keyframes annotation-pulse {
           0% { box-shadow: 0 0 0 0 rgba(59, 130, 246, 0.6); }
           50% { box-shadow: 0 0 0 4px rgba(59, 130, 246, 0.3); }
@@ -159,7 +184,6 @@ export function AnnotationHighlights({
         }
         .annotation-flash {
           animation: annotation-pulse 0.6s ease-out 3;
-          border-radius: 2px;
         }
       `}</style>
 
@@ -203,34 +227,31 @@ export function AnnotationHighlights({
   );
 }
 
-// --- Highlight logic ---
+// --- Text range finding (NO DOM modification) ---
 
-function highlightText(container: HTMLElement, annotation: Annotation): HTMLElement[] {
+function findTextRanges(container: HTMLElement, annotation: Annotation): Range[] {
   const { selectedText, sectionKey } = annotation;
   if (!selectedText || selectedText.length < 2) return [];
 
-  const scope: HTMLElement = container;
+  // Find all matching sections (handles multi-page)
+  let scopes: HTMLElement[] = [container];
   if (sectionKey && sectionKey !== "unknown") {
-    // Search ALL matching sections (pagination creates duplicates across pages)
-    const allSections = container.querySelectorAll(`[data-pagination-section="${sectionKey}"]`);
-    if (allSections.length > 0) {
-      // Try each section until we find the text
-      for (const sec of allSections) {
-        if (!(sec instanceof HTMLElement)) continue;
-        const result = tryHighlightInScope(sec, annotation);
-        if (result.length > 0) return result;
-      }
-      return [];
+    const sections = container.querySelectorAll(`[data-pagination-section="${sectionKey}"]`);
+    if (sections.length > 0) {
+      scopes = Array.from(sections).filter((el): el is HTMLElement => el instanceof HTMLElement);
     }
   }
 
-  return tryHighlightInScope(scope, annotation);
+  for (const scope of scopes) {
+    const range = findRangeInScope(scope, selectedText);
+    if (range) return [range];
+  }
+
+  return [];
 }
 
-function tryHighlightInScope(scope: HTMLElement, annotation: Annotation): HTMLElement[] {
-  const selectedText = annotation.selectedText;
-
-  // Collect all text nodes
+function findRangeInScope(scope: HTMLElement, selectedText: string): Range | null {
+  // Collect text nodes
   const textNodes: Text[] = [];
   const walker = document.createTreeWalker(scope, NodeFilter.SHOW_TEXT);
   let n: Text | null;
@@ -238,7 +259,9 @@ function tryHighlightInScope(scope: HTMLElement, annotation: Annotation): HTMLEl
     textNodes.push(n);
   }
 
-  // Build char-to-node mapping for the full text
+  if (textNodes.length === 0) return null;
+
+  // Build char-to-node mapping
   type CharRef = { nodeIdx: number; charIdx: number };
   const charMap: CharRef[] = [];
   for (let ni = 0; ni < textNodes.length; ni++) {
@@ -248,19 +271,20 @@ function tryHighlightInScope(scope: HTMLElement, annotation: Annotation): HTMLEl
     }
   }
 
+  if (charMap.length === 0) return null;
+
   const fullText = charMap.map((c) => (textNodes[c.nodeIdx].textContent || "")[c.charIdx]).join("");
 
-  // Normalize: strip all whitespace from both strings, then match
+  // Normalize: strip whitespace from both
   const normSearch = selectedText.slice(0, 150).replace(/\s/g, "");
   const normFull = fullText.replace(/\s/g, "");
 
-  if (normSearch.length < 2) return [];
+  if (normSearch.length < 2) return null;
 
   const normMatchIdx = normFull.indexOf(normSearch);
-  if (normMatchIdx === -1) return [];
+  if (normMatchIdx === -1) return null;
 
-  // Map normalized match position back to original fullText positions
-  // Build mapping: normalized index → original index
+  // Map normalized → original indices
   const normToOrig: number[] = [];
   for (let i = 0; i < fullText.length; i++) {
     if (!/\s/.test(fullText[i])) {
@@ -271,79 +295,30 @@ function tryHighlightInScope(scope: HTMLElement, annotation: Annotation): HTMLEl
   const origStart = normToOrig[normMatchIdx];
   const origEnd = normToOrig[normMatchIdx + normSearch.length - 1] + 1;
 
-  // Map original char indices to text node ranges
-  const ranges: { node: Text; start: number; end: number }[] = [];
-  let currentNodeIdx = -1;
-  let rangeStart = 0;
-  let rangeEnd = 0;
+  if (origStart === undefined || origEnd === undefined) return null;
 
-  for (let i = origStart; i < origEnd; i++) {
-    const { nodeIdx, charIdx } = charMap[i];
-    if (nodeIdx !== currentNodeIdx) {
-      if (currentNodeIdx !== -1) {
-        ranges.push({ node: textNodes[currentNodeIdx], start: rangeStart, end: rangeEnd });
-      }
-      currentNodeIdx = nodeIdx;
-      rangeStart = charIdx;
-    }
-    rangeEnd = charIdx + 1;
-  }
-  if (currentNodeIdx !== -1) {
-    ranges.push({ node: textNodes[currentNodeIdx], start: rangeStart, end: rangeEnd });
-  }
+  // Create a Range (NO DOM modification!)
+  const startChar = charMap[origStart];
+  const endChar = charMap[origEnd - 1];
 
-  if (ranges.length === 0) return [];
+  const range = document.createRange();
+  range.setStart(textNodes[startChar.nodeIdx], startChar.charIdx);
+  range.setEnd(textNodes[endChar.nodeIdx], endChar.charIdx + 1);
 
-  // Apply from last to first (preserve earlier offsets)
-  const marks: HTMLElement[] = [];
-  const totalRanges = ranges.length;
-  for (let i = ranges.length - 1; i >= 0; i--) {
-    const { node, start, end } = ranges[i];
-    let target: Text = node;
-    if (start > 0) target = node.splitText(start);
-    const len = end - start;
-    if (len < (target.textContent?.length || 0)) target.splitText(len);
-
-    // Position in the mark sequence (for continuous styling)
-    const pos = ranges.length - 1 - i; // 0 = first, totalRanges-1 = last
-    const mark = document.createElement("mark");
-    mark.textContent = target.textContent;
-    mark.className = getHighlightClass(annotation.status, pos, totalRanges);
-    mark.title = annotation.comment;
-    mark.dataset.annotationId = annotation.id;
-    target.parentNode?.replaceChild(mark, target);
-    marks.unshift(mark);
-  }
-
-  return marks;
-}
-
-function getHighlightClass(status: Annotation["status"], position: number, total: number): string {
-  // No padding, no border — these break pagination layout!
-  // Use box-shadow for underline effect (doesn't affect layout)
-  void position;
-  void total;
-  const base = "cursor-pointer inline";
-  switch (status) {
-    case "pending":
-      return `${base} bg-yellow-200/80 dark:bg-yellow-600/40 shadow-[inset_0_-2px_0_rgb(234,179,8)]`;
-    case "accepted":
-      return `${base} bg-green-200/70 dark:bg-green-600/30 shadow-[inset_0_-2px_0_rgb(34,197,94)]`;
-    case "dismissed":
-      return `${base} bg-gray-200/30 dark:bg-gray-700/20 line-through opacity-40`;
-  }
+  return range;
 }
 
 /** Scroll to and flash a specific annotation */
 export function flashAnnotation(id: string) {
-  const marks = document.querySelectorAll(`[data-annotation-id="${id}"]`);
-  if (marks.length === 0) return;
-  const first = marks[0] as HTMLElement;
-  first.scrollIntoView({ behavior: "smooth", block: "center" });
-  for (const mark of marks) {
-    mark.classList.remove("annotation-flash");
-    void (mark as HTMLElement).offsetWidth;
-    mark.classList.add("annotation-flash");
+  // Flash by temporarily adding a visible element
+  const ranges = document.getSelection();
+  void ranges; // CSS highlights don't have direct DOM elements to flash
+
+  // Use the annotation list scroll instead — the list item handles flash
+  const listItem = document.querySelector(`[data-annotation-card="${id}"]`);
+  if (listItem) {
+    listItem.scrollIntoView({ behavior: "smooth", block: "center" });
+    listItem.classList.add("annotation-flash");
+    setTimeout(() => listItem.classList.remove("annotation-flash"), 2000);
   }
-  setTimeout(() => { for (const m of marks) m.classList.remove("annotation-flash"); }, 2000);
 }
