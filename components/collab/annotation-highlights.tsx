@@ -209,11 +209,26 @@ function highlightText(container: HTMLElement, annotation: Annotation): HTMLElem
   const { selectedText, sectionKey } = annotation;
   if (!selectedText || selectedText.length < 2) return [];
 
-  let scope: HTMLElement = container;
+  const scope: HTMLElement = container;
   if (sectionKey && sectionKey !== "unknown") {
-    const el = container.querySelector(`[data-pagination-section="${sectionKey}"]`);
-    if (el instanceof HTMLElement) scope = el;
+    // Search ALL matching sections (pagination creates duplicates across pages)
+    const allSections = container.querySelectorAll(`[data-pagination-section="${sectionKey}"]`);
+    if (allSections.length > 0) {
+      // Try each section until we find the text
+      for (const sec of allSections) {
+        if (!(sec instanceof HTMLElement)) continue;
+        const result = tryHighlightInScope(sec, annotation);
+        if (result.length > 0) return result;
+      }
+      return [];
+    }
   }
+
+  return tryHighlightInScope(scope, annotation);
+}
+
+function tryHighlightInScope(scope: HTMLElement, annotation: Annotation): HTMLElement[] {
+  const selectedText = annotation.selectedText;
 
   // Collect all text nodes
   const textNodes: Text[] = [];
@@ -304,24 +319,16 @@ function highlightText(container: HTMLElement, annotation: Annotation): HTMLElem
 }
 
 function getHighlightClass(status: Annotation["status"], position: number, total: number): string {
-  // Determine rounding based on position in multi-mark sequence
-  let rounding: string;
-  if (total === 1) {
-    rounding = "rounded-sm px-0.5";
-  } else if (position === 0) {
-    rounding = "rounded-l-sm pl-0.5"; // first
-  } else if (position === total - 1) {
-    rounding = "rounded-r-sm pr-0.5"; // last
-  } else {
-    rounding = ""; // middle — no rounding, no padding
-  }
-
-  const base = `cursor-pointer inline ${rounding}`;
+  // No padding, no border — these break pagination layout!
+  // Use box-shadow for underline effect (doesn't affect layout)
+  void position;
+  void total;
+  const base = "cursor-pointer inline";
   switch (status) {
     case "pending":
-      return `${base} bg-yellow-200/80 dark:bg-yellow-600/40 border-b-2 border-yellow-500 hover:bg-yellow-300`;
+      return `${base} bg-yellow-200/80 dark:bg-yellow-600/40 shadow-[inset_0_-2px_0_rgb(234,179,8)]`;
     case "accepted":
-      return `${base} bg-green-200/70 dark:bg-green-600/30 border-b-2 border-green-500`;
+      return `${base} bg-green-200/70 dark:bg-green-600/30 shadow-[inset_0_-2px_0_rgb(34,197,94)]`;
     case "dismissed":
       return `${base} bg-gray-200/30 dark:bg-gray-700/20 line-through opacity-40`;
   }
