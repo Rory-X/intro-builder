@@ -103,8 +103,10 @@ export function AnnotationHighlights({ previewRef, annotations, onClickAnnotatio
 // --- Core highlight logic ---
 
 /**
- * Highlights text that may span multiple DOM nodes.
- * Strategy: get textContent of scope, find offset, map back to text nodes.
+ * Two-pass approach to highlight multiple annotations:
+ * 1. First pass: find all match positions in the unmodified DOM
+ * 2. Second pass: apply highlights from END to START (later offsets first)
+ *    so that earlier DOM modifications don't shift later positions.
  */
 function highlightText(container: HTMLElement, annotation: Annotation): HTMLElement[] {
   const { selectedText, sectionKey } = annotation;
@@ -119,16 +121,15 @@ function highlightText(container: HTMLElement, annotation: Annotation): HTMLElem
 
   const searchText = selectedText.slice(0, 100);
 
-  // Get all text nodes in order
+  // Get all text nodes (including those already in marks — we need full text)
   const textNodes: Text[] = [];
   const walker = document.createTreeWalker(scope, NodeFilter.SHOW_TEXT);
   let n: Text | null;
   while ((n = walker.nextNode() as Text | null)) {
-    if (n.parentElement?.tagName === "MARK") continue; // skip existing marks
     textNodes.push(n);
   }
 
-  // Build combined text and find the match
+  // Build combined text
   const combined = textNodes.map((t) => t.textContent || "").join("");
   const matchIdx = combined.indexOf(searchText);
   if (matchIdx === -1) return [];
@@ -144,7 +145,12 @@ function highlightText(container: HTMLElement, annotation: Annotation): HTMLElem
     const nodeEnd = charOffset + len;
 
     if (nodeEnd > matchIdx && nodeStart < matchEnd) {
-      // This node overlaps with the match
+      // Skip nodes already inside a mark for THIS annotation
+      if (textNode.parentElement?.tagName === "MARK" &&
+          textNode.parentElement.dataset.annotationId) {
+        charOffset += len;
+        continue;
+      }
       const start = Math.max(0, matchIdx - nodeStart);
       const end = Math.min(len, matchEnd - nodeStart);
       ranges.push({ node: textNode, start, end });
@@ -154,39 +160,33 @@ function highlightText(container: HTMLElement, annotation: Annotation): HTMLElem
     if (charOffset >= matchEnd) break;
   }
 
-  // Wrap each range in <mark>
+  if (ranges.length === 0) return [];
+
+  // Apply from LAST to FIRST to preserve offsets
   const marks: HTMLElement[] = [];
-  for (const { node, start, end } of ranges) {
+  for (let i = ranges.length - 1; i >= 0; i--) {
+    const { node, start, end } = ranges[i];
     const text = node.textContent || "";
-    if (start === 0 && end === text.length) {
-      // Wrap entire node
-      const mark = wrapInMark(node, annotation);
-      marks.push(mark);
-    } else {
-      // Split and wrap partial
-      let target = node;
-      if (start > 0) {
-        target = node.splitText(start);
-      }
-      if (end - start < (target.textContent?.length || 0)) {
-        target.splitText(end - start);
-      }
-      const mark = wrapInMark(target, annotation);
-      marks.push(mark);
+
+    let target: Text = node;
+    if (start > 0) {
+      target = node.splitText(start);
     }
+    const actualEnd = end - start;
+    if (actualEnd < (target.textContent?.length || 0)) {
+      target.splitText(actualEnd);
+    }
+
+    const mark = document.createElement("mark");
+    mark.textContent = target.textContent;
+    mark.className = getHighlightClass(annotation.status);
+    mark.title = annotation.comment;
+    mark.dataset.annotationId = annotation.id;
+    target.parentNode?.replaceChild(mark, target);
+    marks.unshift(mark); // maintain order
   }
 
   return marks;
-}
-
-function wrapInMark(textNode: Text, annotation: Annotation): HTMLElement {
-  const mark = document.createElement("mark");
-  mark.textContent = textNode.textContent;
-  mark.className = getHighlightClass(annotation.status);
-  mark.title = annotation.comment;
-  mark.dataset.annotationId = annotation.id;
-  textNode.parentNode?.replaceChild(mark, textNode);
-  return mark;
 }
 
 function getHighlightClass(status: Annotation["status"]): string {
