@@ -49,36 +49,34 @@ export function AnnotationPopover({ previewRef, onSubmit, enabled }: Props) {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const popoverRef = useRef<HTMLDivElement>(null);
 
-  const computePosition = useCallback((selectionRect: DOMRect, containerRect: DOMRect): PopoverPosition => {
-    const relTop = selectionRect.top - containerRect.top;
-    const relRight = selectionRect.right - containerRect.left;
-    const relBottom = selectionRect.bottom - containerRect.top;
-    const relCenterY = relTop + selectionRect.height / 2;
+  const computePosition = useCallback((selectionRect: DOMRect, _containerRect: DOMRect): PopoverPosition => {
+    // Use viewport coordinates directly (fixed positioning)
+    const viewportWidth = window.innerWidth;
+    const centerY = selectionRect.top + selectionRect.height / 2;
 
-    // Try right side first
-    const spaceRight = containerRect.width - relRight;
+    // Try right side of selection
+    const spaceRight = viewportWidth - selectionRect.right;
     if (spaceRight >= POPOVER_WIDTH + GAP) {
       return {
-        top: Math.max(0, relCenterY - POPOVER_HEIGHT_ESTIMATE / 2),
-        left: relRight + GAP,
+        top: Math.max(GAP, centerY - POPOVER_HEIGHT_ESTIMATE / 2),
+        left: selectionRect.right + GAP,
         placement: "right",
       };
     }
 
     // Try left side
-    const relLeft = selectionRect.left - containerRect.left;
-    if (relLeft >= POPOVER_WIDTH + GAP) {
+    if (selectionRect.left >= POPOVER_WIDTH + GAP) {
       return {
-        top: Math.max(0, relCenterY - POPOVER_HEIGHT_ESTIMATE / 2),
-        left: relLeft - POPOVER_WIDTH - GAP,
+        top: Math.max(GAP, centerY - POPOVER_HEIGHT_ESTIMATE / 2),
+        left: selectionRect.left - POPOVER_WIDTH - GAP,
         placement: "right",
       };
     }
 
     // Fall back to below selection
     return {
-      top: relBottom + GAP,
-      left: Math.max(GAP, (selectionRect.left - containerRect.left) - POPOVER_WIDTH / 2 + selectionRect.width / 2),
+      top: selectionRect.bottom + GAP,
+      left: Math.max(GAP, selectionRect.left),
       placement: "below",
     };
   }, []);
@@ -165,7 +163,7 @@ export function AnnotationPopover({ previewRef, onSubmit, enabled }: Props) {
     <div
       ref={popoverRef}
       data-annotation-popover
-      className="absolute z-50 w-72 rounded-xl border bg-background p-3 shadow-xl ring-1 ring-black/5"
+      className="fixed z-50 w-72 rounded-xl border bg-background p-3 shadow-xl ring-1 ring-black/5"
       style={{
         top: `${popover.position.top}px`,
         left: `${popover.position.left}px`,
