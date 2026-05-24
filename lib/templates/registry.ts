@@ -6,8 +6,10 @@ import { ProfessionalLayout } from "./professional/Layout";
 import { professionalMeta } from "./professional/meta";
 import type { ComponentType } from "react";
 import {
+  BUILTIN_TEMPLATE_IDS,
   DEFAULT_TEMPLATE_ID,
   TEMPLATE_IDS,
+  type BuiltinTemplateId,
   type TemplateId,
   type TemplateLayoutProps,
 } from "./types";
@@ -27,10 +29,8 @@ export const TEMPLATES: TemplateMeta[] = [
 ];
 
 export function resolveTemplateId(id: string | null | undefined): TemplateId {
-  if (id && (TEMPLATE_IDS as readonly string[]).includes(id)) {
-    return id as TemplateId;
-  }
-  return DEFAULT_TEMPLATE_ID;
+  if (id == null || id === "") return DEFAULT_TEMPLATE_ID;
+  return id;
 }
 
 export function getTemplateMeta(id: string | null | undefined): TemplateMeta {
@@ -42,5 +42,5 @@ export function getTemplateLayout(id: string | null | undefined) {
   return getTemplateMeta(id).Layout;
 }
 
-export { DEFAULT_TEMPLATE_ID, TEMPLATE_IDS };
-export type { TemplateId, TemplateLayoutProps };
+export { DEFAULT_TEMPLATE_ID, TEMPLATE_IDS, BUILTIN_TEMPLATE_IDS };
+export type { TemplateId, BuiltinTemplateId, TemplateLayoutProps };
