@@ -38,24 +38,11 @@ export default async function PreviewPage({
   const isPdf = _pdf === "1";
 
   if (isPdf) {
-    // Decode page break data from editor (if provided)
-    let pageBreaks: number[] | undefined;
-    let totalHeight: number | undefined;
-    if (_breaks) {
-      try {
-        const decoded = JSON.parse(Buffer.from(_breaks, "base64url").toString());
-        pageBreaks = decoded.pageBreaks;
-        totalHeight = decoded.totalHeight;
-      } catch { /* fallback to native pagination */ }
-    }
-
     return (
       <PdfPreview
         templateId={row.templateId}
         content={content}
         styleSettings={content.styleSettings}
-        pageBreaks={pageBreaks}
-        totalHeight={totalHeight}
       />
     );
   }

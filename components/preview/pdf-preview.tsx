@@ -1,83 +1,183 @@
 "use client";
 
 /**
- * PDF-optimized preview that renders using page break data from the editor.
+ * PDF preview with self-contained pagination.
  *
- * KEY INSIGHT: This component does NOT measure or calculate page breaks itself.
- * It receives the exact pageBreaks and totalHeight from the editor's
- * PaginatedPreview (via the API request), and renders using the identical
- * translateY + overlay logic. This guarantees 100% consistency with the
- * live preview — same break positions, same rendering.
+ * Uses the SAME measurement + rendering logic as PaginatedPreview.
+ * Since measurement and rendering happen in the SAME browser instance,
+ * there's no cross-browser font difference issue.
  *
- * Fallback: If no breaks are provided, renders content with CSS break-inside:avoid
- * for native browser pagination (content is never lost, but breaks may differ).
+ * Adds a conservative bottom safety margin to ensure no content is ever
+ * clipped even in edge cases.
  */
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { ResumeContent, StyleSettings } from "@/lib/resume-schema";
 import type { TemplateId } from "@/lib/templates/registry";
 import { TemplateRenderer } from "./template-renderer";
 import { A4_HEIGHT_PX, A4_WIDTH_PX } from "@/lib/pagination";
 
-/** Must match PaginatedPreview's CONTINUATION_PADDING exactly */
-const CONTINUATION_PADDING = 32;
-
 type Props = {
   content: ResumeContent;
   templateId: TemplateId | string;
   styleSettings?: StyleSettings;
-  /** Page break Y-offsets from the editor's PaginatedPreview */
-  pageBreaks?: number[];
-  /** Total content height from the editor's measurement */
-  totalHeight?: number;
 };
 
-export function PdfPreview({ content, templateId, styleSettings, pageBreaks, totalHeight }: Props) {
-  const [ready, setReady] = useState(false);
-  const containerRef = useRef<HTMLDivElement>(null);
+/** Must match PaginatedPreview */
+const CONTINUATION_PADDING = 32;
+const BREAK_SAFETY_MARGIN = 2;
 
-  // Signal ready after fonts load
-  useEffect(() => {
-    const markReady = () => setReady(true);
-    if (document.fonts?.ready) {
-      document.fonts.ready.then(() => requestAnimationFrame(markReady));
-    } else {
-      setTimeout(markReady, 500);
+/**
+ * Extra bottom margin to ensure content is never cut off.
+ * This makes each page break slightly earlier than the theoretical maximum,
+ * guaranteeing no content loss.
+ */
+const BOTTOM_SAFETY_PX = 40;
+
+const BLOCK_TAGS = new Set(["P", "LI", "DIV", "H1", "H2", "H3", "H4", "H5", "H6", "UL", "OL", "BLOCKQUOTE"]);
+
+function findBreakPoints(container: HTMLElement): { bottom: number }[] {
+  const bottomSet = new Set<number>();
+  const breakables = container.querySelectorAll(
+    "[data-pagination-item], [data-pagination-section], [data-pagination-section-header], [data-pagination-header]"
+  );
+  const seen = new Set<HTMLElement>();
+
+  breakables.forEach((el) => {
+    const element = el as HTMLElement;
+    if (element.hasAttribute("data-pagination-section")) {
+      if (element.querySelector("[data-pagination-item]")) return;
     }
-  }, []);
+    if (element.hasAttribute("data-pagination-item")) {
+      if (element.parentElement?.closest("[data-pagination-item]")) return;
+    }
+    if (seen.has(element)) return;
+    seen.add(element);
 
-  const hasBreaks = pageBreaks && pageBreaks.length > 0 && totalHeight && totalHeight > 0;
+    const bottom = element.getBoundingClientRect().bottom - container.getBoundingClientRect().top;
+    bottomSet.add(Math.round(bottom));
 
-  // If we have editor-provided breaks, render paginated (100% consistent)
-  if (hasBreaks) {
-    return <PaginatedPdfOutput
-      content={content}
-      templateId={templateId}
-      styleSettings={styleSettings}
-      pageBreaks={pageBreaks}
-      totalHeight={totalHeight}
-      ready={ready}
-    />;
+    if (element.hasAttribute("data-pagination-item")) {
+      addChildBreakPoints(element, container, bottomSet);
+    }
+  });
+
+  return Array.from(bottomSet).sort((a, b) => a - b).map((bottom) => ({ bottom }));
+}
+
+function addChildBreakPoints(parent: HTMLElement, container: HTMLElement, bottomSet: Set<number>): void {
+  for (const child of Array.from(parent.children)) {
+    const el = child as HTMLElement;
+    if (!BLOCK_TAGS.has(el.tagName)) continue;
+    if (el.offsetHeight < 10) continue;
+    const bottom = el.getBoundingClientRect().bottom - container.getBoundingClientRect().top;
+    bottomSet.add(Math.round(bottom));
+    if (el.tagName === "DIV" || el.tagName === "UL" || el.tagName === "OL") {
+      addChildBreakPoints(el, container, bottomSet);
+    }
+  }
+}
+
+function calculatePageBreaks(breakPoints: { bottom: number }[], totalHeight: number): number[] {
+  if (totalHeight <= A4_HEIGHT_PX - BOTTOM_SAFETY_PX) return [];
+
+  const breaks: number[] = [];
+  let pageStart = 0;
+  let isFirstPage = true;
+
+  while (pageStart < totalHeight) {
+    // Conservative usable height — leaves safety margin at bottom
+    const usableHeight = isFirstPage
+      ? A4_HEIGHT_PX - BOTTOM_SAFETY_PX
+      : A4_HEIGHT_PX - CONTINUATION_PADDING * 2 - BOTTOM_SAFETY_PX;
+    const pageEnd = pageStart + usableHeight;
+
+    if (pageEnd >= totalHeight) break;
+
+    let bestBreak = -1;
+    for (let i = 0; i < breakPoints.length; i++) {
+      if (breakPoints[i].bottom <= pageEnd - BREAK_SAFETY_MARGIN && breakPoints[i].bottom > pageStart) {
+        bestBreak = i;
+      }
+    }
+
+    if (bestBreak >= 0) {
+      breaks.push(breakPoints[bestBreak].bottom);
+      pageStart = breakPoints[bestBreak].bottom;
+    } else {
+      breaks.push(pageEnd);
+      pageStart = pageEnd;
+    }
+    isFirstPage = false;
   }
 
-  // Fallback: native browser pagination with CSS break-inside:avoid
+  return breaks;
+}
+
+export function PdfPreview({ content, templateId, styleSettings }: Props) {
+  const measureRef = useRef<HTMLDivElement>(null);
+  const [pageBreaks, setPageBreaks] = useState<number[]>([]);
+  const [totalHeight, setTotalHeight] = useState(0);
+  const [measured, setMeasured] = useState(false);
+  const debounceTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const recalculate = useCallback(() => {
+    const container = measureRef.current;
+    if (!container) return;
+    const height = container.scrollHeight;
+    if (height === 0) return;
+
+    const breakPoints = findBreakPoints(container);
+    const breaks = calculatePageBreaks(breakPoints, height);
+    setPageBreaks(breaks);
+    setTotalHeight(height);
+    setMeasured(true);
+  }, []);
+
+  const debouncedRecalculate = useCallback(() => {
+    if (debounceTimer.current) clearTimeout(debounceTimer.current);
+    debounceTimer.current = setTimeout(recalculate, 150);
+  }, [recalculate]);
+
+  useLayoutEffect(() => {
+    recalculate();
+  }, [recalculate, content, templateId, styleSettings]);
+
+  useEffect(() => {
+    const container = measureRef.current;
+    if (!container) return;
+
+    if (typeof ResizeObserver !== "undefined") {
+      const observer = new ResizeObserver(() => debouncedRecalculate());
+      observer.observe(container);
+      if (document.fonts?.ready) {
+        document.fonts.ready.then(() => recalculate());
+      }
+      return () => {
+        observer.disconnect();
+        if (debounceTimer.current) clearTimeout(debounceTimer.current);
+      };
+    }
+  }, [recalculate, debouncedRecalculate]);
+
+  const pageOffsets = [0, ...pageBreaks];
+  const numPages = pageOffsets.length;
+
   return (
     <>
+      {/* Hide app shell, reset layout */}
       <style dangerouslySetInnerHTML={{ __html: `
         header:not([data-pagination-header]), nav, footer { display: none !important; }
         html, body { margin: 0 !important; padding: 0 !important; background: white !important; }
         main { display: block !important; padding: 0 !important; margin: 0 !important; }
         body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-        @page { size: A4; margin: 0; }
-        [data-pagination-section] { break-inside: avoid; }
-        [data-pagination-item] { break-inside: avoid; }
-        [data-pagination-section-header] { break-inside: avoid; break-after: avoid; }
-        [data-pagination-header] { break-inside: avoid; }
       `}} />
+
+      {/* Invisible measurement container */}
       <div
-        ref={containerRef}
-        style={{ width: `${A4_WIDTH_PX}px`, backgroundColor: "#ffffff" }}
-        {...(ready ? { "data-pdf-ready": "true" } : {})}
+        ref={measureRef}
+        aria-hidden="true"
+        style={{ position: "absolute", left: "-9999px", opacity: 0, width: `${A4_WIDTH_PX}px` }}
       >
         <TemplateRenderer
           templateId={templateId}
@@ -86,104 +186,75 @@ export function PdfPreview({ content, templateId, styleSettings, pageBreaks, tot
           styleSettings={styleSettings}
         />
       </div>
-    </>
-  );
-}
 
-/**
- * Renders pages using the exact same logic as PaginatedPreview:
- * - Each page is 794×1123px with overflow:hidden
- * - Content positioned via translateY
- * - White overlays hide content beyond page boundaries
- * - page-break-after forces each div onto a separate PDF page
- */
-function PaginatedPdfOutput({
-  content,
-  templateId,
-  styleSettings,
-  pageBreaks,
-  totalHeight,
-  ready,
-}: {
-  content: ResumeContent;
-  templateId: TemplateId | string;
-  styleSettings?: StyleSettings;
-  pageBreaks: number[];
-  totalHeight: number;
-  ready: boolean;
-}) {
-  const pageOffsets = [0, ...pageBreaks];
-  const numPages = pageOffsets.length;
+      {/* Rendered pages */}
+      {measured && (
+        <div data-pdf-ready="true" style={{ margin: 0, padding: 0, width: `${A4_WIDTH_PX}px` }}>
+          {Array.from({ length: numPages }, (_, i) => {
+            const offset = pageOffsets[i];
+            const nextOffset = i < numPages - 1 ? pageOffsets[i + 1] : totalHeight;
+            const isFirstPage = i === 0;
+            const contentHeight = nextOffset - offset;
+            // Same overlay formula as PaginatedPreview
+            const bottomOverlay = Math.max(0, A4_HEIGHT_PX - contentHeight) + (isFirstPage ? 0 : CONTINUATION_PADDING);
 
-  return (
-    <>
-      {/* PDF styles: hide app shell, normalize layout */}
-      <style dangerouslySetInnerHTML={{ __html: `
-        header:not([data-pagination-header]), nav, footer { display: none !important; }
-        html, body { margin: 0 !important; padding: 0 !important; background: white !important; }
-        main { display: block !important; padding: 0 !important; margin: 0 !important; }
-        body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-      `}} />
-
-      {/* Pages container */}
-      <div
-        style={{
-          margin: 0,
-          padding: 0,
-          width: `${A4_WIDTH_PX}px`,
-        }}
-        {...(ready ? { "data-pdf-ready": "true" } : {})}
-      >
-        {Array.from({ length: numPages }, (_, i) => {
-          const offset = pageOffsets[i];
-          const isFirstPage = i === 0;
-          // No bottom overlay — overflow:hidden at 1123px handles clipping naturally.
-          // This prevents content loss from font rendering differences between browsers.
-
-          return (
-            <div
-              key={i}
-              style={{
-                position: "relative",
-                overflow: "hidden",
-                width: `${A4_WIDTH_PX}px`,
-                height: `${A4_HEIGHT_PX}px`,
-                backgroundColor: "#ffffff",
-                margin: 0,
-                padding: 0,
-              }}
-            >
-              {/* Top white overlay for continuation page breathing room */}
-              {!isFirstPage && (
+            return (
+              <div
+                key={i}
+                style={{
+                  position: "relative",
+                  overflow: "hidden",
+                  width: `${A4_WIDTH_PX}px`,
+                  height: `${A4_HEIGHT_PX}px`,
+                  backgroundColor: "#ffffff",
+                }}
+              >
+                {!isFirstPage && (
+                  <div style={{
+                    position: "absolute",
+                    left: 0, right: 0, top: 0,
+                    height: `${CONTINUATION_PADDING}px`,
+                    backgroundColor: "#ffffff",
+                    zIndex: 1,
+                  }} />
+                )}
                 <div style={{
                   position: "absolute",
-                  left: 0,
-                  right: 0,
-                  top: 0,
-                  height: `${CONTINUATION_PADDING}px`,
-                  backgroundColor: "#ffffff",
-                  zIndex: 1,
-                }} />
-              )}
-              {/* Content shifted to show this page's portion */}
-              <div style={{
-                position: "absolute",
-                left: 0,
-                right: 0,
-                top: 0,
-                transform: `translateY(${(isFirstPage ? 0 : CONTINUATION_PADDING) - offset}px)`,
-              }}>
-                <TemplateRenderer
-                  templateId={templateId}
-                  content={content}
-                  sectionOrder={content.sectionOrder}
-                  styleSettings={styleSettings}
-                />
+                  left: 0, right: 0, top: 0,
+                  transform: `translateY(${(isFirstPage ? 0 : CONTINUATION_PADDING) - offset}px)`,
+                }}>
+                  <TemplateRenderer
+                    templateId={templateId}
+                    content={content}
+                    sectionOrder={content.sectionOrder}
+                    styleSettings={styleSettings}
+                  />
+                </div>
+                {bottomOverlay > 0 && (
+                  <div style={{
+                    position: "absolute",
+                    left: 0, right: 0, bottom: 0,
+                    height: `${bottomOverlay}px`,
+                    backgroundColor: "#ffffff",
+                    zIndex: 1,
+                  }} />
+                )}
               </div>
-            </div>
-          );
-        })}
-      </div>
+            );
+          })}
+        </div>
+      )}
+
+      {!measured && (
+        <div data-pdf-ready="true" style={{ width: `${A4_WIDTH_PX}px`, backgroundColor: "#ffffff" }}>
+          <TemplateRenderer
+            templateId={templateId}
+            content={content}
+            sectionOrder={content.sectionOrder}
+            styleSettings={styleSettings}
+          />
+        </div>
+      )}
     </>
   );
 }
