@@ -192,7 +192,7 @@ export function PdfPreview({ content, templateId, styleSettings }: Props) {
 
       {/* Rendered pages */}
       {measured && (
-        <div data-pdf-ready="true" style={{ margin: 0, padding: 0, width: `${A4_WIDTH_PX}px` }}>
+        <div data-pdf-ready="true" data-pdf-breaks={JSON.stringify(pageBreaks)} data-pdf-total-height={totalHeight} data-pdf-num-pages={numPages} style={{ margin: 0, padding: 0, width: `${A4_WIDTH_PX}px` }}>
           {Array.from({ length: numPages }, (_, i) => {
             const offset = pageOffsets[i];
             const isFirstPage = i === 0;

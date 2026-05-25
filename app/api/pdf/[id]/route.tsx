@@ -95,9 +95,13 @@ async function generatePdfRemote(resumeId: string, userId: string, title: string
     await page.waitForSelector("[data-pdf-ready]", { timeout: 15_000 });
     await waitForPdfFonts(page);
 
-    // Debug mode: return screenshot + font diagnostic instead of PDF
+    // Debug mode: return screenshot + pagination + font diagnostic
     if (debugScreenshot) {
-      const fontInfo = await page.evaluate(() => {
+      const debugInfo = await page.evaluate(() => {
+        const readyEl = document.querySelector("[data-pdf-ready]");
+        const pdfBreaks = readyEl?.getAttribute("data-pdf-breaks") || "[]";
+        const pdfTotalHeight = readyEl?.getAttribute("data-pdf-total-height") || "0";
+        const pdfNumPages = readyEl?.getAttribute("data-pdf-num-pages") || "0";
         const fonts = Array.from(document.fonts).map(f => ({
           family: f.family,
           status: f.status,
@@ -106,11 +110,27 @@ async function generatePdfRemote(resumeId: string, userId: string, title: string
         const computedFont = window.getComputedStyle(document.body).fontFamily;
         const testEl = document.querySelector("[data-pagination-header]");
         const testFont = testEl ? window.getComputedStyle(testEl).fontFamily : "N/A";
-        return { fonts, bodyFont: computedFont, headerFont: testFont };
+        // Get all page div heights and offsets
+        const pageDivs = readyEl ? Array.from(readyEl.children) : [];
+        const pageInfo = pageDivs.map((el, i) => {
+          const rect = (el as HTMLElement).getBoundingClientRect();
+          return { page: i, top: rect.top, height: rect.height, width: rect.width };
+        });
+        return {
+          pageBreaks: JSON.parse(pdfBreaks),
+          totalHeight: Number(pdfTotalHeight),
+          numPages: Number(pdfNumPages),
+          fonts,
+          bodyFont: computedFont,
+          headerFont: testFont,
+          pageInfo,
+          bodyHeight: document.body.scrollHeight,
+          documentHeight: document.documentElement.scrollHeight,
+        };
       });
       const screenshot = await page.screenshot({ fullPage: true, type: "png" });
       return new NextResponse(JSON.stringify({
-        fontInfo,
+        ...debugInfo,
         screenshotBase64: Buffer.from(screenshot).toString("base64"),
       }), {
         headers: { "Content-Type": "application/json" },
