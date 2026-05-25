@@ -54,7 +54,7 @@ export function VoiceChatControls({ provider, enabled }: Props) {
   // --- Incoming call notification (callee) — top-right toast style, non-blocking ---
   if (voice.status === "ringing-in") {
     const notification = (
-      <div className="fixed top-4 right-4 z-[9999] w-72 rounded-2xl bg-background p-4 shadow-2xl ring-1 ring-border animate-in slide-in-from-top-2 fade-in duration-300">
+      <div className="fixed top-16 right-4 z-[9999] w-72 rounded-2xl bg-background p-4 shadow-2xl ring-1 ring-border animate-in slide-in-from-top-2 fade-in duration-300">
         <div className="flex items-center gap-3">
           <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-green-100 dark:bg-green-900/40">
             <PhoneIncoming className="h-5 w-5 text-green-600 animate-pulse" />
