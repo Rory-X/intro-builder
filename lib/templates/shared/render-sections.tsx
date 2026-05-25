@@ -25,6 +25,13 @@ export function getSectionOrder(content: ResumeContent, sectionOrder?: string[])
 export type BuildSectionsOptions = {
   includeBasicsSummary?: boolean;
   showEmptyPlaceholders?: boolean;
+  /**
+   * Item header 的 variant —— 控制条目内"公司/职位/项目名"等头部信息的排版。
+   * 与 section title variant **独立维度**：可以 sectionTitleVariant=professional
+   * 配合 itemHeaderVariant=classic（章节标题用专业风、条目用经典风）。
+   * 不传时 fallback 到 section variant，保持原有"绑死"行为不变（向后兼容）。
+   */
+  itemHeaderVariant?: ResumeSectionVariant;
 };
 
 export function buildResumeSections(
@@ -34,6 +41,7 @@ export function buildResumeSections(
 ): Record<string, React.ReactNode> {
   const includeBasicsSummary = options?.includeBasicsSummary ?? true;
   const shells = options?.showEmptyPlaceholders ?? false;
+  const itemHeaderVariant = options?.itemHeaderVariant ?? variant;
 
   const experienceTitle = getSectionMeta("experience").label;
   const educationTitle = getSectionMeta("education").label;
@@ -62,13 +70,13 @@ export function buildResumeSections(
             content.experience.map((e, i) => {
               const dateRange = formatDateRange(e.start, e.end);
               const header =
-                variant === "classic" ? (
+                itemHeaderVariant === "classic" ? (
                   <ResumeItemHeader
                     variant="classic"
                     primary={`${e.company} — ${e.title}`}
                     dateRange={dateRange}
                   />
-                ) : variant === "modern" ? (
+                ) : itemHeaderVariant === "modern" ? (
                   <ResumeItemHeader
                     variant="modern"
                     primary={`${e.title} @ ${e.company}`}
@@ -110,7 +118,7 @@ export function buildResumeSections(
               renderResumeEntry(
                 variant,
                 i,
-                variant === "professional" ? (
+                itemHeaderVariant === "professional" ? (
                   <div data-testid="professional-education-entry">
                     <div className="flex items-baseline justify-between gap-4">
                       <div data-testid="education-school" className="font-bold leading-snug text-neutral-900">
@@ -138,7 +146,7 @@ export function buildResumeSections(
                 ) : (
                   <>
                     <ResumeItemHeader
-                      variant={variant}
+                      variant={itemHeaderVariant}
                       primary={
                         <>
                           <strong>{e.school}</strong>
@@ -176,7 +184,7 @@ export function buildResumeSections(
               renderResumeEntry(
                 variant,
                 i,
-                variant === "professional" ? (
+                itemHeaderVariant === "professional" ? (
                   <div data-testid="professional-project-entry">
                     <div data-testid="project-main-row" className="flex items-start justify-between gap-4">
                       <div data-testid="project-left" className="min-w-0 flex-1">
@@ -217,7 +225,7 @@ export function buildResumeSections(
                 ) : (
                   <>
                     <ResumeItemHeader
-                      variant={variant}
+                      variant={itemHeaderVariant}
                       primary={p.name}
                       secondary={
                         [p.role, p.location, p.stack.length > 0 ? p.stack.join(" · ") : ""]

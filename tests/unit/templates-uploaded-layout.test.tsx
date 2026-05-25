@@ -187,4 +187,41 @@ describe("UploadedLayout", () => {
     const sidebar = container.querySelector("[data-frame-sidebar]");
     expect(sidebar?.getAttribute("data-side")).toBe("right");
   });
+
+  // ============================================================
+  // itemHeaderVariant 解耦（schema 第 3 维独立性）
+  // sectionTitleVariant 决定章节标题样式，itemHeaderVariant 决定条目内
+  // 公司/职位/日期等头部排版 —— 两者独立。修复前两者绑死，schema 字段
+  // 形同虚设；修复后真正解耦。
+  // ============================================================
+
+  it("itemHeaderVariant 解耦于 sectionTitleVariant —— classic item header 在 professional section 下生效", () => {
+    const customContent = {
+      ...demoResume,
+      experience: [
+        {
+          company: "TestCo",
+          title: "Engineer",
+          start: "2020",
+          end: "2024",
+          location: "",
+          content: { type: "doc", content: [] },
+        },
+      ],
+    } as typeof demoResume;
+    const decoupledTemplate: UploadedTemplate = {
+      ...sampleTemplate,
+      layout: {
+        ...sampleTemplate.layout,
+        sectionTitleVariant: "professional", // 章节标题专业风
+        itemHeaderVariant: "classic", // item 用 classic 风（关键：不绑死）
+      },
+    };
+    const { container } = render(
+      <UploadedLayout content={customContent} template={decoupledTemplate} />
+    );
+    // classic experience 的 primary 是 `${company} — ${title}` 单行带 em-dash
+    // professional 风格则是公司在一行、职位是 secondary —— 不会出现这个组合
+    expect(container.textContent).toMatch(/TestCo\s*—\s*Engineer/);
+  });
 });

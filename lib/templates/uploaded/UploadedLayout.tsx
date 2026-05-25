@@ -25,6 +25,7 @@ export function UploadedLayout({
     {
       includeBasicsSummary: true,
       showEmptyPlaceholders,
+      itemHeaderVariant: template.layout.itemHeaderVariant,
     },
   );
 
