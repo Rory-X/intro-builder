@@ -93,9 +93,10 @@ async function generatePdfRemote(resumeId: string, userId: string, title: string
     await page.waitForSelector("[data-pdf-ready]", { timeout: 15_000 });
     await waitForPdfFonts(page);
     const pdfBuffer = await page.pdf({
-      // Let Chromium's print engine handle pagination natively.
-      // CSS break-inside:avoid on sections prevents mid-block splits.
-      preferCSSPageSize: true,
+      // Fixed A4 splitting: Puppeteer creates pages every 1123px.
+      // Our page divs are each exactly 1123px, wrapper height = N*1123.
+      // No reliance on CSS page-break (which is unreliable).
+      format: "A4",
       printBackground: true,
       margin: { top: 0, right: 0, bottom: 0, left: 0 },
     });

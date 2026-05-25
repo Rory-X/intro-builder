@@ -117,18 +117,23 @@ function PaginatedPdfOutput({
 
   return (
     <>
-      {/* PDF styles: hide app shell, configure print */}
+      {/* PDF styles: hide app shell, normalize layout */}
       <style dangerouslySetInnerHTML={{ __html: `
         header:not([data-pagination-header]), nav, footer { display: none !important; }
-        html, body { margin: 0 !important; padding: 0 !important; background: white !important; }
+        html, body { margin: 0 !important; padding: 0 !important; background: white !important; overflow: hidden !important; }
         main { display: block !important; padding: 0 !important; margin: 0 !important; }
         body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-        @page { size: 794px 1123px; margin: 0; }
       `}} />
 
-      {/* Pages container — signals readiness to Puppeteer */}
+      {/* Pages container — exact height ensures Puppeteer A4 splits align with our pages */}
       <div
-        style={{ margin: 0, padding: 0 }}
+        style={{
+          margin: 0,
+          padding: 0,
+          width: `${A4_WIDTH_PX}px`,
+          height: `${numPages * A4_HEIGHT_PX}px`,
+          overflow: "hidden",
+        }}
         {...(ready ? { "data-pdf-ready": "true" } : {})}
       >
         {Array.from({ length: numPages }, (_, i) => {
@@ -146,10 +151,9 @@ function PaginatedPdfOutput({
                 width: `${A4_WIDTH_PX}px`,
                 height: `${A4_HEIGHT_PX}px`,
                 backgroundColor: "#ffffff",
-                // Force each page to be a separate PDF page
-                pageBreakAfter: i < numPages - 1 ? "always" : "auto",
-                breakAfter: i < numPages - 1 ? "page" : "auto",
-              } as React.CSSProperties}
+                margin: 0,
+                padding: 0,
+              }}
             >
               {/* Top white overlay for continuation page breathing room */}
               {!isFirstPage && (
