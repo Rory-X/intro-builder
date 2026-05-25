@@ -192,11 +192,7 @@ export function PdfPreview({ content, templateId, styleSettings }: Props) {
         <div data-pdf-ready="true" style={{ margin: 0, padding: 0, width: `${A4_WIDTH_PX}px` }}>
           {Array.from({ length: numPages }, (_, i) => {
             const offset = pageOffsets[i];
-            const nextOffset = i < numPages - 1 ? pageOffsets[i + 1] : totalHeight;
             const isFirstPage = i === 0;
-            const contentHeight = nextOffset - offset;
-            // Same overlay formula as PaginatedPreview
-            const bottomOverlay = Math.max(0, A4_HEIGHT_PX - contentHeight) + (isFirstPage ? 0 : CONTINUATION_PADDING);
 
             return (
               <div
@@ -230,15 +226,6 @@ export function PdfPreview({ content, templateId, styleSettings }: Props) {
                     styleSettings={styleSettings}
                   />
                 </div>
-                {bottomOverlay > 0 && (
-                  <div style={{
-                    position: "absolute",
-                    left: 0, right: 0, bottom: 0,
-                    height: `${bottomOverlay}px`,
-                    backgroundColor: "#ffffff",
-                    zIndex: 1,
-                  }} />
-                )}
               </div>
             );
           })}
