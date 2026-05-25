@@ -7,24 +7,24 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { cn } from "@/lib/utils";
 
 type Props = {
+  resumeId: string;
   filename: string;
   onExportImage: () => Promise<void>;
   isExportingImage: boolean;
   className?: string;
-  /** Ref to the PaginatedPreview root (data-testid="resume-export-preview") */
-  previewRef: React.RefObject<HTMLDivElement | null>;
+  paginationData?: { pageBreaks: number[]; totalHeight: number } | null;
 };
 
 /**
  * Combined export button with dropdown menu for PDF and image export.
- * PDF is generated client-side by capturing the preview DOM directly.
  */
 export function ExportButton({
+  resumeId,
   filename,
   onExportImage,
   isExportingImage,
   className,
-  previewRef,
+  paginationData,
 }: Props) {
   const [isDownloadingPdf, setIsDownloadingPdf] = useState(false);
   const [open, setOpen] = useState(false);
@@ -33,24 +33,37 @@ export function ExportButton({
 
   async function downloadPdf() {
     if (isDownloadingPdf) return;
-    if (!previewRef.current) {
-      toast.error("预览未就绪，请稍后重试");
-      return;
-    }
-
     setIsDownloadingPdf(true);
     setOpen(false);
+    let objectUrl: string | null = null;
     try {
-      const { exportPreviewAsPdf } = await import("@/lib/client/export-pdf");
-      await exportPreviewAsPdf({
-        previewRoot: previewRef.current,
-        filename: filename || "简历",
+      const response = await fetch(`/api/pdf/${resumeId}`, {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          pageBreaks: paginationData?.pageBreaks ?? [],
+          totalHeight: paginationData?.totalHeight ?? 0,
+        }),
       });
+      if (!response.ok) {
+        throw new Error(`PDF 接口返回 ${response.status}`);
+      }
+      const blob = await response.blob();
+      objectUrl = URL.createObjectURL(blob);
+      const anchor = document.createElement("a");
+      anchor.href = objectUrl;
+      anchor.download = `${filename || "简历"}.pdf`;
+      anchor.rel = "noopener";
+      document.body.appendChild(anchor);
+      anchor.click();
+      anchor.remove();
       toast.success("PDF 已生成");
     } catch (error) {
       console.error("[pdf-download] failed", error);
       toast.error("PDF 生成失败，请稍后重试");
     } finally {
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
       setIsDownloadingPdf(false);
     }
   }
