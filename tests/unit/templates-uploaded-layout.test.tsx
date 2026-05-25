@@ -267,4 +267,37 @@ describe("UploadedLayout", () => {
     // fallback 到 SECTION_META.experience.icon (Briefcase)
     expect(container.querySelector(".lucide-briefcase")).not.toBeNull();
   });
+
+  // ============================================================
+  // accentColor 端到端通电（schema 第 5 维独立性）
+  // theme.accentColor 注入到 article 的 --accent CSS 变量；
+  // ResumeItemHeader 的 dateRange 元素消费 var(--accent, fallback)。
+  // built-in 模板不设 --accent 走 fallback 视觉不变；uploaded 设了
+  // accent 真用上 themed color。
+  // ============================================================
+
+  it("accentColor 通电：注入 --accent 后 dateRange 元素消费", () => {
+    const accentTemplate: UploadedTemplate = {
+      ...sampleTemplate,
+      layout: {
+        ...sampleTemplate.layout,
+        sectionTitleVariant: "modern",
+        theme: {
+          primaryColor: "#137880",
+          accentColor: "#FF6B6B", // 测试色
+        },
+      },
+    };
+    const { container } = render(
+      <UploadedLayout content={demoResume} template={accentTemplate} />
+    );
+    const article = container.querySelector("article")!;
+    expect(article.style.getPropertyValue("--accent")).toBe("#FF6B6B");
+
+    // dateRange span 通过 inline style 消费 var(--accent, fallback)
+    const dateRangeEl = container.querySelector(
+      "span[style*='var(--accent'], span[style*='var(--accent,']"
+    );
+    expect(dateRangeEl).not.toBeNull();
+  });
 });
