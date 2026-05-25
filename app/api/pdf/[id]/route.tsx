@@ -36,15 +36,17 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
   // Read pagination data from request body (sent by editor's ExportButton)
   let pageBreaks: number[] = [];
   let totalHeight = 0;
+  let debugScreenshot = false;
   try {
     const body = await req.json();
     pageBreaks = body.pageBreaks ?? [];
     totalHeight = body.totalHeight ?? 0;
+    debugScreenshot = body._debug === "screenshot";
   } catch { /* ignore parse errors, will fallback to native pagination */ }
 
   // Remote browser configured → use cloud service (production)
   if (BROWSER_WS_ENDPOINT) {
-    return generatePdfRemote(id, session.user.id, row.title, pageBreaks, totalHeight);
+    return generatePdfRemote(id, session.user.id, row.title, pageBreaks, totalHeight, debugScreenshot);
   }
 
   // Fallback: local Puppeteer (dev environment)
@@ -56,7 +58,7 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
  * Uses a signed token for preview page authentication since the remote
  * browser cannot carry the user's session cookie.
  */
-async function generatePdfRemote(resumeId: string, userId: string, title: string, pageBreaks: number[], totalHeight: number) {
+async function generatePdfRemote(resumeId: string, userId: string, title: string, pageBreaks: number[], totalHeight: number, debugScreenshot: boolean) {
   const token = signPdfToken(resumeId, userId);
   const appOrigin = process.env.NEXT_PUBLIC_APP_URL || (process.env.VERCEL_URL
     ? `https://${process.env.VERCEL_URL}`
@@ -87,15 +89,35 @@ async function generatePdfRemote(resumeId: string, userId: string, title: string
       browserWSEndpoint: BROWSER_WS_ENDPOINT!,
     });
     const page = await browser.newPage();
-    await page.setViewport({ width: 794, height: 1123 });
+    await page.setViewport({ width: 794, height: 2400 }); // Tall viewport to see full content
     await page.goto(previewUrl, { waitUntil: "networkidle2", timeout: PDF_NAVIGATION_TIMEOUT_MS });
     // Wait for PdfPreview to signal fonts loaded and content rendered
     await page.waitForSelector("[data-pdf-ready]", { timeout: 15_000 });
     await waitForPdfFonts(page);
+
+    // Debug mode: return screenshot + font diagnostic instead of PDF
+    if (debugScreenshot) {
+      const fontInfo = await page.evaluate(() => {
+        const fonts = Array.from(document.fonts).map(f => ({
+          family: f.family,
+          status: f.status,
+          weight: f.weight,
+        }));
+        const computedFont = window.getComputedStyle(document.body).fontFamily;
+        const testEl = document.querySelector("[data-pagination-header]");
+        const testFont = testEl ? window.getComputedStyle(testEl).fontFamily : "N/A";
+        return { fonts, bodyFont: computedFont, headerFont: testFont };
+      });
+      const screenshot = await page.screenshot({ fullPage: true, type: "png" });
+      return new NextResponse(JSON.stringify({
+        fontInfo,
+        screenshotBase64: Buffer.from(screenshot).toString("base64"),
+      }), {
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+
     const pdfBuffer = await page.pdf({
-      // Fixed A4 splitting: Puppeteer creates pages every 1123px.
-      // Our page divs are each exactly 1123px, wrapper height = N*1123.
-      // No reliance on CSS page-break (which is unreliable).
       format: "A4",
       printBackground: true,
       margin: { top: 0, right: 0, bottom: 0, left: 0 },
