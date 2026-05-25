@@ -74,6 +74,7 @@ export type ResolvedTemplateMeta =
 export type AllTemplatesItem = {
   id: string;
   name: string;
+  /** Coerced to "" at the registry-server boundary; never null at this layer. */
   description: string;
   thumbnailUrl: string | null;
   source: "builtin" | "uploaded";

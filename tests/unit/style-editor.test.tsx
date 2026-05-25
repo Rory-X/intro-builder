@@ -5,9 +5,22 @@ import { StyleEditor } from "@/components/editor/style-editor";
 import { emptyResumeContent, type ResumeContent } from "@/lib/resume-schema";
 import { TEMPLATES, type AllTemplatesItem } from "@/lib/templates/registry";
 
+// Built-in projection. The picker iterates over this merged shape so the
+// gallery surfaces both built-in and uploaded templates from a single
+// server-resolved list. Reused as the default fixture for tests that don't
+// care about template-list specifics (font/line-height/padding behavior).
+const builtinList: AllTemplatesItem[] = TEMPLATES.map((t) => ({
+  id: t.id,
+  name: t.name,
+  description: t.description,
+  thumbnailUrl: null,
+  source: "builtin",
+  isRecommended: t.isRecommended,
+}));
+
 function Harness({
   onReady,
-  allTemplates,
+  allTemplates = builtinList,
   onTemplateChange,
 }: {
   onReady?: (form: UseFormReturn<ResumeContent>) => void;
@@ -64,18 +77,6 @@ describe("StyleEditor", () => {
   });
 
   describe("template gallery", () => {
-    // Built-in projection. The picker iterates over this merged shape so the
-    // gallery surfaces both built-in and uploaded templates from a single
-    // server-resolved list.
-    const builtinList: AllTemplatesItem[] = TEMPLATES.map((t) => ({
-      id: t.id,
-      name: t.name,
-      description: t.description,
-      thumbnailUrl: null,
-      source: "builtin",
-      isRecommended: t.isRecommended,
-    }));
-
     it("renders every built-in template card", () => {
       render(<Harness allTemplates={builtinList} />);
       fireEvent.click(screen.getByRole("button", { name: /模板与排版/ }));
@@ -158,7 +159,7 @@ describe("StyleEditor", () => {
       expect(onTemplateChange).toHaveBeenCalledWith("uploaded-3");
     });
 
-    it("does not crash when allTemplates is empty", () => {
+    it("renders nothing when given an empty list", () => {
       // Defensive: a future caller might pass `[]` if both lists fail to
       // load. The picker should still render the popover shell without
       // throwing.

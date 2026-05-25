@@ -5,7 +5,7 @@ import { Label } from "@/components/ui/label";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { FONT_MAP, type FontKey } from "@/lib/font-map";
 import { DEFAULT_STYLE_SETTINGS, type ResumeContent } from "@/lib/resume-schema";
-import { TEMPLATES, type AllTemplatesItem, type TemplateId } from "@/lib/templates/registry";
+import { type AllTemplatesItem, type TemplateId } from "@/lib/templates/registry";
 import { cn } from "@/lib/utils";
 import { ChevronDown, LayoutTemplate, Loader2, RotateCcw } from "lucide-react";
 
@@ -14,30 +14,12 @@ const FONT_SIZE_OPTIONS = [10, 11, 12, 13, 14, 15, 16] as const;
 const LINE_HEIGHT_OPTIONS = [1.2, 1.3, 1.4, 1.5, 1.6, 1.7, 1.8, 1.9, 2.0] as const;
 const PAGE_PADDING_OPTIONS = [20, 25, 30, 35, 40, 45, 50, 55, 60] as const;
 
-// Built-in fallback list for callers that don't yet pass `allTemplates`
-// (older test harnesses, etc). Built-in metadata is statically known so we
-// can safely synthesize the merged shape without any DB call.
-const BUILTIN_FALLBACK: AllTemplatesItem[] = TEMPLATES.map((t) => ({
-  id: t.id,
-  name: t.name,
-  description: t.description,
-  thumbnailUrl: null,
-  source: "builtin",
-  isRecommended: t.isRecommended,
-}));
-
 type Props = {
   templateId: TemplateId;
   onTemplateChange: (id: TemplateId) => void;
   pendingTemplateId?: TemplateId | null;
-  /**
-   * Merged list of built-in + uploaded templates. Optional because legacy
-   * tests don't pass it; in that case we fall back to the built-in set
-   * derived from the static `TEMPLATES` registry. Production callers should
-   * always thread through the value resolved from `listAllTemplatesAsync()`
-   * on the server, so deleted-then-restored DB templates appear correctly.
-   */
-  allTemplates?: AllTemplatesItem[];
+  // Required because the editor page always pre-fetches via listAllTemplatesAsync; legacy fallback removed.
+  allTemplates: AllTemplatesItem[];
 };
 
 export function StyleEditor({
@@ -82,7 +64,7 @@ export function StyleEditor({
         <div className="space-y-2">
           <Label>简历模板</Label>
           <div className="grid gap-2 sm:grid-cols-3">
-            {(allTemplates ?? BUILTIN_FALLBACK).map((t) => {
+            {allTemplates.map((t) => {
               const isPendingThis = pendingTemplateId === t.id;
               const isOtherPending = pendingTemplateId !== null && !isPendingThis;
               const isUploaded = t.source === "uploaded";
