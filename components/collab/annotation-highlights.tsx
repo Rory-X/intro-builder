@@ -145,11 +145,30 @@ export function AnnotationHighlights({
       if (!ann) return;
 
       e.stopPropagation();
-      // Position popover using viewport coords (fixed positioning)
+      // Smart position: prefer right, fallback left, clamp to viewport
       const range = rangesMapRef.current.get(hitId);
       if (range) {
         const rect = range.getBoundingClientRect();
-        setActivePopover({ annotation: ann, x: rect.right + 8, y: rect.top });
+        const popoverWidth = 264; // w-64 = 16rem = 256px + padding
+        const popoverHeight = 140; // approximate max height
+
+        let x = rect.right + 8;
+        let y = rect.top;
+
+        // If overflows right, show to the left
+        if (x + popoverWidth > window.innerWidth - 8) {
+          x = rect.left - popoverWidth - 8;
+        }
+        // If still overflows left, clamp to left edge
+        if (x < 8) x = 8;
+        // If overflows bottom, shift up
+        if (y + popoverHeight > window.innerHeight - 8) {
+          y = window.innerHeight - popoverHeight - 8;
+        }
+        // If overflows top, clamp
+        if (y < 8) y = 8;
+
+        setActivePopover({ annotation: ann, x, y });
       }
       onClickRef.current?.(ann);
     };
