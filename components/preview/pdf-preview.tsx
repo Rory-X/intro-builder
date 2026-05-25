@@ -120,19 +120,17 @@ function PaginatedPdfOutput({
       {/* PDF styles: hide app shell, normalize layout */}
       <style dangerouslySetInnerHTML={{ __html: `
         header:not([data-pagination-header]), nav, footer { display: none !important; }
-        html, body { margin: 0 !important; padding: 0 !important; background: white !important; overflow: hidden !important; }
+        html, body { margin: 0 !important; padding: 0 !important; background: white !important; }
         main { display: block !important; padding: 0 !important; margin: 0 !important; }
         body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
       `}} />
 
-      {/* Pages container — exact height ensures Puppeteer A4 splits align with our pages */}
+      {/* Pages container */}
       <div
         style={{
           margin: 0,
           padding: 0,
           width: `${A4_WIDTH_PX}px`,
-          height: `${numPages * A4_HEIGHT_PX}px`,
-          overflow: "hidden",
         }}
         {...(ready ? { "data-pdf-ready": "true" } : {})}
       >
