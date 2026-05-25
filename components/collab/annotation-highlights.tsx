@@ -347,11 +347,31 @@ function findRangeInScope(scope: HTMLElement, selectedText: string, excludeRange
   // This ensures we find the EXACT occurrence the user selected, not the first one
   let searchFrom = 0;
   if (charOffset !== undefined && charOffset > 0) {
-    // Start searching from a bit before the offset to handle slight variations
     searchFrom = Math.max(0, charOffset - 5);
   }
 
   // Find the occurrence at/near charOffset that's visually visible
+  const result = searchForVisibleRange(normFull, normSearch, searchFrom, normToOrig, charMap, textNodes, scope, excludeRanges);
+  if (result) return result;
+
+  // Fallback: if charOffset-based search failed, try from the beginning
+  if (searchFrom > 0) {
+    return searchForVisibleRange(normFull, normSearch, 0, normToOrig, charMap, textNodes, scope, excludeRanges);
+  }
+
+  return null;
+}
+
+function searchForVisibleRange(
+  normFull: string,
+  normSearch: string,
+  searchFrom: number,
+  normToOrig: number[],
+  charMap: { nodeIdx: number; charIdx: number }[],
+  textNodes: Text[],
+  scope: HTMLElement,
+  excludeRanges: Range[],
+): Range | null {
   while (searchFrom < normFull.length) {
     const normMatchIdx = normFull.indexOf(normSearch, searchFrom);
     if (normMatchIdx === -1) break;
