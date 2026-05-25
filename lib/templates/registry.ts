@@ -13,8 +13,19 @@ import {
   type TemplateId,
   type TemplateLayoutProps,
 } from "./types";
-import { fetchUploadedTemplate, listUploadedTemplates } from "./uploaded/fetch";
 import type { UploadedTemplate } from "./uploaded/types";
+
+/**
+ * Client-safe template registry.
+ *
+ * This module is imported by client components (style editor, smart-layout
+ * button, editor-client preview), so it MUST NOT pull in any server-only
+ * code. Anything that talks to the DB (`getTemplateMetaAsync`,
+ * `listAllTemplatesAsync`, `AllTemplatesItem`) lives in `./registry-server.ts`.
+ * Top-level imports are transitive — even an unused `getTemplateMetaAsync`
+ * import from a client file would drag the whole `db` module graph (postgres /
+ * fs / net) into the browser bundle, breaking the build.
+ */
 
 export type TemplateMeta = {
   id: TemplateId;
@@ -47,70 +58,6 @@ export function getTemplateLayout(id: string | null | undefined) {
 export type ResolvedTemplateMeta =
   | { source: "builtin"; id: BuiltinTemplateId; meta: TemplateMeta }
   | { source: "uploaded"; id: string; template: UploadedTemplate };
-
-function isBuiltinId(id: string): id is BuiltinTemplateId {
-  return (BUILTIN_TEMPLATE_IDS as readonly string[]).includes(id);
-}
-
-/**
- * Resolution semantics:
- * - id is null/undefined/empty       → fallback to default built-in (no DB call)
- * - id is a built-in id              → return built-in meta (no DB call)
- * - id is non-empty, unknown, DB hit → return uploaded template
- * - id is non-empty, unknown, DB miss → fallback to default built-in
- * - DB throws (network/schema error) → propagate (callers handle)
- *
- * Fallback hides "not found" but NOT operational errors. If you need to
- * distinguish "missing" from "broken DB", catch in the caller.
- */
-export async function getTemplateMetaAsync(
-  id: string | null | undefined,
-): Promise<ResolvedTemplateMeta> {
-  // Built-in fast path — no DB call
-  if (id && isBuiltinId(id)) {
-    const meta = TEMPLATES.find((t) => t.id === id)!;
-    return { source: "builtin", id, meta };
-  }
-  // DB lookup for non-empty unknown ids
-  if (id) {
-    const dbTemplate = await fetchUploadedTemplate(id);
-    if (dbTemplate) {
-      return { source: "uploaded", id: dbTemplate.id, template: dbTemplate };
-    }
-  }
-  // Fallback to default built-in (DB miss or empty id)
-  const fallback = TEMPLATES.find((t) => t.id === DEFAULT_TEMPLATE_ID)!;
-  return { source: "builtin", id: DEFAULT_TEMPLATE_ID, meta: fallback };
-}
-
-export type AllTemplatesItem = {
-  id: string;
-  name: string;
-  description: string;
-  thumbnailUrl: string | null;
-  source: "builtin" | "uploaded";
-  isRecommended?: boolean;
-};
-
-export async function listAllTemplatesAsync(): Promise<AllTemplatesItem[]> {
-  const builtin: AllTemplatesItem[] = TEMPLATES.map((t) => ({
-    id: t.id,
-    name: t.name,
-    description: t.description,
-    thumbnailUrl: null,
-    source: "builtin",
-    isRecommended: t.isRecommended,
-  }));
-  const uploaded = await listUploadedTemplates();
-  const uploadedItems: AllTemplatesItem[] = uploaded.map((t) => ({
-    id: t.id,
-    name: t.name,
-    description: t.description ?? "",
-    thumbnailUrl: t.thumbnailUrl,
-    source: "uploaded",
-  }));
-  return [...builtin, ...uploadedItems];
-}
 
 export { DEFAULT_TEMPLATE_ID, TEMPLATE_IDS, BUILTIN_TEMPLATE_IDS };
 export type { TemplateId, BuiltinTemplateId, TemplateLayoutProps };

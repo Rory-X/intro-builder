@@ -12,7 +12,12 @@ describe("PreviewPanel", () => {
     const content = emptyResumeContent();
     content.basics.name = "钱嘉豪";
 
-    render(<PreviewPanel content={content} templateId="professional" />);
+    render(
+      <PreviewPanel
+        content={content}
+        resolvedTemplate={{ source: "builtin", id: "professional" }}
+      />,
+    );
 
     const exportRoot = screen.getByTestId("resume-export-preview");
     const article = exportRoot.querySelector("article");

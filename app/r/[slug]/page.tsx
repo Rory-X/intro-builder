@@ -3,7 +3,7 @@ import { and, eq } from "drizzle-orm";
 import { db } from "@/db";
 import { resumes } from "@/db/schema";
 import { migrateContent } from "@/lib/migrate-content";
-import { TemplateRenderer } from "@/components/preview/template-renderer";
+import { TemplateRender } from "@/lib/templates/render-server";
 
 export const revalidate = 60;
 
@@ -16,8 +16,8 @@ export default async function PublicResume({ params }: { params: Promise<{ slug:
   const content = migrateContent(row.content);
   return (
     <main className="bg-muted py-8">
-      <TemplateRenderer
-        templateId={row.templateId}
+      <TemplateRender
+        id={row.templateId}
         content={content}
         sectionOrder={content.sectionOrder}
         styleSettings={content.styleSettings}

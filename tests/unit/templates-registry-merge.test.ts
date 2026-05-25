@@ -9,6 +9,8 @@ import { fetchUploadedTemplate, listUploadedTemplates } from "@/lib/templates/up
 import {
   getTemplateMetaAsync,
   listAllTemplatesAsync,
+} from "@/lib/templates/registry-server";
+import {
   BUILTIN_TEMPLATE_IDS,
   DEFAULT_TEMPLATE_ID,
 } from "@/lib/templates/registry";

@@ -26,6 +26,13 @@ import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { Loader2, Share2 } from "lucide-react";
 import { resolveTemplateId, type TemplateId } from "@/lib/templates/registry";
+import {
+  BUILTIN_TEMPLATE_IDS,
+  DEFAULT_TEMPLATE_ID,
+  type BuiltinTemplateId,
+} from "@/lib/templates/types";
+import type { SerializableResolvedTemplate } from "@/lib/templates/render";
+import type { UploadedTemplate } from "@/lib/templates/uploaded/types";
 import { monitorForElements } from "@atlaskit/pragmatic-drag-and-drop/element/adapter";
 import { SectionWrapper } from "@/components/editor/section-wrapper";
 import { ModuleManager } from "@/components/editor/module-manager";
@@ -58,6 +65,13 @@ type Props = {
   // serializer has dropped Date through the SC → CC boundary in dev, which
   // would crash `lastSavedAt.getTime()` on first render. Strings are safe.
   initialUpdatedAtIso: string;
+  // Pre-resolved template + the full set of uploaded templates so the
+  // client preview can dispatch built-in vs uploaded without a round
+  // trip on each template switch. Optional in tests so existing harness
+  // signatures don't break — treated as "no uploaded templates" when
+  // absent.
+  initialResolvedTemplate?: SerializableResolvedTemplate;
+  uploadedTemplates?: UploadedTemplate[];
 };
 
 const DESKTOP_QUERY = "(min-width: 1024px)";
@@ -90,7 +104,7 @@ function formatRelativeSaveTime(savedAt: Date, now: Date): string {
   return `${days}天前保存`;
 }
 
-export default function EditorClient({ id, initialTitle, initialTemplate, initialContent, initialIsPublic, initialSlug, initialUpdatedAtIso }: Props) {
+export default function EditorClient({ id, initialTitle, initialTemplate, initialContent, initialIsPublic, initialSlug, initialUpdatedAtIso, initialResolvedTemplate, uploadedTemplates }: Props) {
   const isDesktop = useSyncExternalStore(
     subscribeToDesktopQuery,
     getDesktopSnapshot,
@@ -119,6 +133,38 @@ export default function EditorClient({ id, initialTitle, initialTemplate, initia
   const [sectionOrder, setSectionOrder] = useState<string[]>(
     initialContent.sectionOrder ?? [...DEFAULT_SECTION_ORDER]
   );
+
+  // Map of id → UploadedTemplate for instant client-side lookup when the
+  // user switches template. Empty map when DB has none yet (early
+  // foundation phase).
+  const uploadedById = useMemo(() => {
+    const map = new Map<string, UploadedTemplate>();
+    for (const t of uploadedTemplates ?? []) map.set(t.id, t);
+    return map;
+  }, [uploadedTemplates]);
+
+  // Project the current `template` selection into a serializable form
+  // <LivePreview> can dispatch on. Order: uploaded fast-path → use the
+  // server-pre-resolved value if it still matches → fall back to a
+  // built-in id (defaulting if `template` is no longer a known id).
+  const resolvedTemplate = useMemo<SerializableResolvedTemplate>(() => {
+    const uploaded = uploadedById.get(template);
+    if (uploaded) {
+      return { source: "uploaded", id: uploaded.id, template: uploaded };
+    }
+    if (
+      initialResolvedTemplate?.source === "uploaded" &&
+      initialResolvedTemplate.id === template
+    ) {
+      return initialResolvedTemplate;
+    }
+    const builtinId: BuiltinTemplateId = (
+      BUILTIN_TEMPLATE_IDS as readonly string[]
+    ).includes(template)
+      ? (template as BuiltinTemplateId)
+      : DEFAULT_TEMPLATE_ID;
+    return { source: "builtin", id: builtinId };
+  }, [template, uploadedById, initialResolvedTemplate]);
   const persistResume = useCallback(
     async (content: ResumeContent, resumeTitle: string) => {
       await saveResume(id, content, resumeTitle);
@@ -527,7 +573,7 @@ export default function EditorClient({ id, initialTitle, initialTemplate, initia
             className="thin-scrollbar overflow-y-auto bg-muted p-6"
             style={{ width: `${100 - splitPercent}%` }}
           >
-            <LivePreview ref={previewRootRef} templateId={template} />
+            <LivePreview ref={previewRootRef} resolvedTemplate={resolvedTemplate} />
             {/* Annotation highlights on preview (when collab active) */}
             {collabAnnotations.length > 0 && (
               <AnnotationHighlights

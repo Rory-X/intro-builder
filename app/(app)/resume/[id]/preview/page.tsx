@@ -4,7 +4,7 @@ import { requireUserId } from "@/lib/auth-helpers";
 import { db } from "@/db";
 import { resumes } from "@/db/schema";
 import { migrateContent } from "@/lib/migrate-content";
-import { TemplateRenderer } from "@/components/preview/template-renderer";
+import { TemplateRender } from "@/lib/templates/render-server";
 
 export default async function PreviewPage({
   params,
@@ -37,8 +37,8 @@ export default async function PreviewPage({
         `}} />
       )}
       <div className={isPdf ? "" : "bg-slate-100 py-8"}>
-        <TemplateRenderer
-          templateId={row.templateId}
+        <TemplateRender
+          id={row.templateId}
           content={content}
           sectionOrder={content.sectionOrder}
           styleSettings={content.styleSettings}
