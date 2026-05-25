@@ -455,11 +455,10 @@ export default function EditorClient({ id, initialTitle, initialTemplate, initia
             )}
             <Separator orientation="vertical" className="h-6" />
             <ExportButton
-              resumeId={id}
               filename={title}
               onExportImage={onExportImage}
               isExportingImage={isExportingImage}
-              paginationData={paginationData}
+              previewRef={previewRootRef}
             />
             <Separator orientation="vertical" className="h-6" />
             <InviteCollabDialog resumeId={id} onSessionCreated={(sid) => setCollabSessionId(sid)} />
