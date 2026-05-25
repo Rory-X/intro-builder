@@ -55,6 +55,7 @@ export function UploadedLayout({
         style={themeStyle}
         maxWidthClass="max-w-[800px]"
         dataFrame="vertical"
+        templateFontFamily={template.layout.theme.fontFamily}
       >
         {header}
         {order.map((key) => sections[key] ?? null)}
@@ -99,6 +100,7 @@ export function UploadedLayout({
       style={themeStyle}
       maxWidthClass="max-w-[800px]"
       dataFrame="horizontal"
+      templateFontFamily={template.layout.theme.fontFamily}
     >
       {header}
       <div className="flex gap-6">

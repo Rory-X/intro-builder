@@ -300,4 +300,49 @@ describe("UploadedLayout", () => {
     );
     expect(dateRangeEl).not.toBeNull();
   });
+
+  // ============================================================
+  // theme.fontFamily 通电（schema 第 6 维独立性）
+  // 模板级 fontFamily（FONT_MAP key）覆盖用户级 styleSettings.fontFamily。
+  // 非法 key 优雅降级回用户级（不抛错）。
+  // ============================================================
+
+  it("theme.fontFamily=serif 时 article 用 serif 字体（覆盖用户级）", () => {
+    const serifTemplate: UploadedTemplate = {
+      ...sampleTemplate,
+      layout: {
+        ...sampleTemplate.layout,
+        theme: {
+          primaryColor: "#000",
+          fontFamily: "serif",
+        },
+      },
+    };
+    const { container } = render(
+      <UploadedLayout content={demoResume} template={serifTemplate} />
+    );
+    const article = container.querySelector("article") as HTMLElement;
+    // FONT_MAP.serif.css 包含 'Noto Serif SC'
+    expect(article.style.fontFamily).toContain("Noto Serif SC");
+  });
+
+  it("theme.fontFamily 非法 key 时优雅降级回用户级（不抛错）", () => {
+    const badFont: UploadedTemplate = {
+      ...sampleTemplate,
+      layout: {
+        ...sampleTemplate.layout,
+        theme: {
+          primaryColor: "#000",
+          fontFamily: "comic-sans-ms-not-supported",
+        },
+      },
+    };
+    const { container } = render(
+      <UploadedLayout content={demoResume} template={badFont} />
+    );
+    const article = container.querySelector("article") as HTMLElement;
+    // styleSettings 默认 sans，应该 fallback 到 sans css（不应该 contain 衬线特征）
+    expect(article.style.fontFamily).not.toContain("Noto Serif SC");
+    expect(article.style.fontFamily).toContain("system-ui");
+  });
 });

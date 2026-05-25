@@ -14,6 +14,13 @@ type Props = {
   /** Frame kind for skeleton-aware rendering. Surfaced on the article as data-frame
    *  so tests / dev tools can introspect; consumers may also key visual rules off it. */
   dataFrame?: string;
+  /**
+   * 模板级 fontFamily 覆盖（来自 `LayoutConfig.theme.fontFamily`）。设了
+   * 优先于 styleSettings.fontFamily（用户级）；必须是 FONT_MAP 的 key
+   * (`sans` / `serif` / `mono`)，否则被忽略走用户级（优雅降级，避免坏字符串
+   * 击穿渲染）。built-in 模板不传该 prop 行为完全不变。
+   */
+  templateFontFamily?: string;
   children: React.ReactNode;
 };
 
@@ -24,9 +31,16 @@ export function ResumePage({
   decoration,
   style,
   dataFrame,
+  templateFontFamily,
   children,
 }: Props) {
   const ss = mergeStyleSettings(styleSettings);
+
+  // 模板级 fontFamily 优先（仅当是合法 FONT_MAP key 时）；否则保留用户级
+  const fontKey =
+    templateFontFamily && templateFontFamily in FONT_MAP
+      ? (templateFontFamily as keyof typeof FONT_MAP)
+      : ss.fontFamily;
 
   // Custom style first, structural styles last so structural wins
   const articleStyle: React.CSSProperties = {
@@ -34,7 +48,7 @@ export function ResumePage({
     fontSize: `${ss.fontSize}px`,
     lineHeight: ss.lineHeight,
     padding: `${ss.pagePadding}px`,
-    fontFamily: FONT_MAP[ss.fontFamily].css,
+    fontFamily: FONT_MAP[fontKey].css,
     backgroundColor: decoration?.pageBgColor ?? "#ffffff",
     color: "#000000",
   };
