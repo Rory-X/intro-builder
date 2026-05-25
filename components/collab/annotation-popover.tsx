@@ -11,6 +11,8 @@ import { MessageSquarePlus, Send } from "lucide-react";
 
 type Props = {
   previewRef: React.RefObject<HTMLDivElement | null>;
+  /** Content ref for charOffset calculation — should match what AnnotationHighlights uses */
+  contentRef?: React.RefObject<HTMLDivElement | null>;
   onSubmit: (data: {
     selectedText: string;
     comment: string;
@@ -40,7 +42,7 @@ const POPOVER_WIDTH = 288; // w-72 = 18rem = 288px
 const POPOVER_HEIGHT_ESTIMATE = 220;
 const GAP = 12;
 
-export function AnnotationPopover({ previewRef, onSubmit, enabled }: Props) {
+export function AnnotationPopover({ previewRef, contentRef, onSubmit, enabled }: Props) {
   const [popover, setPopover] = useState<PopoverState>({
     visible: false,
     position: { top: 0, left: 0, placement: "right" },
@@ -109,8 +111,9 @@ export function AnnotationPopover({ previewRef, onSubmit, enabled }: Props) {
       ? parseInt(itemEl.getAttribute("data-pagination-item")!, 10)
       : undefined;
 
-    // Calculate character offset in normalized full text for precise positioning
-    const charOffset = calcCharOffset(container, range);
+    // Calculate character offset using contentRef (same scope as highlights)
+    const offsetContainer = contentRef?.current || container;
+    const charOffset = calcCharOffset(offsetContainer, range);
 
     const position = computePosition(selectionRect, containerRect);
 

@@ -220,6 +220,7 @@ function MentorEditorInner({
               <AnnotationHighlights previewRef={previewContentRef} annotations={annotations} />
               <AnnotationPopover
                 previewRef={previewRef}
+                contentRef={previewContentRef}
                 onSubmit={(data) => addAnnotation({ ...data, authorName: displayNameRef.current })}
                 enabled
               />
