@@ -25,7 +25,7 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { Loader2, Share2 } from "lucide-react";
-import { resolveTemplateId, type TemplateId } from "@/lib/templates/registry";
+import { resolveTemplateId, type AllTemplatesItem, type TemplateId } from "@/lib/templates/registry";
 import {
   BUILTIN_TEMPLATE_IDS,
   DEFAULT_TEMPLATE_ID,
@@ -73,6 +73,12 @@ type Props = {
   // a future caller forgets to pass them.
   initialResolvedTemplate: SerializableResolvedTemplate;
   uploadedTemplates: UploadedTemplate[];
+  /**
+   * Pre-merged list of every selectable template (built-in + uploaded) for
+   * the StyleEditor's picker UI. The page owns this fetch (server side), so
+   * the editor can render the gallery synchronously and stay client-only.
+   */
+  allTemplates: AllTemplatesItem[];
 };
 
 const DESKTOP_QUERY = "(min-width: 1024px)";
@@ -105,7 +111,7 @@ function formatRelativeSaveTime(savedAt: Date, now: Date): string {
   return `${days}天前保存`;
 }
 
-export default function EditorClient({ id, initialTitle, initialTemplate, initialContent, initialIsPublic, initialSlug, initialUpdatedAtIso, initialResolvedTemplate, uploadedTemplates }: Props) {
+export default function EditorClient({ id, initialTitle, initialTemplate, initialContent, initialIsPublic, initialSlug, initialUpdatedAtIso, initialResolvedTemplate, uploadedTemplates, allTemplates }: Props) {
   const isDesktop = useSyncExternalStore(
     subscribeToDesktopQuery,
     getDesktopSnapshot,
@@ -456,6 +462,7 @@ export default function EditorClient({ id, initialTitle, initialTemplate, initia
               templateId={template}
               onTemplateChange={changeTemplate}
               pendingTemplateId={pendingTemplateId}
+              allTemplates={allTemplates}
             />
             <Separator orientation="vertical" className="h-6" />
             <ModuleManager sectionOrder={sectionOrder} onOrderChange={handleOrderChange} />

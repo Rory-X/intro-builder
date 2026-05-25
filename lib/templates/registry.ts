@@ -21,10 +21,15 @@ import type { UploadedTemplate } from "./uploaded/types";
  * This module is imported by client components (style editor, smart-layout
  * button, editor-client preview), so it MUST NOT pull in any server-only
  * code. Anything that talks to the DB (`getTemplateMetaAsync`,
- * `listAllTemplatesAsync`, `AllTemplatesItem`) lives in `./registry-server.ts`.
+ * `listAllTemplatesAsync`) lives in `./registry-server.ts`.
  * Top-level imports are transitive — even an unused `getTemplateMetaAsync`
  * import from a client file would drag the whole `db` module graph (postgres /
  * fs / net) into the browser bundle, breaking the build.
+ *
+ * `AllTemplatesItem` is the *return shape* of the server-side merge — it's a
+ * pure data type with no runtime, so it lives here (next to other type-only
+ * exports) and the server fetcher/the client UI can both import it without
+ * either pulling DB code into the client bundle.
  */
 
 export type TemplateMeta = {
@@ -58,6 +63,22 @@ export function getTemplateLayout(id: string | null | undefined) {
 export type ResolvedTemplateMeta =
   | { source: "builtin"; id: BuiltinTemplateId; meta: TemplateMeta }
   | { source: "uploaded"; id: string; template: UploadedTemplate };
+
+/**
+ * Lightweight projection of every selectable template (built-in + uploaded)
+ * for picker UIs. Built-in items have `thumbnailUrl: null` because their
+ * preview is rendered live; uploaded items may have `thumbnailUrl: null`
+ * during the foundation phase (no thumbnail uploaded yet) — the UI must
+ * tolerate both and show a name placeholder when there's no thumbnail.
+ */
+export type AllTemplatesItem = {
+  id: string;
+  name: string;
+  description: string;
+  thumbnailUrl: string | null;
+  source: "builtin" | "uploaded";
+  isRecommended?: boolean;
+};
 
 export { DEFAULT_TEMPLATE_ID, TEMPLATE_IDS, BUILTIN_TEMPLATE_IDS };
 export type { TemplateId, BuiltinTemplateId, TemplateLayoutProps };

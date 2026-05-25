@@ -6,7 +6,7 @@ import { db } from "@/db";
 import { resumes } from "@/db/schema";
 import EditorClient from "./editor-client";
 import { resolveTemplateId } from "@/lib/templates/registry";
-import { getTemplateMetaAsync } from "@/lib/templates/registry-server";
+import { getTemplateMetaAsync, listAllTemplatesAsync } from "@/lib/templates/registry-server";
 import { listUploadedTemplates } from "@/lib/templates/uploaded/fetch";
 import { toSerializable } from "@/lib/templates/render";
 import type { Metadata } from "next";
@@ -19,13 +19,15 @@ export default async function EditPage({ params }: { params: Promise<{ id: strin
     where: and(eq(resumes.id, id), eq(resumes.userId, userId)),
   });
   if (!row) notFound();
-  // Pre-resolve the current template + all uploaded templates so the
-  // client editor can dispatch UploadedLayout vs built-in without
-  // making a round trip on every templateId change. Bundle size scales
-  // with uploaded-template count (Option C from the foundation plan);
-  // revisit if that count grows past a few hundred.
-  const [initialResolved, uploadedTemplates] = await Promise.all([
+  // Pre-resolve the current template + the merged template gallery + the
+  // full set of uploaded templates so the client editor can dispatch
+  // UploadedLayout vs built-in without making a round trip on every
+  // templateId change. Bundle size scales with uploaded-template count
+  // (Option C from the foundation plan); revisit if that count grows past
+  // a few hundred.
+  const [initialResolved, allTemplates, uploadedTemplates] = await Promise.all([
     getTemplateMetaAsync(row.templateId),
+    listAllTemplatesAsync(),
     listUploadedTemplates(),
   ]);
   return (
@@ -39,6 +41,7 @@ export default async function EditPage({ params }: { params: Promise<{ id: strin
       initialUpdatedAtIso={row.updatedAt.toISOString()}
       initialResolvedTemplate={toSerializable(initialResolved)}
       uploadedTemplates={uploadedTemplates}
+      allTemplates={allTemplates}
     />
   );
 }

@@ -5,6 +5,7 @@ import {
 } from "./types";
 import {
   TEMPLATES,
+  type AllTemplatesItem,
   type ResolvedTemplateMeta,
 } from "./registry";
 import { fetchUploadedTemplate, listUploadedTemplates } from "./uploaded/fetch";
@@ -57,14 +58,7 @@ export async function getTemplateMetaAsync(
   return { source: "builtin", id: DEFAULT_TEMPLATE_ID, meta: fallback };
 }
 
-export type AllTemplatesItem = {
-  id: string;
-  name: string;
-  description: string;
-  thumbnailUrl: string | null;
-  source: "builtin" | "uploaded";
-  isRecommended?: boolean;
-};
+export type { AllTemplatesItem };
 
 export async function listAllTemplatesAsync(): Promise<AllTemplatesItem[]> {
   const builtin: AllTemplatesItem[] = TEMPLATES.map((t) => ({

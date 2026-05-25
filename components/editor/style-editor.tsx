@@ -5,7 +5,7 @@ import { Label } from "@/components/ui/label";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { FONT_MAP, type FontKey } from "@/lib/font-map";
 import { DEFAULT_STYLE_SETTINGS, type ResumeContent } from "@/lib/resume-schema";
-import { TEMPLATES, type TemplateId } from "@/lib/templates/registry";
+import { TEMPLATES, type AllTemplatesItem, type TemplateId } from "@/lib/templates/registry";
 import { cn } from "@/lib/utils";
 import { ChevronDown, LayoutTemplate, Loader2, RotateCcw } from "lucide-react";
 
@@ -14,13 +14,38 @@ const FONT_SIZE_OPTIONS = [10, 11, 12, 13, 14, 15, 16] as const;
 const LINE_HEIGHT_OPTIONS = [1.2, 1.3, 1.4, 1.5, 1.6, 1.7, 1.8, 1.9, 2.0] as const;
 const PAGE_PADDING_OPTIONS = [20, 25, 30, 35, 40, 45, 50, 55, 60] as const;
 
+// Built-in fallback list for callers that don't yet pass `allTemplates`
+// (older test harnesses, etc). Built-in metadata is statically known so we
+// can safely synthesize the merged shape without any DB call.
+const BUILTIN_FALLBACK: AllTemplatesItem[] = TEMPLATES.map((t) => ({
+  id: t.id,
+  name: t.name,
+  description: t.description,
+  thumbnailUrl: null,
+  source: "builtin",
+  isRecommended: t.isRecommended,
+}));
+
 type Props = {
   templateId: TemplateId;
   onTemplateChange: (id: TemplateId) => void;
   pendingTemplateId?: TemplateId | null;
+  /**
+   * Merged list of built-in + uploaded templates. Optional because legacy
+   * tests don't pass it; in that case we fall back to the built-in set
+   * derived from the static `TEMPLATES` registry. Production callers should
+   * always thread through the value resolved from `listAllTemplatesAsync()`
+   * on the server, so deleted-then-restored DB templates appear correctly.
+   */
+  allTemplates?: AllTemplatesItem[];
 };
 
-export function StyleEditor({ templateId, onTemplateChange, pendingTemplateId = null }: Props) {
+export function StyleEditor({
+  templateId,
+  onTemplateChange,
+  pendingTemplateId = null,
+  allTemplates,
+}: Props) {
   const { watch, setValue } = useFormContext<ResumeContent>();
 
   const ss = { ...DEFAULT_STYLE_SETTINGS, ...watch("styleSettings") };
@@ -57,9 +82,10 @@ export function StyleEditor({ templateId, onTemplateChange, pendingTemplateId = 
         <div className="space-y-2">
           <Label>简历模板</Label>
           <div className="grid gap-2 sm:grid-cols-3">
-            {TEMPLATES.map((t) => {
+            {(allTemplates ?? BUILTIN_FALLBACK).map((t) => {
               const isPendingThis = pendingTemplateId === t.id;
               const isOtherPending = pendingTemplateId !== null && !isPendingThis;
+              const isUploaded = t.source === "uploaded";
               return (
                 <button
                   key={t.id}
@@ -74,6 +100,29 @@ export function StyleEditor({ templateId, onTemplateChange, pendingTemplateId = 
                       : "border-border hover:border-primary/40 hover:bg-muted/50",
                   )}
                 >
+                  {isUploaded ? (
+                    // Uploaded template preview: thumbnail if uploaded, otherwise
+                    // a name-only placeholder. Don't fall back to a built-in
+                    // preview — that would be misleading about what they're
+                    // about to render.
+                    <div
+                      className="mb-2 flex aspect-[210/297] items-center justify-center overflow-hidden rounded-md border bg-muted/40 text-center"
+                      data-testid={`template-thumb-${t.id}`}
+                    >
+                      {t.thumbnailUrl ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img
+                          src={t.thumbnailUrl}
+                          alt={t.name}
+                          className="h-full w-full object-cover"
+                        />
+                      ) : (
+                        <span className="px-2 text-xs font-medium text-muted-foreground">
+                          {t.name}
+                        </span>
+                      )}
+                    </div>
+                  ) : null}
                   <div className="flex items-center justify-between gap-2">
                     <span className="text-sm font-medium">{t.name}</span>
                     {isPendingThis ? (
