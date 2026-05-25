@@ -27,6 +27,7 @@ import { Separator } from "@/components/ui/separator";
 import { Loader2, Share2, PanelRightClose, PanelRightOpen, MessageSquare } from "lucide-react";
 import { resolveTemplateId, type TemplateId } from "@/lib/templates/registry";
 import { monitorForElements } from "@atlaskit/pragmatic-drag-and-drop/element/adapter";
+import { autoScrollForElements } from "@atlaskit/pragmatic-drag-and-drop-auto-scroll/element";
 import { SectionWrapper } from "@/components/editor/section-wrapper";
 import { ModuleManager } from "@/components/editor/module-manager";
 import { CustomSectionEditor } from "@/components/editor/custom-section-editor";
@@ -116,6 +117,7 @@ export default function EditorClient({ id, initialTitle, initialTemplate, initia
   const [isTogglingShare, setIsTogglingShare] = useState(false);
   const [isPending, startTransition] = useTransition();
   const previewRootRef = useRef<HTMLDivElement>(null);
+  const editorPanelRef = useRef<HTMLDivElement>(null);
   const [sectionOrder, setSectionOrder] = useState<string[]>(
     initialContent.sectionOrder ?? [...DEFAULT_SECTION_ORDER]
   );
@@ -244,6 +246,13 @@ export default function EditorClient({ id, initialTitle, initialTemplate, initia
       },
     });
   }, [form]);
+
+  // Auto-scroll the editor panel when dragging sections near edges
+  useEffect(() => {
+    const el = editorPanelRef.current;
+    if (!el) return;
+    return autoScrollForElements({ element: el });
+  }, []);
 
   useEffect(() => {
     const timer = window.setInterval(() => setNow(new Date()), 60_000);
@@ -491,6 +500,7 @@ export default function EditorClient({ id, initialTitle, initialTemplate, initia
       {isDesktop ? (
         <div className="flex h-[calc(100vh-3.5rem-4rem)]">
           <div
+            ref={editorPanelRef}
             className="thin-scrollbar space-y-6 overflow-y-auto border-r p-6"
             style={{ width: `${splitPercent}%` }}
           >

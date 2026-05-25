@@ -13,6 +13,7 @@
   },
   "dependencies": {
     "@atlaskit/pragmatic-drag-and-drop": "^1.8.1",
+    "@atlaskit/pragmatic-drag-and-drop-auto-scroll": "^2.1.5",
     "@auth/drizzle-adapter": "^1.11.2",
     "@base-ui/react": "^1.4.1",
     "@hookform/resolvers": "^5.2.2",

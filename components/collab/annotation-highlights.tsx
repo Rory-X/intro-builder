@@ -158,7 +158,7 @@ export function AnnotationHighlights({
     return () => container.removeEventListener("click", handleClick);
   }, [previewRef, annotations]);
 
-  // Close popover on outside click
+  // Close popover on outside click or scroll
   useEffect(() => {
     if (!activePopover) return;
     const handle = (e: MouseEvent) => {
@@ -166,9 +166,18 @@ export function AnnotationHighlights({
         setActivePopover(null);
       }
     };
+    const handleScroll = () => setActivePopover(null);
+
     setTimeout(() => document.addEventListener("mousedown", handle), 50);
-    return () => document.removeEventListener("mousedown", handle);
-  }, [activePopover]);
+    // Close on any scroll (preview panel scrolling)
+    const container = previewRef.current?.closest("[class*='overflow-y-auto']");
+    container?.addEventListener("scroll", handleScroll);
+
+    return () => {
+      document.removeEventListener("mousedown", handle);
+      container?.removeEventListener("scroll", handleScroll);
+    };
+  }, [activePopover, previewRef]);
 
   return (
     <>
