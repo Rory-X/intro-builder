@@ -49,10 +49,23 @@ export async function GET(req: Request, ctx: { params: Promise<{ id: string }> }
  */
 async function generatePdfRemote(resumeId: string, userId: string, title: string) {
   const token = signPdfToken(resumeId, userId);
-  const appOrigin = process.env.NEXT_PUBLIC_APP_URL || process.env.VERCEL_URL
+  const appOrigin = process.env.NEXT_PUBLIC_APP_URL || (process.env.VERCEL_URL
     ? `https://${process.env.VERCEL_URL}`
-    : "http://localhost:3000";
-  const previewUrl = `${appOrigin}/resume/${resumeId}/preview?_pdf=1&_token=${token}`;
+    : "http://localhost:3000");
+
+  // Build preview URL with signed token
+  const url = new URL(`/resume/${resumeId}/preview`, appOrigin);
+  url.searchParams.set("_pdf", "1");
+  url.searchParams.set("_token", token);
+
+  // Vercel Deployment Protection bypass — allows the remote browser to access
+  // protected deployments without hitting Vercel's login wall.
+  const bypassSecret = process.env.VERCEL_AUTOMATION_BYPASS_SECRET;
+  if (bypassSecret) {
+    url.searchParams.set("x-vercel-protection-bypass", bypassSecret);
+  }
+
+  const previewUrl = url.toString();
 
   let browser;
   try {
