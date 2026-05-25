@@ -1,7 +1,8 @@
 import { db } from "@/db";
 import { templates } from "@/db/schema";
 import { and, eq } from "drizzle-orm";
-import type { DecorationConfig, LayoutConfig, UploadedTemplate } from "./types";
+import { UploadedTemplate } from "./types";
+import type { UploadedTemplate as UploadedTemplateType } from "./types";
 
 /**
  * Defensive: if the DB doesn't have the `templates` table yet (migration
@@ -16,7 +17,9 @@ function isMissingTableError(err: unknown): boolean {
   return /relation .*templates.* does not exist|no such table/i.test(msg);
 }
 
-export async function fetchUploadedTemplate(id: string): Promise<UploadedTemplate | null> {
+export async function fetchUploadedTemplate(
+  id: string,
+): Promise<UploadedTemplateType | null> {
   try {
     const rows = await db
       .select()
@@ -24,7 +27,7 @@ export async function fetchUploadedTemplate(id: string): Promise<UploadedTemplat
       .where(and(eq(templates.id, id), eq(templates.status, "published")))
       .limit(1);
     if (rows.length === 0) return null;
-    return rowToTemplate(rows[0]);
+    return parseTemplateRow(rows[0]);
   } catch (err) {
     if (isMissingTableError(err)) return null;
     console.warn("[templates] fetchUploadedTemplate failed:", err);
@@ -32,14 +35,17 @@ export async function fetchUploadedTemplate(id: string): Promise<UploadedTemplat
   }
 }
 
-export async function listUploadedTemplates(): Promise<UploadedTemplate[]> {
+export async function listUploadedTemplates(): Promise<UploadedTemplateType[]> {
   try {
     const rows = await db
       .select()
       .from(templates)
       .where(eq(templates.status, "published"))
       .orderBy(templates.createdAt);
-    return rows.map(rowToTemplate);
+    // 单条坏行不击穿整页：每行独立 safeParse，失败 skip + warn，不 throw。
+    return rows
+      .map(parseTemplateRow)
+      .filter((t): t is UploadedTemplateType => t !== null);
   } catch (err) {
     if (isMissingTableError(err)) return [];
     console.warn("[templates] listUploadedTemplates failed:", err);
@@ -48,20 +54,32 @@ export async function listUploadedTemplates(): Promise<UploadedTemplate[]> {
 }
 
 /**
- * Trust boundary: writes go through the template-studio skill (or seed
- * scripts) which validate against the LayoutConfig / DecorationConfig
- * shape before INSERT. We treat reads as already-validated and skip
- * Zod here to avoid duplicating schema definitions. If a corrupt row
- * sneaks in, downstream rendering will fail — which is the correct
- * signal: fix the writer, not the reader.
+ * Trust boundary: jsonb 是任意 JSON，TS 类型只是"标注信任"，runtime 完全
+ * 不校验。Skill / seed 写端虽然 validate 过形状，但 (a) 历史数据可能在
+ * schema 演进前就入库，(b) 直接 SQL UPDATE 绕过 Skill。这里用 Zod
+ * `safeParse` 兜底——校验失败时记 warn 并跳过该行，让 UploadedLayout
+ * 永远不会拿到 corrupt 数据导致整页 React error。
+ *
+ * 暴露 export 是为了让单测能直接调，无需 mock 整个 Drizzle。
  */
-function rowToTemplate(row: typeof templates.$inferSelect): UploadedTemplate {
-  return {
+export function parseTemplateRow(
+  row: typeof templates.$inferSelect,
+): UploadedTemplateType | null {
+  const candidate = {
     id: row.id,
     name: row.name,
     description: row.description,
     thumbnailUrl: row.thumbnailUrl,
-    decoration: (row.decoration as DecorationConfig | null) ?? null,
-    layout: row.layout as LayoutConfig,
+    decoration: row.decoration,
+    layout: row.layout,
   };
+  const result = UploadedTemplate.safeParse(candidate);
+  if (!result.success) {
+    console.warn(
+      `[templates] parseTemplateRow rejected id=${row.id}:`,
+      result.error.flatten(),
+    );
+    return null;
+  }
+  return result.data;
 }
