@@ -89,7 +89,7 @@ async function generatePdfRemote(resumeId: string, userId: string, title: string
       browserWSEndpoint: BROWSER_WS_ENDPOINT!,
     });
     const page = await browser.newPage();
-    await page.setViewport({ width: 794, height: 2400 }); // Tall viewport to see full content
+    await page.setViewport({ width: 794, height: 2400, deviceScaleFactor: 2 }); // 2x for crisp PDF
     await page.goto(previewUrl, { waitUntil: "networkidle2", timeout: PDF_NAVIGATION_TIMEOUT_MS });
     // Wait for PdfPreview to signal fonts loaded and content rendered
     await page.waitForSelector("[data-pdf-ready]", { timeout: 15_000 });
