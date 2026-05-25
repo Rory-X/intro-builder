@@ -16,6 +16,7 @@ type Props = {
     comment: string;
     sectionKey: string;
     itemIndex?: number;
+    charOffset?: number;
   }) => void;
   enabled: boolean;
 };
@@ -32,6 +33,7 @@ type PopoverState = {
   selectedText: string;
   sectionKey: string;
   itemIndex?: number;
+  charOffset?: number;
 };
 
 const POPOVER_WIDTH = 288; // w-72 = 18rem = 288px
@@ -107,6 +109,9 @@ export function AnnotationPopover({ previewRef, onSubmit, enabled }: Props) {
       ? parseInt(itemEl.getAttribute("data-pagination-item")!, 10)
       : undefined;
 
+    // Calculate character offset in normalized full text for precise positioning
+    const charOffset = calcCharOffset(container, range);
+
     const position = computePosition(selectionRect, containerRect);
 
     setPopover({
@@ -115,6 +120,7 @@ export function AnnotationPopover({ previewRef, onSubmit, enabled }: Props) {
       selectedText: text.slice(0, 200),
       sectionKey,
       itemIndex,
+      charOffset,
     });
     setComment("");
   }, [enabled, previewRef, computePosition]);
@@ -151,6 +157,7 @@ export function AnnotationPopover({ previewRef, onSubmit, enabled }: Props) {
       comment: comment.trim(),
       sectionKey: popover.sectionKey,
       itemIndex: popover.itemIndex,
+      charOffset: popover.charOffset,
     });
     setPopover((p) => ({ ...p, visible: false }));
     setComment("");
@@ -218,4 +225,45 @@ export function AnnotationPopover({ previewRef, onSubmit, enabled }: Props) {
       </div>
     </div>
   );
+}
+
+/**
+ * Calculate the character offset of the selection start within the
+ * container's normalized (whitespace-stripped) full text.
+ * This allows precise repositioning later regardless of duplicate text.
+ */
+function calcCharOffset(container: HTMLElement, selRange: Range): number | undefined {
+  try {
+    // Collect all text nodes in the container
+    const textNodes: Text[] = [];
+    const walker = document.createTreeWalker(container, NodeFilter.SHOW_TEXT);
+    let n: Text | null;
+    while ((n = walker.nextNode() as Text | null)) {
+      textNodes.push(n);
+    }
+
+    // Find the selection start position in the flat text
+    let charCount = 0;
+    let startOffset = -1;
+    for (const node of textNodes) {
+      if (node === selRange.startContainer) {
+        startOffset = charCount + selRange.startOffset;
+        break;
+      }
+      charCount += (node.textContent || "").length;
+    }
+
+    if (startOffset === -1) return undefined;
+
+    // Convert to normalized (whitespace-stripped) offset
+    const fullText = textNodes.map((t) => t.textContent || "").join("");
+    let normOffset = 0;
+    for (let i = 0; i < startOffset && i < fullText.length; i++) {
+      if (!/\s/.test(fullText[i])) normOffset++;
+    }
+
+    return normOffset;
+  } catch {
+    return undefined;
+  }
 }

@@ -66,7 +66,7 @@ export function AnnotationHighlights({
     const usedRanges: Range[] = []; // Track already-matched ranges to avoid duplicates
 
     for (const ann of visible) {
-      const range = findRangeInScope(container, ann.selectedText, usedRanges);
+      const range = findRangeInScope(container, ann.selectedText, usedRanges, ann.charOffset);
       if (range) {
         rangesMapRef.current.set(ann.id, range);
         globalRangesMap.set(ann.id, range);
@@ -304,7 +304,7 @@ function isRectVisible(rect: DOMRect, scope: HTMLElement): boolean {
 
 // --- Text range finding ---
 
-function findRangeInScope(scope: HTMLElement, selectedText: string, excludeRanges: Range[] = []): Range | null {
+function findRangeInScope(scope: HTMLElement, selectedText: string, excludeRanges: Range[] = [], charOffset?: number): Range | null {
   if (!selectedText || selectedText.length < 2) return null;
 
   const textNodes: Text[] = [];
@@ -343,8 +343,15 @@ function findRangeInScope(scope: HTMLElement, selectedText: string, excludeRange
     }
   }
 
-  // Find ALL occurrences, pick the first one that's visually visible
+  // If we have a precise charOffset, start searching from near that position
+  // This ensures we find the EXACT occurrence the user selected, not the first one
   let searchFrom = 0;
+  if (charOffset !== undefined && charOffset > 0) {
+    // Start searching from a bit before the offset to handle slight variations
+    searchFrom = Math.max(0, charOffset - 5);
+  }
+
+  // Find the occurrence at/near charOffset that's visually visible
   while (searchFrom < normFull.length) {
     const normMatchIdx = normFull.indexOf(normSearch, searchFrom);
     if (normMatchIdx === -1) break;
