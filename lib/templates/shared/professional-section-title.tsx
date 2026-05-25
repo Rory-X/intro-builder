@@ -48,8 +48,14 @@ export function ProfessionalSectionTitle({ title, icon: Icon }: Props) {
           }}
         />
         <h2
-          className="relative z-[1] m-0 inline-flex items-center gap-1.5 bg-neutral-900 py-1 pl-2.5 pr-3 text-[0.92em] font-bold leading-snug text-white print:bg-neutral-900"
-          style={{ clipPath: TAB_CLIP }}
+          className="relative z-[1] m-0 inline-flex items-center gap-1.5 py-1 pl-2.5 pr-3 text-[0.92em] font-bold leading-snug text-white"
+          style={{
+            clipPath: TAB_CLIP,
+            // Pull from --primary (UploadedLayout injects this on the <article>),
+            // fall back to neutral-900 (#171717) so built-in professional, which
+            // doesn't set --primary, looks the same as before.
+            background: "var(--primary, #171717)",
+          }}
         >
           {Icon && <Icon className="h-[1em] w-[1em] shrink-0 text-white" />}
           <span className="whitespace-nowrap">{title}</span>
