@@ -129,7 +129,10 @@ export function PdfPreview({ content, templateId, styleSettings }: Props) {
   // Re-measure after fonts load
   useEffect(() => {
     if (document.fonts?.ready) {
-      document.fonts.ready.then(() => recalculate());
+      document.fonts.ready.then(() => {
+        // Small delay to ensure font metrics have applied to layout
+        requestAnimationFrame(() => recalculate());
+      });
     }
   }, [recalculate]);
 
@@ -138,11 +141,13 @@ export function PdfPreview({ content, templateId, styleSettings }: Props) {
 
   return (
     <>
-      {/* Print-optimized styles */}
+      {/* Print-optimized styles — hide app shell, reset margins */}
       <style dangerouslySetInnerHTML={{ __html: `
         @page { size: A4; margin: 0; }
-        html, body { margin: 0; padding: 0; }
+        html, body { margin: 0; padding: 0; background: white; }
         body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+        header, nav, footer { display: none !important; }
+        main { padding: 0 !important; margin: 0 !important; flex: none !important; }
       `}} />
 
       {/* Invisible measurement container */}
@@ -160,68 +165,73 @@ export function PdfPreview({ content, templateId, styleSettings }: Props) {
       </div>
 
       {/* Visible pages — each one is exactly A4 with page-break-after */}
-      {measured && Array.from({ length: numPages }, (_, i) => {
-        const offset = pageOffsets[i];
-        const nextOffset = i < numPages - 1 ? pageOffsets[i + 1] : totalHeight;
-        const isFirstPage = i === 0;
-        const contentHeight = nextOffset - offset;
-        const bottomOverlay = Math.max(0, A4_HEIGHT_PX - contentHeight) + (isFirstPage ? 0 : CONTINUATION_PADDING);
+      {/* data-pdf-ready signals to Puppeteer that pagination is complete */}
+      {measured && (
+        <div data-pdf-ready="true">
+          {Array.from({ length: numPages }, (_, i) => {
+            const offset = pageOffsets[i];
+            const nextOffset = i < numPages - 1 ? pageOffsets[i + 1] : totalHeight;
+            const isFirstPage = i === 0;
+            const contentHeight = nextOffset - offset;
+            const bottomOverlay = Math.max(0, A4_HEIGHT_PX - contentHeight) + (isFirstPage ? 0 : CONTINUATION_PADDING);
 
-        return (
-          <div
-            key={i}
-            style={{
-              position: "relative",
-              overflow: "hidden",
-              width: `${A4_WIDTH_PX}px`,
-              height: `${A4_HEIGHT_PX}px`,
-              backgroundColor: "#ffffff",
-              pageBreakAfter: i < numPages - 1 ? "always" : "auto",
-            }}
-          >
-            {/* Top padding on continuation pages */}
-            {!isFirstPage && (
-              <div style={{
-                position: "absolute",
-                inset: "0",
-                bottom: "auto",
-                height: `${CONTINUATION_PADDING}px`,
-                backgroundColor: "#ffffff",
-                zIndex: 1,
-              }} />
-            )}
-            {/* Content shifted for this page */}
-            <div style={{
-              position: "absolute",
-              left: 0,
-              right: 0,
-              top: 0,
-              transform: `translateY(${(isFirstPage ? 0 : CONTINUATION_PADDING) - offset}px)`,
-            }}>
-              <TemplateRenderer
-                templateId={templateId}
-                content={content}
-                sectionOrder={content.sectionOrder}
-                styleSettings={styleSettings}
-              />
-            </div>
-            {/* Bottom overlay */}
-            {bottomOverlay > 0 && (
-              <div style={{
-                position: "absolute",
-                left: 0,
-                right: 0,
-                bottom: 0,
-                height: `${bottomOverlay}px`,
-                backgroundColor: "#ffffff",
-                zIndex: 1,
-              }} />
-            )}
-          </div>
-        );
-      })}
+            return (
+              <div
+                key={i}
+                style={{
+                  position: "relative",
+                  overflow: "hidden",
+                  width: `${A4_WIDTH_PX}px`,
+                  height: `${A4_HEIGHT_PX}px`,
+                  backgroundColor: "#ffffff",
+                  pageBreakAfter: i < numPages - 1 ? "always" : "auto",
+                }}
+              >
+                {/* Top padding on continuation pages */}
+                {!isFirstPage && (
+                  <div style={{
+                    position: "absolute",
+                    inset: "0",
+                    bottom: "auto",
+                    height: `${CONTINUATION_PADDING}px`,
+                    backgroundColor: "#ffffff",
+                    zIndex: 1,
+                  }} />
+                )}
+                {/* Content shifted for this page */}
+                <div style={{
+                  position: "absolute",
+                  left: 0,
+                  right: 0,
+                  top: 0,
+                  transform: `translateY(${(isFirstPage ? 0 : CONTINUATION_PADDING) - offset}px)`,
+                }}>
+                  <TemplateRenderer
+                    templateId={templateId}
+                    content={content}
+                    sectionOrder={content.sectionOrder}
+                    styleSettings={styleSettings}
+                  />
+                </div>
+                {/* Bottom overlay */}
+                {bottomOverlay > 0 && (
+                  <div style={{
+                    position: "absolute",
+                    left: 0,
+                    right: 0,
+                    bottom: 0,
+                    height: `${bottomOverlay}px`,
+                    backgroundColor: "#ffffff",
+                    zIndex: 1,
+                  }} />
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
 
-      {/* Fallback while measuring */}
+      {/* Fallback while measuring — hidden once ready */}
       {!measured && (
         <div style={{ width: `${A4_WIDTH_PX}px`, minHeight: `${A4_HEIGHT_PX}px`, backgroundColor: "#ffffff" }}>
           <TemplateRenderer

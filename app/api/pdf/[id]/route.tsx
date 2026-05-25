@@ -75,6 +75,8 @@ async function generatePdfRemote(resumeId: string, userId: string, title: string
     const page = await browser.newPage();
     await page.setViewport({ width: 794, height: 1123 });
     await page.goto(previewUrl, { waitUntil: "networkidle2", timeout: PDF_NAVIGATION_TIMEOUT_MS });
+    // Wait for PdfPreview component to complete pagination measurement
+    await page.waitForSelector("[data-pdf-ready]", { timeout: 15_000 });
     await waitForPdfFonts(page);
     const pdfBuffer = await page.pdf({
       format: "A4",
