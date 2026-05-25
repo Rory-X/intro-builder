@@ -246,7 +246,7 @@ export function PdfPreview({ content, templateId, styleSettings }: Props) {
       )}
 
       {!measured && (
-        <div data-pdf-ready="true" style={{ width: `${A4_WIDTH_PX}px`, backgroundColor: "#ffffff" }}>
+        <div style={{ width: `${A4_WIDTH_PX}px`, backgroundColor: "#ffffff" }}>
           <TemplateRenderer
             templateId={templateId}
             content={content}
