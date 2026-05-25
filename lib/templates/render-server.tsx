@@ -1,5 +1,6 @@
 import { UploadedLayout } from "./uploaded/UploadedLayout";
 import { getTemplateMetaAsync } from "./registry-server";
+import type { ResolvedTemplateMeta } from "./registry";
 import type { TemplateLayoutProps } from "./types";
 
 /**
@@ -12,12 +13,24 @@ import type { TemplateLayoutProps } from "./types";
  * is server-only. Client-side helpers (
  * `ClientTemplateRenderFromSerializable`, `toSerializable`,
  * `SerializableResolvedTemplate`) live in `./render.tsx`.
+ *
+ * `preResolved` short-circuits the async lookup — pass it when the
+ * caller already has the resolved meta in hand (e.g. dashboard
+ * pre-fetches all uploaded templates once and renders many cards). This
+ * collapses what would otherwise be N+1 DB roundtrips into a single
+ * batch query at the page level. When omitted, falls back to the
+ * original async path so single-render callers don't have to know about
+ * the optimization.
  */
 export async function TemplateRender({
   id,
+  preResolved,
   ...layoutProps
-}: { id: string | null | undefined } & TemplateLayoutProps) {
-  const resolved = await getTemplateMetaAsync(id);
+}: {
+  id: string | null | undefined;
+  preResolved?: ResolvedTemplateMeta;
+} & TemplateLayoutProps) {
+  const resolved = preResolved ?? (await getTemplateMetaAsync(id));
   if (resolved.source === "builtin") {
     const Layout = resolved.meta.Layout;
     return <Layout {...layoutProps} />;

@@ -9,6 +9,12 @@ import { Plus, MoreVertical, Edit, Copy, FileText } from "lucide-react";
 import { createResume, deleteResume, duplicateResume } from "./actions";
 import { migrateContent } from "@/lib/migrate-content";
 import { listAllTemplatesAsync } from "@/lib/templates/registry-server";
+import { listUploadedTemplates } from "@/lib/templates/uploaded/fetch";
+import {
+  TEMPLATES,
+  BUILTIN_TEMPLATE_IDS,
+  type ResolvedTemplateMeta,
+} from "@/lib/templates/registry";
 import { TemplateRender } from "@/lib/templates/render-server";
 import { computeCompletenessScore } from "@/lib/completeness-score";
 import { ImportResumeButton } from "@/components/editor/import-resume-button";
@@ -21,14 +27,29 @@ export const metadata: Metadata = { title: "我的简历" };
 
 export default async function DashboardPage() {
   const userId = await requireUserId();
-  const [list, allTemplates] = await Promise.all([
+  const [list, allTemplates, uploadedFull] = await Promise.all([
     db.select().from(resumes).where(eq(resumes.userId, userId)).orderBy(desc(resumes.updatedAt)),
     listAllTemplatesAsync(),
+    listUploadedTemplates(),
   ]);
   // Merged lookup so resume cards can show the right template name even
   // for uploaded ones — `getTemplateMeta` (sync) only knows built-ins.
   // Falls back to "默认模板" if a resume points at a deleted DB template.
   const templateNameById = new Map(allTemplates.map((t) => [t.id, t.name]));
+
+  // Pre-resolved template map — built once per page load so each card
+  // renders without its own DB roundtrip. Fallback chain still applies:
+  // a card whose templateId is missing from this map (e.g. template
+  // deleted between fetch and render, or unpublished) drops through
+  // to TemplateRender's async path which itself falls back to default.
+  const resolvedById = new Map<string, ResolvedTemplateMeta>();
+  for (const tplId of BUILTIN_TEMPLATE_IDS) {
+    const meta = TEMPLATES.find((t) => t.id === tplId);
+    if (meta) resolvedById.set(tplId, { source: "builtin", id: tplId, meta });
+  }
+  for (const u of uploadedFull) {
+    resolvedById.set(u.id, { source: "uploaded", id: u.id, template: u });
+  }
 
   return (
     <main className="mx-auto max-w-6xl px-4 py-8 md:py-12">
@@ -86,6 +107,7 @@ export default async function DashboardPage() {
                     <div className="pointer-events-none origin-top-left [transform:scale(calc(100cqw/820px))]" style={{ width: "820px" }}>
                       <TemplateRender
                         id={r.templateId}
+                        preResolved={resolvedById.get(r.templateId)}
                         content={content}
                         sectionOrder={content.sectionOrder}
                         styleSettings={content.styleSettings}
