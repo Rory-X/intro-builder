@@ -44,15 +44,60 @@ python3 template-studio-skill/scripts/extract-decoration.py \
 
 ### Step 3：观察参考图，推断 layout config
 
-再次看参考图，决定 `LayoutConfig`（参考 `lib/templates/uploaded/types.ts`）：
+再次看参考图，决定 `LayoutConfig`（schema 在 `lib/templates/uploaded/types.ts`，已是 Zod 校验，**少字段会被 fetch.ts 的 safeParse 拒绝整行**）。下面 5 个字段都要填：
 
-- `headerVariant` / `sectionTitleVariant` / `itemHeaderVariant`：当前只有 `professional` / `classic` / `modern` 三种 variant 可选。看参考图风格最接近哪种，就用哪种。
-- `theme.primaryColor`：参考图里 section title / 强调色的主色，hex 格式如 `#2B72CC`。
-- `sectionIcons`：每个 section 用什么 lucide 图标。**必须从下面的白名单里挑**——凭脑子写图标名容易挑到 lucide 里不存在的（比如 "Soccer"、"Wechat"），前端会渲染空白。
+#### 3.1 `frame`（必填）—— 整页骨架
 
-### Lucide 图标白名单（按 section 类型分组）
+看参考图判断这是纵向还是横向：
 
-下列名字都是 lucide-react v0.x 实际存在的导出名（项目已验证，部分已在代码里使用）。给一个 section 选 icon 时，**只能从这里挑**：
+- **所有内容都在一栏从上到下** → `{ "kind": "vertical" }`
+- **一侧有窄条 sidebar（放头像/技能/教育这种次要内容）** → `{ "kind": "horizontal", "sidebar": { "side": "left"|"right", "width": "240px", "sections": [...], "bgColor": "...", "textColor": "..." } }`
+  - `sections` 字段写**这些 sectionId 进 sidebar**（其余进 main），常见 `["education", "skills"]` 或 `["education", "skills", "summary"]`
+  - `bgColor` 深色（如 `#1F2937`）+ `textColor` 浅色（如 `#F9FAFB`）= 深色 sidebar
+  - 都不写 = 透明 sidebar，跟主页一色
+- 不确定就 vertical（更常见、更安全）
+
+参考完整示例：`lib/templates/uploaded/examples.ts` 里的 `VERTICAL_EXAMPLE` / `HORIZONTAL_EXAMPLE`。
+
+#### 3.2 三个 variant 字段（必填，都从对应枚举挑）
+
+**注意三个的可选值不完全一样**：
+
+- `headerVariant`: `"classic" | "professional" | "modern-sidebar"`
+- `sectionTitleVariant`: `"classic" | "professional" | "modern"`
+- `itemHeaderVariant`: `"professional" | "classic" | "modern"`
+
+看参考图整体气质对号入座：`professional` 偏现代职场清晰排版、`classic` 偏传统衬线/学院风、`modern*` 偏深色 sidebar 设计岗。三个独立挑，常见就保持一致（abbey 全用 `professional`、modern 内置全用 `modern*` 系列）。
+
+#### 3.3 `theme.primaryColor`（必填）—— 主色，⚠️ 会穿透到 section title
+
+**这个字段不只是"配色名义值"，它会真实染色 section title 的彩色 tab 背景**（`professional` variant 时是 tab；其他 variant 也会用作底色/边框）。从参考图里 section title 已经在用的那个色挑出来，否则模板视觉跟参考图会冲突。
+
+hex 格式，例如 `#3B8BCD`（abbey 蓝）、`#137880`（青绿）、`#1F2937`（炭黑）。
+
+#### 3.4 `sectionIcons`（必填）—— 见下方 lucide 白名单
+
+#### 3.5 `decoration.placement`（如果有装饰图）
+
+根据装饰图实际尺寸 + 参考图里装饰位置定。A4 800px 宽页面常见配置：
+
+```json
+{
+  "position": "absolute",
+  "top": "0",
+  "right": "0",
+  "width": "300px",
+  "height": "auto",
+  "zIndex": 0,
+  "opacity": 0.6
+}
+```
+
+---
+
+### Lucide 图标白名单（`sectionIcons` 字段必须从这里挑）
+
+下列 43 个名字都是 lucide-react v0.x 实际存在的导出名（用 `scripts/verify-lucide-whitelist.ts` 验证过）。**绝对不要写白名单外的名字**——凭脑子写容易挑到不存在的（比如 "Soccer"、"Wechat"），前端会渲染空白。
 
 ```
 个人总结 (summary):       User, Quote, Info, MessageSquare, FileText
@@ -74,20 +119,6 @@ python3 template-studio-skill/scripts/extract-decoration.py \
 1. 看参考图里那个 section 的图标长什么样 → 从对应分组里挑最像的
 2. 找不到完美匹配就挑通用的（"其他"分组的 Tag / Bookmark）—— **绝对不要写白名单外的名字**
 3. 把名字字符串写进 `sectionIcons.<sectionId>: "<lucide name>"`，例如 `experience: "Briefcase"`
-
-**装饰图 placement**：根据装饰图实际尺寸和参考图的视觉位置定。常见配置（A4 800px 宽页面）：
-
-```json
-{
-  "position": "absolute",
-  "top": "0",
-  "right": "0",
-  "width": "300px",
-  "height": "auto",
-  "zIndex": 0,
-  "opacity": 0.6
-}
-```
 
 ### Step 4：调 insert-template.ts 入库
 
