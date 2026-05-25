@@ -23,6 +23,7 @@ const mockTemplate: UploadedTemplate = {
   thumbnailUrl: null,
   decoration: null,
   layout: {
+    frame: { kind: "vertical" },
     headerVariant: "professional",
     sectionTitleVariant: "professional",
     itemHeaderVariant: "professional",

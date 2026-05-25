@@ -5,8 +5,10 @@
  * the entire DB-template pipeline end-to-end before any AI / decoration
  * features land.
  *
- * Run with: pnpm tsx db/seed/template-abbey-stub.ts
- * Requires DATABASE_URL in env (real DB; not the build-time placeholder).
+ * Run with: pnpm exec tsx --env-file=.env.local db/seed/template-abbey-stub.ts
+ * (--env-file is required: db/index.ts reads DATABASE_URL at import time, and
+ * `import { config } from "dotenv"; config(...)` runs *after* all imports
+ * resolve, so dotenv-in-file is too late to influence the db module.)
  */
 import { db } from "@/db";
 import { templates } from "@/db/schema";
@@ -22,6 +24,7 @@ async function main() {
       source: "uploaded",
       decoration: null,
       layout: {
+        frame: { kind: "vertical" },
         headerVariant: "professional",
         sectionTitleVariant: "professional",
         itemHeaderVariant: "professional",

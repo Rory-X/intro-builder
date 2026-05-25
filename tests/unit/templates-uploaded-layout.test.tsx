@@ -22,6 +22,7 @@ const sampleTemplate: UploadedTemplate = {
     },
   },
   layout: {
+    frame: { kind: "vertical" },
     headerVariant: "professional",
     sectionTitleVariant: "professional",
     itemHeaderVariant: "professional",
