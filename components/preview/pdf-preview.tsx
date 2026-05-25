@@ -108,6 +108,7 @@ export function PdfPreview({ content, templateId, styleSettings }: Props) {
   const [pageBreaks, setPageBreaks] = useState<number[]>([]);
   const [totalHeight, setTotalHeight] = useState(0);
   const [measured, setMeasured] = useState(false);
+  const debounceTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const recalculate = useCallback(() => {
     const container = measureRef.current;
@@ -122,32 +123,55 @@ export function PdfPreview({ content, templateId, styleSettings }: Props) {
     setMeasured(true);
   }, []);
 
+  const debouncedRecalculate = useCallback(() => {
+    if (debounceTimer.current) clearTimeout(debounceTimer.current);
+    debounceTimer.current = setTimeout(recalculate, 150);
+  }, [recalculate]);
+
+  // Initial measurement
   useLayoutEffect(() => {
     recalculate();
   }, [recalculate, content, templateId, styleSettings]);
 
-  // Re-measure after fonts load
+  // ResizeObserver + font loading — mirrors PaginatedPreview exactly
   useEffect(() => {
-    if (document.fonts?.ready) {
-      document.fonts.ready.then(() => {
-        // Small delay to ensure font metrics have applied to layout
-        requestAnimationFrame(() => recalculate());
+    const container = measureRef.current;
+    if (!container) return;
+
+    if (typeof ResizeObserver !== "undefined") {
+      const observer = new ResizeObserver(() => {
+        debouncedRecalculate();
       });
+      observer.observe(container);
+
+      if (document.fonts?.ready) {
+        document.fonts.ready.then(() => recalculate());
+      }
+
+      return () => {
+        observer.disconnect();
+        if (debounceTimer.current) clearTimeout(debounceTimer.current);
+      };
     }
-  }, [recalculate]);
+  }, [recalculate, debouncedRecalculate]);
 
   const pageOffsets = [0, ...pageBreaks];
   const numPages = pageOffsets.length;
 
   return (
     <>
-      {/* Print-optimized styles — hide app shell, reset margins */}
+      {/* Screen styles: hide app shell, break flex context */}
       <style dangerouslySetInnerHTML={{ __html: `
-        @page { size: A4; margin: 0; }
-        html, body { margin: 0; padding: 0; background: white; }
-        body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
         header:not([data-pagination-header]), nav, footer { display: none !important; }
-        main { padding: 0 !important; margin: 0 !important; flex: none !important; }
+        main { display: block !important; padding: 0 !important; margin: 0 !important; }
+        html, body { margin: 0; padding: 0; background: white; }
+      `}} />
+      {/* Print/PDF styles: only applied when page.pdf() generates the PDF */}
+      <style dangerouslySetInnerHTML={{ __html: `
+        @media print {
+          @page { size: A4; margin: 0; }
+          body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+        }
       `}} />
 
       {/* Invisible measurement container */}
