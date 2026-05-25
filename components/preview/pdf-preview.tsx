@@ -136,8 +136,13 @@ function PaginatedPdfOutput({
           const nextOffset = i < numPages - 1 ? pageOffsets[i + 1] : totalHeight;
           const isFirstPage = i === 0;
           const contentHeight = nextOffset - offset;
-          // Same formula as PaginatedPreview
-          const bottomOverlay = Math.max(0, A4_HEIGHT_PX - contentHeight) + (isFirstPage ? 0 : CONTINUATION_PADDING);
+          // Bottom overlay hides next-page content bleeding through.
+          // Must account for top padding on continuation pages:
+          // Content starts at Y=CONTINUATION_PADDING (not Y=0) on pages 2+,
+          // so the overlay should cover from content end to page bottom.
+          const bottomOverlay = isFirstPage
+            ? Math.max(0, A4_HEIGHT_PX - contentHeight)
+            : Math.max(0, A4_HEIGHT_PX - CONTINUATION_PADDING - contentHeight);
 
           return (
             <div
