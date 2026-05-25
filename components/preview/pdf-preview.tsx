@@ -160,18 +160,13 @@ export function PdfPreview({ content, templateId, styleSettings }: Props) {
 
   return (
     <>
-      {/* Screen styles: hide app shell, break flex context */}
+      {/* Reset styles: hide app shell, normalize layout */}
       <style dangerouslySetInnerHTML={{ __html: `
         header:not([data-pagination-header]), nav, footer { display: none !important; }
+        html, body { margin: 0 !important; padding: 0 !important; background: white !important; }
         main { display: block !important; padding: 0 !important; margin: 0 !important; }
-        html, body { margin: 0; padding: 0; background: white; }
-      `}} />
-      {/* Print/PDF styles: only applied when page.pdf() generates the PDF */}
-      <style dangerouslySetInnerHTML={{ __html: `
-        @media print {
-          @page { size: A4; margin: 0; }
-          body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-        }
+        @page { size: 794px 1123px; margin: 0; }
+        body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
       `}} />
 
       {/* Invisible measurement container */}
@@ -191,7 +186,7 @@ export function PdfPreview({ content, templateId, styleSettings }: Props) {
       {/* Visible pages — each one is exactly A4 with page-break-after */}
       {/* data-pdf-ready signals to Puppeteer that pagination is complete */}
       {measured && (
-        <div data-pdf-ready="true">
+        <div data-pdf-ready="true" style={{ margin: 0, padding: 0, lineHeight: 0 }}>
           {Array.from({ length: numPages }, (_, i) => {
             const offset = pageOffsets[i];
             const nextOffset = i < numPages - 1 ? pageOffsets[i + 1] : totalHeight;
@@ -208,8 +203,14 @@ export function PdfPreview({ content, templateId, styleSettings }: Props) {
                   width: `${A4_WIDTH_PX}px`,
                   height: `${A4_HEIGHT_PX}px`,
                   backgroundColor: "#ffffff",
+                  // Both legacy and modern page break properties
                   pageBreakAfter: i < numPages - 1 ? "always" : "auto",
-                }}
+                  breakAfter: i < numPages - 1 ? "page" : "auto",
+                  // Prevent any extra spacing
+                  margin: 0,
+                  padding: 0,
+                  lineHeight: "normal",
+                } as React.CSSProperties}
               >
                 {/* Top padding on continuation pages */}
                 {!isFirstPage && (
