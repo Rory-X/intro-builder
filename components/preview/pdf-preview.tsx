@@ -146,7 +146,7 @@ export function PdfPreview({ content, templateId, styleSettings }: Props) {
         @page { size: A4; margin: 0; }
         html, body { margin: 0; padding: 0; background: white; }
         body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-        header, nav, footer { display: none !important; }
+        header:not([data-pagination-header]), nav, footer { display: none !important; }
         main { padding: 0 !important; margin: 0 !important; flex: none !important; }
       `}} />
 
