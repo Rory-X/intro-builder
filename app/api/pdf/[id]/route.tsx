@@ -137,13 +137,42 @@ async function generatePdfRemote(resumeId: string, userId: string, title: string
       });
     }
 
-    const pdfBuffer = await page.pdf({
-      preferCSSPageSize: true,
-      printBackground: true,
-      margin: { top: 0, right: 0, bottom: 0, left: 0 },
+    // Screenshot each page div individually, then assemble into PDF.
+    // This uses SCREEN rendering (not print engine) which matches the preview exactly.
+    const { PDFDocument } = await import("pdf-lib");
+    const numPages = await page.evaluate(() => {
+      const el = document.querySelector("[data-pdf-ready]");
+      return el ? el.children.length : 0;
     });
 
-    return new NextResponse(pdfBuffer as unknown as BodyInit, {
+    if (numPages === 0) {
+      return new NextResponse("No pages rendered", { status: 500 });
+    }
+
+    const pdfDoc = await PDFDocument.create();
+    // A4 in points (72 DPI): 595.28 x 841.89
+    const A4_WIDTH_PT = 595.28;
+    const A4_HEIGHT_PT = 841.89;
+
+    for (let i = 0; i < numPages; i++) {
+      // Screenshot each .pdf-page div at its exact rendered size
+      const elementHandle = await page.$(`[data-pdf-ready] > .pdf-page:nth-child(${i + 1})`);
+      if (!elementHandle) continue;
+
+      const pngBuffer = await elementHandle.screenshot({ type: "png" });
+      const pngImage = await pdfDoc.embedPng(pngBuffer);
+      const pdfPage = pdfDoc.addPage([A4_WIDTH_PT, A4_HEIGHT_PT]);
+      pdfPage.drawImage(pngImage, {
+        x: 0,
+        y: 0,
+        width: A4_WIDTH_PT,
+        height: A4_HEIGHT_PT,
+      });
+    }
+
+    const pdfBytes = await pdfDoc.save();
+
+    return new NextResponse(Buffer.from(pdfBytes), {
       headers: {
         "Content-Type": "application/pdf",
         "Content-Disposition": `attachment; filename="${encodeURIComponent(title)}.pdf"`,
