@@ -63,13 +63,14 @@ export function AnnotationHighlights({
     const visible = annotationsRef.current.filter((a) => a.status !== "dismissed");
     const pendingRanges: Range[] = [];
     const acceptedRanges: Range[] = [];
+    const usedRanges: Range[] = []; // Track already-matched ranges to avoid duplicates
 
     for (const ann of visible) {
-      // Search the ENTIRE container (not scoped by section — avoids page boundary issues)
-      const range = findRangeInScope(container, ann.selectedText);
+      const range = findRangeInScope(container, ann.selectedText, usedRanges);
       if (range) {
         rangesMapRef.current.set(ann.id, range);
         globalRangesMap.set(ann.id, range);
+        usedRanges.push(range);
         if (ann.status === "pending") pendingRanges.push(range);
         else if (ann.status === "accepted") acceptedRanges.push(range);
       }
@@ -251,6 +252,22 @@ function isPointInRange(x: number, y: number, range: Range): boolean {
 // --- Visibility check ---
 
 /**
+ * Check if two ranges overlap (share any content).
+ */
+function overlapsAnyRange(range: Range, excludeRanges: Range[]): boolean {
+  for (const existing of excludeRanges) {
+    // Two ranges overlap if neither is entirely before or after the other
+    if (
+      range.compareBoundaryPoints(Range.START_TO_END, existing) > 0 &&
+      range.compareBoundaryPoints(Range.END_TO_START, existing) < 0
+    ) {
+      return true;
+    }
+  }
+  return false;
+}
+
+/**
  * Check if a rect is truly visible — not just has dimensions, but is inside
  * a visible page container. The paginated preview renders each page as an
  * overflow:hidden div. Clipped content has valid getBoundingClientRect but
@@ -287,7 +304,7 @@ function isRectVisible(rect: DOMRect, scope: HTMLElement): boolean {
 
 // --- Text range finding ---
 
-function findRangeInScope(scope: HTMLElement, selectedText: string): Range | null {
+function findRangeInScope(scope: HTMLElement, selectedText: string, excludeRanges: Range[] = []): Range | null {
   if (!selectedText || selectedText.length < 2) return null;
 
   const textNodes: Text[] = [];
@@ -349,11 +366,12 @@ function findRangeInScope(scope: HTMLElement, selectedText: string): Range | nul
       range.setEnd(textNodes[endChar.nodeIdx], endChar.charIdx + 1);
 
       // Check if this range is actually visible (not clipped by overflow:hidden)
-      // Each page is overflow:hidden, so clipped text still has dimensions
-      // but its rect center won't be inside any visible page container
       const rect = range.getBoundingClientRect();
       if (rect.height > 0 && rect.width > 0 && isRectVisible(rect, scope)) {
-        return range;
+        // Check it doesn't overlap with any already-used range
+        if (!overlapsAnyRange(range, excludeRanges)) {
+          return range;
+        }
       }
     } catch { /* skip invalid ranges */ }
 
