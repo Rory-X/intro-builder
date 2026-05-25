@@ -118,7 +118,7 @@ async function generatePdfRemote(resumeId: string, userId: string, title: string
     }
 
     const pdfBuffer = await page.pdf({
-      format: "A4",
+      preferCSSPageSize: true,
       printBackground: true,
       margin: { top: 0, right: 0, bottom: 0, left: 0 },
     });
@@ -168,7 +168,7 @@ async function generatePdfLocally(req: Request, id: string, title: string, pageB
     await page.goto(previewUrl, { waitUntil: "networkidle2", timeout: PDF_NAVIGATION_TIMEOUT_MS });
     await waitForPdfFonts(page);
     const pdfBuffer = await page.pdf({
-      format: "A4",
+      preferCSSPageSize: true,
       printBackground: true,
       margin: { top: 0, right: 0, bottom: 0, left: 0 },
     });

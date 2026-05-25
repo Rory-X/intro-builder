@@ -165,12 +165,15 @@ export function PdfPreview({ content, templateId, styleSettings }: Props) {
 
   return (
     <>
-      {/* Hide app shell, FULLY reset body layout (body has Tailwind flex flex-col min-h-full) */}
+      {/* Hide app shell, FULLY reset body layout, configure print pages */}
       <style dangerouslySetInnerHTML={{ __html: `
         header:not([data-pagination-header]), nav, footer { display: none !important; }
         html, body { margin: 0 !important; padding: 0 !important; background: white !important; display: block !important; min-height: 0 !important; height: auto !important; }
         main { display: block !important; padding: 0 !important; margin: 0 !important; flex: none !important; }
         body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+        @page { size: 794px 1123px; margin: 0; }
+        .pdf-page { break-after: page; break-inside: avoid; }
+        .pdf-page:last-child { break-after: auto; }
       `}} />
 
       {/* Invisible measurement container */}
@@ -197,6 +200,7 @@ export function PdfPreview({ content, templateId, styleSettings }: Props) {
             return (
               <div
                 key={i}
+                className="pdf-page"
                 style={{
                   position: "relative",
                   overflow: "hidden",
