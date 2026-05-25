@@ -5,6 +5,7 @@ import { db } from "@/db";
 import { resumes } from "@/db/schema";
 import { migrateContent } from "@/lib/migrate-content";
 import { TemplateRenderer } from "@/components/preview/template-renderer";
+import { PdfPreview } from "@/components/preview/pdf-preview";
 import { verifyPdfToken } from "@/lib/pdf-token";
 
 export default async function PreviewPage({
@@ -36,27 +37,27 @@ export default async function PreviewPage({
   const content = migrateContent(row.content);
   const isPdf = _pdf === "1";
 
+  if (isPdf) {
+    // Use the same pagination algorithm as the editor preview
+    // This ensures PDF output matches the live preview exactly
+    return (
+      <PdfPreview
+        templateId={row.templateId}
+        content={content}
+        styleSettings={content.styleSettings}
+      />
+    );
+  }
+
+  // Normal preview (non-PDF)
   return (
-    <>
-      {isPdf && (
-        <style dangerouslySetInnerHTML={{ __html: `
-          @page { size: A4; margin: 40px 0; }
-          body { -webkit-print-color-adjust: exact; print-color-adjust: exact; margin: 0; padding: 0; }
-          header, nav, footer { display: none !important; }
-          [data-pagination-header] { display: block !important; }
-          article { padding-top: 0 !important; padding-bottom: 0 !important; }
-          [data-pagination-section] { break-inside: avoid; }
-          [data-pagination-item] { break-inside: avoid; }
-        `}} />
-      )}
-      <div className={isPdf ? "" : "bg-slate-100 py-8"}>
-        <TemplateRenderer
-          templateId={row.templateId}
-          content={content}
-          sectionOrder={content.sectionOrder}
-          styleSettings={content.styleSettings}
-        />
-      </div>
-    </>
+    <div className="bg-slate-100 py-8">
+      <TemplateRenderer
+        templateId={row.templateId}
+        content={content}
+        sectionOrder={content.sectionOrder}
+        styleSettings={content.styleSettings}
+      />
+    </div>
   );
 }
