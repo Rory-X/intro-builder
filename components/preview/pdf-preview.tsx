@@ -165,11 +165,11 @@ export function PdfPreview({ content, templateId, styleSettings }: Props) {
 
   return (
     <>
-      {/* Hide app shell, reset layout */}
+      {/* Hide app shell, FULLY reset body layout (body has Tailwind flex flex-col min-h-full) */}
       <style dangerouslySetInnerHTML={{ __html: `
         header:not([data-pagination-header]), nav, footer { display: none !important; }
-        html, body { margin: 0 !important; padding: 0 !important; background: white !important; }
-        main { display: block !important; padding: 0 !important; margin: 0 !important; }
+        html, body { margin: 0 !important; padding: 0 !important; background: white !important; display: block !important; min-height: 0 !important; height: auto !important; }
+        main { display: block !important; padding: 0 !important; margin: 0 !important; flex: none !important; }
         body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
       `}} />
 
