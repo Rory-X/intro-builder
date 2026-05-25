@@ -79,9 +79,9 @@ async function generatePdfRemote(resumeId: string, userId: string, title: string
     await page.waitForSelector("[data-pdf-ready]", { timeout: 15_000 });
     await waitForPdfFonts(page);
     const pdfBuffer = await page.pdf({
-      // preferCSSPageSize makes Chromium respect our @page { size: 794px 1123px }
-      // This ensures each page-break-after creates a new PDF page
-      preferCSSPageSize: true,
+      // Use fixed A4 format — Puppeteer splits at every 1123px boundary.
+      // Our page divs are each exactly 1123px so they align with PDF pages.
+      format: "A4",
       printBackground: true,
       margin: { top: 0, right: 0, bottom: 0, left: 0 },
     });

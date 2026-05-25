@@ -183,16 +183,35 @@ export function PdfPreview({ content, templateId, styleSettings }: Props) {
         />
       </div>
 
-      {/* Visible pages — each one is exactly A4 with page-break-after */}
+      {/* Visible pages — each exactly A4 height, stacked with zero gaps */}
+      {/* Puppeteer splits PDF at every 1123px boundary (A4 height) */}
       {/* data-pdf-ready signals to Puppeteer that pagination is complete */}
       {measured && (
-        <div data-pdf-ready="true" style={{ margin: 0, padding: 0, lineHeight: 0 }}>
+        <div
+          data-pdf-ready="true"
+          style={{
+            display: "flex",
+            flexDirection: "column",
+            alignItems: "flex-start",
+            gap: 0,
+            margin: 0,
+            padding: 0,
+            width: `${A4_WIDTH_PX}px`,
+            // Exact total height ensures Puppeteer pages align with our page divs
+            height: `${numPages * A4_HEIGHT_PX}px`,
+            overflow: "hidden",
+          }}
+        >
           {Array.from({ length: numPages }, (_, i) => {
             const offset = pageOffsets[i];
             const nextOffset = i < numPages - 1 ? pageOffsets[i + 1] : totalHeight;
             const isFirstPage = i === 0;
             const contentHeight = nextOffset - offset;
-            const bottomOverlay = Math.max(0, A4_HEIGHT_PX - contentHeight) + (isFirstPage ? 0 : CONTINUATION_PADDING);
+            // Bottom overlay hides content belonging to subsequent pages
+            const visibleEnd = isFirstPage
+              ? contentHeight
+              : CONTINUATION_PADDING + contentHeight;
+            const bottomOverlay = Math.max(0, A4_HEIGHT_PX - visibleEnd);
 
             return (
               <div
@@ -202,15 +221,13 @@ export function PdfPreview({ content, templateId, styleSettings }: Props) {
                   overflow: "hidden",
                   width: `${A4_WIDTH_PX}px`,
                   height: `${A4_HEIGHT_PX}px`,
+                  minHeight: `${A4_HEIGHT_PX}px`,
+                  maxHeight: `${A4_HEIGHT_PX}px`,
                   backgroundColor: "#ffffff",
-                  // Both legacy and modern page break properties
-                  pageBreakAfter: i < numPages - 1 ? "always" : "auto",
-                  breakAfter: i < numPages - 1 ? "page" : "auto",
-                  // Prevent any extra spacing
+                  flexShrink: 0,
                   margin: 0,
                   padding: 0,
-                  lineHeight: "normal",
-                } as React.CSSProperties}
+                }}
               >
                 {/* Top padding on continuation pages */}
                 {!isFirstPage && (
