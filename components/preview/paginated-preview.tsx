@@ -12,6 +12,8 @@ type Props = {
   templateId: TemplateId | string;
   styleSettings?: StyleSettings;
   showEmptyPlaceholders?: boolean;
+  /** Callback when pagination breaks are recalculated — used by PDF export */
+  onPaginationChange?: (data: { pageBreaks: number[]; totalHeight: number }) => void;
 };
 
 type BreakableElement = {
@@ -179,7 +181,7 @@ function calculatePageBreaks(
  * 5. White overlay hides content beyond each page's break point
  */
 export const PaginatedPreview = forwardRef<HTMLDivElement, Props>(function PaginatedPreview(
-  { content, templateId, styleSettings, showEmptyPlaceholders },
+  { content, templateId, styleSettings, showEmptyPlaceholders, onPaginationChange },
   ref,
 ) {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -203,7 +205,8 @@ export const PaginatedPreview = forwardRef<HTMLDivElement, Props>(function Pagin
     setPageBreaks(breaks);
     setTotalHeight(height);
     setMeasured(true);
-  }, []);
+    onPaginationChange?.({ pageBreaks: breaks, totalHeight: height });
+  }, [onPaginationChange]);
 
   /** Debounced recalculate — prevents rapid-fire updates during smart layout measurement */
   const debouncedRecalculate = useCallback(() => {

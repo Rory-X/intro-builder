@@ -23,7 +23,7 @@ export const maxDuration = 60;
  */
 const BROWSER_WS_ENDPOINT = process.env.BROWSER_WS_ENDPOINT;
 
-export async function GET(req: Request, ctx: { params: Promise<{ id: string }> }) {
+export async function POST(req: Request, ctx: { params: Promise<{ id: string }> }) {
   const { id } = await ctx.params;
   const session = await auth();
   if (!session?.user?.id) return new NextResponse("unauthorized", { status: 401 });
@@ -33,13 +33,22 @@ export async function GET(req: Request, ctx: { params: Promise<{ id: string }> }
   });
   if (!row) return new NextResponse("not found", { status: 404 });
 
+  // Read pagination data from request body (sent by editor's ExportButton)
+  let pageBreaks: number[] = [];
+  let totalHeight = 0;
+  try {
+    const body = await req.json();
+    pageBreaks = body.pageBreaks ?? [];
+    totalHeight = body.totalHeight ?? 0;
+  } catch { /* ignore parse errors, will fallback to native pagination */ }
+
   // Remote browser configured → use cloud service (production)
   if (BROWSER_WS_ENDPOINT) {
-    return generatePdfRemote(id, session.user.id, row.title);
+    return generatePdfRemote(id, session.user.id, row.title, pageBreaks, totalHeight);
   }
 
   // Fallback: local Puppeteer (dev environment)
-  return generatePdfLocally(req, id, row.title);
+  return generatePdfLocally(req, id, row.title, pageBreaks, totalHeight);
 }
 
 /**
@@ -47,7 +56,7 @@ export async function GET(req: Request, ctx: { params: Promise<{ id: string }> }
  * Uses a signed token for preview page authentication since the remote
  * browser cannot carry the user's session cookie.
  */
-async function generatePdfRemote(resumeId: string, userId: string, title: string) {
+async function generatePdfRemote(resumeId: string, userId: string, title: string, pageBreaks: number[], totalHeight: number) {
   const token = signPdfToken(resumeId, userId);
   const appOrigin = process.env.NEXT_PUBLIC_APP_URL || (process.env.VERCEL_URL
     ? `https://${process.env.VERCEL_URL}`
@@ -58,8 +67,13 @@ async function generatePdfRemote(resumeId: string, userId: string, title: string
   url.searchParams.set("_pdf", "1");
   url.searchParams.set("_token", token);
 
-  // Vercel Deployment Protection bypass — allows the remote browser to access
-  // protected deployments without hitting Vercel's login wall.
+  // Pass page break data from editor (ensures PDF matches preview exactly)
+  if (pageBreaks.length > 0 && totalHeight > 0) {
+    const breaksData = Buffer.from(JSON.stringify({ pageBreaks, totalHeight })).toString("base64url");
+    url.searchParams.set("_breaks", breaksData);
+  }
+
+  // Vercel Deployment Protection bypass
   const bypassSecret = process.env.VERCEL_AUTOMATION_BYPASS_SECRET;
   if (bypassSecret) {
     url.searchParams.set("x-vercel-protection-bypass", bypassSecret);
@@ -105,9 +119,15 @@ async function generatePdfRemote(resumeId: string, userId: string, title: string
  * Generate PDF locally using puppeteer.launch() with system Chrome or @sparticuz/chromium.
  * Used in development or when BROWSER_WS_ENDPOINT is not configured.
  */
-async function generatePdfLocally(req: Request, id: string, title: string) {
+async function generatePdfLocally(req: Request, id: string, title: string, pageBreaks: number[], totalHeight: number) {
   const origin = new URL(req.url).origin;
-  const previewUrl = `${origin}/resume/${id}/preview?_pdf=1`;
+  const url = new URL(`/resume/${id}/preview`, origin);
+  url.searchParams.set("_pdf", "1");
+  if (pageBreaks.length > 0 && totalHeight > 0) {
+    const breaksData = Buffer.from(JSON.stringify({ pageBreaks, totalHeight })).toString("base64url");
+    url.searchParams.set("_breaks", breaksData);
+  }
+  const previewUrl = url.toString();
   const cookieHeader = req.headers.get("cookie") ?? "";
 
   let browser;

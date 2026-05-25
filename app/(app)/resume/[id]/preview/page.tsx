@@ -13,10 +13,10 @@ export default async function PreviewPage({
   searchParams,
 }: {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{ _pdf?: string; _token?: string }>;
+  searchParams: Promise<{ _pdf?: string; _token?: string; _breaks?: string }>;
 }) {
   const { id } = await params;
-  const { _pdf, _token } = await searchParams;
+  const { _pdf, _token, _breaks } = await searchParams;
 
   // When accessed by the remote PDF service with a signed token, skip session auth
   let userId: string;
@@ -38,13 +38,24 @@ export default async function PreviewPage({
   const isPdf = _pdf === "1";
 
   if (isPdf) {
-    // Use the same pagination algorithm as the editor preview
-    // This ensures PDF output matches the live preview exactly
+    // Decode page break data from editor (if provided)
+    let pageBreaks: number[] | undefined;
+    let totalHeight: number | undefined;
+    if (_breaks) {
+      try {
+        const decoded = JSON.parse(Buffer.from(_breaks, "base64url").toString());
+        pageBreaks = decoded.pageBreaks;
+        totalHeight = decoded.totalHeight;
+      } catch { /* fallback to native pagination */ }
+    }
+
     return (
       <PdfPreview
         templateId={row.templateId}
         content={content}
         styleSettings={content.styleSettings}
+        pageBreaks={pageBreaks}
+        totalHeight={totalHeight}
       />
     );
   }

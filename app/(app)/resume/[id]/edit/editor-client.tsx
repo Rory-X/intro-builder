@@ -113,6 +113,7 @@ export default function EditorClient({ id, initialTitle, initialTemplate, initia
   });
   const [now, setNow] = useState(() => new Date());
   const [isExportingImage, setIsExportingImage] = useState(false);
+  const [paginationData, setPaginationData] = useState<{ pageBreaks: number[]; totalHeight: number } | null>(null);
   const [pendingTemplateId, setPendingTemplateId] = useState<TemplateId | null>(null);
   const [isTogglingShare, setIsTogglingShare] = useState(false);
   const [isPending, startTransition] = useTransition();
@@ -458,6 +459,7 @@ export default function EditorClient({ id, initialTitle, initialTemplate, initia
               filename={title}
               onExportImage={onExportImage}
               isExportingImage={isExportingImage}
+              paginationData={paginationData}
             />
             <Separator orientation="vertical" className="h-6" />
             <InviteCollabDialog resumeId={id} onSessionCreated={(sid) => setCollabSessionId(sid)} />
@@ -536,7 +538,7 @@ export default function EditorClient({ id, initialTitle, initialTemplate, initia
             className="thin-scrollbar overflow-y-auto bg-muted p-6"
             style={{ width: `${100 - splitPercent}%` }}
           >
-            <LivePreview ref={previewRootRef} templateId={template} />
+            <LivePreview ref={previewRootRef} templateId={template} onPaginationChange={setPaginationData} />
             {/* Annotation highlights on preview (when collab active) */}
             {collabAnnotations.length > 0 && (
               <AnnotationHighlights
