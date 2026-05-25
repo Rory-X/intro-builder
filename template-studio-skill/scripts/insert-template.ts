@@ -21,32 +21,37 @@
  */
 import { neon } from "@neondatabase/serverless";
 import { parseArgs } from "node:util";
-
-type DecorationConfig = {
-  bgImageUrl: string;
-  placement: {
-    position: "absolute";
-    top: string;
-    right: string;
-    width: string;
-    height: string;
-    zIndex: number;
-    opacity: number;
-  };
-  pageBgColor?: string;
-};
-
-type LayoutConfig = {
-  headerVariant: string;
-  sectionTitleVariant: string;
-  itemHeaderVariant: string;
-  theme: { primaryColor: string; [k: string]: unknown };
-  sectionIcons: Record<string, string>;
-};
+// Single source of truth for the row shape. Manually mirroring the Zod
+// schema here would silently drift (e.g. `frame` was added to
+// LayoutConfig in 1f79532; the old hand-written type didn't notice and
+// would have happily inserted rows that fetch.ts then rejects).
+import { LayoutConfig, DecorationConfig } from "@/lib/templates/uploaded/types";
 
 function fail(code: number, msg: string): never {
   console.error(`ERROR: ${msg}`);
   process.exit(code);
+}
+
+/** Parse JSON + run Zod validation; print Zod's flattened issues on failure. */
+function parseConfig<T>(
+  flag: string,
+  raw: string,
+  schema: { safeParse(v: unknown): { success: true; data: T } | { success: false; error: { flatten(): unknown } } },
+): T {
+  let json: unknown;
+  try {
+    json = JSON.parse(raw);
+  } catch (e) {
+    fail(1, `${flag} is not valid JSON: ${(e as Error).message}`);
+  }
+  const result = schema.safeParse(json);
+  if (!result.success) {
+    fail(
+      1,
+      `${flag} failed schema validation:\n${JSON.stringify(result.error.flatten(), null, 2)}`,
+    );
+  }
+  return result.data;
 }
 
 async function main() {
@@ -67,30 +72,16 @@ async function main() {
   if (!values.name) fail(1, "--name required");
   if (!values.layout) fail(1, "--layout required (LayoutConfig JSON)");
 
-  // Parse + lightly validate the structured fields. We only check shape, not
-  // semantics — the renderer will fail loudly on bad values, which is the
-  // signal we want.
-  let layout: LayoutConfig;
-  try {
-    layout = JSON.parse(values.layout) as LayoutConfig;
-  } catch (e) {
-    fail(1, `--layout is not valid JSON: ${(e as Error).message}`);
-  }
-  for (const k of ["headerVariant", "sectionTitleVariant", "itemHeaderVariant", "theme", "sectionIcons"] as const) {
-    if (!(k in layout)) fail(1, `--layout missing field "${k}"`);
-  }
-  if (!layout.theme?.primaryColor) fail(1, `--layout.theme.primaryColor required`);
+  // Validates against the same Zod schema fetch.ts uses to read — no drift
+  // possible. If LayoutConfig grows a new required field, this script will
+  // start rejecting Skill output the moment the schema lands, instead of
+  // silently writing rows that vanish from listAllTemplatesAsync.
+  const layout = parseConfig("--layout", values.layout, LayoutConfig);
 
-  let decoration: DecorationConfig | null = null;
-  if (values.decoration && values.decoration !== "null") {
-    try {
-      decoration = JSON.parse(values.decoration) as DecorationConfig;
-    } catch (e) {
-      fail(1, `--decoration is not valid JSON: ${(e as Error).message}`);
-    }
-    if (!decoration!.bgImageUrl) fail(1, "--decoration.bgImageUrl required");
-    if (!decoration!.placement) fail(1, "--decoration.placement required");
-  }
+  const decoration =
+    values.decoration && values.decoration !== "null"
+      ? parseConfig("--decoration", values.decoration, DecorationConfig)
+      : null;
 
   const dbUrl = process.env.DATABASE_URL;
   if (!dbUrl) fail(1, "DATABASE_URL not set — pass --env-file=.env.local to tsx");
