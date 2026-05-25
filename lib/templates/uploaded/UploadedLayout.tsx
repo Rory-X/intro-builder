@@ -36,19 +36,82 @@ export function UploadedLayout({
     }),
   };
 
+  const frame = template.layout.frame;
+  const header = (
+    <ResumeHeader
+      basics={content.basics}
+      variant={template.layout.headerVariant}
+      showEmptyPlaceholders={showEmptyPlaceholders}
+    />
+  );
+
+  if (frame.kind === "vertical") {
+    return (
+      <ResumePage
+        styleSettings={styleSettings}
+        decoration={template.decoration ?? undefined}
+        style={themeStyle}
+        maxWidthClass="max-w-[800px]"
+        dataFrame="vertical"
+      >
+        {header}
+        {order.map((key) => sections[key] ?? null)}
+      </ResumePage>
+    );
+  }
+
+  // Horizontal: split sectionOrder into sidebar / main, preserving order
+  // within each. Sidebar holds the sections explicitly listed in
+  // frame.sidebar.sections; everything else flows in main.
+  const sidebarSet = new Set(frame.sidebar.sections);
+  const sidebarOrder = order.filter((k) => sidebarSet.has(k));
+  const mainOrder = order.filter((k) => !sidebarSet.has(k));
+
+  const sidebarStyle: React.CSSProperties = {
+    width: frame.sidebar.width,
+    ...(frame.sidebar.bgColor ? { backgroundColor: frame.sidebar.bgColor } : {}),
+    ...(frame.sidebar.textColor ? { color: frame.sidebar.textColor } : {}),
+  };
+
+  const sidebarEl = (
+    <aside
+      data-frame-sidebar=""
+      data-side={frame.sidebar.side}
+      style={sidebarStyle}
+      className="shrink-0"
+    >
+      {sidebarOrder.map((key) => sections[key] ?? null)}
+    </aside>
+  );
+
+  const mainEl = (
+    <div className="min-w-0 flex-1">
+      {mainOrder.map((key) => sections[key] ?? null)}
+    </div>
+  );
+
   return (
     <ResumePage
       styleSettings={styleSettings}
       decoration={template.decoration ?? undefined}
       style={themeStyle}
       maxWidthClass="max-w-[800px]"
+      dataFrame="horizontal"
     >
-      <ResumeHeader
-        basics={content.basics}
-        variant={template.layout.headerVariant}
-        showEmptyPlaceholders={showEmptyPlaceholders}
-      />
-      {order.map((key) => sections[key] ?? null)}
+      {header}
+      <div className="flex gap-6">
+        {frame.sidebar.side === "left" ? (
+          <>
+            {sidebarEl}
+            {mainEl}
+          </>
+        ) : (
+          <>
+            {mainEl}
+            {sidebarEl}
+          </>
+        )}
+      </div>
     </ResumePage>
   );
 }

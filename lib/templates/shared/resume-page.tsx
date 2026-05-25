@@ -11,6 +11,9 @@ type Props = {
   decoration?: DecorationConfig;
   /** Extra CSS to merge into the article (e.g. theme CSS variables). Structural styles win. */
   style?: React.CSSProperties;
+  /** Frame kind for skeleton-aware rendering. Surfaced on the article as data-frame
+   *  so tests / dev tools can introspect; consumers may also key visual rules off it. */
+  dataFrame?: string;
   children: React.ReactNode;
 };
 
@@ -20,6 +23,7 @@ export function ResumePage({
   maxWidthClass = "max-w-[800px]",
   decoration,
   style,
+  dataFrame,
   children,
 }: Props) {
   const ss = mergeStyleSettings(styleSettings);
@@ -41,6 +45,7 @@ export function ResumePage({
     <article
       className={cn("relative mx-auto", maxWidthClass, className)}
       style={articleStyle}
+      data-frame={dataFrame}
     >
       {hasDecorationImage && (
         // eslint-disable-next-line @next/next/no-img-element

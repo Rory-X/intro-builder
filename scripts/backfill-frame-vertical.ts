@@ -44,7 +44,7 @@ async function main() {
   const rows = await withRetry(
     "select",
     () =>
-      sql`SELECT id, layout FROM templates` as Promise<
+      sql`SELECT id, layout FROM templates` as unknown as Promise<
         Array<{ id: string; layout: { frame?: unknown } & Record<string, unknown> }>
       >,
   );
@@ -78,7 +78,7 @@ async function main() {
   const verify = await withRetry(
     "verify",
     () =>
-      sql`SELECT id, layout->'frame' AS frame FROM templates ORDER BY id` as Promise<
+      sql`SELECT id, layout->'frame' AS frame FROM templates ORDER BY id` as unknown as Promise<
         Array<{ id: string; frame: unknown }>
       >,
   );
