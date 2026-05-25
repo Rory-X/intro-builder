@@ -35,33 +35,45 @@ export function ResumePage({
     color: "#000000",
   };
 
+  const hasDecorationImage = Boolean(decoration?.bgImageUrl);
+
   return (
     <article
       className={cn("relative mx-auto", maxWidthClass, className)}
       style={articleStyle}
     >
-      {decoration?.bgImageUrl && (
+      {hasDecorationImage && (
         // eslint-disable-next-line @next/next/no-img-element
         <img
           data-template-decoration
-          src={decoration.bgImageUrl}
+          src={decoration!.bgImageUrl}
           alt=""
           aria-hidden
           className="pointer-events-none"
           style={{
-            position: decoration.placement.position,
-            top: decoration.placement.top,
-            right: decoration.placement.right,
-            width: decoration.placement.width,
-            height: decoration.placement.height,
-            zIndex: decoration.placement.zIndex,
-            opacity: decoration.placement.opacity,
+            position: decoration!.placement.position,
+            top: decoration!.placement.top,
+            right: decoration!.placement.right,
+            width: decoration!.placement.width,
+            height: decoration!.placement.height,
+            zIndex: decoration!.placement.zIndex,
+            opacity: decoration!.placement.opacity,
           }}
         />
       )}
-      <div className="relative" style={{ zIndex: 1 }}>
-        {children}
-      </div>
+      {/*
+        Wrap children in an extra positioning div ONLY when a decoration image
+        is rendered — otherwise this wrapper would break templates that rely
+        on the article being the direct grid/flex container of their children
+        (e.g. modern's `grid-cols-[240px_1fr]` aside + main layout).
+      */}
+      {hasDecorationImage ? (
+        <div className="relative" style={{ zIndex: 1 }}>
+          {children}
+        </div>
+      ) : (
+        children
+      )}
     </article>
   );
 }
