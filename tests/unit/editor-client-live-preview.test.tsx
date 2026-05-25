@@ -2,6 +2,15 @@ import { act, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import EditorClient from "@/app/(app)/resume/[id]/edit/editor-client";
 import { emptyResumeContent } from "@/lib/resume-schema";
+import type { SerializableResolvedTemplate } from "@/lib/templates/render";
+
+// Built-in default for the now-required template props. Tests don't
+// exercise uploaded templates; the dispatcher's built-in branch is the
+// right baseline.
+const BUILTIN_RESOLVED: SerializableResolvedTemplate = {
+  source: "builtin",
+  id: "professional",
+};
 
 const saveResumeMock = vi.fn();
 const exportPreviewImageMock = vi.fn();
@@ -72,6 +81,8 @@ describe("EditorClient live preview", () => {
         initialIsPublic={false}
         initialSlug={null}
         initialUpdatedAtIso={new Date().toISOString()}
+        initialResolvedTemplate={BUILTIN_RESOLVED}
+        uploadedTemplates={[]}
       />,
     );
 
@@ -105,6 +116,8 @@ describe("EditorClient live preview", () => {
         initialIsPublic={false}
         initialSlug={null}
         initialUpdatedAtIso={new Date().toISOString()}
+        initialResolvedTemplate={BUILTIN_RESOLVED}
+        uploadedTemplates={[]}
       />,
     );
 
@@ -125,6 +138,8 @@ describe("EditorClient live preview", () => {
         initialIsPublic={false}
         initialSlug={null}
         initialUpdatedAtIso="2026-05-19T11:21:00.000Z"
+        initialResolvedTemplate={BUILTIN_RESOLVED}
+        uploadedTemplates={[]}
       />,
     );
 
@@ -144,6 +159,8 @@ describe("EditorClient live preview", () => {
         initialIsPublic={false}
         initialSlug={null}
         initialUpdatedAtIso={new Date().toISOString()}
+        initialResolvedTemplate={BUILTIN_RESOLVED}
+        uploadedTemplates={[]}
       />,
     );
 
@@ -179,6 +196,8 @@ describe("EditorClient live preview", () => {
           initialIsPublic={false}
           initialSlug={null}
           initialUpdatedAtIso={iso}
+          initialResolvedTemplate={BUILTIN_RESOLVED}
+          uploadedTemplates={[]}
         />,
       ),
     ).not.toThrow();
@@ -197,6 +216,8 @@ describe("EditorClient live preview", () => {
         initialIsPublic={false}
         initialSlug={null}
         initialUpdatedAtIso={new Date().toISOString()}
+        initialResolvedTemplate={BUILTIN_RESOLVED}
+        uploadedTemplates={[]}
       />,
     );
 

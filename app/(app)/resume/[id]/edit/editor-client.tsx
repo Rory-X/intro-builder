@@ -67,11 +67,12 @@ type Props = {
   initialUpdatedAtIso: string;
   // Pre-resolved template + the full set of uploaded templates so the
   // client preview can dispatch built-in vs uploaded without a round
-  // trip on each template switch. Optional in tests so existing harness
-  // signatures don't break — treated as "no uploaded templates" when
-  // absent.
-  initialResolvedTemplate?: SerializableResolvedTemplate;
-  uploadedTemplates?: UploadedTemplate[];
+  // trip on each template switch. Required because every code path that
+  // mounts EditorClient (server route, tests) must supply both — leaving
+  // them optional silently hides a real bundle on uploaded templates if
+  // a future caller forgets to pass them.
+  initialResolvedTemplate: SerializableResolvedTemplate;
+  uploadedTemplates: UploadedTemplate[];
 };
 
 const DESKTOP_QUERY = "(min-width: 1024px)";
@@ -139,7 +140,7 @@ export default function EditorClient({ id, initialTitle, initialTemplate, initia
   // foundation phase).
   const uploadedById = useMemo(() => {
     const map = new Map<string, UploadedTemplate>();
-    for (const t of uploadedTemplates ?? []) map.set(t.id, t);
+    for (const t of uploadedTemplates) map.set(t.id, t);
     return map;
   }, [uploadedTemplates]);
 
@@ -153,7 +154,7 @@ export default function EditorClient({ id, initialTitle, initialTemplate, initia
       return { source: "uploaded", id: uploaded.id, template: uploaded };
     }
     if (
-      initialResolvedTemplate?.source === "uploaded" &&
+      initialResolvedTemplate.source === "uploaded" &&
       initialResolvedTemplate.id === template
     ) {
       return initialResolvedTemplate;

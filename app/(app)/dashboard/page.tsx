@@ -8,8 +8,8 @@ import {
 import { Plus, MoreVertical, Edit, Copy, FileText } from "lucide-react";
 import { createResume, deleteResume, duplicateResume } from "./actions";
 import { migrateContent } from "@/lib/migrate-content";
-import { getTemplateMeta } from "@/lib/templates/registry";
-import { TemplateRenderer } from "@/components/preview/template-renderer";
+import { listAllTemplatesAsync } from "@/lib/templates/registry-server";
+import { TemplateRender } from "@/lib/templates/render-server";
 import { computeCompletenessScore } from "@/lib/completeness-score";
 import { ImportResumeButton } from "@/components/editor/import-resume-button";
 import { DeleteResumeButton } from "@/components/editor/delete-resume-button";
@@ -21,7 +21,14 @@ export const metadata: Metadata = { title: "我的简历" };
 
 export default async function DashboardPage() {
   const userId = await requireUserId();
-  const list = await db.select().from(resumes).where(eq(resumes.userId, userId)).orderBy(desc(resumes.updatedAt));
+  const [list, allTemplates] = await Promise.all([
+    db.select().from(resumes).where(eq(resumes.userId, userId)).orderBy(desc(resumes.updatedAt)),
+    listAllTemplatesAsync(),
+  ]);
+  // Merged lookup so resume cards can show the right template name even
+  // for uploaded ones — `getTemplateMeta` (sync) only knows built-ins.
+  // Falls back to "默认模板" if a resume points at a deleted DB template.
+  const templateNameById = new Map(allTemplates.map((t) => [t.id, t.name]));
 
   return (
     <main className="mx-auto max-w-6xl px-4 py-8 md:py-12">
@@ -68,7 +75,7 @@ export default async function DashboardPage() {
         <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
           {list.map((r) => {
             const content = migrateContent(r.content);
-            const templateName = getTemplateMeta(r.templateId).name;
+            const templateName = templateNameById.get(r.templateId) ?? "默认模板";
             const score = computeCompletenessScore(content).overall;
             return (
               <div key={r.id} className="group relative">
@@ -77,10 +84,11 @@ export default async function DashboardPage() {
                   <div className="overflow-hidden rounded-xl border shadow-sm transition-all duration-200 hover:shadow-lg hover:shadow-primary/5 [container-type:inline-size]"
                        style={{ aspectRatio: "210/297", backgroundColor: "#ffffff" }}>
                     <div className="pointer-events-none origin-top-left [transform:scale(calc(100cqw/820px))]" style={{ width: "820px" }}>
-                      <TemplateRenderer
-                        templateId={r.templateId}
+                      <TemplateRender
+                        id={r.templateId}
                         content={content}
                         sectionOrder={content.sectionOrder}
+                        styleSettings={content.styleSettings}
                       />
                     </div>
                   </div>
