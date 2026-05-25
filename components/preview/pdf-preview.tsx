@@ -133,16 +133,9 @@ function PaginatedPdfOutput({
       >
         {Array.from({ length: numPages }, (_, i) => {
           const offset = pageOffsets[i];
-          const nextOffset = i < numPages - 1 ? pageOffsets[i + 1] : totalHeight;
           const isFirstPage = i === 0;
-          const contentHeight = nextOffset - offset;
-          // Bottom overlay hides next-page content bleeding through.
-          // Must account for top padding on continuation pages:
-          // Content starts at Y=CONTINUATION_PADDING (not Y=0) on pages 2+,
-          // so the overlay should cover from content end to page bottom.
-          const bottomOverlay = isFirstPage
-            ? Math.max(0, A4_HEIGHT_PX - contentHeight)
-            : Math.max(0, A4_HEIGHT_PX - CONTINUATION_PADDING - contentHeight);
+          // No bottom overlay — overflow:hidden at 1123px handles clipping naturally.
+          // This prevents content loss from font rendering differences between browsers.
 
           return (
             <div
@@ -185,18 +178,6 @@ function PaginatedPdfOutput({
                   styleSettings={styleSettings}
                 />
               </div>
-              {/* Bottom white overlay to hide content beyond break point */}
-              {bottomOverlay > 0 && (
-                <div style={{
-                  position: "absolute",
-                  left: 0,
-                  right: 0,
-                  bottom: 0,
-                  height: `${bottomOverlay}px`,
-                  backgroundColor: "#ffffff",
-                  zIndex: 1,
-                }} />
-              )}
             </div>
           );
         })}
