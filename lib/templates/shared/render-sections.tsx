@@ -12,6 +12,8 @@ import {
   SkillsSectionShell,
 } from "./section-shell";
 import { renderResumeEntry, wrapProfessionalEntry } from "./professional-wrap";
+import { lookupLucideIcon } from "./lucide-icon-lookup";
+import type { LucideIcon } from "lucide-react";
 
 function formatDateRange(start: string, end: string) {
   if (!start && !end) return undefined;
@@ -32,6 +34,12 @@ export type BuildSectionsOptions = {
    * 不传时 fallback 到 section variant，保持原有"绑死"行为不变（向后兼容）。
    */
   itemHeaderVariant?: ResumeSectionVariant;
+  /**
+   * 模板级 section icon 覆盖。Skill 产出的 LayoutConfig.sectionIcons 形如
+   * `{experience: "Briefcase", custom_award: "Trophy"}`，渲染时优先于
+   * section-meta 默认 icon。Whitelist 外的 name 自动 fallback 到默认。
+   */
+  sectionIcons?: Record<string, string>;
 };
 
 export function buildResumeSections(
@@ -42,6 +50,10 @@ export function buildResumeSections(
   const includeBasicsSummary = options?.includeBasicsSummary ?? true;
   const shells = options?.showEmptyPlaceholders ?? false;
   const itemHeaderVariant = options?.itemHeaderVariant ?? variant;
+  const overrideIcon = (key: string): LucideIcon | undefined => {
+    const name = options?.sectionIcons?.[key];
+    return lookupLucideIcon(name) ?? undefined;
+  };
 
   const experienceTitle = getSectionMeta("experience").label;
   const educationTitle = getSectionMeta("education").label;
@@ -51,7 +63,13 @@ export function buildResumeSections(
   return {
     basics:
       includeBasicsSummary && content.basics.summary ? (
-        <ResumeSection key="basics" sectionKey="basics" title="自我介绍" variant={variant}>
+        <ResumeSection
+          key="basics"
+          sectionKey="basics"
+          title="自我介绍"
+          variant={variant}
+          iconOverride={overrideIcon("basics")}
+        >
           {wrapProfessionalEntry(
             variant,
             <p className="text-[0.92em] leading-relaxed text-neutral-700">{content.basics.summary}</p>,
@@ -65,6 +83,7 @@ export function buildResumeSections(
           sectionKey="experience"
           title={experienceTitle}
           variant={variant}
+          iconOverride={overrideIcon("experience")}
         >
           {content.experience.length > 0 ? (
             content.experience.map((e, i) => {
@@ -112,6 +131,7 @@ export function buildResumeSections(
           sectionKey="education"
           title={educationTitle}
           variant={variant}
+          iconOverride={overrideIcon("education")}
         >
           {content.education.length > 0 ? (
             content.education.map((e, i) =>
@@ -178,6 +198,7 @@ export function buildResumeSections(
           sectionKey="projects"
           title={projectsTitle}
           variant={variant}
+          iconOverride={overrideIcon("projects")}
         >
           {content.projects.length > 0 ? (
             content.projects.map((p, i) =>
@@ -246,7 +267,13 @@ export function buildResumeSections(
       ) : null,
     skills:
       content.skills.length > 0 || shells ? (
-        <ResumeSection key="skills" sectionKey="skills" title={skillsTitle} variant={variant}>
+        <ResumeSection
+          key="skills"
+          sectionKey="skills"
+          title={skillsTitle}
+          variant={variant}
+          iconOverride={overrideIcon("skills")}
+        >
           {variant === "professional" ? (
             renderResumeEntry(
               variant,
@@ -295,7 +322,13 @@ export function buildResumeSections(
         if (!hasContent && !shells) return [cs.id, null];
         return [
           cs.id,
-          <ResumeSection key={cs.id} sectionKey={cs.id} title={cs.title} variant={variant}>
+          <ResumeSection
+            key={cs.id}
+            sectionKey={cs.id}
+            title={cs.title}
+            variant={variant}
+            iconOverride={overrideIcon(cs.id)}
+          >
             {hasContent
               ? renderResumeEntry(variant, cs.id, <ResumeRichText content={cs.content} />)
               : (

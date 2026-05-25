@@ -1,5 +1,6 @@
 import { getSectionMeta } from "@/lib/section-meta";
 import { cn } from "@/lib/utils";
+import type { LucideIcon } from "lucide-react";
 import { ProfessionalSectionTitle } from "./professional-section-title";
 
 export type ResumeSectionVariant = "classic" | "professional" | "modern";
@@ -8,13 +9,26 @@ type Props = {
   title: string;
   sectionKey?: string;
   variant: ResumeSectionVariant;
+  /**
+   * 可选 icon 覆盖。模板（如 Skill 产出的 uploaded template）通过
+   * `LayoutConfig.sectionIcons` 指定 lucide 图标时传进来，优先于
+   * `getSectionMeta(sectionKey).icon` 默认。不传 fallback 到默认行为。
+   */
+  iconOverride?: LucideIcon;
   children: React.ReactNode;
   className?: string;
 };
 
-export function ResumeSection({ title, sectionKey, variant, children, className }: Props) {
+export function ResumeSection({
+  title,
+  sectionKey,
+  variant,
+  iconOverride,
+  children,
+  className,
+}: Props) {
   const meta = sectionKey ? getSectionMeta(sectionKey) : null;
-  const Icon = meta?.icon;
+  const Icon = iconOverride ?? meta?.icon;
 
   if (variant === "professional") {
     return (

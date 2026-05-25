@@ -224,4 +224,47 @@ describe("UploadedLayout", () => {
     // professional 风格则是公司在一行、职位是 secondary —— 不会出现这个组合
     expect(container.textContent).toMatch(/TestCo\s*—\s*Engineer/);
   });
+
+  // ============================================================
+  // sectionIcons 端到端通电（schema 第 4 维独立性）
+  // Skill 写入 LayoutConfig.sectionIcons={experience:"Award"} 必须真的
+  // 渲染成 Award 图标，而不是 section-meta 默认的 Briefcase。Whitelist
+  // 外的 name 优雅降级回默认（不抛错）。
+  // ============================================================
+
+  it("sectionIcons 通电：lucide name override 真渲染对应 svg", () => {
+    const overriddenIcons: UploadedTemplate = {
+      ...sampleTemplate,
+      layout: {
+        ...sampleTemplate.layout,
+        sectionTitleVariant: "modern", // modern variant 把 icon 渲到 DOM（professional variant 走 ProfessionalSectionTitle，不直接挂 lucide class）
+        sectionIcons: {
+          experience: "Award", // 默认 experience 是 Briefcase，被 Award 覆盖
+        },
+      },
+    };
+    const { container } = render(
+      <UploadedLayout content={demoResume} template={overriddenIcons} />
+    );
+    // lucide-react 渲染的 svg 默认带 `lucide-{name}` className
+    expect(container.querySelector(".lucide-award")).not.toBeNull();
+  });
+
+  it("sectionIcons whitelist 外的 name 优雅降级（fallback 到 section-meta 默认，不抛错）", () => {
+    const badIconName: UploadedTemplate = {
+      ...sampleTemplate,
+      layout: {
+        ...sampleTemplate.layout,
+        sectionTitleVariant: "modern",
+        sectionIcons: {
+          experience: "MadeUpIconName", // whitelist 外的 name
+        },
+      },
+    };
+    const { container } = render(
+      <UploadedLayout content={demoResume} template={badIconName} />
+    );
+    // fallback 到 SECTION_META.experience.icon (Briefcase)
+    expect(container.querySelector(".lucide-briefcase")).not.toBeNull();
+  });
 });
