@@ -22,6 +22,14 @@ export async function listUploadedTemplates(): Promise<UploadedTemplate[]> {
   return rows.map(rowToTemplate);
 }
 
+/**
+ * Trust boundary: writes go through the template-studio skill (or seed
+ * scripts) which validate against the LayoutConfig / DecorationConfig
+ * shape before INSERT. We treat reads as already-validated and skip
+ * Zod here to avoid duplicating schema definitions. If a corrupt row
+ * sneaks in, downstream rendering will fail — which is the correct
+ * signal: fix the writer, not the reader.
+ */
 function rowToTemplate(row: typeof templates.$inferSelect): UploadedTemplate {
   return {
     id: row.id,
