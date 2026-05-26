@@ -64,20 +64,39 @@ python3 template-studio-skill/scripts/extract-decoration.py \
 **注意三个的可选值不完全一样**：
 
 - `headerVariant`: `"classic" | "professional" | "modern-sidebar"`
-- `sectionTitleVariant`: `"classic" | "professional" | "modern"`
+- `sectionTitleVariant`: `"classic" | "professional" | "modern" | "card-wrapped"`
 - `itemHeaderVariant`: `"professional" | "classic" | "modern"`
 
-看参考图整体气质对号入座：`professional` 偏现代职场清晰排版、`classic` 偏传统衬线/学院风、`modern*` 偏深色 sidebar 设计岗。三个独立挑，常见就保持一致（abbey 全用 `professional`、modern 内置全用 `modern*` 系列）。
+风格对号入座：
+
+- `professional` —— 现代职场清晰排版（黑/彩色 tab 风格 section 标题，左公司右日期）
+- `classic` —— 传统衬线 / 学院风（细线下划线 section 标题，全大写）
+- `modern*` —— 深色 sidebar 设计岗（modern 内置那种）
+- `card-wrapped` —— **每个 section 用白色圆角卡片整体包裹**（参考图：每个 section 都有独立的白色卡片背景 + 圆角 + 阴影 → 选这个；典型代表：Abbey 风、Notion 风、设计岗高质感模板）
+
+三个独立挑：abbey 全用 `professional`、modern 内置全用 `modern*` 系列、卡片型简历用 `card-wrapped` + `professional` 组合。
 
 #### 3.3 `theme.primaryColor`（必填）—— 主色，⚠️ 会穿透到 section title
 
-**这个字段不只是"配色名义值"，它会真实染色 section title 的彩色 tab 背景**（`professional` variant 时是 tab；其他 variant 也会用作底色/边框）。从参考图里 section title 已经在用的那个色挑出来，否则模板视觉跟参考图会冲突。
+**这个字段不只是"配色名义值"，它会真实染色 section title 的彩色 tab 背景**（`professional` variant 时是 tab；`card-wrapped` 是 icon 颜色；其他 variant 也会用作底色/边框）。从参考图里 section title 已经在用的那个色挑出来，否则模板视觉跟参考图会冲突。
 
 hex 格式，例如 `#3B8BCD`（abbey 蓝）、`#137880`（青绿）、`#1F2937`（炭黑）。
 
-#### 3.4 `sectionIcons`（必填）—— 见下方 lucide 白名单
+#### 3.4 `theme` 其他可选字段（按需填，**全都真实生效**）
 
-#### 3.5 `decoration.placement`（如果有装饰图）
+下列字段不填用默认值，填了**会真实改变渲染**——不是装饰性占位。schema 里都是 `optional`，所以不确定就不填。
+
+- `theme.accentColor` —— 强调色，会染 ResumeItemHeader 的 dateRange（公司/项目右侧的日期）。如果参考图里日期是用某个特定彩色字（不同于黑色），用这个。
+- `theme.fontFamily` —— **限定为 `"sans" | "serif" | "mono"`** 三选一（对应 `FONT_MAP` 的 key）。填了就强制覆盖用户级字体偏好（template-over-user）。学术 / 传统简历选 `serif`；其他通常不填，让用户自己选。**写错（如 "Inter"）会被忽略**，安全降级。
+- `theme.cardBg` / `theme.cardRadius` / `theme.cardShadow` —— **只在 `sectionTitleVariant: "card-wrapped"` 时生效**。
+  - `cardBg`: 卡片背景色，默认 `white`。例如 `#fafafa` 浅灰、`#1f2937` 深色卡片
+  - `cardRadius`: 圆角，CSS 长度。默认 `12px`。`16px` 更圆、`8px` 较锐利、`0` 直角
+  - `cardShadow`: CSS box-shadow 完整字符串。默认柔和浅阴影。例 `"0 2px 8px rgba(0,0,0,0.08)"`
+- `theme.cardBg/Radius/Shadow` 在非 card-wrapped 模板里写了也无害（被忽略），但建议不填——保持 schema 实例干净。
+
+#### 3.5 `sectionIcons`（必填）—— 见下方 lucide 白名单
+
+#### 3.6 `decoration.placement`（如果有装饰图）
 
 根据装饰图实际尺寸 + 参考图里装饰位置定。A4 800px 宽页面常见配置：
 
