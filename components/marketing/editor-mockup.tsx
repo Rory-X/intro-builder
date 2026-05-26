@@ -24,41 +24,41 @@ export function EditorMockup() {
           />
 
           {/* Outer glow wrapper */}
-          <div className="rounded-2xl bg-gradient-to-b from-background/60 to-background/20 p-3 border border-border/40 shadow-[0_30px_80px_-20px_rgba(99,102,241,0.2),0_60px_120px_-40px_rgba(236,72,153,0.1)]">
+          <div className="rounded-xl sm:rounded-2xl bg-gradient-to-b from-background/60 to-background/20 p-1.5 sm:p-3 border border-border/40 shadow-[0_30px_80px_-20px_rgba(99,102,241,0.2),0_60px_120px_-40px_rgba(236,72,153,0.1)]">
             {/* Browser chrome */}
             <div className="overflow-hidden rounded-xl border border-border/60 bg-card shadow-sm">
               {/* Title bar */}
-              <div className="flex items-center gap-4 border-b border-border/60 bg-muted/30 px-4 py-3">
+              <div className="flex items-center gap-2 sm:gap-4 border-b border-border/60 bg-muted/30 px-3 sm:px-4 py-2.5 sm:py-3">
                 <div className="flex gap-1.5">
-                  <span className="h-3 w-3 rounded-full bg-red-400" />
-                  <span className="h-3 w-3 rounded-full bg-amber-400" />
-                  <span className="h-3 w-3 rounded-full bg-green-400" />
+                  <span className="h-2.5 w-2.5 sm:h-3 sm:w-3 rounded-full bg-red-400" />
+                  <span className="h-2.5 w-2.5 sm:h-3 sm:w-3 rounded-full bg-amber-400" />
+                  <span className="h-2.5 w-2.5 sm:h-3 sm:w-3 rounded-full bg-green-400" />
                 </div>
-                <div className="flex gap-2">
-                  <span className="rounded-md border border-border bg-background px-2.5 py-0.5 text-[11px] font-medium text-foreground">
+                <div className="flex gap-1.5 sm:gap-2">
+                  <span className="rounded-md border border-border bg-background px-2 sm:px-2.5 py-0.5 text-[10px] sm:text-[11px] font-medium text-foreground">
                     编辑
                   </span>
-                  <span className="rounded-md px-2.5 py-0.5 text-[11px] font-medium text-muted-foreground">
+                  <span className="rounded-md px-2 sm:px-2.5 py-0.5 text-[10px] sm:text-[11px] font-medium text-muted-foreground">
                     模板
                   </span>
-                  <span className="rounded-md px-2.5 py-0.5 text-[11px] font-medium text-muted-foreground">
+                  <span className="hidden sm:inline-block rounded-md px-2.5 py-0.5 text-[11px] font-medium text-muted-foreground">
                     协作
                   </span>
                 </div>
-                <div className="ml-auto flex gap-2">
-                  <span className="flex items-center gap-1 rounded-md border border-border bg-background px-2.5 py-1 text-[11px] font-medium text-muted-foreground">
+                <div className="ml-auto flex gap-1.5 sm:gap-2">
+                  <span className="hidden sm:flex items-center gap-1 rounded-md border border-border bg-background px-2.5 py-1 text-[11px] font-medium text-muted-foreground">
                     分享
                   </span>
-                  <span className="flex items-center gap-1 rounded-md bg-foreground px-2.5 py-1 text-[11px] font-semibold text-background">
+                  <span className="flex items-center gap-1 rounded-md bg-foreground px-2 sm:px-2.5 py-1 text-[10px] sm:text-[11px] font-semibold text-background">
                     导出 PDF
                   </span>
                 </div>
               </div>
 
               {/* Content body */}
-              <div className="flex h-[420px] md:h-[520px]">
-                {/* Left: Editor panel */}
-                <div className="w-[42%] overflow-hidden border-r border-border/40 bg-muted/20 p-5">
+              <div className="flex h-[380px] sm:h-[420px] md:h-[520px]">
+                {/* Left: Editor panel — hidden on mobile */}
+                <div className="hidden md:block w-[42%] overflow-hidden border-r border-border/40 bg-muted/20 p-5">
                   {/* Section: Basics */}
                   <div className="mb-4 flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider text-foreground">
                     <span className="h-1.5 w-1.5 rounded-full bg-primary" />
@@ -90,9 +90,9 @@ export function EditorMockup() {
                   />
                 </div>
 
-                {/* Right: A4 Preview */}
-                <div className="flex flex-1 items-start justify-center overflow-hidden bg-muted/40 p-6 dark:bg-muted/20">
-                  <div className="w-full max-w-[420px] rounded bg-white p-6 shadow-md dark:shadow-black/20">
+                {/* Right: A4 Preview — full width on mobile */}
+                <div className="flex flex-1 items-start justify-center overflow-hidden bg-muted/40 p-4 sm:p-6 dark:bg-muted/20">
+                  <div className="w-full max-w-[420px] rounded bg-white p-4 sm:p-6 shadow-md dark:shadow-black/20">
                     {/* Name */}
                     <div className="text-center text-lg font-extrabold tracking-wide text-gray-900">
                       林小明
