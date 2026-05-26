@@ -5,9 +5,12 @@ import {
   useId,
   useMemo,
   useState,
+  useTransition,
   type ChangeEvent,
 } from "react";
+import { useRouter } from "next/navigation";
 import { Search } from "lucide-react";
+import { toast } from "sonner";
 import { TEMPLATES } from "@/lib/templates/registry";
 import { ClientTemplateRenderFromSerializable } from "@/lib/templates/render";
 import type { SerializableResolvedTemplate } from "@/lib/templates/render";
@@ -16,6 +19,8 @@ import { cn } from "@/lib/utils";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Input } from "@/components/ui/input";
 import { TemplateThumbnail } from "@/components/templates/template-thumbnail";
+import { TemplatePreviewDrawer } from "@/components/templates/template-preview-drawer";
+import { setTemplate } from "@/app/(app)/resume/[id]/edit/actions";
 
 type TabValue = "all" | "builtin" | "uploaded";
 
@@ -66,6 +71,11 @@ export function TemplateLibraryClient({
   const [useMyContent, setUseMyContent] = useState<boolean>(canUseMyContent);
   const [tab, setTab] = useState<TabValue>("all");
   const [searchInput, setSearchInput] = useState<string>("");
+  // 抽屉状态：selected 为 null 时不打开。
+  const [selected, setSelected] =
+    useState<SerializableResolvedTemplate | null>(null);
+  const [isApplying, startApplying] = useTransition();
+  const router = useRouter();
 
   // useDeferredValue 包住 content：toggle 切换会触发 5+ 缩略图同时重渲染，
   // 推迟 content 更新让 toggle 控件本身的视觉切换不被 thumbnail 渲染阻塞。
@@ -90,8 +100,34 @@ export function TemplateLibraryClient({
 
   // 抽屉留给 P2.3 —— 现在卡片点击只是 console + 视觉 hover 效果。
   const handleCardClick = (resolved: SerializableResolvedTemplate) => {
-    // P2.3 will replace this with drawer open
-    console.debug("[templates] card clicked:", resolved.id, "from=", from);
+    setSelected(resolved);
+  };
+
+  // apply 链路：setTemplate（server action）→ toast → 关抽屉 → 视来源决定
+  // 是否 redirect 回编辑器。setTemplate 内部已经过 getTemplateMetaAsync 校验，
+  // 不存在的 templateId 会被收敛为 default builtin，所以这里不会"应用一个不存在
+  // 的模板"——失败仅来自鉴权 / 网络 / DB。
+  const handleApply = () => {
+    if (!selected || !userResume) return;
+    const targetTemplateId = selected.id;
+    const targetResumeId = userResume.id;
+    const targetName = getDisplayMeta(selected).name;
+    startApplying(async () => {
+      try {
+        await setTemplate(targetResumeId, targetTemplateId);
+        toast.success(`已应用模板：${targetName}`);
+        setSelected(null);
+        if (from === "editor") {
+          router.push(`/resume/${targetResumeId}/edit`);
+        } else {
+          router.refresh();
+        }
+      } catch (error) {
+        console.error("[templates] apply failed:", error);
+        const message = error instanceof Error ? error.message : "未知错误";
+        toast.error(`应用失败：${message}`);
+      }
+    });
   };
 
   const toggleId = useId();
@@ -179,6 +215,18 @@ export function TemplateLibraryClient({
           ))}
         </div>
       )}
+
+      <TemplatePreviewDrawer
+        open={selected !== null}
+        onOpenChange={(o) => {
+          if (!o) setSelected(null);
+        }}
+        resolved={selected}
+        content={deferredContent}
+        resumeId={userResume?.id ?? null}
+        isApplying={isApplying}
+        onApply={handleApply}
+      />
     </div>
   );
 }
