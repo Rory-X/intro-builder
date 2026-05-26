@@ -91,7 +91,7 @@ export function MarketingNav({ email, name, signOutAction, hideNavLinks, fullWid
                 size="sm"
                 className="rounded-full text-sm font-medium"
               >
-                控制台
+                我的简历
               </Button>
             </Link>
             <Popover open={popoverOpen} onOpenChange={setPopoverOpen}>
@@ -113,14 +113,6 @@ export function MarketingNav({ email, name, signOutAction, hideNavLinks, fullWid
                   </div>
                 </div>
                 <div className="p-1">
-                  <Link
-                    href="/dashboard"
-                    onClick={() => setPopoverOpen(false)}
-                    className="flex w-full items-center gap-2 rounded-md px-2.5 py-2 text-sm text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
-                  >
-                    <Settings className="h-4 w-4" />
-                    控制台
-                  </Link>
                   <Link
                     href="/settings"
                     onClick={() => setPopoverOpen(false)}
