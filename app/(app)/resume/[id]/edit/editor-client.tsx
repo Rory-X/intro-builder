@@ -372,12 +372,13 @@ export default function EditorClient({ id, initialTitle, initialTemplate, initia
     <FormProvider {...form}>
       {/* Toolbar — only visible on desktop */}
       {isDesktop && (
-      <div className="sticky top-14 z-30 border-b border-border/60 bg-background/80 backdrop-blur-xl backdrop-saturate-150">
-        <div className="mx-auto flex max-w-6xl items-center gap-3 px-4 py-2.5">
+      <div className="sticky top-16 z-30 border-b border-border/60 bg-background/80 backdrop-blur-xl backdrop-saturate-150">
+        <div className="flex items-center justify-between gap-4 px-4 py-2.5">
+          <div className="flex shrink-0 items-center gap-3">
           <Input
             value={title}
             onChange={(e) => setTitleState(e.target.value)}
-            className="w-full sm:max-w-xs text-base font-medium"
+            className="w-48 text-base font-medium"
           />
           <span
             data-testid="autosave-status"
@@ -411,7 +412,8 @@ export default function EditorClient({ id, initialTitle, initialTemplate, initia
             </span>
           </span>
           <CompletenessScore />
-          <div data-testid="editor-toolbar" className="ml-auto flex flex-wrap items-center gap-2">
+          </div>
+          <div data-testid="editor-toolbar" className="flex flex-wrap items-center gap-2">
             <SmartLayoutButton templateId={template} measureRef={previewRootRef} />
             <Separator orientation="vertical" className="h-6" />
             <StyleEditor

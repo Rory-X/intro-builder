@@ -10,6 +10,7 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { ThemeToggle } from "@/components/theme-toggle";
 
 const NAV_LINKS = [
   { label: "产品功能", href: "#features" },
@@ -22,9 +23,13 @@ interface MarketingNavProps {
   email?: string | null;
   name?: string | null;
   signOutAction?: () => Promise<void>;
+  /** Hide the middle nav links (产品功能, 模板, etc.) outside landing page */
+  hideNavLinks?: boolean;
+  /** Use full-width justify-between layout instead of centered capsule */
+  fullWidth?: boolean;
 }
 
-export function MarketingNav({ email, name, signOutAction }: MarketingNavProps) {
+export function MarketingNav({ email, name, signOutAction, hideNavLinks, fullWidth }: MarketingNavProps) {
   const [scrolled, setScrolled] = useState(false);
   const [popoverOpen, setPopoverOpen] = useState(false);
 
@@ -40,10 +45,14 @@ export function MarketingNav({ email, name, signOutAction }: MarketingNavProps) 
 
   return (
     <nav
-      className={`fixed top-4 left-1/2 z-50 -translate-x-1/2 flex w-[calc(100%-2rem)] max-w-4xl items-center justify-between rounded-full border px-3 py-2 transition-all duration-300 md:px-4 ${
-        scrolled
-          ? "border-border/60 bg-background/80 shadow-lg shadow-black/[0.03] backdrop-blur-xl backdrop-saturate-150"
-          : "border-transparent bg-background/40 backdrop-blur-md"
+      className={`fixed top-0 left-0 right-0 z-50 flex items-center justify-between px-4 py-3 transition-all duration-300 ${
+        fullWidth
+          ? "border-b border-border/60 bg-background/80 backdrop-blur-xl backdrop-saturate-150"
+          : `top-4 left-1/2 right-auto -translate-x-1/2 w-[calc(100%-2rem)] max-w-4xl rounded-full border md:px-4 ${
+              scrolled
+                ? "border-border/60 bg-background/80 shadow-lg shadow-black/[0.03] backdrop-blur-xl backdrop-saturate-150"
+                : "border-transparent bg-background/40 backdrop-blur-md"
+            }`
       }`}
     >
       {/* Logo */}
@@ -56,21 +65,24 @@ export function MarketingNav({ email, name, signOutAction }: MarketingNavProps) 
         </span>
       </Link>
 
-      {/* Nav links */}
-      <div className="hidden items-center gap-0.5 md:flex">
-        {NAV_LINKS.map((link) => (
-          <a
-            key={link.href}
-            href={link.href}
-            className="rounded-full px-3 py-1.5 text-sm font-medium text-muted-foreground transition-colors hover:bg-foreground/5 hover:text-foreground"
-          >
-            {link.label}
-          </a>
-        ))}
-      </div>
+      {/* Nav links — only on landing page */}
+      {!hideNavLinks && (
+        <div className="hidden items-center gap-0.5 md:flex">
+          {NAV_LINKS.map((link) => (
+            <a
+              key={link.href}
+              href={link.href}
+              className="rounded-full px-3 py-1.5 text-sm font-medium text-muted-foreground transition-colors hover:bg-foreground/5 hover:text-foreground"
+            >
+              {link.label}
+            </a>
+          ))}
+        </div>
+      )}
 
       {/* Actions */}
       <div className="flex items-center gap-2">
+        <ThemeToggle />
         {isLoggedIn ? (
           <>
             <Link href="/dashboard">
