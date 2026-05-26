@@ -22,6 +22,9 @@ const BUILTIN_TEMPLATES_LIST: AllTemplatesItem[] = TEMPLATES.map((t) => ({
   thumbnailUrl: null,
   source: "builtin",
   isRecommended: t.isRecommended,
+  defaultStyleSettings: t.defaultStyleSettings,
+  category: t.category,
+  tags: t.tags,
 }));
 
 const saveResumeMock = vi.fn();

@@ -9,6 +9,8 @@ import {
   type ResolvedTemplateMeta,
 } from "./registry";
 import { fetchUploadedTemplate, listUploadedTemplates } from "./uploaded/fetch";
+import { DENSITY_PRESETS } from "@/lib/style-presets";
+import type { StyleSettings } from "@/lib/resume-schema";
 
 /**
  * Server-only template lookups. Lives in a separate file because it pulls
@@ -60,6 +62,16 @@ export async function getTemplateMetaAsync(
 
 export type { AllTemplatesItem };
 
+/**
+ * Uploaded 模板还没把 defaultStyleSettings / category / tags 写进 DB jsonb。
+ * 在 registry 边界给一个稳定的回退：standard 密度预设。Skill 后续如果产出
+ * 这些字段，可以走 jsonb 扩展从 layout / decoration 解析进来，但现在保持
+ * schema 不动让客户端代码可以无差别消费 builtin 与 uploaded。
+ */
+const UPLOADED_DEFAULT_STYLE_SETTINGS: StyleSettings = {
+  ...DENSITY_PRESETS.standard.settings,
+};
+
 export async function listAllTemplatesAsync(): Promise<AllTemplatesItem[]> {
   const builtin: AllTemplatesItem[] = TEMPLATES.map((t) => ({
     id: t.id,
@@ -68,6 +80,9 @@ export async function listAllTemplatesAsync(): Promise<AllTemplatesItem[]> {
     thumbnailUrl: null,
     source: "builtin",
     isRecommended: t.isRecommended,
+    defaultStyleSettings: t.defaultStyleSettings,
+    category: t.category,
+    tags: t.tags,
   }));
   const uploaded = await listUploadedTemplates();
   const uploadedItems: AllTemplatesItem[] = uploaded.map((t) => ({
@@ -76,8 +91,25 @@ export async function listAllTemplatesAsync(): Promise<AllTemplatesItem[]> {
     description: t.description ?? "",
     thumbnailUrl: t.thumbnailUrl,
     source: "uploaded",
+    defaultStyleSettings: UPLOADED_DEFAULT_STYLE_SETTINGS,
+    category: undefined,
+    tags: undefined,
   }));
   return [...builtin, ...uploadedItems];
+}
+
+/**
+ * 给 setTemplate 用：拿到任意 templateId 对应的"应用此模板时该用的 styleSettings"。
+ * builtin → meta.defaultStyleSettings；uploaded → 标准回退。Skill 之后如果给
+ * uploaded 加了字段，只需改这里一个分支。
+ */
+export function getTemplateDefaultStyleSettings(
+  resolved: ResolvedTemplateMeta,
+): StyleSettings {
+  if (resolved.source === "builtin") {
+    return resolved.meta.defaultStyleSettings;
+  }
+  return UPLOADED_DEFAULT_STYLE_SETTINGS;
 }
 
 export type { ResolvedTemplateMeta };

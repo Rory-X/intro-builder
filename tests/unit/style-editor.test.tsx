@@ -2,7 +2,11 @@ import { fireEvent, render, screen } from "@testing-library/react";
 import { FormProvider, useForm, type UseFormReturn } from "react-hook-form";
 import { describe, expect, it, vi } from "vitest";
 import { StyleEditor } from "@/components/editor/style-editor";
-import { emptyResumeContent, type ResumeContent } from "@/lib/resume-schema";
+import {
+  DEFAULT_STYLE_SETTINGS,
+  emptyResumeContent,
+  type ResumeContent,
+} from "@/lib/resume-schema";
 import { TEMPLATES, type AllTemplatesItem } from "@/lib/templates/registry";
 
 // Built-in projection. The picker iterates over this merged shape so the
@@ -16,7 +20,22 @@ const builtinList: AllTemplatesItem[] = TEMPLATES.map((t) => ({
   thumbnailUrl: null,
   source: "builtin",
   isRecommended: t.isRecommended,
+  defaultStyleSettings: t.defaultStyleSettings,
+  category: t.category,
+  tags: t.tags,
 }));
+
+// Uploaded fixture builder — most tests only care about id/name/source/thumb,
+// so factor out the boilerplate defaultStyleSettings to keep tests readable.
+function uploadedItem(
+  partial: Pick<AllTemplatesItem, "id" | "name" | "description" | "thumbnailUrl">,
+): AllTemplatesItem {
+  return {
+    ...partial,
+    source: "uploaded",
+    defaultStyleSettings: { ...DEFAULT_STYLE_SETTINGS },
+  };
+}
 
 function Harness({
   onReady,
@@ -93,13 +112,12 @@ describe("StyleEditor", () => {
     it("renders uploaded template cards alongside built-ins", () => {
       const merged: AllTemplatesItem[] = [
         ...builtinList,
-        {
+        uploadedItem({
           id: "uploaded-1",
           name: "我的自定义模板",
           description: "Custom uploaded template",
           thumbnailUrl: null,
-          source: "uploaded",
-        },
+        }),
       ];
       render(<Harness allTemplates={merged} />);
       fireEvent.click(screen.getByRole("button", { name: /模板与排版/ }));
@@ -117,13 +135,12 @@ describe("StyleEditor", () => {
     it("renders an <img> when an uploaded template has a thumbnailUrl", () => {
       const merged: AllTemplatesItem[] = [
         ...builtinList,
-        {
+        uploadedItem({
           id: "uploaded-2",
           name: "带封面",
           description: "Has thumbnail",
           thumbnailUrl: "https://example.com/thumb.png",
-          source: "uploaded",
-        },
+        }),
       ];
       render(<Harness allTemplates={merged} />);
       fireEvent.click(screen.getByRole("button", { name: /模板与排版/ }));
@@ -138,13 +155,12 @@ describe("StyleEditor", () => {
       const onTemplateChange = vi.fn();
       const merged: AllTemplatesItem[] = [
         ...builtinList,
-        {
+        uploadedItem({
           id: "uploaded-3",
           name: "另一个上传模板",
           description: "",
           thumbnailUrl: null,
-          source: "uploaded",
-        },
+        }),
       ];
       render(
         <Harness allTemplates={merged} onTemplateChange={onTemplateChange} />,
