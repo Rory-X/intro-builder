@@ -6,7 +6,7 @@ ships without bundled CA certs and breaks urllib SSL).
 
 Usage:
   python3 template-studio-skill/scripts/extract-decoration.py \\
-    --reference docs/test-samples/abbey-resume-reference.png \\
+    --reference docs/abbey-resume-reference.png \\
     --prompt "Output a clean decorative background ..." \\
     --output public/templates/decorations/abbey.png
 

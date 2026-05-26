@@ -12,7 +12,7 @@ from pathlib import Path
 API_KEY = "sk-snfhubk4381BX4oAn9RiFIfls2AAZBiiUHLhKjkhvAvjEX8W"
 BASE_URL = "https://bmc-llm-relay.bluemediagroup.cn/v1"
 
-REF = Path("docs/test-samples/abbey-resume-reference.png")
+REF = Path("docs/abbey-resume-reference.png")
 OUT_DIR = Path("/tmp/template-studio")
 OUT_DIR.mkdir(exist_ok=True)
 
