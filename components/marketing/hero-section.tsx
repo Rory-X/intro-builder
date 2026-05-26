@@ -49,17 +49,9 @@ export function HeroSection() {
           transition={{ duration: 0.7, delay: 0.1 }}
           className="text-4xl font-extrabold leading-[0.95] tracking-tight md:text-6xl lg:text-7xl"
         >
-          <span className="text-foreground">把简历</span>
-          <span className="font-[var(--font-display-cn)] bg-gradient-to-r from-primary via-violet-500 to-primary bg-clip-text text-transparent animate-gradient-shift">
-            写得
-          </span>
+          <span className="text-foreground">把简历</span><span className="font-[var(--font-display-cn)] bg-gradient-to-r from-primary via-violet-500 to-primary bg-clip-text text-transparent animate-gradient-shift">写得</span>
           <br />
-          <span className="text-foreground">像</span>
-          <span className="relative inline-block text-foreground">
-            一份产品
-            <span className="absolute -bottom-1 left-0 right-0 h-3 -rotate-1 rounded bg-primary/15 -z-10" />
-          </span>
-          <span className="text-foreground">一样精致</span>
+          <span className="text-foreground">像</span><span className="relative inline-block text-foreground">一份产品<span className="absolute -bottom-1 left-0 right-0 h-3 -rotate-1 rounded bg-primary/15 -z-10" /></span><span className="text-foreground">一样精致</span>
         </motion.h1>
 
         {/* Subheadline */}
