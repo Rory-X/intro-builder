@@ -345,4 +345,76 @@ describe("UploadedLayout", () => {
     expect(article.style.fontFamily).not.toContain("Noto Serif SC");
     expect(article.style.fontFamily).toContain("system-ui");
   });
+
+  // ============================================================
+  // card-wrapped variant 实现（schema 第 7 维独立性 + spec §6.3）
+  // 全新 section variant：圆角白卡片包裹整段。Skill 注入的
+  // theme.cardBg / cardRadius / cardShadow 通过 --card-* CSS 变量
+  // 端到端 reach 渲染。
+  // ============================================================
+
+  it("card-wrapped variant 渲染圆角白卡片容器", () => {
+    const cardTemplate: UploadedTemplate = {
+      ...sampleTemplate,
+      layout: {
+        ...sampleTemplate.layout,
+        sectionTitleVariant: "card-wrapped",
+      },
+    };
+    const { container } = render(
+      <UploadedLayout content={demoResume} template={cardTemplate} />
+    );
+    const cardSection = container.querySelector(
+      "[data-section-variant='card-wrapped']"
+    ) as HTMLElement | null;
+    expect(cardSection).not.toBeNull();
+    // 默认 fallback 视觉：白底 + 圆角 + 阴影（即使 Skill 没设 cardBg/Radius/Shadow）
+    expect(cardSection!.style.borderRadius).toContain("var(--card-radius");
+    expect(cardSection!.style.backgroundColor).toContain("var(--card-bg");
+    expect(cardSection!.style.boxShadow).toContain("var(--card-shadow");
+  });
+
+  it("theme.cardBg / cardRadius / cardShadow 注入 article CSS 变量", () => {
+    const themedCard: UploadedTemplate = {
+      ...sampleTemplate,
+      layout: {
+        ...sampleTemplate.layout,
+        sectionTitleVariant: "card-wrapped",
+        theme: {
+          primaryColor: "#000",
+          cardBg: "#FAFBFC",
+          cardRadius: "16px",
+          cardShadow: "0 4px 12px rgba(0,0,0,0.08)",
+        },
+      },
+    };
+    const { container } = render(
+      <UploadedLayout content={demoResume} template={themedCard} />
+    );
+    const article = container.querySelector("article") as HTMLElement;
+    expect(article.style.getPropertyValue("--card-bg")).toBe("#FAFBFC");
+    expect(article.style.getPropertyValue("--card-radius")).toBe("16px");
+    expect(article.style.getPropertyValue("--card-shadow")).toBe(
+      "0 4px 12px rgba(0,0,0,0.08)"
+    );
+  });
+
+  it("card-wrapped 的 skills 走行内紧凑格式（和 professional 一致）", () => {
+    const cardWithSkills: UploadedTemplate = {
+      ...sampleTemplate,
+      layout: {
+        ...sampleTemplate.layout,
+        sectionTitleVariant: "card-wrapped",
+      },
+    };
+    const customContent = {
+      ...demoResume,
+      skills: [{ category: "测试技能", items: ["A", "B"] }],
+    } as typeof demoResume;
+    const { container } = render(
+      <UploadedLayout content={customContent} template={cardWithSkills} />
+    );
+    // professional 风格：`分类：` 行内 span + items.join("、")
+    expect(container.textContent).toMatch(/测试技能：A、B/);
+  });
 });

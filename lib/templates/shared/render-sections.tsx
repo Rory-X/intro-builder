@@ -1,7 +1,10 @@
 import type { ResumeContent } from "@/lib/resume-schema";
 import { DEFAULT_SECTION_ORDER } from "@/lib/resume-schema";
 import { getSectionMeta } from "@/lib/section-meta";
-import { ResumeItemHeader } from "./resume-item-header";
+import {
+  ResumeItemHeader,
+  type ResumeItemHeaderVariant,
+} from "./resume-item-header";
 import { ResumeRichText } from "./resume-rich-text";
 import { ResumeSection, type ResumeSectionVariant } from "./resume-section";
 import {
@@ -31,9 +34,11 @@ export type BuildSectionsOptions = {
    * Item header 的 variant —— 控制条目内"公司/职位/项目名"等头部信息的排版。
    * 与 section title variant **独立维度**：可以 sectionTitleVariant=professional
    * 配合 itemHeaderVariant=classic（章节标题用专业风、条目用经典风）。
-   * 不传时 fallback 到 section variant，保持原有"绑死"行为不变（向后兼容）。
+   * 不传时 fallback 到 section variant（如果 section variant 是 ItemHeader
+   * 也支持的值），否则 fallback 到 professional —— card-wrapped 是 section-level
+   * 视觉变体，不是 item header 级，所以 fallback 到 professional 是合理默认。
    */
-  itemHeaderVariant?: ResumeSectionVariant;
+  itemHeaderVariant?: ResumeItemHeaderVariant;
   /**
    * 模板级 section icon 覆盖。Skill 产出的 LayoutConfig.sectionIcons 形如
    * `{experience: "Briefcase", custom_award: "Trophy"}`，渲染时优先于
@@ -42,6 +47,17 @@ export type BuildSectionsOptions = {
   sectionIcons?: Record<string, string>;
 };
 
+/**
+ * Section variant 是 4 元 union，但 ResumeItemHeader 只接受 3 元 —— card-wrapped
+ * 是 section-level 视觉概念。这里把 section variant 收敛成合法的 item header
+ * variant：card-wrapped → professional（视觉风格上接近），其他原样穿透。
+ */
+function narrowToItemHeaderVariant(
+  v: ResumeSectionVariant,
+): ResumeItemHeaderVariant {
+  return v === "card-wrapped" ? "professional" : v;
+}
+
 export function buildResumeSections(
   content: ResumeContent,
   variant: ResumeSectionVariant,
@@ -49,7 +65,8 @@ export function buildResumeSections(
 ): Record<string, React.ReactNode> {
   const includeBasicsSummary = options?.includeBasicsSummary ?? true;
   const shells = options?.showEmptyPlaceholders ?? false;
-  const itemHeaderVariant = options?.itemHeaderVariant ?? variant;
+  const itemHeaderVariant: ResumeItemHeaderVariant =
+    options?.itemHeaderVariant ?? narrowToItemHeaderVariant(variant);
   const overrideIcon = (key: string): LucideIcon | undefined => {
     const name = options?.sectionIcons?.[key];
     return lookupLucideIcon(name) ?? undefined;
@@ -274,7 +291,7 @@ export function buildResumeSections(
           variant={variant}
           iconOverride={overrideIcon("skills")}
         >
-          {variant === "professional" ? (
+          {variant === "professional" || variant === "card-wrapped" ? (
             renderResumeEntry(
               variant,
               "skills-block",

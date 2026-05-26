@@ -147,6 +147,14 @@ describe("LayoutConfig variant enums", () => {
     });
     expect(result.success).toBe(false);
   });
+
+  it("sectionTitleVariant 接受 'card-wrapped'（spec §6.3 新加）", () => {
+    const result = LayoutConfig.safeParse({
+      ...(legalLayout() as Record<string, unknown>),
+      sectionTitleVariant: "card-wrapped",
+    });
+    expect(result.success).toBe(true);
+  });
 });
 
 // ============================================================================

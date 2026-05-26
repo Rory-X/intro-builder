@@ -36,6 +36,17 @@ export function UploadedLayout({
     ...(template.layout.theme.accentColor && {
       ["--accent" as string]: template.layout.theme.accentColor,
     }),
+    // Card-wrapped variant 用的 3 个 CSS 变量（仅当 Skill 设了对应字段时注入；
+    // 未设时 ResumeSection 的 card-wrapped 分支走 inline fallback 默认值）
+    ...(template.layout.theme.cardBg && {
+      ["--card-bg" as string]: template.layout.theme.cardBg,
+    }),
+    ...(template.layout.theme.cardRadius && {
+      ["--card-radius" as string]: template.layout.theme.cardRadius,
+    }),
+    ...(template.layout.theme.cardShadow && {
+      ["--card-shadow" as string]: template.layout.theme.cardShadow,
+    }),
   };
 
   const frame = template.layout.frame;

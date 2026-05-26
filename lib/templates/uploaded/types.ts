@@ -23,6 +23,7 @@ const SectionTitleVariantSchema = z.enum([
   "classic",
   "professional",
   "modern",
+  "card-wrapped",
 ]) satisfies z.ZodType<ResumeSectionVariant>;
 
 const ItemHeaderVariantSchema = z.enum(["professional", "classic", "modern"]);
