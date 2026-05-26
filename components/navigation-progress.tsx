@@ -72,8 +72,10 @@ function NavigationProgressInner() {
       try {
         const url = new URL(href, location.origin);
         if (url.origin !== location.origin) return;
-        // Skip if same page
+        // Skip if same page (same path + search, regardless of hash)
         if (url.pathname === location.pathname && url.search === location.search) return;
+        // Skip if only the hash is different (anchor navigation)
+        if (url.pathname === location.pathname && url.hash) return;
       } catch {
         return;
       }
