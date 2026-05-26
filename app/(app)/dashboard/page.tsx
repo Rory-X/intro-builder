@@ -2,6 +2,7 @@ import { eq, desc } from "drizzle-orm";
 import { requireUserId } from "@/lib/auth-helpers";
 import { db } from "@/db";
 import { resumes } from "@/db/schema";
+import { withDbRetry } from "@/lib/db-retry";
 import {
   DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem,
 } from "@/components/ui/dropdown-menu";
@@ -28,7 +29,9 @@ export const metadata: Metadata = { title: "我的简历" };
 export default async function DashboardPage() {
   const userId = await requireUserId();
   const [list, allTemplates, uploadedFull] = await Promise.all([
-    db.select().from(resumes).where(eq(resumes.userId, userId)).orderBy(desc(resumes.updatedAt)),
+    withDbRetry("DashboardPage.listResumes", () =>
+      db.select().from(resumes).where(eq(resumes.userId, userId)).orderBy(desc(resumes.updatedAt)),
+    ),
     listAllTemplatesAsync(),
     listUploadedTemplates(),
   ]);

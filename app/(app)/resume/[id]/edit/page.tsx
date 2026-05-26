@@ -4,6 +4,7 @@ import { requireUserId } from "@/lib/auth-helpers";
 import { migrateContent } from "@/lib/migrate-content";
 import { db } from "@/db";
 import { resumes } from "@/db/schema";
+import { withDbRetry } from "@/lib/db-retry";
 import EditorClient from "./editor-client";
 import { resolveTemplateId } from "@/lib/templates/registry";
 import { getTemplateMetaAsync, listAllTemplatesAsync } from "@/lib/templates/registry-server";
@@ -15,9 +16,11 @@ export const metadata: Metadata = { title: "编辑简历" };
 export default async function EditPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const userId = await requireUserId();
-  const row = await db.query.resumes.findFirst({
-    where: and(eq(resumes.id, id), eq(resumes.userId, userId)),
-  });
+  const row = await withDbRetry("EditPage.resumeLookup", () =>
+    db.query.resumes.findFirst({
+      where: and(eq(resumes.id, id), eq(resumes.userId, userId)),
+    }),
+  );
   if (!row) notFound();
   // Pre-resolve the current template + the merged template gallery + the
   // full set of uploaded templates so the client editor can dispatch
