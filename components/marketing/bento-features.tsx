@@ -70,11 +70,11 @@ export function BentoFeatures() {
           <span className="h-px w-6 bg-primary" />
           核心能力
         </div>
-        <h2 className="text-3xl font-extrabold tracking-tight md:text-5xl">
-          不只是简历模板，
+        <h2 className="text-3xl font-extrabold leading-[1.2] tracking-tight md:text-5xl">
+          不只是简历模板
           <br />
           <span className="font-[var(--font-serif-display)] italic text-foreground/80">
-            是一个完整的工作台。
+            是一个完整的工作台
           </span>
         </h2>
       </ScrollReveal>

@@ -25,8 +25,8 @@ export function TemplatesSection() {
               <span className="h-px w-6 bg-primary" />
               简历模板
             </div>
-            <h2 className="text-3xl font-extrabold tracking-tight md:text-5xl">
-              三套模板，
+            <h2 className="text-3xl font-extrabold leading-[1.2] tracking-tight md:text-5xl">
+              三套模板
               <br />
               <span className="font-[var(--font-serif-display)] italic text-foreground/80">
                 同一份内容自由切换
@@ -34,7 +34,7 @@ export function TemplatesSection() {
             </h2>
           </div>
           <p className="max-w-md text-muted-foreground">
-            为中文互联网招聘语境优化的正式简历排版，告别花哨与不专业。
+            为中文互联网招聘语境优化的正式简历排版，告别花哨与不专业
           </p>
         </div>
       </ScrollReveal>

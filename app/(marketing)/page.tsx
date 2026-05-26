@@ -47,11 +47,11 @@ export default function Landing() {
         </div>
 
         <ScrollReveal className="mx-auto max-w-4xl px-4 text-center">
-          <h2 className="text-3xl font-extrabold tracking-tight md:text-6xl lg:text-7xl">
-            下一份 Offer，
+          <h2 className="text-3xl font-extrabold leading-[1.2] tracking-tight md:text-6xl lg:text-7xl">
+            下一份 Offer
             <br />
             <span className="font-[var(--font-serif-display)] italic bg-gradient-to-r from-primary via-violet-500 to-primary bg-clip-text text-transparent animate-gradient-shift">
-              从一份精致简历开始。
+              从一份精致简历开始
             </span>
           </h2>
           <p className="mx-auto mt-5 max-w-lg text-base text-muted-foreground md:text-lg">
