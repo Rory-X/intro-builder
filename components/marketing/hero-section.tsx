@@ -47,7 +47,7 @@ export function HeroSection() {
         <motion.h1
           {...fadeUp}
           transition={{ duration: 0.7, delay: 0.1 }}
-          className="text-4xl font-extrabold leading-[0.95] tracking-tight md:text-6xl lg:text-7xl"
+          className="text-4xl font-extrabold leading-[1.15] tracking-tight md:text-6xl lg:text-7xl"
         >
           <span className="text-foreground">把简历</span><span className="font-[var(--font-display-cn)] bg-gradient-to-r from-primary via-violet-500 to-primary bg-clip-text text-transparent animate-gradient-shift">写得</span>
           <br />
