@@ -162,12 +162,14 @@ export function ImportResumeButton() {
       )}
 
       <Popover open={open} onOpenChange={handleOpenChange}>
-        <PopoverTrigger className="relative z-50">
-          <Button variant="outline" size="sm" className="gap-1.5">
-            <FileUp className="h-4 w-4" />
-            导入简历
-          </Button>
-        </PopoverTrigger>
+        <PopoverTrigger
+          render={
+            <Button variant="outline" size="sm" className="relative z-50 gap-1.5">
+              <FileUp className="h-4 w-4" />
+              导入简历
+            </Button>
+          }
+        />
         <PopoverContent
           align="end"
           sideOffset={8}
