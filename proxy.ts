@@ -1,7 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { auth } from "@/lib/auth";
 
-const PROTECTED = [/^\/dashboard/, /^\/resume\/[^/]+\/edit/, /^\/resume\/[^/]+\/preview/];
+const PROTECTED = [/^\/dashboard/, /^\/resume\/[^/]+\/edit/, /^\/resume\/[^/]+\/preview/, /^\/templates(\/|$)/];
 
 const DEV_BYPASS =
   process.env.NODE_ENV === "development" && process.env.AUTH_DEV_BYPASS === "1";

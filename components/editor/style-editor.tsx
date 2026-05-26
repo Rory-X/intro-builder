@@ -1,4 +1,5 @@
 "use client";
+import Link from "next/link";
 import { useFormContext } from "react-hook-form";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
@@ -7,7 +8,7 @@ import { FONT_MAP, type FontKey } from "@/lib/font-map";
 import { DEFAULT_STYLE_SETTINGS, type ResumeContent } from "@/lib/resume-schema";
 import { type AllTemplatesItem, type TemplateId } from "@/lib/templates/registry";
 import { cn } from "@/lib/utils";
-import { ChevronDown, LayoutTemplate, Loader2, RotateCcw } from "lucide-react";
+import { ArrowRight, ChevronDown, LayoutTemplate, Loader2, RotateCcw } from "lucide-react";
 
 const FONT_KEYS: FontKey[] = ["sans", "serif", "mono"];
 const FONT_SIZE_OPTIONS = [10, 11, 12, 13, 14, 15, 16] as const;
@@ -20,6 +21,8 @@ type Props = {
   pendingTemplateId?: TemplateId | null;
   // Required because the editor page always pre-fetches via listAllTemplatesAsync; legacy fallback removed.
   allTemplates: AllTemplatesItem[];
+  /** 当前简历 id —— 给「查看全部模板 →」CTA 拼成 ?from=editor&resumeId=<id> 用 */
+  resumeId: string;
 };
 
 export function StyleEditor({
@@ -27,6 +30,7 @@ export function StyleEditor({
   onTemplateChange,
   pendingTemplateId = null,
   allTemplates,
+  resumeId,
 }: Props) {
   const { watch, setValue } = useFormContext<ResumeContent>();
 
@@ -62,7 +66,16 @@ export function StyleEditor({
         </div>
 
         <div className="space-y-2">
-          <Label>简历模板</Label>
+          <div className="flex items-center justify-between gap-2">
+            <Label>简历模板</Label>
+            <Link
+              href={`/templates?from=editor&resumeId=${resumeId}`}
+              className="inline-flex items-center gap-1 text-xs text-primary hover:underline"
+            >
+              查看全部模板
+              <ArrowRight className="h-3 w-3" />
+            </Link>
+          </div>
           <div className="grid gap-2 sm:grid-cols-3">
             {allTemplates.map((t) => {
               const isPendingThis = pendingTemplateId === t.id;

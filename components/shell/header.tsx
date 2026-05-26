@@ -21,6 +21,11 @@ export async function Header() {
             <Link href="/#templates" className="rounded-md px-3 py-1.5 text-muted-foreground transition-colors duration-200 hover:bg-accent hover:text-foreground">
               模板
             </Link>
+            {session?.user && (
+              <Link href="/templates" className="rounded-md px-3 py-1.5 text-muted-foreground transition-colors duration-200 hover:bg-accent hover:text-foreground">
+                模板库
+              </Link>
+            )}
           </nav>
         </div>
         <div className="flex items-center gap-2">

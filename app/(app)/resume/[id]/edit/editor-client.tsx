@@ -463,6 +463,7 @@ export default function EditorClient({ id, initialTitle, initialTemplate, initia
               onTemplateChange={changeTemplate}
               pendingTemplateId={pendingTemplateId}
               allTemplates={allTemplates}
+              resumeId={id}
             />
             <Separator orientation="vertical" className="h-6" />
             <ModuleManager sectionOrder={sectionOrder} onOrderChange={handleOrderChange} />

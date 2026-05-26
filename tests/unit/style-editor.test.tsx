@@ -43,6 +43,7 @@ function Harness({
         templateId="professional"
         onTemplateChange={onTemplateChange ?? vi.fn()}
         allTemplates={allTemplates}
+        resumeId="test-resume-id"
       />
     </FormProvider>
   );
