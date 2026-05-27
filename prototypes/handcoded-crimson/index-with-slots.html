@@ -8,7 +8,11 @@
     --text: #2A2A2A;
     --muted: #6B6B6B;
 
-    width: 800px;
+    /* 自适应容器宽度 —— 模板库缩略图按 595px 缩放（A4 实际尺寸），dev-preview
+       和编辑器预览按 800px 渲染。固定 width 会让缩略图偏移；用 max-width
+       + width:100% 在两边都正确居中。 */
+    max-width: 800px;
+    width: 100%;
     margin: 0 auto;
     background: #fff;
     box-shadow: 0 4px 24px rgba(0, 0, 0, 0.08);
