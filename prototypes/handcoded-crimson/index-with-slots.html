@@ -29,73 +29,79 @@
   .crimson-banner {
     position: relative;
     background: linear-gradient(120deg, var(--crimson-deep) 0%, var(--crimson-bright) 100%);
-    padding: 36px 44px 56px;
+    /* A4 约束：原 PoC 36+56=92px 上下 padding 太奢侈，A4 单页放不下完整简历。
+       压缩到 22+32=54px 给后续 section 留高度预算。 */
+    padding: 22px 36px 32px;
     color: var(--on-banner);
     display: flex;
     align-items: center;
-    gap: 24px;
-    border-bottom-left-radius: 50% 24px;
-    border-bottom-right-radius: 50% 24px;
+    gap: 20px;
+    border-bottom-left-radius: 50% 18px;
+    border-bottom-right-radius: 50% 18px;
   }
   .crimson-banner .banner-text { z-index: 1; flex: 1; }
   .crimson-banner h1 {
     margin: 0;
     /* 字号是 banner 装饰的一部分，硬编码（dual constraint：banner 视觉= 不可调） */
-    font-size: 28px;
+    font-size: 24px;
     font-weight: 700;
     letter-spacing: 1px;
   }
   .crimson-banner .contact {
-    margin-top: 8px;
-    font-size: 14px;
+    margin-top: 6px;
+    font-size: 13px;
     opacity: 0.95;
     letter-spacing: 0.5px;
   }
   .crimson-banner .avatar-placeholder {
-    width: 88px; height: 88px;
-    border-radius: 8px;
+    width: 70px; height: 70px;
+    border-radius: 6px;
     background: rgba(255, 255, 255, 0.92);
     flex-shrink: 0;
     z-index: 1;
   }
 
   /* === Body === */
-  .crimson-main { padding: 0 44px 40px; }
-  .crimson-section { margin-top: 22px; }
+  /* A4 约束：左右 padding 从 44 压到 32 多给文字宽度，下 padding 从 40 → 24 */
+  .crimson-main { padding: 0 32px 24px; }
+  /* section 间距从 22 压到 14 */
+  .crimson-section { margin-top: 14px; }
 
   .crimson-section-title {
     background: var(--bar-bg);
-    padding: 10px 16px 10px 14px;
-    display: flex; align-items: center; gap: 10px;
-    border-left: 4px solid var(--bar-accent);
+    /* title padding 从 10/16/14 压到 6/12/10 */
+    padding: 6px 12px 6px 10px;
+    display: flex; align-items: center; gap: 8px;
+    border-left: 3px solid var(--bar-accent);
     border-radius: 0 4px 4px 0;
   }
   .crimson-section-title h2 {
     margin: 0;
     /* section 标题字号是模板视觉一部分 */
-    font-size: 15px;
+    font-size: 14px;
     color: var(--bar-accent);
     font-weight: 700;
     letter-spacing: 0.3px;
   }
 
-  .crimson-entry { padding: 10px 16px 4px; }
-  .crimson-entry + .crimson-entry { padding-top: 14px; }
+  /* entry padding 从 10/16 压到 6/12 */
+  .crimson-entry { padding: 6px 12px 2px; }
+  .crimson-entry + .crimson-entry { padding-top: 8px; }
   .crimson-entry-header {
     display: flex;
     justify-content: space-between;
-    gap: 16px;
+    gap: 12px;
     align-items: baseline;
   }
   .crimson-entry-header .entry-title {
     color: var(--bar-accent);
     font-weight: 700;
     /* 主标题字号属模板视觉 */
-    font-size: 15px;
+    font-size: 14px;
   }
   .crimson-entry-header .entry-date {
     color: var(--muted);
-    font-size: 12.5px;
+    font-size: 12px;
     text-align: right;
     flex-shrink: 0;
     line-height: 1.4;
@@ -103,12 +109,13 @@
   }
   .crimson-entry .entry-subtitle {
     color: var(--text);
-    font-size: 13.5px;
+    font-size: 13px;
     margin-top: 2px;
   }
   .crimson-entry .entry-bullets {
-    margin: 8px 0 0 0;
-    padding-left: 18px;
+    /* bullets 紧贴 subtitle，间距 4 而非 8 */
+    margin: 4px 0 0 0;
+    padding-left: 16px;
     color: var(--text);
     /* bullets 正文字号 → 用户可调 */
     font-size: var(--font-size);
