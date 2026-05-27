@@ -5,6 +5,8 @@ import {
   buildResumeSections,
   getSectionOrder,
 } from "@/lib/templates/shared/render-sections";
+import { DEFAULT_STYLE_SETTINGS } from "@/lib/resume-schema";
+import { SlotRenderer } from "./html-slot-renderer";
 import type { UploadedTemplate } from "./types";
 
 type Props = TemplateLayoutProps & {
@@ -18,6 +20,23 @@ export function UploadedLayout({
   showEmptyPlaceholders,
   template,
 }: Props) {
+  // Skill v2 自由排版路径：customHtml 非空时走 SlotRenderer。完全旁路 v1
+  // 的 ResumeHeader / ResumePage / buildResumeSections —— 视觉骨架由
+  // Claude 写的 HTML 决定。layout JSON 字段在 v2 路径中**忽略不用**（仅
+  // 作为兜底 schema）。见 spec §4.4。
+  if (template.customHtml) {
+    return (
+      <SlotRenderer
+        html={template.customHtml}
+        css={template.customCss}
+        content={content}
+        styleSettings={styleSettings ?? DEFAULT_STYLE_SETTINGS}
+        templateId={template.id}
+      />
+    );
+  }
+
+  // v1 enum 路径（abbey / abbey-stub 等）—— 不变
   const order = getSectionOrder(content, sectionOrder);
   const sections = buildResumeSections(
     content,
