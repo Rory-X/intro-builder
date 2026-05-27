@@ -133,7 +133,7 @@ export function TemplateLibraryClient({
   const toggleId = useId();
 
   return (
-    <div className="mx-auto max-w-[1400px] px-4 py-8 md:py-12">
+    <div className="mx-auto max-w-6xl px-4 py-8 md:py-12">
       <div className="mb-8 flex items-end justify-between gap-6 flex-wrap">
         <div>
           <h1 className="text-2xl font-bold md:text-3xl">模板库</h1>
@@ -204,7 +204,7 @@ export function TemplateLibraryClient({
           没有匹配的模板。试试别的关键词？(｡•́︿•̀｡)
         </div>
       ) : (
-        <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+        <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4">
           {filtered.map((resolved) => (
             <TemplateCard
               key={`${resolved.source}:${resolved.id}`}
