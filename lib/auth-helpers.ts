@@ -35,6 +35,19 @@ export async function requireUserId(): Promise<string> {
 }
 
 /**
+ * Non-redirecting userId lookup for API routes (no DB hit). Returns the
+ * id from a real session if there is one; otherwise the dev-bypass id if
+ * enabled; otherwise null. Use this in route handlers (`/api/*`) where a
+ * 401 is the right response and a redirect would break the client. UI
+ * surfaces that need email/name should use {@link currentUser} instead.
+ */
+export async function currentUserId(): Promise<string | null> {
+  const session = await auth();
+  if (session?.user?.id) return session.user.id;
+  return devBypassUserId();
+}
+
+/**
  * Non-redirecting current-user lookup for UI surfaces (header, links) that
  * need to show a different state when logged in but should NOT redirect.
  * Returns null when neither a real session nor dev bypass yields a user.
