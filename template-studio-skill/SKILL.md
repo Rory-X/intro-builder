@@ -14,8 +14,18 @@ description: 把一张参考简历（图/PDF 截图）做成 intro-builder 的�
 ## 你需要从用户拿到
 
 1. **参考图路径** —— 项目里某个 PNG/JPG。如果用户给的是 PDF，先 `pdftoppm -r 150 input.pdf out -png` 转图。
-2. **模板 id** —— 短 kebab-case，如 `abbey`、`elegant-blue`。会成为 DB 主键，必须唯一。
-3. **模板名** —— 中文展示名，如「陈媛媛同款」。
+2. **模板 id** —— 短 kebab-case，如 `red-banner`、`blue-fresh`、`science-classic`。会成为 DB 主键，必须唯一。
+   - **只用于内部识别**，**用户看不到**。可用英文，但避免 `abbey` / `crimson` 这种参考图原品牌代号 —— 改用描述性英文（color + style）。
+3. **模板名（display name）** —— **必须纯中文，2-6 字**。**禁止**：
+   - ❌ 英文产品代号：`Abbey`、`Crimson Banner`、`Foundation`
+   - ❌ 个人姓名：`陈媛媛 Abbey`、`张三同款`
+   - ❌ 内部技术词：`v2 PoC`、`Stub（验证用）`
+   - ✅ 视觉型：`红调封面`、`蓝调清新`、`蓝调侧栏`
+   - ✅ 场景型：`互联网职场`、`商务严选`
+   - 用户在模板库看到的就是这个名字，**他们不关心 abbey 是谁**。
+4. **模板描述（description）** —— 一句话面向**普通求职者**：写**适合什么人 + 视觉特点**，不要写技术名词。
+   - ❌ 「Skill v2 PoC：红色 banner + 粉底 section title，A4 单页约束」
+   - ✅ 「红色封面横幅 + 粉底分区标题，视觉感强，适合设计 / 创意 / 营销岗」
 
 ## 流程（你按顺序做）
 
@@ -166,6 +176,10 @@ pnpm exec tsx --env-file=.env.local \
   --layout '<最小有效 LayoutConfig JSON 兜底>'
 ```
 
+**单文件简写**：HTML 顶部的 `<style>...</style>` 块脚本会自动抽出来存进 customCss 字段（适合 PoC 单文件场景）。所以你也可以只传一个 .html、不传 `--custom-css`。
+
+> ⚠️ **不要把 CSS 留在 HTML 里不抽出**——SlotRenderer 的 DOMPurify whitelist 不含 `<style>` 标签（安全考虑：避免恶意模板通过 style 注入 escape），如果脚本不抽走，浏览器拿到的 HTML 没 CSS，模板会裸文字渲染。脚本的自动抽取就是防这个 silent fail。
+
 v2 模式下 `--layout` 仍要填——SlotRenderer 渲染失败时引擎降级到 layout enum 路径。最小有效值：
 
 ```json
@@ -189,6 +203,7 @@ v2 模式下 `--layout` 仍要填——SlotRenderer 渲染失败时引擎降级�
    - 顶层 `<article>` 包外壳，所有 `<template id="...">` 在 `<article>` 之外
    - 合法 binding 名：见下表
    - 嵌套 ≤ 3 层（sectionOrder → section.items → 内层不再 loop）
+   - 头像/图片占位：v2 没有 image binding，用 `<div class="avatar-placeholder" aria-hidden="true"></div>` 之类的纯 div 占位，**禁止 `<img src="" />`**——React 19 把空字符串 src 升级成 dev overlay 错误。SlotRenderer 已对此做了防御（自动剥空 src 属性），但写代码时仍按"避免空 src" 来。
 3. **安全**——禁止 `<script>` / `on*` 属性 / `<iframe>` / `position: fixed` / `*` 选择器 / 裸 element 选择器（`body { ... }`）/ `@media` / `@keyframes`
 4. **A4 单页约束（hard rule）**——**自由排版的"自由"是视觉自由，不是尺寸自由**。渲染 demoResume 规模内容（5 项工作 + 3 项目 + 自我介绍 + 教育）必须严格塞进 A4 一页：
    - **gallery thumbnail 模式**（stage 595px 宽）：article 总高度 ≤ **841px** (A4 @72dpi)

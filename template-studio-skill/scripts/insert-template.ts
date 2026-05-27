@@ -105,6 +105,10 @@ async function main() {
       "custom-css": { type: "string" },
       "skip-css-check": { type: "boolean" },  // escape hatch for advanced cases
       "created-by": { type: "string" },
+      // 用户视角分类（必填）：academic / tech / business / creative / general
+      category: { type: "string" },
+      // per-template "模板特点"，3 条文案，JSON 数组字符串
+      features: { type: "string" },
     },
     strict: true,
   });
@@ -112,6 +116,33 @@ async function main() {
   if (!values.id) fail(1, "--id required");
   if (!values.name) fail(1, "--name required");
   if (!values.layout) fail(1, "--layout required (LayoutConfig JSON)");
+  if (!values.category) fail(1, "--category required (academic|tech|business|creative|general)");
+  if (!values.features) fail(1, "--features required (JSON array of 3 strings)");
+
+  // 校验 category
+  const VALID_CATEGORIES = ["academic", "tech", "business", "creative", "general"];
+  if (!VALID_CATEGORIES.includes(values.category)) {
+    fail(
+      1,
+      `--category must be one of: ${VALID_CATEGORIES.join(", ")}. Got: ${values.category}`,
+    );
+  }
+
+  // 校验 features：JSON 数组、长度 3、每条非空且 ≤ 60 字
+  let features: string[];
+  try {
+    const parsed = JSON.parse(values.features);
+    if (!Array.isArray(parsed)) throw new Error("not an array");
+    if (parsed.length !== 3) throw new Error(`expected 3 items, got ${parsed.length}`);
+    for (const f of parsed) {
+      if (typeof f !== "string") throw new Error("non-string item");
+      if (f.length === 0) throw new Error("empty string");
+      if (f.length > 60) throw new Error(`item too long (>60 chars): "${f.slice(0, 30)}..."`);
+    }
+    features = parsed;
+  } catch (e) {
+    fail(1, `--features invalid: ${(e as Error).message}. Expected JSON array of 3 strings, each ≤ 60 chars.`);
+  }
 
   // Validates against the same Zod schema fetch.ts uses to read — no drift
   // possible. If LayoutConfig grows a new required field, this script will
@@ -139,6 +170,29 @@ async function main() {
       customCss = readFileSync(values["custom-css"], "utf-8");
     } catch (e) {
       fail(1, `--custom-css: cannot read ${values["custom-css"]}: ${(e as Error).message}`);
+    }
+  }
+
+  // Convenience: PoC HTML files often have CSS embedded in a leading <style>
+  // block. SlotRenderer's DOMPurify whitelist intentionally drops <style> tags
+  // (security: a malicious template could ship `style>...</style><script>`).
+  // So if --custom-css wasn't provided, extract the <style> block ourselves
+  // and store it in the customCss field. Without this, single-file PoCs ship
+  // with no CSS and render unstyled — silent failure mode.
+  if (customHtml && !customCss) {
+    const styleRe = /<style[^>]*>([\s\S]*?)<\/style>/gi;
+    const collected: string[] = [];
+    const stripped = customHtml.replace(styleRe, (_match, body: string) => {
+      collected.push(body);
+      return "";
+    });
+    if (collected.length > 0) {
+      customCss = collected.join("\n\n").trim();
+      customHtml = stripped.trim();
+      console.log(
+        `[hint] auto-extracted ${collected.length} <style> block(s) from --custom-html ` +
+          `(${customCss.length} chars). Pass --custom-css explicitly to override.`,
+      );
     }
   }
 
@@ -175,6 +229,7 @@ async function main() {
       INSERT INTO templates (
         id, name, description, "thumbnailUrl",
         source, decoration, layout, "customHtml", "customCss",
+        category, features,
         status, "createdBy"
       ) VALUES (
         ${values.id},
@@ -186,6 +241,8 @@ async function main() {
         ${JSON.stringify(layout)}::jsonb,
         ${customHtml},
         ${customCss},
+        ${values.category},
+        ${JSON.stringify(features)}::jsonb,
         'published',
         ${values["created-by"] ?? "template-studio-skill"}
       )
@@ -197,6 +254,8 @@ async function main() {
         layout = EXCLUDED.layout,
         "customHtml" = EXCLUDED."customHtml",
         "customCss" = EXCLUDED."customCss",
+        category = EXCLUDED.category,
+        features = EXCLUDED.features,
         status = EXCLUDED.status,
         "updatedAt" = now()
       RETURNING id, name, source, status, "updatedAt"
