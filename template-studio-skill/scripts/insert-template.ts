@@ -1,14 +1,26 @@
 /**
  * Insert one row into the `templates` table. Used by the template-studio skill
  * after extract-decoration.py produces the background image and the agent
- * decides on a LayoutConfig + DecorationConfig.
+ * decides on a LayoutConfig + DecorationConfig (v1) or writes HTML+CSS (v2).
  *
- * Run: pnpm exec tsx --env-file=.env.local template-studio-skill/scripts/insert-template.ts \
+ * v1 enum-based path:
+ *   pnpm exec tsx --env-file=.env.local template-studio-skill/scripts/insert-template.ts \
  *        --id <id> --name "<name>" \
  *        --description "<one-line description>" \
  *        --thumbnail-url "<optional URL>" \
  *        --decoration '<DecorationConfig JSON or null>' \
  *        --layout '<LayoutConfig JSON>'
+ *
+ * v2 HTML free-painting path (Skill v2 — see SKILL.md Step 3):
+ *   pnpm exec tsx --env-file=.env.local template-studio-skill/scripts/insert-template.ts \
+ *        --id <id> --name "<name>" \
+ *        --custom-html path/to/template.html \
+ *        --custom-css  path/to/template.css \
+ *        --layout '<minimal LayoutConfig JSON for fallback>'
+ *
+ * --layout remains required even in v2 mode — UploadedLayout's bypass falls
+ * back to it if SlotRenderer crashes. Pass a minimal valid value (professional
+ * variant + black primary + empty sectionIcons).
  *
  * --env-file=.env.local must be passed so DATABASE_URL is in process.env
  * before this module runs (no in-file dotenv — ESM imports evaluate before
@@ -21,6 +33,7 @@
  */
 import { neon } from "@neondatabase/serverless";
 import { parseArgs } from "node:util";
+import { readFileSync } from "node:fs";
 // Single source of truth for the row shape. Manually mirroring the Zod
 // schema here would silently drift (e.g. `frame` was added to
 // LayoutConfig in 1f79532; the old hand-written type didn't notice and
@@ -54,6 +67,31 @@ function parseConfig<T>(
   return result.data;
 }
 
+/**
+ * v2 dual-constraint self-check: customCss must use CSS variables for
+ * font-size / font-family / line-height (user-tunable per spec §4.2).
+ * Hardcoded values fail the check.
+ *
+ * Heuristic — looks for any `font-size: <px|em|rem|number>` or `font-family: <name>`
+ * or `line-height: <number>` that isn't immediately followed by `var(`.
+ * False-positive friendly (will yell on legitimate var(-derived computation)
+ * but the safe override is the same: rewrite to var(--foo)).
+ */
+function checkDualConstraint(css: string): string[] {
+  const violations: string[] = [];
+  const re =
+    /(font-size|font-family|line-height)\s*:\s*([^;]+?)(?:;|$)/gi;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(css)) !== null) {
+    const prop = m[1];
+    const value = m[2].trim();
+    if (!/^var\(/.test(value)) {
+      violations.push(`${prop}: ${value}`);
+    }
+  }
+  return violations;
+}
+
 async function main() {
   const { values } = parseArgs({
     options: {
@@ -63,6 +101,9 @@ async function main() {
       "thumbnail-url": { type: "string" },
       decoration: { type: "string" },
       layout: { type: "string" },
+      "custom-html": { type: "string" },
+      "custom-css": { type: "string" },
+      "skip-css-check": { type: "boolean" },  // escape hatch for advanced cases
       "created-by": { type: "string" },
     },
     strict: true,
@@ -83,6 +124,43 @@ async function main() {
       ? parseConfig("--decoration", values.decoration, DecorationConfig)
       : null;
 
+  // v2 path: read HTML/CSS files. v1 path: both null.
+  let customHtml: string | null = null;
+  let customCss: string | null = null;
+  if (values["custom-html"]) {
+    try {
+      customHtml = readFileSync(values["custom-html"], "utf-8");
+    } catch (e) {
+      fail(1, `--custom-html: cannot read ${values["custom-html"]}: ${(e as Error).message}`);
+    }
+  }
+  if (values["custom-css"]) {
+    try {
+      customCss = readFileSync(values["custom-css"], "utf-8");
+    } catch (e) {
+      fail(1, `--custom-css: cannot read ${values["custom-css"]}: ${(e as Error).message}`);
+    }
+  }
+
+  // v2 dual-constraint pre-flight: refuse to insert CSS that hardcodes
+  // user-tunable typography. Skill v2 templates that violate this would
+  // silently break user font-size/family/line-height adjustments — better
+  // to fail fast at write time than debug later.
+  if (customCss && !values["skip-css-check"]) {
+    const violations = checkDualConstraint(customCss);
+    if (violations.length > 0) {
+      fail(
+        1,
+        `--custom-css violates dual constraint (spec §4.2). The following ` +
+          `properties must use CSS variables (var(--font-size) / var(--font-family) / ` +
+          `var(--line-height)) so users can tune them in the editor:\n  ` +
+          violations.join("\n  ") +
+          `\n\nFix: rewrite hardcoded values to var(--font-*). Pass --skip-css-check ` +
+          `if you really mean to lock these (rare; e.g. banner-only typography).`,
+      );
+    }
+  }
+
   const dbUrl = process.env.DATABASE_URL;
   if (!dbUrl) fail(1, "DATABASE_URL not set — pass --env-file=.env.local to tsx");
 
@@ -96,7 +174,8 @@ async function main() {
     const rows = (await sql`
       INSERT INTO templates (
         id, name, description, "thumbnailUrl",
-        source, decoration, layout, status, "createdBy"
+        source, decoration, layout, "customHtml", "customCss",
+        status, "createdBy"
       ) VALUES (
         ${values.id},
         ${values.name},
@@ -105,6 +184,8 @@ async function main() {
         'uploaded',
         ${decoration ? JSON.stringify(decoration) : null}::jsonb,
         ${JSON.stringify(layout)}::jsonb,
+        ${customHtml},
+        ${customCss},
         'published',
         ${values["created-by"] ?? "template-studio-skill"}
       )
@@ -114,13 +195,18 @@ async function main() {
         "thumbnailUrl" = EXCLUDED."thumbnailUrl",
         decoration = EXCLUDED.decoration,
         layout = EXCLUDED.layout,
+        "customHtml" = EXCLUDED."customHtml",
+        "customCss" = EXCLUDED."customCss",
         status = EXCLUDED.status,
         "updatedAt" = now()
       RETURNING id, name, source, status, "updatedAt"
     `) as Array<{ id: string; name: string; source: string; status: string; updatedAt: string }>;
     if (rows.length === 0) fail(2, "no row returned from upsert");
     const r = rows[0];
-    console.log(`upserted: ${r.id} (${r.name})  source=${r.source}  status=${r.status}`);
+    const mode = customHtml ? "v2-html" : "v1-enum";
+    console.log(
+      `upserted: ${r.id} (${r.name})  mode=${mode}  source=${r.source}  status=${r.status}`,
+    );
   } catch (e) {
     fail(2, `DB error: ${(e as Error).message}`);
   }

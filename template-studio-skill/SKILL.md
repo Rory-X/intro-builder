@@ -141,6 +141,8 @@ hex 格式，例如 `#3B8BCD`（abbey 蓝）、`#137880`（青绿）、`#1F2937`
 
 ### Step 4：调 insert-template.ts 入库
 
+**v1（enum-based）**——沿用：
+
 ```bash
 pnpm exec tsx --env-file=.env.local \
   template-studio-skill/scripts/insert-template.ts \
@@ -151,7 +153,67 @@ pnpm exec tsx --env-file=.env.local \
   --layout '<LayoutConfig JSON>'
 ```
 
-`--env-file=.env.local` 必传——脚本要读 `DATABASE_URL`。
+**v2（HTML 自由排版，推荐用于骨架差异大的模板）**——加 `--custom-html` / `--custom-css`：
+
+```bash
+pnpm exec tsx --env-file=.env.local \
+  template-studio-skill/scripts/insert-template.ts \
+  --id <模板id> \
+  --name "<中文名>" \
+  --description "<一句话描述>" \
+  --custom-html prototypes/<模板id>/template.html \
+  --custom-css prototypes/<模板id>/template.css \
+  --layout '<最小有效 LayoutConfig JSON 兜底>'
+```
+
+v2 模式下 `--layout` 仍要填——SlotRenderer 渲染失败时引擎降级到 layout enum 路径。最小有效值：
+
+```json
+{
+  "frame": {"kind": "vertical"},
+  "headerVariant": "professional",
+  "sectionTitleVariant": "professional",
+  "itemHeaderVariant": "professional",
+  "theme": {"primaryColor": "#000000"},
+  "sectionIcons": {}
+}
+```
+
+**v2 写 HTML/CSS 三条铁律**（由 insert-template.ts 自动校验，违反会 fail-fast）：
+
+1. **对偶约束（dual constraint）**——用户能调的 CSS 必须用 `var(--*)`：
+   - `font-size: var(--font-size)` ✅
+   - `font-size: 14px` ❌（用户改字号失效）
+   - 装饰、颜色、padding/margin、圆角、阴影 → 可硬编码
+2. **slot 协议**——内容插槽必须用 `<slot data-bind="..." ></slot>`（**显式闭合，不要 self-close**——HTML5 slot 不是 void 元素）：
+   - 顶层 `<article>` 包外壳，所有 `<template id="...">` 在 `<article>` 之外
+   - 合法 binding 名：见下表
+   - 嵌套 ≤ 3 层（sectionOrder → section.items → 内层不再 loop）
+3. **安全**——禁止 `<script>` / `on*` 属性 / `<iframe>` / `position: fixed` / `*` 选择器 / 裸 element 选择器（`body { ... }`）/ `@media` / `@keyframes`
+
+**合法 binding 名表**：
+
+| 类别 | binding | 何时可用 |
+|---|---|---|
+| basics value | `basics.name` `basics.title` `basics.email` `basics.phone` `basics.location` `basics.website` `basics.photo` `basics.status` `basics.summary` | 任何位置 |
+| sectionOrder loop | `sectionOrder` (loop slot, 配 `data-template`) | 任何位置 |
+| section value | `section.id` `section.title` `section.icon` | 仅 sectionOrder loop 内 |
+| section.items loop | `section.items` (loop slot, 配 `data-template`) | 仅 sectionOrder loop 内 |
+| item value | `item.title` `item.subtitle` `item.dateRange` `item.location` `item.bullets` `item.tags` `item.link` | 仅 section.items loop 内 |
+
+**item 字段从各 section 派生映射**（一份 item template 适用所有 section）：
+
+| section | item.title | item.subtitle | item.bullets |
+|---|---|---|---|
+| experience | company | title (职位) | content (TipTap) |
+| education | school | degree+major+gpa | highlights (TipTap) |
+| projects | name | role | content (TipTap) + tags=stack |
+| skills | category | items.join("、") | (空) |
+| basics | (空) | (空) | summary (wrapped) |
+
+**完整 v2 PoC 参考**：`prototypes/handcoded-crimson/index-with-slots.html`
+
+---
 
 ### Step 5：验证
 
@@ -161,10 +223,13 @@ pnpm exec tsx --env-file=.env.local scripts/verify-templates.ts
 
 新模板的 id 应出现在 `listAllTemplatesAsync` 输出的 `source=uploaded` 行里。
 
+**v2 模板视觉验证**：开 `http://localhost:3000/dev-preview/template/<模板id>` 看实际渲染。如果你写的 HTML 引擎接不上，会显示 `[未知 slot: xxx]` / `[ctx 不可用]` / `[嵌套过深]` 等占位符——按提示修。
+
 ## 输出给用户
 
 - 装饰图路径：`public/templates/decorations/<id>.png`
 - 模板 id 和名字（已入 DB）
+- 模式：v1-enum 还是 v2-html
 - 提示用户：刷新 dashboard / 编辑器的"模板与排版"picker 能看到新模板
 
 ## 注意
@@ -173,3 +238,4 @@ pnpm exec tsx --env-file=.env.local scripts/verify-templates.ts
 - **API 调用 30-60s**（gpt-image-2），耐心等待。HTTP 000 状态是网络抖动，重跑即可。
 - **token 消耗**：单次 edits 调用约 1500-1700 tokens。装饰提取尽量一次成功，反复试会浪费配额。
 - **prompt 反复改不出效果**：不是 prompt 问题，是 model 极限——比如它无法 1:1 复制装饰元素的精确数量/排列。接受"风格 + 位置"对齐即可，细节在产品层用 CSS placement 调。
+- **v1 vs v2 选择**：参考图视觉接近现有 variant（professional / classic / modern / card-wrapped / full-width-bar）就走 v1（更快）；视觉骨架明显不同（timeline 鳃骨 / banner 顶部色块 / 杂志双栏等）走 v2。
