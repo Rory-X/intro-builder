@@ -29,8 +29,6 @@ type Props = {
   /** 用户最近一份简历；不存在则 toggle 默认 OFF（强制走 demo 内容）。 */
   userResume: { id: string; content: ResumeContent } | null;
   demoResume: ResumeContent;
-  /** 来自编辑器（"查看全部模板 →"）时为 "editor"，决定 P2.3 抽屉里 apply 后跳转目标。 */
-  from: string | null;
 };
 
 /**
@@ -63,7 +61,6 @@ export function TemplateLibraryClient({
   templates,
   userResume,
   demoResume,
-  from,
 }: Props) {
   // toggle 默认：用户有简历 → ON（展示真实简历内容套各模板的效果）
   // 没简历 → OFF + disable（toggle 灰掉，走 demo 内容）
@@ -103,10 +100,16 @@ export function TemplateLibraryClient({
     setSelected(resolved);
   };
 
-  // apply 链路：setTemplate（server action）→ toast → 关抽屉 → 视来源决定
-  // 是否 redirect 回编辑器。setTemplate 内部已经过 getTemplateMetaAsync 校验，
-  // 不存在的 templateId 会被收敛为 default builtin，所以这里不会"应用一个不存在
-  // 的模板"——失败仅来自鉴权 / 网络 / DB。
+  // apply 链路：setTemplate（server action）→ toast → 关抽屉 → 跳编辑器看效果。
+  // setTemplate 内部已经过 getTemplateMetaAsync 校验，不存在的 templateId 会
+  // 被收敛为 default builtin，所以这里不会"应用一个不存在的模板"——失败仅来自
+  // 鉴权 / 网络 / DB。
+  //
+  // 跳转策略：永远 push 到 /resume/[id]/edit。早期版本对 from=editor 跳编辑器、
+  // 否则 router.refresh() 留在 /templates，但 gallery 没有"当前已选中模板"的
+  // 视觉指示，刷完跟没刷一样，用户会以为"完全没生效"。统一跳编辑器让用户能
+  // 立刻看到模板套上自己内容的真实效果，闭环更强。from=editor 时 push 同一份
+  // 编辑器路由也是回到原页面，行为不变。
   const handleApply = () => {
     if (!selected || !userResume) return;
     const targetTemplateId = selected.id;
@@ -117,11 +120,7 @@ export function TemplateLibraryClient({
         await setTemplate(targetResumeId, targetTemplateId);
         toast.success(`已应用模板：${targetName}`);
         setSelected(null);
-        if (from === "editor") {
-          router.push(`/resume/${targetResumeId}/edit`);
-        } else {
-          router.refresh();
-        }
+        router.push(`/resume/${targetResumeId}/edit`);
       } catch (error) {
         console.error("[templates] apply failed:", error);
         const message = error instanceof Error ? error.message : "未知错误";

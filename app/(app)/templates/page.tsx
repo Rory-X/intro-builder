@@ -20,7 +20,7 @@ export default async function TemplatesPage({
   searchParams: Promise<{ from?: string; resumeId?: string }>;
 }) {
   const userId = await requireUserId();
-  const { from, resumeId: resumeIdParam } = await searchParams;
+  const { resumeId: resumeIdParam } = await searchParams;
 
   // 拉用户最近一份简历当 "use my content" toggle 的数据源。
   // 如果带 ?resumeId= 来自编辑器，优先用那一份；否则按 updatedAt 取最近的。
@@ -82,7 +82,6 @@ export default async function TemplatesPage({
       templates={resolvedList}
       userResume={userResume}
       demoResume={demoResume}
-      from={from ?? null}
     />
   );
 }
