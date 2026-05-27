@@ -417,7 +417,7 @@ export default function EditorClient({ id, initialTitle, initialTemplate, initia
       {/* Toolbar — only visible on desktop */}
       {isDesktop && (
       <div className="sticky top-14 z-30 border-b border-border/60 bg-background/80 backdrop-blur-xl backdrop-saturate-150">
-        <div className="mx-auto flex max-w-6xl items-center gap-3 px-4 py-2.5">
+        <div className="mx-auto flex max-w-7xl items-center gap-3 px-4 py-2.5">
           <Input
             value={title}
             onChange={(e) => setTitleState(e.target.value)}
@@ -455,9 +455,8 @@ export default function EditorClient({ id, initialTitle, initialTemplate, initia
             </span>
           </span>
           <CompletenessScore />
-          <div data-testid="editor-toolbar" className="ml-auto flex flex-wrap items-center gap-2">
+          <div data-testid="editor-toolbar" className="ml-auto flex flex-nowrap items-center gap-2 overflow-x-auto">
             <SmartLayoutButton templateId={template} measureRef={previewRootRef} />
-            <Separator orientation="vertical" className="h-6" />
             <StyleEditor
               templateId={template}
               onTemplateChange={changeTemplate}
@@ -465,9 +464,7 @@ export default function EditorClient({ id, initialTitle, initialTemplate, initia
               allTemplates={allTemplates}
               resumeId={id}
             />
-            <Separator orientation="vertical" className="h-6" />
             <ModuleManager sectionOrder={sectionOrder} onOrderChange={handleOrderChange} />
-            <Separator orientation="vertical" className="h-6" />
             <Button
               size="sm"
               variant="outline"
@@ -499,14 +496,12 @@ export default function EditorClient({ id, initialTitle, initialTemplate, initia
                 /r/{publicSlug}
               </a>
             )}
-            <Separator orientation="vertical" className="h-6" />
             <ExportButton
               resumeId={id}
               filename={title}
               onExportImage={onExportImage}
               isExportingImage={isExportingImage}
             />
-            <Separator orientation="vertical" className="h-6" />
             <InviteCollabDialog resumeId={id} onSessionCreated={(sid) => setCollabSessionId(sid)} />
             {collabState?.isConnected && (
               <>
