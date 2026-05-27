@@ -179,7 +179,7 @@ v2 模式下 `--layout` 仍要填——SlotRenderer 渲染失败时引擎降级�
 }
 ```
 
-**v2 写 HTML/CSS 三条铁律**（由 insert-template.ts 自动校验，违反会 fail-fast）：
+**v2 写 HTML/CSS 四条铁律**（违反会出问题，前 1-3 条由 insert-template.ts 自动校验 fail-fast，第 4 条要你主动检查）：
 
 1. **对偶约束（dual constraint）**——用户能调的 CSS 必须用 `var(--*)`：
    - `font-size: var(--font-size)` ✅
@@ -190,6 +190,11 @@ v2 模式下 `--layout` 仍要填——SlotRenderer 渲染失败时引擎降级�
    - 合法 binding 名：见下表
    - 嵌套 ≤ 3 层（sectionOrder → section.items → 内层不再 loop）
 3. **安全**——禁止 `<script>` / `on*` 属性 / `<iframe>` / `position: fixed` / `*` 选择器 / 裸 element 选择器（`body { ... }`）/ `@media` / `@keyframes`
+4. **A4 单页约束（hard rule）**——**自由排版的"自由"是视觉自由，不是尺寸自由**。渲染 demoResume 规模内容（5 项工作 + 3 项目 + 自我介绍 + 教育）必须严格塞进 A4 一页：
+   - **gallery thumbnail 模式**（stage 595px 宽）：article 总高度 ≤ **841px** (A4 @72dpi)
+   - **dev-preview / 编辑器预览 / PDF 模式**（容器 800px 宽）：article 总高度 ≤ **1123px** (A4 @96dpi)
+   - 不遵守的后果：(a) gallery 缩略图宽度缩水产生左右白边、(b) PDF 第一页被截断、(c) 编辑器预览跟 PDF 不一致
+   - 写完后跑 dev-preview 路由（`/dev-preview/template/<id>`）目测：800px 容器里内容**必须不超过一屏 viewport** (~1123px)。超出说明 padding / margin / banner 太奢侈，回头压缩。**常见可压缩位置**：banner padding（一开始就 60+ 太多）、section margin-top（22+ 太奢侈，14 通常够）、entry padding/margin、section-title padding。
 
 **合法 binding 名表**：
 
