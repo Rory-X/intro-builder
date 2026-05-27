@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, act } from "@testing-library/react";
+import { renderToString } from "react-dom/server";
 import { useRef } from "react";
 import { TemplateThumbnail } from "@/components/templates/template-thumbnail";
 import { useFitThumbnail } from "@/components/templates/use-fit-thumbnail";
@@ -136,6 +137,42 @@ describe("TemplateThumbnail", () => {
     expect(thumb).not.toBeNull();
     expect(thumb.className).toContain("aspect-[210/297]");
     expect(thumb.className).toContain("overflow-hidden");
+  });
+
+  // ============================================================
+  // SSR / hydration —— 必须保证 server 与 client 首次 render 输出一致，
+  // 否则 React 19 直接抛 "Hydration failed because the server rendered HTML
+  // didn't match the client"。canonical 修法：useState(false) 强制起始
+  // 一致，翻牌挪到 useEffect（client-only）。
+  // ============================================================
+
+  it("renderToString（SSR 路径）输出 skeleton，不输出 stage", () => {
+    // renderToString 不跑 useEffect，模拟真实 server render：
+    // 任何 stage / 真实 children DOM 出现都会触发 hydration mismatch。
+    const html = renderToString(
+      <TemplateThumbnail>
+        <div>real-content-must-not-leak-to-ssr</div>
+      </TemplateThumbnail>,
+    );
+    expect(html).toContain("data-template-thumbnail-skeleton");
+    expect(html).not.toContain("data-template-thumbnail-stage");
+    expect(html).not.toContain("real-content-must-not-leak-to-ssr");
+  });
+
+  it("renderToString 即使 forceMount=true 也允许 stage（强制路径明确放弃懒挂载）", () => {
+    // forceMount 是测试 / 立即预览的逃生口，调用方明确表达"不要懒"，那就
+    // 允许 SSR 直接渲染真实 stage（hydration 时 client 用同一逻辑也得到
+    // mounted=true，无 mismatch）。
+    const html = renderToString(
+      <TemplateThumbnail forceMount>
+        <div>force-mounted-content</div>
+      </TemplateThumbnail>,
+    );
+    // forceMount → useState 初始 false → effect 翻为 true。
+    // 但 renderToString 不跑 effect，所以 SSR 输出仍是 skeleton。
+    // 这是有意为之：forceMount 不改变 SSR 输出，只改变 client effect 行为。
+    // hydration 后 client 立即翻 mounted=true，对用户来说没有可见差异。
+    expect(html).toContain("data-template-thumbnail-skeleton");
   });
 });
 

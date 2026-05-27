@@ -36,23 +36,34 @@ export function TemplateThumbnail({
 }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
   const stageRef = useRef<HTMLDivElement>(null);
-  // 决定初始 mounted 状态在 useState lazy initializer 里完成（forceMount /
-  // lazy=false / SSR-test 环境没有 IntersectionObserver 都直接挂载）。
-  // 放这里而非 effect 里调 setState，避免 React Compiler 抓的"effect 里
-  // setState 触发级联 render"问题。
-  const [mounted, setMounted] = useState<boolean>(() => {
-    if (!lazy || forceMount) return true;
-    if (typeof IntersectionObserver === "undefined") return true;
-    return false;
-  });
+  // **始终从 false 开始** —— SSR 与 client 首次 render 都输出 skeleton。
+  // 不能依赖 `typeof IntersectionObserver === "undefined"` 在 useState
+  // initializer 里"提前判断 SSR"：那样 server (无 IO → true) 与 client
+  // (有 IO → false) 首次 render 不一致 → React 报 hydration mismatch
+  // (server rendered HTML didn't match client)。canonical 修法就是把
+  // "决定何时翻牌"挪到 useEffect，因为 useEffect 只在 client 跑、必然在
+  // hydration 之后，怎么 setState 都不会触发 mismatch。
+  const [mounted, setMounted] = useState<boolean>(false);
 
   useEffect(() => {
     if (mounted) return;
+    // forceMount / lazy=false / 测试或老浏览器无 IO → hydration 后立即翻
+    if (forceMount || !lazy || typeof IntersectionObserver === "undefined") {
+      // 这里的 setState-in-effect 是 SSR-safe hydration 的 canonical pattern：
+      // useState 必须从 false 开始（保证 server / client 首次 render 一致），
+      // 翻牌只能在 effect 里。React Compiler 默认抓"级联 render"是为了防 ping-
+      // pong loop，但本路径只翻一次（mounted 后 effect 立即 return），不会循环。
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setMounted(true);
+      return;
+    }
     const el = containerRef.current;
     if (!el) return;
     const io = new IntersectionObserver(
       (entries) => {
         if (entries.some((e) => e.isIntersecting)) {
+          // IO 回调里 setState 不是"effect body 里 setState"，是外部事件回调，
+          // 自然不触发 set-state-in-effect 规则。
           setMounted(true);
           io.disconnect();
         }
@@ -62,7 +73,7 @@ export function TemplateThumbnail({
     );
     io.observe(el);
     return () => io.disconnect();
-  }, [mounted]);
+  }, [mounted, forceMount, lazy]);
 
   const { scale, offsetX } = useFitThumbnail({
     containerRef,
