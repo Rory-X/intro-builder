@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import { Loader2, Check } from "lucide-react";
 import {
   Sheet,
@@ -14,14 +15,17 @@ import { ClientTemplateRenderFromSerializable } from "@/lib/templates/render";
 import type { SerializableResolvedTemplate } from "@/lib/templates/render";
 import type { ResumeContent } from "@/lib/resume-schema";
 import { TemplateThumbnail } from "@/components/templates/template-thumbnail";
+import { cn } from "@/lib/utils";
 
 type Props = {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   /** null = drawer 还没选定（首次打开会立刻选；切模板时会更新） */
   resolved: SerializableResolvedTemplate | null;
-  /** 当前用于预览的简历内容（gallery 的 toggle 决定是 demo 还是用户内容） */
-  content: ResumeContent;
+  /** 默认占位内容；toggle OFF 时左侧预览渲染这份。 */
+  demoContent: ResumeContent;
+  /** 用户最近一份简历的 content；null 表示还没建简历，toggle 会被禁用。 */
+  userContent: ResumeContent | null;
   /** 用户最近一份简历 id；null 时禁用 apply CTA + 提示先建简历 */
   resumeId: string | null;
   /** apply 是否进行中（父组件控制 setTemplate 的 pending 态） */
@@ -37,12 +41,14 @@ function getDisplayMeta(resolved: SerializableResolvedTemplate) {
       name: meta?.name ?? resolved.id,
       description: meta?.description ?? "",
       isRecommended: meta?.isRecommended,
+      features: meta?.features as readonly string[] | undefined,
     };
   }
   return {
     name: resolved.template.name,
     description: resolved.template.description ?? "",
     isRecommended: false as const,
+    features: resolved.template.features ?? undefined,
   };
 }
 
@@ -50,20 +56,38 @@ export function TemplatePreviewDrawer({
   open,
   onOpenChange,
   resolved,
-  content,
+  demoContent,
+  userContent,
   resumeId,
   isApplying = false,
   onApply,
 }: Props) {
+  // toggle 控件 state（默认 OFF —— demo 内容预览）。
+  // 限制：userContent === null 时强制 OFF（没简历可用），UI 上 disabled 提示。
+  const [useMyContent, setUseMyContent] = useState(false);
+  const canUseMyContent = userContent !== null;
+  const previewContent =
+    useMyContent && userContent ? userContent : demoContent;
+
   // resolved=null 时不渲染内部预览（防 ClientTemplateRenderFromSerializable 拿到 null 报错）
   // Sheet 仍然打开，但内部留空白 —— 实际应用 onOpenChange 会同步关闭。
   const meta = resolved ? getDisplayMeta(resolved) : null;
-  const sourceLabel =
+  // 渲染右侧 aside 的小 tag —— 优先用模板自己的 category（学术 / 互联网 / 商务 等），
+  // 没填时降级显示空白（不要回退到"内置/上传"——那是开发者维度，不是用户维度）。
+  const CATEGORY_LABELS_DRAWER: Record<string, string> = {
+    academic: "学术",
+    tech: "互联网",
+    business: "商务",
+    creative: "创意",
+    general: "通用",
+  };
+  const categoryRaw =
     resolved?.source === "builtin"
-      ? "内置"
+      ? TEMPLATES.find((t) => t.id === resolved.id)?.category
       : resolved?.source === "uploaded"
-        ? "上传"
-        : null;
+        ? resolved.template.category ?? undefined
+        : undefined;
+  const sourceLabel = categoryRaw ? CATEGORY_LABELS_DRAWER[categoryRaw] : null;
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
@@ -95,9 +119,9 @@ export function TemplatePreviewDrawer({
                   <TemplateThumbnail forceMount>
                     <ClientTemplateRenderFromSerializable
                       resolved={resolved}
-                      content={content}
-                      sectionOrder={content.sectionOrder}
-                      styleSettings={content.styleSettings}
+                      content={previewContent}
+                      sectionOrder={previewContent.sectionOrder}
+                      styleSettings={previewContent.styleSettings}
                     />
                   </TemplateThumbnail>
                 </div>
@@ -134,20 +158,55 @@ export function TemplatePreviewDrawer({
             <div className="space-y-3">
               <h3 className="text-sm font-semibold">这个模板的特点</h3>
               <ul className="space-y-2 text-sm">
-                <li className="flex items-start gap-2">
-                  <Check className="mt-0.5 size-4 shrink-0 text-primary" />
-                  <span>预览即所见 —— 应用后样式跟这里 100% 一致</span>
-                </li>
-                <li className="flex items-start gap-2">
-                  <Check className="mt-0.5 size-4 shrink-0 text-primary" />
-                  <span>不动你的简历内容，只换排版</span>
-                </li>
-                <li className="flex items-start gap-2">
-                  <Check className="mt-0.5 size-4 shrink-0 text-primary" />
-                  <span>切换后随时再换，可逆</span>
-                </li>
+                {(meta?.features && meta.features.length > 0
+                  ? meta.features
+                  : [
+                      // Fallback：模板还没填 features 时退回通用三条，避免空白。
+                      "预览即所见 —— 应用后样式跟这里 100% 一致",
+                      "不动你的简历内容，只换排版",
+                      "切换后随时再换，可逆",
+                    ]
+                ).map((feature, i) => (
+                  <li key={i} className="flex items-start gap-2">
+                    <Check className="mt-0.5 size-4 shrink-0 text-primary" />
+                    <span>{feature}</span>
+                  </li>
+                ))}
               </ul>
             </div>
+
+            {/* "用我的内容预览" toggle —— 从 /templates 顶部迁过来。
+                这里语境更对：用户已经选定具体一个模板要看效果，再决定用 demo
+                还是真实内容。userContent === null（没建简历）时禁用。 */}
+            <label
+              htmlFor="drawer-use-my-content"
+              className={cn(
+                "flex items-center gap-3 rounded-lg border border-border bg-card px-4 py-2.5 text-sm",
+                !canUseMyContent && "opacity-60",
+              )}
+            >
+              <span className="relative inline-flex h-5 w-9 shrink-0">
+                <input
+                  id="drawer-use-my-content"
+                  type="checkbox"
+                  className="peer sr-only"
+                  checked={useMyContent}
+                  disabled={!canUseMyContent}
+                  onChange={(e) => setUseMyContent(e.target.checked)}
+                  data-testid="drawer-use-my-content-toggle"
+                />
+                <span className="pointer-events-none absolute inset-0 rounded-full bg-border transition-colors peer-checked:bg-primary peer-disabled:cursor-not-allowed" />
+                <span className="pointer-events-none absolute top-0.5 left-0.5 size-4 rounded-full bg-white shadow-sm transition-transform peer-checked:translate-x-4" />
+              </span>
+              <span className="flex flex-col gap-0.5">
+                <span className="font-medium">用我的内容预览</span>
+                <span className="text-xs text-muted-foreground">
+                  {canUseMyContent
+                    ? "把你最近一份简历套到这个模板上看效果"
+                    : "需要先创建一份简历才能开启"}
+                </span>
+              </span>
+            </label>
 
             <div className="mt-auto flex flex-col gap-2 pt-4">
               {resumeId === null ? (

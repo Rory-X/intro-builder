@@ -1,12 +1,9 @@
 "use client";
 
 import {
-  useDeferredValue,
-  useId,
   useMemo,
   useState,
   useTransition,
-  type ChangeEvent,
 } from "react";
 import { useRouter } from "next/navigation";
 import { Search } from "lucide-react";
@@ -15,24 +12,43 @@ import { TEMPLATES } from "@/lib/templates/registry";
 import { ClientTemplateRenderFromSerializable } from "@/lib/templates/render";
 import type { SerializableResolvedTemplate } from "@/lib/templates/render";
 import type { ResumeContent } from "@/lib/resume-schema";
-import { cn } from "@/lib/utils";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Input } from "@/components/ui/input";
 import { TemplateThumbnail } from "@/components/templates/template-thumbnail";
 import { TemplatePreviewDrawer } from "@/components/templates/template-preview-drawer";
 import { setTemplate } from "@/app/(app)/resume/[id]/edit/actions";
+import type { TemplateCategory } from "@/lib/templates/registry";
 
-type TabValue = "all" | "builtin" | "uploaded";
+// "all" 表示不过滤，否则按 category 值精确匹配。tab 列表 derive 自当前模板
+// 列表实际出现的 category，避免空 tab。
+type TabValue = "all" | TemplateCategory;
+
+const CATEGORY_LABELS: Record<TemplateCategory, string> = {
+  academic: "学术",
+  tech: "互联网",
+  business: "商务",
+  creative: "创意",
+  general: "通用",
+};
+
+// 显示顺序（不写在这里的不显示——但 Record 强制类型完备，所以 5 个都在）。
+const CATEGORY_ORDER: TemplateCategory[] = [
+  "tech",
+  "business",
+  "academic",
+  "creative",
+  "general",
+];
 
 type Props = {
   templates: SerializableResolvedTemplate[];
-  /** 用户最近一份简历；不存在则 toggle 默认 OFF（强制走 demo 内容）。 */
+  /** 用户最近一份简历；null 表示没有简历，drawer 里的 toggle 会被禁用。 */
   userResume: { id: string; content: ResumeContent } | null;
   demoResume: ResumeContent;
 };
 
 /**
- * 给一个 SerializableResolvedTemplate 抽出"展示用"的元数据（name + description）：
+ * 给一个 SerializableResolvedTemplate 抽出"展示用"的元数据（name + description + category）：
  * - builtin：从客户端静态 TEMPLATES 表（registry.ts）查
  * - uploaded：直接读 resolved.template 字段
  * 客户端做这个映射，因为 ComponentType<Layout> 不能跨 SC→CC 边界（builtin
@@ -42,6 +58,7 @@ function getDisplayMeta(resolved: SerializableResolvedTemplate): {
   name: string;
   description: string;
   isRecommended?: boolean;
+  category?: TemplateCategory;
 } {
   if (resolved.source === "builtin") {
     const meta = TEMPLATES.find((t) => t.id === resolved.id);
@@ -49,11 +66,13 @@ function getDisplayMeta(resolved: SerializableResolvedTemplate): {
       name: meta?.name ?? resolved.id,
       description: meta?.description ?? "",
       isRecommended: meta?.isRecommended,
+      category: meta?.category,
     };
   }
   return {
     name: resolved.template.name,
     description: resolved.template.description ?? "",
+    category: resolved.template.category ?? undefined,
   };
 }
 
@@ -62,10 +81,8 @@ export function TemplateLibraryClient({
   userResume,
   demoResume,
 }: Props) {
-  // toggle 默认：用户有简历 → ON（展示真实简历内容套各模板的效果）
-  // 没简历 → OFF + disable（toggle 灰掉，走 demo 内容）
-  const canUseMyContent = userResume !== null;
-  const [useMyContent, setUseMyContent] = useState<boolean>(canUseMyContent);
+  // 网格里的所有缩略图永远用 demoResume —— /templates 是全局浏览入口，
+  // "用我的内容预览"已经下沉到 TemplatePreviewDrawer（点击卡片打开后才决定）。
   const [tab, setTab] = useState<TabValue>("all");
   const [searchInput, setSearchInput] = useState<string>("");
   // 抽屉状态：selected 为 null 时不打开。
@@ -74,18 +91,14 @@ export function TemplateLibraryClient({
   const [isApplying, startApplying] = useTransition();
   const router = useRouter();
 
-  // useDeferredValue 包住 content：toggle 切换会触发 5+ 缩略图同时重渲染，
-  // 推迟 content 更新让 toggle 控件本身的视觉切换不被 thumbnail 渲染阻塞。
-  const activeContent =
-    useMyContent && userResume ? userResume.content : demoResume;
-  const deferredContent = useDeferredValue(activeContent);
-
-  // 过滤：tab + search。search 不区分大小写、按 name 子串匹配。
+  // 过滤：tab + search。search 不区分大小写、按 name 子串匹配。tab=all 不限。
   const filtered = useMemo(() => {
     const q = searchInput.trim().toLowerCase();
     return templates.filter((t) => {
-      if (tab === "builtin" && t.source !== "builtin") return false;
-      if (tab === "uploaded" && t.source !== "uploaded") return false;
+      if (tab !== "all") {
+        const { category } = getDisplayMeta(t);
+        if (category !== tab) return false;
+      }
       if (q) {
         const { name, description } = getDisplayMeta(t);
         const hay = `${name} ${description}`.toLowerCase();
@@ -94,6 +107,17 @@ export function TemplateLibraryClient({
       return true;
     });
   }, [templates, tab, searchInput]);
+
+  // 实际出现的 category 集合（按 CATEGORY_ORDER 顺序，不显示空 tab）。
+  // 例如只有 tech / business 模板时，tab 列表只显示「全部 / 互联网 / 商务」。
+  const availableCategories = useMemo(() => {
+    const present = new Set<TemplateCategory>();
+    for (const t of templates) {
+      const { category } = getDisplayMeta(t);
+      if (category) present.add(category);
+    }
+    return CATEGORY_ORDER.filter((c) => present.has(c));
+  }, [templates]);
 
   // 抽屉留给 P2.3 —— 现在卡片点击只是 console + 视觉 hover 效果。
   const handleCardClick = (resolved: SerializableResolvedTemplate) => {
@@ -129,48 +153,13 @@ export function TemplateLibraryClient({
     });
   };
 
-  const toggleId = useId();
-
   return (
     <div className="mx-auto max-w-6xl px-4 py-8 md:py-12">
-      <div className="mb-8 flex items-end justify-between gap-6 flex-wrap">
-        <div>
-          <h1 className="text-2xl font-bold md:text-3xl">模板库</h1>
-          <p className="mt-1 text-sm text-muted-foreground">
-            选个喜欢的模板套到你的简历上 ✨
-          </p>
-        </div>
-        {/* "use my content" toggle */}
-        <label
-          htmlFor={toggleId}
-          className={cn(
-            "flex items-center gap-3 rounded-lg border border-border bg-card px-4 py-2.5 text-sm",
-            !canUseMyContent && "opacity-60",
-          )}
-        >
-          <span className="relative inline-flex h-5 w-9 shrink-0">
-            <input
-              id={toggleId}
-              type="checkbox"
-              className="peer sr-only"
-              checked={useMyContent}
-              disabled={!canUseMyContent}
-              onChange={(e: ChangeEvent<HTMLInputElement>) =>
-                setUseMyContent(e.target.checked)
-              }
-            />
-            <span className="pointer-events-none absolute inset-0 rounded-full bg-border transition-colors peer-checked:bg-primary peer-disabled:cursor-not-allowed" />
-            <span className="pointer-events-none absolute top-0.5 left-0.5 size-4 rounded-full bg-white shadow-sm transition-transform peer-checked:translate-x-4" />
-          </span>
-          <span className="flex flex-col gap-0.5">
-            <span className="font-medium">用我的内容预览</span>
-            <span className="text-xs text-muted-foreground">
-              {canUseMyContent
-                ? "把你最近一份简历套到下面的模板上"
-                : "需要先创建一份简历才能开启"}
-            </span>
-          </span>
-        </label>
+      <div className="mb-8">
+        <h1 className="text-2xl font-bold md:text-3xl">模板库</h1>
+        <p className="mt-1 text-sm text-muted-foreground">
+          选个喜欢的模板套到你的简历上 ✨
+        </p>
       </div>
 
       {/* Tabs + search row */}
@@ -181,8 +170,11 @@ export function TemplateLibraryClient({
         >
           <TabsList>
             <TabsTrigger value="all">全部</TabsTrigger>
-            <TabsTrigger value="builtin">内置</TabsTrigger>
-            <TabsTrigger value="uploaded">上传</TabsTrigger>
+            {availableCategories.map((c) => (
+              <TabsTrigger key={c} value={c}>
+                {CATEGORY_LABELS[c]}
+              </TabsTrigger>
+            ))}
           </TabsList>
         </Tabs>
         <div className="relative ml-auto w-full max-w-xs">
@@ -208,7 +200,7 @@ export function TemplateLibraryClient({
             <TemplateCard
               key={`${resolved.source}:${resolved.id}`}
               resolved={resolved}
-              content={deferredContent}
+              content={demoResume}
               onClick={() => handleCardClick(resolved)}
             />
           ))}
@@ -221,7 +213,8 @@ export function TemplateLibraryClient({
           if (!o) setSelected(null);
         }}
         resolved={selected}
-        content={deferredContent}
+        demoContent={demoResume}
+        userContent={userResume?.content ?? null}
         resumeId={userResume?.id ?? null}
         isApplying={isApplying}
         onApply={handleApply}
@@ -239,8 +232,8 @@ function TemplateCard({
   content: ResumeContent;
   onClick: () => void;
 }) {
-  const { name, description, isRecommended } = getDisplayMeta(resolved);
-  const sourceLabel = resolved.source === "builtin" ? "内置" : "上传";
+  const { name, description, isRecommended, category } = getDisplayMeta(resolved);
+  const categoryLabel = category ? CATEGORY_LABELS[category] : null;
 
   return (
     <article
@@ -270,9 +263,11 @@ function TemplateCard({
                 推荐
               </span>
             )}
-            <span className="rounded-full bg-muted px-2 py-0.5 text-[10px] font-medium text-muted-foreground">
-              {sourceLabel}
-            </span>
+            {categoryLabel && (
+              <span className="rounded-full bg-muted px-2 py-0.5 text-[10px] font-medium text-muted-foreground">
+                {categoryLabel}
+              </span>
+            )}
           </div>
         </div>
         {description && (
