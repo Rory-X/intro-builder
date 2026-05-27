@@ -15,6 +15,13 @@
       "when": 1779636394035,
       "tag": "0001_odd_vindicator",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1779851563294,
+      "tag": "0002_flimsy_absorbing_man",
+      "breakpoints": true
     }
   ]
 }

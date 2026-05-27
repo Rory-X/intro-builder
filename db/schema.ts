@@ -88,6 +88,10 @@ export const templates = pgTable("templates", {
   source: text("source").notNull(),
   decoration: jsonb("decoration"),
   layout: jsonb("layout").notNull(),
+  // Skill v2 自由排版：customHtml / customCss 存在时引擎走 SlotRenderer，否则
+  // 走老的 layout JSON enum 路径。两条路径共存以保护存量模板（abbey 等）。
+  customHtml: text("customHtml"),
+  customCss: text("customCss"),
   status: text("status").notNull().default("draft"),
   createdBy: text("createdBy"),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
