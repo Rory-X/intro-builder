@@ -36,7 +36,8 @@ export function TemplateThumbnail({
 }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
   const stageRef = useRef<HTMLDivElement>(null);
-  // **始终从 false 开始** —— SSR 与 client 首次 render 都输出 skeleton。
+  // **始终从 false 开始** —— SSR 与 client 首次 render 都输出 skeleton
+  // （除非 forceMount 显式跳过，见下面 showStage 的合并）。
   // 不能依赖 `typeof IntersectionObserver === "undefined"` 在 useState
   // initializer 里"提前判断 SSR"：那样 server (无 IO → true) 与 client
   // (有 IO → false) 首次 render 不一致 → React 报 hydration mismatch
@@ -44,6 +45,11 @@ export function TemplateThumbnail({
   // "决定何时翻牌"挪到 useEffect，因为 useEffect 只在 client 跑、必然在
   // hydration 之后，怎么 setState 都不会触发 mismatch。
   const [mounted, setMounted] = useState<boolean>(false);
+
+  // forceMount 是"立即渲染"的逃生口（抽屉预览这种用户交互后才打开的场景），
+  // 直接合进显示判断里跳过懒挂载等待 —— SSR 与 CSR 首次都会 render stage，
+  // 仍然 hydration-safe（两边都 true 不冲突）。
+  const showStage = forceMount || mounted;
 
   useEffect(() => {
     if (mounted) return;
@@ -78,7 +84,7 @@ export function TemplateThumbnail({
   const { scale, offsetX } = useFitThumbnail({
     containerRef,
     stageRef,
-    enabled: mounted,
+    enabled: showStage,
     baseWidth,
   });
 
@@ -91,7 +97,7 @@ export function TemplateThumbnail({
         className,
       )}
     >
-      {mounted ? (
+      {showStage ? (
         <div
           ref={stageRef}
           data-template-thumbnail-stage=""

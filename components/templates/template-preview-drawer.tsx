@@ -69,7 +69,13 @@ export function TemplatePreviewDrawer({
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent
         side="right"
-        className="flex h-full w-full flex-col gap-0 p-0 sm:max-w-[960px]"
+        // Sheet 默认 `data-[side=right]:sm:max-w-sm`（384px），用相同
+        // 选择器才能让 tailwind-merge 识别为同组覆盖。否则我们这条
+        // `sm:max-w-[960px]` 被默认值赢掉（特异性更高），整个抽屉被卡
+        // 在 384px，左侧 1fr 预览栏被右边 320px 挤成 ~60px，缩略图缩到
+        // 芝麻大。`w-full` 已经把宽度兜在 viewport 内，所以只需 max-w
+        // 单边约束。
+        className="flex h-full w-full flex-col gap-0 p-0 data-[side=right]:sm:max-w-[960px]"
       >
         <SheetHeader className="border-b border-border px-6 py-4">
           <SheetTitle className="text-lg">

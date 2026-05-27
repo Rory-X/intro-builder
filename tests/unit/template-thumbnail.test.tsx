@@ -160,19 +160,18 @@ describe("TemplateThumbnail", () => {
   });
 
   it("renderToString 即使 forceMount=true 也允许 stage（强制路径明确放弃懒挂载）", () => {
-    // forceMount 是测试 / 立即预览的逃生口，调用方明确表达"不要懒"，那就
-    // 允许 SSR 直接渲染真实 stage（hydration 时 client 用同一逻辑也得到
-    // mounted=true，无 mismatch）。
+    // forceMount 是测试 / 立即预览（如抽屉）的逃生口，调用方明确表达
+    // "不要懒"。SSR 与 CSR 首次都直接渲染 stage —— 两边都 true 仍然
+    // hydration-safe（不存在 server skeleton vs client stage 的 mismatch）。
+    // 这条同时确保抽屉打开时不会先闪一帧 skeleton 再翻 stage。
     const html = renderToString(
       <TemplateThumbnail forceMount>
         <div>force-mounted-content</div>
       </TemplateThumbnail>,
     );
-    // forceMount → useState 初始 false → effect 翻为 true。
-    // 但 renderToString 不跑 effect，所以 SSR 输出仍是 skeleton。
-    // 这是有意为之：forceMount 不改变 SSR 输出，只改变 client effect 行为。
-    // hydration 后 client 立即翻 mounted=true，对用户来说没有可见差异。
-    expect(html).toContain("data-template-thumbnail-skeleton");
+    expect(html).toContain("data-template-thumbnail-stage");
+    expect(html).toContain("force-mounted-content");
+    expect(html).not.toContain("data-template-thumbnail-skeleton");
   });
 });
 
