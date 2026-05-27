@@ -17,6 +17,8 @@ const baseV1Row = {
   thumbnailUrl: null,
   decoration: null,
   layout: minimalLayout,
+  category: null,
+  features: null,
 };
 
 describe("UploadedTemplate Zod schema (v1 / v2 shape coexistence)", () => {

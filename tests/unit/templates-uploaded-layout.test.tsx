@@ -31,6 +31,8 @@ const sampleTemplate: UploadedTemplate = {
   },
   customHtml: null,
   customCss: null,
+  category: null,
+  features: null,
 };
 
 describe("UploadedLayout", () => {

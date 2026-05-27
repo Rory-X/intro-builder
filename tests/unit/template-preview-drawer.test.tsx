@@ -37,7 +37,8 @@ describe("TemplatePreviewDrawer", () => {
         open={false}
         onOpenChange={vi.fn()}
         resolved={builtinResolved}
-        content={demoResume}
+        demoContent={demoResume}
+        userContent={null}
         resumeId="r1"
         onApply={vi.fn()}
       />,
@@ -51,7 +52,8 @@ describe("TemplatePreviewDrawer", () => {
         open={true}
         onOpenChange={vi.fn()}
         resolved={builtinResolved}
-        content={demoResume}
+        demoContent={demoResume}
+        userContent={null}
         resumeId="r1"
         onApply={vi.fn()}
       />,
@@ -67,7 +69,8 @@ describe("TemplatePreviewDrawer", () => {
         open={true}
         onOpenChange={onOpenChange}
         resolved={builtinResolved}
-        content={demoResume}
+        demoContent={demoResume}
+        userContent={null}
         resumeId="r1"
         onApply={vi.fn()}
       />,
@@ -83,7 +86,8 @@ describe("TemplatePreviewDrawer", () => {
         open={true}
         onOpenChange={vi.fn()}
         resolved={builtinResolved}
-        content={demoResume}
+        demoContent={demoResume}
+        userContent={null}
         resumeId="r1"
         onApply={onApply}
       />,
@@ -98,7 +102,8 @@ describe("TemplatePreviewDrawer", () => {
         open={true}
         onOpenChange={vi.fn()}
         resolved={builtinResolved}
-        content={demoResume}
+        demoContent={demoResume}
+        userContent={null}
         resumeId={null}
         onApply={vi.fn()}
       />,
@@ -115,7 +120,8 @@ describe("TemplatePreviewDrawer", () => {
         open={true}
         onOpenChange={vi.fn()}
         resolved={builtinResolved}
-        content={demoResume}
+        demoContent={demoResume}
+        userContent={null}
         resumeId="r1"
         isApplying
         onApply={vi.fn()}
@@ -148,6 +154,8 @@ describe("TemplatePreviewDrawer", () => {
         },
         customHtml: null,
         customCss: null,
+  category: null,
+  features: null,
       },
     };
     render(
@@ -155,7 +163,8 @@ describe("TemplatePreviewDrawer", () => {
         open={true}
         onOpenChange={vi.fn()}
         resolved={uploadedResolved}
-        content={demoResume}
+        demoContent={demoResume}
+        userContent={null}
         resumeId="r1"
         onApply={vi.fn()}
       />,

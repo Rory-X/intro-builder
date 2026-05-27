@@ -36,6 +36,8 @@ describe("ClientTemplateRenderFromSerializable", () => {
       },
       customHtml: null,
       customCss: null,
+  category: null,
+  features: null,
     };
     const { container } = render(
       <ClientTemplateRenderFromSerializable

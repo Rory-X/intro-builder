@@ -32,6 +32,8 @@ const mockTemplate: UploadedTemplate = {
   },
   customHtml: null,
   customCss: null,
+  category: null,
+  features: null,
 };
 
 describe("getTemplateMetaAsync", () => {
