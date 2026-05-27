@@ -69,7 +69,8 @@ export function UploadedLayout({
   };
 
   const frame = template.layout.frame;
-  const header = (
+  // theme.hideHeader=true 时整个 ResumeHeader 不渲染 — 用于 banner-PNG 自带姓名/头像/联系方式的模板
+  const header = template.layout.theme.hideHeader ? null : (
     <ResumeHeader
       basics={content.basics}
       variant={template.layout.headerVariant}
@@ -78,6 +79,13 @@ export function UploadedLayout({
   );
 
   if (frame.kind === "vertical") {
+    // hideHeader 模式下，banner-PNG 作为 decoration absolute 占顶部 ~280px。
+    // sections 默认会从 article padding-top 开始覆盖在 banner 上 — 用 spacer 把
+    // 它们推到 banner 下方。
+    const bannerSpacer =
+      template.layout.theme.hideHeader && template.decoration?.bgImageUrl ? (
+        <div style={{ height: "280px", flexShrink: 0 }} aria-hidden />
+      ) : null;
     return (
       <ResumePage
         styleSettings={styleSettings}
@@ -88,6 +96,7 @@ export function UploadedLayout({
         templateFontFamily={template.layout.theme.fontFamily}
       >
         {header}
+        {bannerSpacer}
         {order.map((key) => sections[key] ?? null)}
       </ResumePage>
     );

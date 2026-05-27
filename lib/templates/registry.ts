@@ -34,21 +34,23 @@ import type { UploadedTemplate } from "./uploaded/types";
  */
 
 /**
- * 模板归类。spec §3.2 列了 5 类：
- * - simple：单栏文字（ATS 友好类）
- * - timeline：左侧时间轴 / 鳃骨视觉
- * - twocol：双栏 / 侧栏（含 sidebar 风）
- * - creative：装饰性强（用 decoration 图）
- * - academic：偏学术 / 简朴
+ * 模板归类（用户视角，决定模板库 tab）。
+ * 选 category 时想"这个模板最适合哪类岗位 / 求职者"，不想视觉结构。
  *
- * 加新分类时同步更新 spec 与 gallery 抽屉的 tag 显示。
+ * - academic：科研 / 院校 / 高校教职 / postdoc
+ * - tech：互联网产品 / 技术 / 设计 / 运营（字节 / 阿里 / 美团 / 腾讯）
+ * - business：金融 / 咨询 / 律所 / 银行 / 国企 / 快消（保守行业）
+ * - creative：设计师 / 艺术 / 传媒 / 营销（视觉表达岗）
+ * - general：跨场景通用，应届 / 年轻求职者 / 不挑行业
+ *
+ * 加新分类时同步：tab UI、insert-template.ts 校验、SKILL.md 命名规范。
  */
 export type TemplateCategory =
-  | "simple"
-  | "timeline"
-  | "twocol"
+  | "academic"
+  | "tech"
+  | "business"
   | "creative"
-  | "academic";
+  | "general";
 
 export type TemplateMeta = {
   id: TemplateId;
@@ -63,7 +65,14 @@ export type TemplateMeta = {
    * 撑爆布局。
    */
   defaultStyleSettings: StyleSettings;
-  category?: TemplateCategory;
+  /** 用户视角分类，决定模板库 tab 归属。所有 builtin 必填，uploaded 走 DB 字段。 */
+  category: TemplateCategory;
+  /**
+   * 抽屉里"这个模板的特点"显示的 3 条 per-template 文案。
+   * 写"适合谁 + 视觉特点 + 实用提示"，每条 ≤ 30 字，**避免**通用废话
+   *（"应用后样式 100% 一致" 这种所有模板都适用的不是模板特点）。
+   */
+  features: [string, string, string];
   tags?: string[];
 };
 
@@ -109,6 +118,8 @@ export type AllTemplatesItem = {
   /** Surfaced from TemplateMeta (builtin) or registry-server fallback (uploaded). */
   defaultStyleSettings: StyleSettings;
   category?: TemplateCategory;
+  /** 抽屉里"这个模板的特点"渲染。null/undefined 时抽屉降级为通用文案（不报错）。 */
+  features?: [string, string, string] | string[];
   tags?: string[];
 };
 

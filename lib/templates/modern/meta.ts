@@ -14,6 +14,11 @@ export const modernMeta = {
   name: "现代",
   description: "技术风双栏",
   defaultStyleSettings: MODERN_DEFAULT_STYLE_SETTINGS,
-  category: "twocol" as const,
+  category: "tech" as const,
+  features: [
+    "双栏布局，深色 sidebar 突出技能与联系方式",
+    "适合技术岗、设计岗，信息密度大",
+    "紧凑排版适合内容丰富的简历",
+  ] as [string, string, string],
   tags: ["双栏", "头像"],
 };

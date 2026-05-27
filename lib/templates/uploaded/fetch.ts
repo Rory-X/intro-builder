@@ -17,15 +17,51 @@ function isMissingTableError(err: unknown): boolean {
   return /relation .*templates.* does not exist|no such table/i.test(msg);
 }
 
+/**
+ * Neon HTTP fetch from China to ap-southeast-1 occasionally hits ECONNRESET
+ * / TLS handshake reset / "fetch failed". These are transport-level hiccups,
+ * not real DB failures — retrying with brief backoff usually succeeds. Without
+ * retry every flaky page load drops uploaded templates to [] and the picker
+ * silently shows only built-ins.
+ */
+function isTransientNetworkError(err: unknown): boolean {
+  const msg = err instanceof Error ? err.message : String(err);
+  const causeMsg =
+    err instanceof Error && (err as Error & { cause?: { code?: string; message?: string } }).cause
+      ? `${(err as Error & { cause?: { code?: string; message?: string } }).cause?.code ?? ""} ${
+          (err as Error & { cause?: { code?: string; message?: string } }).cause?.message ?? ""
+        }`
+      : "";
+  return /fetch failed|ECONNRESET|socket disconnected|network socket|TLS|handshake/i.test(
+    msg + " " + causeMsg,
+  );
+}
+
+async function withTransientRetry<T>(label: string, fn: () => Promise<T>, max = 3): Promise<T> {
+  for (let i = 1; i <= max; i++) {
+    try {
+      return await fn();
+    } catch (err) {
+      if (i === max || !isTransientNetworkError(err)) throw err;
+      const delay = 200 * 2 ** (i - 1);
+      console.warn(`[templates] ${label} attempt ${i}/${max} hit transient — retry in ${delay}ms`);
+      await new Promise((r) => setTimeout(r, delay));
+    }
+  }
+  throw new Error("unreachable");
+}
+
 export async function fetchUploadedTemplate(
   id: string,
 ): Promise<UploadedTemplateType | null> {
   try {
-    const rows = await db
-      .select()
-      .from(templates)
-      .where(and(eq(templates.id, id), eq(templates.status, "published")))
-      .limit(1);
+    const rows = await withTransientRetry("fetchUploadedTemplate", () =>
+      db
+        .select()
+        .from(templates)
+        .where(and(eq(templates.id, id), eq(templates.status, "published")))
+        .limit(1),
+    );
     if (rows.length === 0) return null;
     return parseTemplateRow(rows[0]);
   } catch (err) {
@@ -37,11 +73,13 @@ export async function fetchUploadedTemplate(
 
 export async function listUploadedTemplates(): Promise<UploadedTemplateType[]> {
   try {
-    const rows = await db
-      .select()
-      .from(templates)
-      .where(eq(templates.status, "published"))
-      .orderBy(templates.createdAt);
+    const rows = await withTransientRetry("listUploadedTemplates", () =>
+      db
+        .select()
+        .from(templates)
+        .where(eq(templates.status, "published"))
+        .orderBy(templates.createdAt),
+    );
     // 单条坏行不击穿整页：每行独立 safeParse，失败 skip + warn，不 throw。
     return rows
       .map(parseTemplateRow)
@@ -74,6 +112,8 @@ export function parseTemplateRow(
     layout: row.layout,
     customHtml: row.customHtml,
     customCss: row.customCss,
+    category: row.category,
+    features: row.features,
   };
   const result = UploadedTemplate.safeParse(candidate);
   if (!result.success) {

@@ -55,7 +55,9 @@ export type BuildSectionsOptions = {
 function narrowToItemHeaderVariant(
   v: ResumeSectionVariant,
 ): ResumeItemHeaderVariant {
-  return v === "card-wrapped" ? "professional" : v;
+  // card-wrapped + full-width-bar 是 section-level 视觉，item header 内部仍按 professional 渲染
+  if (v === "card-wrapped" || v === "full-width-bar") return "professional";
+  return v;
 }
 
 export function buildResumeSections(

@@ -76,10 +76,12 @@ export function SlotRenderer({
   // element). Without this normalization, `<slot data-bind="x" />` becomes
   // `<slot data-bind="x">...rest of doc...</slot>` and the renderer eats
   // everything that follows. Convert <slot ... /> → <slot ...></slot>.
-  const normalizedHtml = html.replace(
-    /<slot\b([^>]*?)\/>/gi,
-    "<slot$1></slot>",
-  );
+  const normalizedHtml = html
+    .replace(/<slot\b([^>]*?)\/>/gi, "<slot$1></slot>")
+    // React 19 escalates `<img src="">` from warning to dev-overlay error.
+    // Skill v2 has no image-content mechanism yet — drop empty src so the
+    // browser keeps the img as a placeholder shell instead of crashing render.
+    .replace(/(<img\b[^>]*?)\s+src=(""|'')/gi, "$1");
   const cleanHtml = DOMPurify.sanitize(normalizedHtml, {
     ALLOWED_TAGS: SAFE_TAGS,
     ALLOWED_ATTR: SAFE_ATTRS,

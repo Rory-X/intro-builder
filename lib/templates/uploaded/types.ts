@@ -24,9 +24,25 @@ const SectionTitleVariantSchema = z.enum([
   "professional",
   "modern",
   "card-wrapped",
+  "full-width-bar",
 ]) satisfies z.ZodType<ResumeSectionVariant>;
 
 const ItemHeaderVariantSchema = z.enum(["professional", "classic", "modern"]);
+
+// 用户视角 category enum —— 同 lib/templates/registry.ts 的 TemplateCategory。
+// 这里独立定义而非 import registry.ts，避免循环引用（registry.ts 已经引用
+// UploadedTemplate）。两边手动同步即可——只有 5 个值。
+export const TemplateCategorySchema = z.enum([
+  "academic",
+  "tech",
+  "business",
+  "creative",
+  "general",
+]);
+export type TemplateCategoryValue = z.infer<typeof TemplateCategorySchema>;
+
+// features 数组：抽屉里"这个模板的特点"显示。固定 3 条，每条 ≤ 60 字。
+const FeaturesSchema = z.array(z.string().min(1).max(60)).length(3);
 
 // === DecorationConfig ===
 /**
@@ -113,6 +129,8 @@ export const LayoutConfig = z.object({
     cardRadius: z.string().optional(),
     cardShadow: z.string().optional(),
     fontFamily: z.string().optional(),
+    /** 隐藏 ResumeHeader（用于 banner-PNG 自带头像/姓名/联系方式的模板） */
+    hideHeader: z.boolean().optional(),
   }),
   sectionIcons: z.record(z.string(), z.string()),
 });
@@ -136,5 +154,7 @@ export const UploadedTemplate = z.object({
   layout: LayoutConfig,
   customHtml: z.string().nullable(),
   customCss: z.string().nullable(),
+  category: TemplateCategorySchema.nullable(),
+  features: FeaturesSchema.nullable(),
 });
 export type UploadedTemplate = z.infer<typeof UploadedTemplate>;

@@ -82,6 +82,7 @@ export async function listAllTemplatesAsync(): Promise<AllTemplatesItem[]> {
     isRecommended: t.isRecommended,
     defaultStyleSettings: t.defaultStyleSettings,
     category: t.category,
+    features: t.features,
     tags: t.tags,
   }));
   const uploaded = await listUploadedTemplates();
@@ -92,7 +93,8 @@ export async function listAllTemplatesAsync(): Promise<AllTemplatesItem[]> {
     thumbnailUrl: t.thumbnailUrl,
     source: "uploaded",
     defaultStyleSettings: UPLOADED_DEFAULT_STYLE_SETTINGS,
-    category: undefined,
+    category: t.category ?? undefined,
+    features: t.features ?? undefined,
     tags: undefined,
   }));
   return [...builtin, ...uploadedItems];

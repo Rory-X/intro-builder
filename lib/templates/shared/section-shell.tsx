@@ -20,7 +20,8 @@ function shellWrap(
  * professional 风格最匹配（也是空 shell 占位符的合理默认）。
  */
 function narrow(v: ResumeSectionVariant): ResumeItemHeaderVariant {
-  return v === "card-wrapped" ? "professional" : v;
+  if (v === "card-wrapped" || v === "full-width-bar") return "professional";
+  return v;
 }
 
 type ShellProps = {
