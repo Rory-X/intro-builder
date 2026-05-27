@@ -1,4 +1,5 @@
 import Link from "next/link";
+import Image from "next/image";
 
 const FOOTER_COLUMNS = [
   {
@@ -43,9 +44,12 @@ export function MarketingFooter() {
           {/* Brand */}
           <div className="col-span-2">
             <div className="flex items-center gap-2">
-              <span className="inline-flex h-7 w-7 items-center justify-center rounded-lg bg-white text-[10px] font-extrabold text-gray-900">
-                ib
-              </span>
+              <Image
+                src="/logo.png"
+                alt="intro-builder"
+                width={28}
+                height={28}
+              />
               <span className="text-sm font-bold text-white">intro-builder</span>
             </div>
             <p className="mt-4 max-w-xs text-sm leading-relaxed">
