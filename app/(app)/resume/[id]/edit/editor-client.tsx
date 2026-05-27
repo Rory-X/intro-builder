@@ -24,7 +24,7 @@ import { SkillsEditor } from "@/components/editor/skills-editor";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
-import { Loader2, Share2 } from "lucide-react";
+import { Loader2, Share2, PanelRightClose, PanelRightOpen, MessageSquare } from "lucide-react";
 import { resolveTemplateId, type AllTemplatesItem, type TemplateId } from "@/lib/templates/registry";
 import {
   BUILTIN_TEMPLATE_IDS,
@@ -34,6 +34,7 @@ import {
 import type { SerializableResolvedTemplate } from "@/lib/templates/render";
 import type { UploadedTemplate } from "@/lib/templates/uploaded/types";
 import { monitorForElements } from "@atlaskit/pragmatic-drag-and-drop/element/adapter";
+import { autoScrollForElements } from "@atlaskit/pragmatic-drag-and-drop-auto-scroll/element";
 import { SectionWrapper } from "@/components/editor/section-wrapper";
 import { ModuleManager } from "@/components/editor/module-manager";
 import { CustomSectionEditor } from "@/components/editor/custom-section-editor";
@@ -51,7 +52,7 @@ import { useCollabFormSync } from "@/hooks/use-collab-form-sync";
 import { useAnnotations } from "@/hooks/use-annotations";
 import { PresenceBar } from "@/components/collab/presence-bar";
 import { VoiceChatControls } from "@/components/collab/voice-chat-controls";
-import { AnnotationHighlights } from "@/components/collab/annotation-highlights";
+import { AnnotationHighlights, flashAnnotation } from "@/components/collab/annotation-highlights";
 import { AnnotationList } from "@/components/collab/annotation-list";
 
 type Props = {
@@ -97,7 +98,7 @@ function getDesktopSnapshot() {
 }
 
 function getServerDesktopSnapshot() {
-  return false;
+  return true; // Assume desktop for SSR (this page is desktop-only)
 }
 
 function formatRelativeSaveTime(savedAt: Date, now: Date): string {
@@ -133,10 +134,12 @@ export default function EditorClient({ id, initialTitle, initialTemplate, initia
   });
   const [now, setNow] = useState(() => new Date());
   const [isExportingImage, setIsExportingImage] = useState(false);
+  const [paginationData, setPaginationData] = useState<{ pageBreaks: number[]; totalHeight: number } | null>(null);
   const [pendingTemplateId, setPendingTemplateId] = useState<TemplateId | null>(null);
   const [isTogglingShare, setIsTogglingShare] = useState(false);
   const [isPending, startTransition] = useTransition();
   const previewRootRef = useRef<HTMLDivElement>(null);
+  const editorPanelRef = useRef<HTMLDivElement>(null);
   const [sectionOrder, setSectionOrder] = useState<string[]>(
     initialContent.sectionOrder ?? [...DEFAULT_SECTION_ORDER]
   );
@@ -261,7 +264,6 @@ export default function EditorClient({ id, initialTitle, initialTemplate, initia
       cancelled = true;
       if (timer) clearInterval(timer);
     };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [collabSessionId, collabConfig]);
 
   const collabState = useCollabProvider(collabConfig);
@@ -298,6 +300,13 @@ export default function EditorClient({ id, initialTitle, initialTemplate, initia
       },
     });
   }, [form]);
+
+  // Auto-scroll the editor panel when dragging sections near edges
+  useEffect(() => {
+    const el = editorPanelRef.current;
+    if (!el) return;
+    return autoScrollForElements({ element: el });
+  }, []);
 
   useEffect(() => {
     const timer = window.setInterval(() => setNow(new Date()), 60_000);
@@ -421,7 +430,7 @@ export default function EditorClient({ id, initialTitle, initialTemplate, initia
           <Input
             value={title}
             onChange={(e) => setTitleState(e.target.value)}
-            className="w-full sm:max-w-xs text-base font-medium"
+            className="w-48 text-base font-medium"
           />
           <span
             data-testid="autosave-status"
@@ -501,6 +510,7 @@ export default function EditorClient({ id, initialTitle, initialTemplate, initia
               filename={title}
               onExportImage={onExportImage}
               isExportingImage={isExportingImage}
+              paginationData={paginationData}
             />
             <InviteCollabDialog resumeId={id} onSessionCreated={(sid) => setCollabSessionId(sid)} />
             {collabState?.isConnected && (
@@ -542,6 +552,7 @@ export default function EditorClient({ id, initialTitle, initialTemplate, initia
       {isDesktop ? (
         <div className="flex h-[calc(100vh-3.5rem-4rem)]">
           <div
+            ref={editorPanelRef}
             className="thin-scrollbar space-y-6 overflow-y-auto border-r p-6"
             style={{ width: `${splitPercent}%` }}
           >
@@ -583,18 +594,17 @@ export default function EditorClient({ id, initialTitle, initialTemplate, initia
               <AnnotationHighlights
                 previewRef={previewRootRef}
                 annotations={collabAnnotations}
-              />
-            )}
-          </div>
-          {/* Annotation panel (when there are annotations from mentor) */}
-          {collabAnnotations.length > 0 && (
-            <div className="thin-scrollbar w-[300px] shrink-0 overflow-y-auto border-l bg-background p-3">
-              <AnnotationList
-                annotations={collabAnnotations}
                 canManage
                 onUpdateStatus={updateAnnotationStatus}
               />
-            </div>
+            )}
+          </div>
+          {/* Collapsible annotation panel */}
+          {collabAnnotations.length > 0 && (
+            <AnnotationPanel
+              annotations={collabAnnotations}
+              onUpdateStatus={updateAnnotationStatus}
+            />
           )}
         </div>
       ) : (
@@ -614,5 +624,62 @@ export default function EditorClient({ id, initialTitle, initialTemplate, initia
         </div>
       )}
     </FormProvider>
+  );
+}
+
+/** Collapsible annotation panel for owner */
+function AnnotationPanel({
+  annotations,
+  onUpdateStatus,
+}: {
+  annotations: import("@/hooks/use-annotations").Annotation[];
+  onUpdateStatus: (id: string, status: "accepted" | "dismissed") => void;
+}) {
+  const [collapsed, setCollapsed] = useState(false);
+  const pendingCount = annotations.filter((a) => a.status === "pending").length;
+
+  if (collapsed) {
+    return (
+      <div className="flex shrink-0 flex-col items-center gap-2 border-l bg-background px-2 py-3">
+        <button
+          onClick={() => setCollapsed(false)}
+          className="rounded-md p-1.5 hover:bg-accent"
+          title="展开批注面板"
+        >
+          <PanelRightOpen className="h-4 w-4" />
+        </button>
+        <div className="flex flex-col items-center gap-1">
+          <MessageSquare className="h-4 w-4 text-muted-foreground" />
+          {pendingCount > 0 && (
+            <span className="rounded-full bg-orange-100 px-1.5 py-0.5 text-[10px] font-medium text-orange-700 dark:bg-orange-900/40 dark:text-orange-300">
+              {pendingCount}
+            </span>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="thin-scrollbar w-[280px] shrink-0 overflow-y-auto border-l bg-background">
+      <div className="sticky top-0 z-10 flex items-center justify-between border-b bg-background px-3 py-2">
+        <span className="text-xs font-medium">批注 ({annotations.length})</span>
+        <button
+          onClick={() => setCollapsed(true)}
+          className="rounded-md p-1 hover:bg-accent"
+          title="收起面板"
+        >
+          <PanelRightClose className="h-4 w-4" />
+        </button>
+      </div>
+      <div className="p-3">
+        <AnnotationList
+          annotations={annotations}
+          canManage
+          onUpdateStatus={onUpdateStatus}
+          onClickAnnotation={(ann) => flashAnnotation(ann.id)}
+        />
+      </div>
+    </div>
   );
 }

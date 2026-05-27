@@ -17,6 +17,8 @@ export type Annotation = {
   sectionKey: string;
   itemIndex?: number;
   pageNumber?: number;
+  /** Character offset in the normalized (whitespace-stripped) full text of the preview */
+  charOffset?: number;
   timestamp: number;
   authorName: string;
   status: "pending" | "accepted" | "dismissed";

@@ -12,6 +12,7 @@ type Props = {
   onExportImage: () => Promise<void>;
   isExportingImage: boolean;
   className?: string;
+  paginationData?: { pageBreaks: number[]; totalHeight: number } | null;
 };
 
 /**
@@ -23,6 +24,7 @@ export function ExportButton({
   onExportImage,
   isExportingImage,
   className,
+  paginationData,
 }: Props) {
   const [isDownloadingPdf, setIsDownloadingPdf] = useState(false);
   const [open, setOpen] = useState(false);
@@ -36,8 +38,13 @@ export function ExportButton({
     let objectUrl: string | null = null;
     try {
       const response = await fetch(`/api/pdf/${resumeId}`, {
-        method: "GET",
+        method: "POST",
         credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          pageBreaks: paginationData?.pageBreaks ?? [],
+          totalHeight: paginationData?.totalHeight ?? 0,
+        }),
       });
       if (!response.ok) {
         throw new Error(`PDF 接口返回 ${response.status}`);

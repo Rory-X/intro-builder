@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef } from "react";
+import { createPortal } from "react-dom";
 import { useVoiceChat, type VoiceError } from "@/hooks/use-voice-chat";
 import { Button } from "@/components/ui/button";
 import { Phone, PhoneOff, Mic, MicOff, PhoneIncoming, X, AlertTriangle } from "lucide-react";
@@ -50,46 +51,48 @@ export function VoiceChatControls({ provider, enabled }: Props) {
 
   if (!enabled) return null;
 
-  // --- Incoming call modal (callee) ---
+  // --- Incoming call notification (callee) — top-right toast style, non-blocking ---
   if (voice.status === "ringing-in") {
+    const notification = (
+      <div className="fixed top-16 right-4 z-[9999] w-72 rounded-2xl bg-background p-4 shadow-2xl ring-1 ring-border animate-in slide-in-from-top-2 fade-in duration-300">
+        <div className="flex items-center gap-3">
+          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-green-100 dark:bg-green-900/40">
+            <PhoneIncoming className="h-5 w-5 text-green-600 animate-pulse" />
+          </div>
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-medium truncate">{voice.callerName || "对方"}邀请语音通话</p>
+            <p className="text-xs text-muted-foreground">30 秒内不接听将自动取消</p>
+          </div>
+        </div>
+        <div className="mt-3 flex gap-2 justify-end">
+          <Button
+            onClick={voice.rejectCall}
+            variant="outline"
+            size="sm"
+            className="h-8 gap-1 px-3 text-xs text-destructive"
+          >
+            <X className="h-3.5 w-3.5" />
+            拒绝
+          </Button>
+          <Button
+            onClick={voice.acceptCall}
+            size="sm"
+            className="h-8 gap-1 px-3 text-xs bg-green-600 hover:bg-green-700 text-white"
+          >
+            <Phone className="h-3.5 w-3.5" />
+            接听
+          </Button>
+        </div>
+      </div>
+    );
+
     return (
       <>
         <span className="flex items-center gap-1.5 text-xs font-medium text-green-600 animate-pulse">
           <PhoneIncoming className="h-3.5 w-3.5" />
           来电…
         </span>
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm">
-          <div className="w-72 rounded-2xl bg-background p-6 shadow-2xl ring-1 ring-border">
-            <div className="flex flex-col items-center gap-4">
-              <div className="flex h-16 w-16 items-center justify-center rounded-full bg-green-100 dark:bg-green-900/40">
-                <PhoneIncoming className="h-8 w-8 text-green-600 animate-pulse" />
-              </div>
-              <div className="text-center">
-                <p className="text-lg font-medium">{voice.callerName || "对方"}邀请语音通话</p>
-                <p className="mt-1 text-sm text-muted-foreground">30 秒内不接听将自动取消</p>
-              </div>
-              <div className="flex gap-4">
-                <Button
-                  onClick={voice.rejectCall}
-                  variant="destructive"
-                  size="lg"
-                  className="h-12 w-12 rounded-full p-0"
-                  title="拒绝"
-                >
-                  <X className="h-5 w-5" />
-                </Button>
-                <Button
-                  onClick={voice.acceptCall}
-                  size="lg"
-                  className="h-12 w-12 rounded-full bg-green-600 p-0 hover:bg-green-700"
-                  title="接听"
-                >
-                  <Phone className="h-5 w-5 text-white" />
-                </Button>
-              </div>
-            </div>
-          </div>
-        </div>
+        {typeof document !== "undefined" && createPortal(notification, document.body)}
       </>
     );
   }

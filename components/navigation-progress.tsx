@@ -72,8 +72,10 @@ function NavigationProgressInner() {
       try {
         const url = new URL(href, location.origin);
         if (url.origin !== location.origin) return;
-        // Skip if same page
+        // Skip if same page (same path + search, regardless of hash)
         if (url.pathname === location.pathname && url.search === location.search) return;
+        // Skip if only the hash is different (anchor navigation)
+        if (url.pathname === location.pathname && url.hash) return;
       } catch {
         return;
       }
@@ -85,29 +87,30 @@ function NavigationProgressInner() {
     const originalPushState = history.pushState.bind(history);
     const originalReplaceState = history.replaceState.bind(history);
 
+    function shouldStartForHistoryChange(newUrlArg: unknown) {
+      if (!newUrlArg) return false;
+      try {
+        const newUrl = new URL(newUrlArg.toString(), location.origin);
+        // Skip hash-only changes (same path + search)
+        if (newUrl.pathname === location.pathname && newUrl.search === location.search) return false;
+        return true;
+      } catch {
+        return false;
+      }
+    }
+
     history.pushState = function (...args: Parameters<typeof history.pushState>) {
       const result = originalPushState(...args);
-      // Start progress if URL actually changed and not already started
-      if (args[2]) {
-        try {
-          const newHref = new URL(args[2].toString(), location.origin).href;
-          if (newHref !== prevUrl.current) {
-            NProgress.start();
-          }
-        } catch { /* ignore invalid URLs */ }
+      if (shouldStartForHistoryChange(args[2])) {
+        NProgress.start();
       }
       return result;
     };
 
     history.replaceState = function (...args: Parameters<typeof history.replaceState>) {
       const result = originalReplaceState(...args);
-      if (args[2]) {
-        try {
-          const newHref = new URL(args[2].toString(), location.origin).href;
-          if (newHref !== prevUrl.current) {
-            NProgress.start();
-          }
-        } catch { /* ignore */ }
+      if (shouldStartForHistoryChange(args[2])) {
+        NProgress.start();
       }
       return result;
     };

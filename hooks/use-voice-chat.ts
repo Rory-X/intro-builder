@@ -222,7 +222,9 @@ export function useVoiceChat({ provider, enabled }: UseVoiceChatOptions): VoiceC
   // ----- Start call (caller) -----
   const startCall = useCallback(() => {
     const ws = getWs(provider);
-    if (!ws || !enabled || statusRef.current !== "idle") return;
+    if (!ws || !enabled) return;
+    // Allow starting from idle OR error state (retry)
+    if (statusRef.current !== "idle" && statusRef.current !== "error") return;
 
     retryCountRef.current = 0;
     setStatus("ringing-out");

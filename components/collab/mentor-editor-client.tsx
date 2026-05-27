@@ -22,7 +22,7 @@ import { PresenceBar } from "@/components/collab/presence-bar";
 import { VoiceChatControls } from "@/components/collab/voice-chat-controls";
 import { AnnotationPopover } from "@/components/collab/annotation-popover";
 import { AnnotationList } from "@/components/collab/annotation-list";
-import { AnnotationHighlights } from "@/components/collab/annotation-highlights";
+import { AnnotationHighlights, flashAnnotation } from "@/components/collab/annotation-highlights";
 import { useCollabProvider, type CollabConfig } from "@/hooks/use-collab-provider";
 import { useCollabFormSync } from "@/hooks/use-collab-form-sync";
 import { useAnnotations } from "@/hooks/use-annotations";
@@ -113,21 +113,23 @@ function MentorEditorInner({
     mode: "onChange",
   });
 
-  // Bidirectional form sync via Y.Map (only for edit mode)
+  // Bidirectional form sync via Y.Map
+  // In edit mode: mentor can write. In comment mode: mentor only receives owner's edits.
   const collabSync = useCollabFormSync({
     ydoc,
     form,
     role: "mentor",
-    enabled: isConnected && mode === "edit",
+    enabled: isConnected,
   });
 
   // Annotations (for comment mode)
-  const { annotations, addAnnotation, updateStatus } = useAnnotations({
+  const { annotations, addAnnotation } = useAnnotations({
     ydoc,
     enabled: isConnected && mode === "comment",
   });
 
   const previewRef = useRef<HTMLDivElement>(null);
+  const previewContentRef = useRef<HTMLDivElement>(null);
   const displayNameRef = useRef(displayName);
   displayNameRef.current = displayName;
 
@@ -209,14 +211,16 @@ function MentorEditorInner({
               <AnnotationList
                 annotations={annotations}
                 canManage={false}
+                onClickAnnotation={(ann) => flashAnnotation(ann.id)}
               />
             </div>
             {/* Right: preview with annotation popover (批注模式) */}
             <div ref={previewRef} className="thin-scrollbar relative flex-1 overflow-y-auto bg-muted p-6">
-              <LivePreview resolvedTemplate={resolvedTemplate} />
-              <AnnotationHighlights previewRef={previewRef} annotations={annotations} />
+              <LivePreview ref={previewContentRef} resolvedTemplate={resolvedTemplate} />
+              <AnnotationHighlights previewRef={previewContentRef} annotations={annotations} />
               <AnnotationPopover
                 previewRef={previewRef}
+                contentRef={previewContentRef}
                 onSubmit={(data) => addAnnotation({ ...data, authorName: displayNameRef.current })}
                 enabled
               />

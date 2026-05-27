@@ -6,11 +6,13 @@ import { PaginatedPreview } from "./paginated-preview";
 type Props = {
   content: ResumeContent;
   resolvedTemplate: SerializableResolvedTemplate;
+  onPaginationChange?: (data: { pageBreaks: number[]; totalHeight: number }) => void;
 };
 
 export const PreviewPanel = forwardRef<HTMLDivElement, Props>(function PreviewPanel({
   content,
   resolvedTemplate,
+  onPaginationChange,
 }, ref) {
   return (
     <div className="flex justify-center">
@@ -20,6 +22,7 @@ export const PreviewPanel = forwardRef<HTMLDivElement, Props>(function PreviewPa
         resolvedTemplate={resolvedTemplate}
         styleSettings={content.styleSettings}
         showEmptyPlaceholders
+        onPaginationChange={onPaginationChange}
       />
     </div>
   );

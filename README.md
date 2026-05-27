@@ -2,78 +2,144 @@
 
 [![CI](https://github.com/Rory-X/intro-builder/actions/workflows/ci.yml/badge.svg)](https://github.com/Rory-X/intro-builder/actions/workflows/ci.yml)
 
-面向互联网求职者的在线简历排版工具。Next.js 16 App Router + Neon Postgres / 本地 Postgres + Auth.js v5 Magic Link + Puppeteer PDF + Vercel Blob 头像上传。
+面向中文互联网求职者的在线简历排版工具。结构化编辑 → 实时预览 → 一键导出 A4 PDF → 可选公开只读分享链接。
+
+## 技术栈
+
+Next.js 16 App Router · React 19 · Drizzle ORM + Neon Postgres / 本地 Postgres · Auth.js v5 · TipTap 富文本 · Puppeteer PDF · PartyKit 协同编辑 · Vercel Blob · Tailwind v4
 
 ## 功能
 
-- 邮箱 Magic Link 登录（Resend），无密码
-- 结构化编辑：基础信息 / 教育 / 工作经历 / 项目 / 技能，支持富文本内容
-- 模板库（`/templates`）：内置 3 套（专业 / 经典 / 现代）+ DB 上传模板，预览抽屉直接套用到当前简历
-- 分区与条目拖拽排序，支持头像上传
-- 2 秒防抖自动保存
-- 一键导出 A4 PDF（Puppeteer 截取同一预览页，保证和屏幕预览一致）
-- 一键开启公开只读分享链接 `/r/[slug]`
+### 编辑与排版
+
+- 结构化分区编辑：基础信息 / 教育 / 工作经历 / 项目 / 技能 / 自定义模块
+- TipTap 富文本编辑器，支持格式化、链接、对齐、字号调节
+- 模板库（`/templates`）：三套内置（专业 / 经典 / 现代）+ DB 上传模板，预览抽屉直接套用到当前简历
+- 分区与条目拖拽排序（Pragmatic Drag & Drop）
+- 头像上传（Vercel Blob）
+- 2 秒防抖自动保存，串行队列防丢失
+- 可调密度 / 行高 / 页边距样式预设
+- 可缩放 editor / preview 分屏面板
+
+### 导入与导出
+
+- **简历导入**：支持 PDF / Word / 图片文件，OCR 识别 + DeepSeek AI 结构化解析，SSE 流式反馈进度
+- **PDF 导出**：Puppeteer 逐页截图 + pdf-lib 合成，确保与屏幕预览像素级一致
+- **公开分享**：一键生成只读链接 `/r/[slug]`
+
+### 协同编辑
+
+- PartyKit + Y.js 实时协同，导师可通过邀请链接加入
+- WebRTC P2P 语音通话（PartyKit 信令）
+- 批注系统：导师可高亮标注 + 评论，求职者即时查看
+
+### 账号与安全
+
+- 邮箱 Magic Link 登录（Resend）
+- 密码登录 + 邮箱验证码修改密码
+- 简历完成度评分，Dashboard 卡片总览
+- 移动端检测提示（编辑器仅支持 PC）
 
 ## 本地开发
 
 ```bash
 pnpm install
 cp .env.example .env.local
-# 填入 DATABASE_URL / AUTH_SECRET / AUTH_RESEND_KEY / AUTH_EMAIL_FROM
+# 填入必需的环境变量（见下方说明）
 pnpm drizzle-kit migrate
 pnpm dev
 ```
 
-要生成 AUTH_SECRET：
+### 环境变量
+
+| 变量 | 必需 | 说明 |
+|---|---|---|
+| `DATABASE_URL` | ✅ | Postgres 连接串。`*.neon.tech` 走 Neon HTTP driver，`localhost` 走 `postgres.js` TCP |
+| `DATABASE_URL_UNPOOLED` | | 直连地址，`drizzle-kit migrate` 优先使用 |
+| `AUTH_SECRET` | ✅ | `openssl rand -base64 32` |
+| `AUTH_URL` | ✅ | 应用 URL，本地为 `http://localhost:3000` |
+| `AUTH_RESEND_KEY` | ✅ | [Resend](https://resend.com) API Key |
+| `AUTH_EMAIL_FROM` | ✅ | 发件地址，如 `login@your-domain.com` |
+| `BLOB_READ_WRITE_TOKEN` | | Vercel Blob token，头像上传需要 |
+| `DEEPSEEK_API_KEY` | | DeepSeek API Key，简历导入功能需要 |
+| `OCR_SPACE_API_KEY` | | OCR.space API Key，图片/扫描件导入需要 |
+| `NEXT_PUBLIC_PARTYKIT_HOST` | | PartyKit 服务地址，协同编辑需要 |
+
+### 协同编辑服务（可选）
 
 ```bash
-openssl rand -base64 32
+cd partykit
+pnpm install
+pnpm dev    # 启动本地 PartyKit 服务
 ```
 
-`DATABASE_URL` 指向 `*.neon.tech` 时运行时会使用 Neon HTTP driver；指向 `localhost` / `127.0.0.1` / Docker Postgres 时会使用 `postgres.js` TCP driver，便于本地开发。`drizzle-kit migrate` 会优先使用 `DATABASE_URL_UNPOOLED`，没有时回退到 `DATABASE_URL`。
-
-## 跑测试
+## 测试与验证
 
 ```bash
-pnpm test             # 单测 (vitest)
+pnpm test             # Vitest 单测
 pnpm tsc --noEmit     # 类型检查
 pnpm lint             # ESLint
 pnpm build            # 生产构建
+pnpm verify           # 一键运行以上全部
 ```
 
-## Vercel 部署
+## 部署
 
-1. 推到 GitHub，在 Vercel Dashboard → Import Project。
-2. Vercel Dashboard → Storage → Create / Connect **Neon Postgres**（免费档）。`DATABASE_URL` 会自动注入。
-3. 在 [Resend](https://resend.com) 注册 → 验证域名 → 拿到 API Key。
-4. Vercel 项目 → Settings → Environment Variables，添加：
-   - `AUTH_SECRET` — `openssl rand -base64 32`
-   - `AUTH_URL` — 例如 `https://your-app.vercel.app`
-   - `AUTH_RESEND_KEY` — 来自 Resend
-   - `AUTH_EMAIL_FROM` — 例如 `login@your-domain.com`
-   - `BLOB_READ_WRITE_TOKEN` — 来自 Vercel Blob，用于头像上传
-5. 本地用生产 `DATABASE_URL_UNPOOLED`（优先）或 `DATABASE_URL` 跑一次 `pnpm drizzle-kit migrate` 初始化表。
-6. Vercel 触发部署。
+### Vercel（主应用）
 
-## 目录
+1. 推到 GitHub → Vercel Dashboard → Import Project
+2. Vercel Storage → 添加 **Neon Postgres**（`DATABASE_URL` 自动注入）
+3. Settings → Environment Variables 添加上述必需变量
+4. 本地用生产 `DATABASE_URL_UNPOOLED` 跑 `pnpm drizzle-kit migrate` 初始化表
+5. 触发部署
 
-- `app/` — 路由与页面（App Router）
-- `components/editor/` — 编辑器分区组件
-- `components/ui/` — shadcn/ui 原语
-- `lib/templates/<id>/Layout.tsx` — 屏上预览
-- `app/api/pdf/[id]/route.tsx` — Puppeteer PDF 导出
-- `proxy.ts` — 登录保护与路由重定向
-- `db/` — Drizzle schema + migrations
-- `docs/superpowers/` — 设计 spec 与实施 plan
+### PartyKit（协同编辑服务）
 
-## 容量（Vercel Hobby 免费档，100 人/月）
+```bash
+cd partykit
+pnpm deploy
+```
 
-| 资源 | 免费额度 | 估算用量 |
+## 项目结构
+
+```
+app/
+  (marketing)/          公开落地页
+  (auth)/               登录、验证
+  (app)/                Dashboard、编辑器、server actions
+  api/pdf/[id]/         Puppeteer PDF 导出
+  api/import-resume/    AI 简历导入
+  api/upload-photo/     头像上传
+  collab/[token]/       协同编辑页
+  r/[slug]/             公开只读简历
+components/
+  editor/               各分区编辑器
+  preview/              实时预览面板
+  collab/               协同编辑 UI（批注、语音）
+  ui/                   shadcn/ui 原语
+lib/
+  templates/            professional / classic / modern + 共享原语
+  resume-schema.ts      Zod schema（简历数据契约）
+  auth.ts               Auth.js 配置
+  pdf-route-helpers.ts  Puppeteer 启动与字体等待
+db/                     Drizzle schema + migrations
+hooks/                  autosave、collab provider 等
+partykit/               PartyKit 协同服务（独立部署）
+proxy.ts                鉴权拦截（Next.js 16 的 middleware）
+tests/unit/             Vitest 单测
+docs/superpowers/       设计 spec 与实施 plan
+```
+
+## 容量估算（Vercel Hobby 免费档）
+
+| 资源 | 免费额度 | 百人规模估算 |
 |---|---|---|
 | Vercel 带宽 | 100 GB | ~2 GB |
 | Neon 存储 | 0.5 GB | ~10 MB |
 | Resend 邮件 | 3000/月 | ~500 |
 | Vercel Blob | 1 GB | 头像约数十 MB |
+| PartyKit | 免费档 | 低并发场景足够 |
+| DeepSeek API | 按量计费 | ~¥0.01/次导入 |
 
 ## License
 

@@ -252,3 +252,36 @@
   0% { transform: rotate(0deg); }
   100% { transform: rotate(360deg); }
 }
+
+/* ─── Marketing Page Animations ─── */
+@keyframes float-bob {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-8px); }
+}
+@keyframes float-bob-alt {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-6px); }
+}
+@keyframes gradient-shift {
+  0% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+  100% { background-position: 0% 50%; }
+}
+@keyframes mesh-breathe {
+  0%, 100% { opacity: 0.3; transform: scale(1); }
+  50% { opacity: 0.5; transform: scale(1.05); }
+}
+
+.animate-float-bob {
+  animation: float-bob 4s ease-in-out infinite;
+}
+.animate-float-bob-alt {
+  animation: float-bob-alt 5s ease-in-out infinite;
+}
+.animate-gradient-shift {
+  animation: gradient-shift 8s ease infinite;
+  background-size: 200% 200%;
+}
+.animate-mesh-breathe {
+  animation: mesh-breathe 6s ease-in-out infinite;
+}

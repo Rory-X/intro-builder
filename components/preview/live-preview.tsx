@@ -8,13 +8,14 @@ import { PreviewPanel } from "./preview-panel";
 
 type Props = {
   resolvedTemplate: SerializableResolvedTemplate;
+  onPaginationChange?: (data: { pageBreaks: number[]; totalHeight: number }) => void;
 };
 
 /** Isolated preview; subscribes via FormProvider so editor fields are not re-rendered. */
 export const LivePreview = forwardRef<HTMLDivElement, Props>(function LivePreview(
-  { resolvedTemplate },
+  { resolvedTemplate, onPaginationChange },
   ref,
 ) {
   const content = useWatch() as ResumeContent;
-  return <PreviewPanel ref={ref} content={content} resolvedTemplate={resolvedTemplate} />;
+  return <PreviewPanel ref={ref} content={content} resolvedTemplate={resolvedTemplate} onPaginationChange={onPaginationChange} />;
 });

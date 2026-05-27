@@ -119,6 +119,7 @@ function AnnotationCard({
 
   return (
     <div
+      data-annotation-card={annotation.id}
       className={cn(
         "cursor-pointer rounded-lg border p-3 transition-colors hover:shadow-sm",
         statusStyles[annotation.status],

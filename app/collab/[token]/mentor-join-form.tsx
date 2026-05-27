@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -16,6 +16,11 @@ export function MentorJoinForm({ inviteToken, mode }: Props) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const router = useRouter();
+
+  // Prefetch the edit page so navigation is instant after join
+  useEffect(() => {
+    router.prefetch(`/collab/${inviteToken}/edit`);
+  }, [router, inviteToken]);
 
   async function handleJoin(e: React.FormEvent) {
     e.preventDefault();
@@ -34,6 +39,7 @@ export function MentorJoinForm({ inviteToken, mode }: Props) {
       if (!res.ok) {
         const data = await res.json();
         setError(data.error || "加入失败，请重试");
+        setLoading(false);
         return;
       }
 
@@ -45,11 +51,11 @@ export function MentorJoinForm({ inviteToken, mode }: Props) {
       sessionStorage.setItem("collab:role", "mentor");
       sessionStorage.setItem("collab:displayName", name.trim());
 
-      // Redirect to the collaborative editor
+      // Redirect — keep loading=true so the button stays in loading state
+      // until navigation completes (no flash back to form)
       router.push(`/collab/${inviteToken}/edit`);
     } catch {
       setError("网络错误，请检查连接后重试");
-    } finally {
       setLoading(false);
     }
   }

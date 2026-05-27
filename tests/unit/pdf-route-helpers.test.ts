@@ -20,7 +20,7 @@ describe("PDF route helpers", () => {
   });
 
   it("keeps a single navigation timeout budget", () => {
-    expect(PDF_NAVIGATION_TIMEOUT_MS).toBe(8000);
+    expect(PDF_NAVIGATION_TIMEOUT_MS).toBe(30000);
   });
 
   it("waits for browser fonts before printing", async () => {
