@@ -48,3 +48,12 @@ next-env.d.ts
 
 # Cursor local plugin / rule overrides (per-developer, never shared)
 .cursor/
+
+# PoC artifacts and tool caches (never shared)
+.playwright-cli/
+.playwright-mcp/
+prototypes/
+docs/test-samples/
+public/handcoded/
+docs/*.png
+logo-transparent.png
