@@ -119,6 +119,14 @@ export const LayoutConfig = z.object({
 export type LayoutConfig = z.infer<typeof LayoutConfig>;
 
 // === UploadedTemplate ===
+/**
+ * 模板有两条渲染路径：
+ * - **v1 enum 路径**：customHtml=null。引擎按 LayoutConfig 的 enum 字段
+ *   （variant ×3 + theme + sectionIcons）渲染。abbey / abbey-stub 走这条。
+ * - **v2 自由排版**：customHtml 非空。引擎调 SlotRenderer 解析 HTML，把
+ *   `<slot data-bind="...">` 替换为内容。layout 字段仍然要填一个最小有效
+ *   值作为 fallback（SlotRenderer 渲染失败时降级到 enum 路径）。
+ */
 export const UploadedTemplate = z.object({
   id: z.string(),
   name: z.string(),
@@ -126,5 +134,7 @@ export const UploadedTemplate = z.object({
   thumbnailUrl: z.string().nullable(),
   decoration: DecorationConfig.nullable(),
   layout: LayoutConfig,
+  customHtml: z.string().nullable(),
+  customCss: z.string().nullable(),
 });
 export type UploadedTemplate = z.infer<typeof UploadedTemplate>;

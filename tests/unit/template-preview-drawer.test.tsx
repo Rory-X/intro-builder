@@ -146,6 +146,8 @@ describe("TemplatePreviewDrawer", () => {
           theme: { primaryColor: "#000" },
           sectionIcons: {},
         },
+        customHtml: null,
+        customCss: null,
       },
     };
     render(

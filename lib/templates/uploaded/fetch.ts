@@ -72,6 +72,8 @@ export function parseTemplateRow(
     thumbnailUrl: row.thumbnailUrl,
     decoration: row.decoration,
     layout: row.layout,
+    customHtml: row.customHtml,
+    customCss: row.customCss,
   };
   const result = UploadedTemplate.safeParse(candidate);
   if (!result.success) {

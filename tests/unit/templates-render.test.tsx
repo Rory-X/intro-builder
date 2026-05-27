@@ -34,6 +34,8 @@ describe("ClientTemplateRenderFromSerializable", () => {
         theme: { primaryColor: "#137880" },
         sectionIcons: {},
       },
+      customHtml: null,
+      customCss: null,
     };
     const { container } = render(
       <ClientTemplateRenderFromSerializable

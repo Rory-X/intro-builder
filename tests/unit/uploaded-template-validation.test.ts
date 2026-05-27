@@ -33,6 +33,8 @@ function legalRow(): typeof templatesTable.$inferSelect {
     source: "uploaded",
     decoration: null,
     layout: legalLayout(),
+    customHtml: null,
+    customCss: null,
     status: "published",
     createdBy: null,
     createdAt: new Date(),
@@ -54,6 +56,8 @@ describe("UploadedTemplate Zod schema", () => {
       thumbnailUrl: row.thumbnailUrl,
       decoration: row.decoration,
       layout: row.layout,
+      customHtml: row.customHtml,
+      customCss: row.customCss,
     });
     expect(result.success).toBe(true);
   });

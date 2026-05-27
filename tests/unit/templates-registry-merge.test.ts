@@ -30,6 +30,8 @@ const mockTemplate: UploadedTemplate = {
     theme: { primaryColor: "#137880" },
     sectionIcons: {},
   },
+  customHtml: null,
+  customCss: null,
 };
 
 describe("getTemplateMetaAsync", () => {
