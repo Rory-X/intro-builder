@@ -1,0 +1,156 @@
+<style>
+  .crimson-page {
+    --crimson-deep: #A11D2C;
+    --crimson-bright: #C9314A;
+    --bar-bg: #FBE6E6;
+    --bar-accent: var(--crimson-bright);
+    --on-banner: #FFFFFF;
+    --text: #2A2A2A;
+    --muted: #6B6B6B;
+
+    width: 800px;
+    margin: 0 auto;
+    background: #fff;
+    box-shadow: 0 4px 24px rgba(0, 0, 0, 0.08);
+    border-radius: 12px;
+    overflow: hidden;
+    color: var(--text);
+    /* 用户能调的字段：必须 CSS 变量。dual constraint §4.2 */
+    font-family: var(--font-family);
+    font-size: var(--font-size);
+    line-height: var(--line-height);
+  }
+
+  /* === Banner === */
+  .crimson-banner {
+    position: relative;
+    background: linear-gradient(120deg, var(--crimson-deep) 0%, var(--crimson-bright) 100%);
+    padding: 36px 44px 56px;
+    color: var(--on-banner);
+    display: flex;
+    align-items: center;
+    gap: 24px;
+    border-bottom-left-radius: 50% 24px;
+    border-bottom-right-radius: 50% 24px;
+  }
+  .crimson-banner .banner-text { z-index: 1; flex: 1; }
+  .crimson-banner h1 {
+    margin: 0;
+    /* 字号是 banner 装饰的一部分，硬编码（dual constraint：banner 视觉= 不可调） */
+    font-size: 28px;
+    font-weight: 700;
+    letter-spacing: 1px;
+  }
+  .crimson-banner .contact {
+    margin-top: 8px;
+    font-size: 14px;
+    opacity: 0.95;
+    letter-spacing: 0.5px;
+  }
+  .crimson-banner .avatar-placeholder {
+    width: 88px; height: 88px;
+    border-radius: 8px;
+    background: rgba(255, 255, 255, 0.92);
+    flex-shrink: 0;
+    z-index: 1;
+  }
+
+  /* === Body === */
+  .crimson-main { padding: 0 44px 40px; }
+  .crimson-section { margin-top: 22px; }
+
+  .crimson-section-title {
+    background: var(--bar-bg);
+    padding: 10px 16px 10px 14px;
+    display: flex; align-items: center; gap: 10px;
+    border-left: 4px solid var(--bar-accent);
+    border-radius: 0 4px 4px 0;
+  }
+  .crimson-section-title h2 {
+    margin: 0;
+    /* section 标题字号是模板视觉一部分 */
+    font-size: 15px;
+    color: var(--bar-accent);
+    font-weight: 700;
+    letter-spacing: 0.3px;
+  }
+
+  .crimson-entry { padding: 10px 16px 4px; }
+  .crimson-entry + .crimson-entry { padding-top: 14px; }
+  .crimson-entry-header {
+    display: flex;
+    justify-content: space-between;
+    gap: 16px;
+    align-items: baseline;
+  }
+  .crimson-entry-header .entry-title {
+    color: var(--bar-accent);
+    font-weight: 700;
+    /* 主标题字号属模板视觉 */
+    font-size: 15px;
+  }
+  .crimson-entry-header .entry-date {
+    color: var(--muted);
+    font-size: 12.5px;
+    text-align: right;
+    flex-shrink: 0;
+    line-height: 1.4;
+    white-space: nowrap;
+  }
+  .crimson-entry .entry-subtitle {
+    color: var(--text);
+    font-size: 13.5px;
+    margin-top: 2px;
+  }
+  .crimson-entry .entry-bullets {
+    margin: 8px 0 0 0;
+    padding-left: 18px;
+    color: var(--text);
+    /* bullets 正文字号 → 用户可调 */
+    font-size: var(--font-size);
+    line-height: var(--line-height);
+  }
+</style>
+
+<article class="crimson-page">
+
+  <!-- === Banner === -->
+  <header class="crimson-banner">
+    <div class="avatar-placeholder" aria-hidden="true"></div>
+    <div class="banner-text">
+      <h1><slot data-bind="basics.name"></slot></h1>
+      <div class="contact">
+        <slot data-bind="basics.phone"></slot>
+        <span>　|　</span>
+        <slot data-bind="basics.email"></slot>
+      </div>
+    </div>
+  </header>
+
+  <main class="crimson-main">
+    <slot data-bind="sectionOrder" data-template="crimson-section-tpl"></slot>
+  </main>
+
+</article>
+
+<template id="crimson-section-tpl">
+  <section class="crimson-section">
+    <div class="crimson-section-title"><h2><slot data-bind="section.title"></slot></h2></div>
+    <slot data-bind="section.items" data-template="crimson-item-tpl"></slot>
+  </section>
+</template>
+
+<template id="crimson-item-tpl">
+  <div class="crimson-entry">
+    <div class="crimson-entry-header">
+      <div class="entry-title"><slot data-bind="item.title"></slot></div>
+      <div class="entry-date">
+        <slot data-bind="item.dateRange"></slot>
+        <span> · </span>
+        <slot data-bind="item.location"></slot>
+      </div>
+    </div>
+    <div class="entry-subtitle"><slot data-bind="item.subtitle"></slot></div>
+    <div class="entry-bullets"><slot data-bind="item.bullets"></slot></div>
+  </div>
+</template>
