@@ -26,7 +26,13 @@ export function ResumeItemHeader({
         <div className="flex justify-between gap-3">
           <span className="font-semibold">{primary}</span>
           {dateRange && (
-            <span className="shrink-0 text-xs text-neutral-600 tabular-nums">{dateRange}</span>
+            <span
+              className="shrink-0 text-xs tabular-nums"
+              // var(--accent) 由 UploadedLayout 注入；built-in 模板不设走 fallback 保持原色
+              style={{ color: "var(--accent, #525252)" }}
+            >
+              {dateRange}
+            </span>
           )}
         </div>
         {secondary && <div className="text-xs text-neutral-600">{secondary}</div>}
@@ -39,7 +45,14 @@ export function ResumeItemHeader({
       <div className={cn("mb-0.5 break-inside-avoid", className)}>
         <div className="flex justify-between gap-3 font-semibold">
           <span>{primary}</span>
-          {dateRange && <span className="font-normal tabular-nums">{dateRange}</span>}
+          {dateRange && (
+            <span
+              className="font-normal tabular-nums"
+              style={{ color: "var(--accent, currentColor)" }}
+            >
+              {dateRange}
+            </span>
+          )}
         </div>
         {secondary && <div className="text-neutral-600">{secondary}</div>}
       </div>
@@ -51,7 +64,10 @@ export function ResumeItemHeader({
       <div className="flex items-baseline justify-between gap-4">
         <span className="font-bold leading-snug text-neutral-900">{primary}</span>
         {dateRange && (
-          <span className="shrink-0 text-[0.9em] font-normal tabular-nums text-neutral-600">
+          <span
+            className="shrink-0 text-[0.9em] font-normal tabular-nums"
+            style={{ color: "var(--accent, #525252)" }}
+          >
             {dateRange}
           </span>
         )}

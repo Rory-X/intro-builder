@@ -1,0 +1,167 @@
+<style>
+  .crimson-page {
+    --crimson-deep: #A11D2C;
+    --crimson-bright: #C9314A;
+    --bar-bg: #FBE6E6;
+    --bar-accent: var(--crimson-bright);
+    --on-banner: #FFFFFF;
+    --text: #2A2A2A;
+    --muted: #6B6B6B;
+
+    /* 自适应容器宽度 —— 模板库缩略图按 595px 缩放（A4 实际尺寸），dev-preview
+       和编辑器预览按 800px 渲染。固定 width 会让缩略图偏移；用 max-width
+       + width:100% 在两边都正确居中。 */
+    max-width: 800px;
+    width: 100%;
+    margin: 0 auto;
+    background: #fff;
+    box-shadow: 0 4px 24px rgba(0, 0, 0, 0.08);
+    border-radius: 12px;
+    overflow: hidden;
+    color: var(--text);
+    /* 用户能调的字段：必须 CSS 变量。dual constraint §4.2 */
+    font-family: var(--font-family);
+    font-size: var(--font-size);
+    line-height: var(--line-height);
+  }
+
+  /* === Banner === */
+  .crimson-banner {
+    position: relative;
+    background: linear-gradient(120deg, var(--crimson-deep) 0%, var(--crimson-bright) 100%);
+    /* A4 约束：原 PoC 36+56=92px 上下 padding 太奢侈，A4 单页放不下完整简历。
+       压缩到 22+32=54px 给后续 section 留高度预算。 */
+    padding: 22px 36px 32px;
+    color: var(--on-banner);
+    display: flex;
+    align-items: center;
+    gap: 20px;
+    border-bottom-left-radius: 50% 18px;
+    border-bottom-right-radius: 50% 18px;
+  }
+  .crimson-banner .banner-text { z-index: 1; flex: 1; }
+  .crimson-banner h1 {
+    margin: 0;
+    /* 字号是 banner 装饰的一部分，硬编码（dual constraint：banner 视觉= 不可调） */
+    font-size: 24px;
+    font-weight: 700;
+    letter-spacing: 1px;
+  }
+  .crimson-banner .contact {
+    margin-top: 6px;
+    font-size: 13px;
+    opacity: 0.95;
+    letter-spacing: 0.5px;
+  }
+  .crimson-banner .avatar-placeholder {
+    width: 70px; height: 70px;
+    border-radius: 6px;
+    background: rgba(255, 255, 255, 0.92);
+    flex-shrink: 0;
+    z-index: 1;
+  }
+
+  /* === Body === */
+  /* A4 约束：左右 padding 从 44 压到 32 多给文字宽度，下 padding 从 40 → 24 */
+  .crimson-main { padding: 0 32px 24px; }
+  /* section 间距从 22 压到 14 */
+  .crimson-section { margin-top: 14px; }
+
+  .crimson-section-title {
+    background: var(--bar-bg);
+    /* title padding 从 10/16/14 压到 6/12/10 */
+    padding: 6px 12px 6px 10px;
+    display: flex; align-items: center; gap: 8px;
+    border-left: 3px solid var(--bar-accent);
+    border-radius: 0 4px 4px 0;
+  }
+  .crimson-section-title h2 {
+    margin: 0;
+    /* section 标题字号是模板视觉一部分 */
+    font-size: 14px;
+    color: var(--bar-accent);
+    font-weight: 700;
+    letter-spacing: 0.3px;
+  }
+
+  /* entry padding 从 10/16 压到 6/12 */
+  .crimson-entry { padding: 6px 12px 2px; }
+  .crimson-entry + .crimson-entry { padding-top: 8px; }
+  .crimson-entry-header {
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+    align-items: baseline;
+  }
+  .crimson-entry-header .entry-title {
+    color: var(--bar-accent);
+    font-weight: 700;
+    /* 主标题字号属模板视觉 */
+    font-size: 14px;
+  }
+  .crimson-entry-header .entry-date {
+    color: var(--muted);
+    font-size: 12px;
+    text-align: right;
+    flex-shrink: 0;
+    line-height: 1.4;
+    white-space: nowrap;
+  }
+  .crimson-entry .entry-subtitle {
+    color: var(--text);
+    font-size: 13px;
+    margin-top: 2px;
+  }
+  .crimson-entry .entry-bullets {
+    /* bullets 紧贴 subtitle，间距 4 而非 8 */
+    margin: 4px 0 0 0;
+    padding-left: 16px;
+    color: var(--text);
+    /* bullets 正文字号 → 用户可调 */
+    font-size: var(--font-size);
+    line-height: var(--line-height);
+  }
+</style>
+
+<article class="crimson-page">
+
+  <!-- === Banner === -->
+  <header class="crimson-banner">
+    <div class="avatar-placeholder" aria-hidden="true"></div>
+    <div class="banner-text">
+      <h1><slot data-bind="basics.name"></slot></h1>
+      <div class="contact">
+        <slot data-bind="basics.phone"></slot>
+        <span>　|　</span>
+        <slot data-bind="basics.email"></slot>
+      </div>
+    </div>
+  </header>
+
+  <main class="crimson-main">
+    <slot data-bind="sectionOrder" data-template="crimson-section-tpl"></slot>
+  </main>
+
+</article>
+
+<template id="crimson-section-tpl">
+  <section class="crimson-section">
+    <div class="crimson-section-title"><h2><slot data-bind="section.title"></slot></h2></div>
+    <slot data-bind="section.items" data-template="crimson-item-tpl"></slot>
+  </section>
+</template>
+
+<template id="crimson-item-tpl">
+  <div class="crimson-entry">
+    <div class="crimson-entry-header">
+      <div class="entry-title"><slot data-bind="item.title"></slot></div>
+      <div class="entry-date">
+        <slot data-bind="item.dateRange"></slot>
+        <span> · </span>
+        <slot data-bind="item.location"></slot>
+      </div>
+    </div>
+    <div class="entry-subtitle"><slot data-bind="item.subtitle"></slot></div>
+    <div class="entry-bullets"><slot data-bind="item.bullets"></slot></div>
+  </div>
+</template>

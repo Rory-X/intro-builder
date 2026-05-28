@@ -68,6 +68,23 @@ export const demoResume: ResumeContent = {
     { category: "框架", items: ["React", "Next.js", "Vue"] },
     { category: "工具", items: ["Vite", "Playwright", "Docker"] },
   ],
-  custom: [],
-  sectionOrder: ["basics", "experience", "education", "projects", "skills", "custom"],
+  custom: [
+    {
+      id: "custom_awards",
+      title: "荣誉奖项",
+      content: bulletsToDoc([
+        "2023 字节跳动年度新人奖（部门 Top 5%）",
+        "2022 全国大学生计算机设计大赛 一等奖",
+        "2021 ACM-ICPC 亚洲区域赛 银奖",
+      ]),
+    },
+  ],
+  sectionOrder: [
+    "basics",
+    "experience",
+    "education",
+    "projects",
+    "skills",
+    "custom_awards",
+  ],
 };

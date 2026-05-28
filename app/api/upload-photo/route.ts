@@ -1,12 +1,14 @@
 import { NextResponse } from "next/server";
 import { put } from "@vercel/blob";
-import { auth } from "@/lib/auth";
+import { currentUserId } from "@/lib/auth-helpers";
 
 export const runtime = "nodejs";
 
 export async function PUT(req: Request) {
-  const session = await auth();
-  if (!session?.user?.id) return new NextResponse("unauthorized", { status: 401 });
+  // currentUserId 走 dev bypass，让本地无邮箱魔法链接也能上传头像；生产
+  // 环境 NODE_ENV !== "development" 时短路退化为纯 session 校验。
+  const userId = await currentUserId();
+  if (!userId) return new NextResponse("unauthorized", { status: 401 });
 
   const form = await req.formData();
   const file = form.get("file") as File | null;
@@ -22,7 +24,7 @@ export async function PUT(req: Request) {
   }
 
   try {
-    const blob = await put(`photos/${session.user.id}/${Date.now()}-${file.name}`, file, {
+    const blob = await put(`photos/${userId}/${Date.now()}-${file.name}`, file, {
       access: "public",
       contentType: file.type,
     });

@@ -1,13 +1,14 @@
 "use client";
+import Link from "next/link";
 import { useFormContext } from "react-hook-form";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { FONT_MAP, type FontKey } from "@/lib/font-map";
 import { DEFAULT_STYLE_SETTINGS, type ResumeContent } from "@/lib/resume-schema";
-import { TEMPLATES, type TemplateId } from "@/lib/templates/registry";
+import { type AllTemplatesItem, type TemplateId } from "@/lib/templates/registry";
 import { cn } from "@/lib/utils";
-import { ChevronDown, LayoutTemplate, Loader2, RotateCcw } from "lucide-react";
+import { ArrowRight, ChevronDown, LayoutTemplate, Loader2, RotateCcw } from "lucide-react";
 
 const FONT_KEYS: FontKey[] = ["sans", "serif", "mono"];
 const FONT_SIZE_OPTIONS = [10, 11, 12, 13, 14, 15, 16] as const;
@@ -18,9 +19,19 @@ type Props = {
   templateId: TemplateId;
   onTemplateChange: (id: TemplateId) => void;
   pendingTemplateId?: TemplateId | null;
+  // Required because the editor page always pre-fetches via listAllTemplatesAsync; legacy fallback removed.
+  allTemplates: AllTemplatesItem[];
+  /** 当前简历 id —— 给「查看全部模板 →」CTA 拼成 ?from=editor&resumeId=<id> 用 */
+  resumeId: string;
 };
 
-export function StyleEditor({ templateId, onTemplateChange, pendingTemplateId = null }: Props) {
+export function StyleEditor({
+  templateId,
+  onTemplateChange,
+  pendingTemplateId = null,
+  allTemplates,
+  resumeId,
+}: Props) {
   const { watch, setValue } = useFormContext<ResumeContent>();
 
   const ss = { ...DEFAULT_STYLE_SETTINGS, ...watch("styleSettings") };
@@ -55,11 +66,21 @@ export function StyleEditor({ templateId, onTemplateChange, pendingTemplateId = 
         </div>
 
         <div className="space-y-2">
-          <Label>简历模板</Label>
+          <div className="flex items-center justify-between gap-2">
+            <Label>简历模板</Label>
+            <Link
+              href={`/templates?from=editor&resumeId=${resumeId}`}
+              className="inline-flex items-center gap-1 text-xs text-primary hover:underline"
+            >
+              查看全部模板
+              <ArrowRight className="h-3 w-3" />
+            </Link>
+          </div>
           <div className="grid gap-2 sm:grid-cols-3">
-            {TEMPLATES.map((t) => {
+            {allTemplates.map((t) => {
               const isPendingThis = pendingTemplateId === t.id;
               const isOtherPending = pendingTemplateId !== null && !isPendingThis;
+              const isUploaded = t.source === "uploaded";
               return (
                 <button
                   key={t.id}
@@ -74,6 +95,29 @@ export function StyleEditor({ templateId, onTemplateChange, pendingTemplateId = 
                       : "border-border hover:border-primary/40 hover:bg-muted/50",
                   )}
                 >
+                  {isUploaded ? (
+                    // Uploaded template preview: thumbnail if uploaded, otherwise
+                    // a name-only placeholder. Don't fall back to a built-in
+                    // preview — that would be misleading about what they're
+                    // about to render.
+                    <div
+                      className="mb-2 flex aspect-[210/297] items-center justify-center overflow-hidden rounded-md border bg-muted/40 text-center"
+                      data-testid={`template-thumb-${t.id}`}
+                    >
+                      {t.thumbnailUrl ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img
+                          src={t.thumbnailUrl}
+                          alt={t.name}
+                          className="h-full w-full object-cover"
+                        />
+                      ) : (
+                        <span className="px-2 text-xs font-medium text-muted-foreground">
+                          {t.name}
+                        </span>
+                      )}
+                    </div>
+                  ) : null}
                   <div className="flex items-center justify-between gap-2">
                     <span className="text-sm font-medium">{t.name}</span>
                     {isPendingThis ? (

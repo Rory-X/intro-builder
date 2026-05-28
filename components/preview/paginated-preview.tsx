@@ -2,14 +2,16 @@
 
 import { forwardRef, useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { ResumeContent, StyleSettings } from "@/lib/resume-schema";
-import type { TemplateId } from "@/lib/templates/registry";
-import { TemplateRenderer } from "./template-renderer";
+import {
+  ClientTemplateRenderFromSerializable,
+  type SerializableResolvedTemplate,
+} from "@/lib/templates/render";
 import { A4_HEIGHT_PX, A4_WIDTH_PX } from "@/lib/pagination";
 import { cn } from "@/lib/utils";
 
 type Props = {
   content: ResumeContent;
-  templateId: TemplateId | string;
+  resolvedTemplate: SerializableResolvedTemplate;
   styleSettings?: StyleSettings;
   showEmptyPlaceholders?: boolean;
   /** Callback when pagination breaks are recalculated — used by PDF export */
@@ -181,7 +183,7 @@ function calculatePageBreaks(
  * 5. White overlay hides content beyond each page's break point
  */
 export const PaginatedPreview = forwardRef<HTMLDivElement, Props>(function PaginatedPreview(
-  { content, templateId, styleSettings, showEmptyPlaceholders, onPaginationChange },
+  { content, resolvedTemplate, styleSettings, showEmptyPlaceholders, onPaginationChange },
   ref,
 ) {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -217,7 +219,7 @@ export const PaginatedPreview = forwardRef<HTMLDivElement, Props>(function Pagin
   // Initial measurement after layout
   useLayoutEffect(() => {
     recalculate();
-  }, [recalculate, content, templateId, styleSettings]);
+  }, [recalculate, content, resolvedTemplate, styleSettings]);
 
   // Re-measure on resize (font loading, window resize) — debounced to avoid flicker
   useEffect(() => {
@@ -273,8 +275,8 @@ export const PaginatedPreview = forwardRef<HTMLDivElement, Props>(function Pagin
         className="pointer-events-none absolute left-[-9999px] opacity-0"
         style={{ width: `${A4_WIDTH_PX}px` }}
       >
-        <TemplateRenderer
-          templateId={templateId}
+        <ClientTemplateRenderFromSerializable
+          resolved={resolvedTemplate}
           content={content}
           sectionOrder={content.sectionOrder}
           styleSettings={styleSettings}
@@ -321,8 +323,8 @@ export const PaginatedPreview = forwardRef<HTMLDivElement, Props>(function Pagin
               className="absolute inset-x-0 top-0"
               style={{ transform: `translateY(${(isFirstPage ? 0 : CONTINUATION_PADDING) - offset}px)` }}
             >
-              <TemplateRenderer
-                templateId={templateId}
+              <ClientTemplateRenderFromSerializable
+                resolved={resolvedTemplate}
                 content={content}
                 sectionOrder={content.sectionOrder}
                 styleSettings={styleSettings}
@@ -355,8 +357,8 @@ export const PaginatedPreview = forwardRef<HTMLDivElement, Props>(function Pagin
           className="overflow-hidden rounded-sm shadow-md ring-1 ring-black/5"
           style={{ width: `${A4_WIDTH_PX}px`, minHeight: `${A4_HEIGHT_PX}px`, backgroundColor: "#ffffff" }}
         >
-          <TemplateRenderer
-            templateId={templateId}
+          <ClientTemplateRenderFromSerializable
+            resolved={resolvedTemplate}
             content={content}
             sectionOrder={content.sectionOrder}
             styleSettings={styleSettings}

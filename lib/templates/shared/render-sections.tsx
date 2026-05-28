@@ -1,7 +1,10 @@
 import type { ResumeContent } from "@/lib/resume-schema";
 import { DEFAULT_SECTION_ORDER } from "@/lib/resume-schema";
 import { getSectionMeta } from "@/lib/section-meta";
-import { ResumeItemHeader } from "./resume-item-header";
+import {
+  ResumeItemHeader,
+  type ResumeItemHeaderVariant,
+} from "./resume-item-header";
 import { ResumeRichText } from "./resume-rich-text";
 import { ResumeSection, type ResumeSectionVariant } from "./resume-section";
 import {
@@ -12,6 +15,8 @@ import {
   SkillsSectionShell,
 } from "./section-shell";
 import { renderResumeEntry, wrapProfessionalEntry } from "./professional-wrap";
+import { lookupLucideIcon } from "./lucide-icon-lookup";
+import type { LucideIcon } from "lucide-react";
 
 function formatDateRange(start: string, end: string) {
   if (!start && !end) return undefined;
@@ -25,7 +30,35 @@ export function getSectionOrder(content: ResumeContent, sectionOrder?: string[])
 export type BuildSectionsOptions = {
   includeBasicsSummary?: boolean;
   showEmptyPlaceholders?: boolean;
+  /**
+   * Item header 的 variant —— 控制条目内"公司/职位/项目名"等头部信息的排版。
+   * 与 section title variant **独立维度**：可以 sectionTitleVariant=professional
+   * 配合 itemHeaderVariant=classic（章节标题用专业风、条目用经典风）。
+   * 不传时 fallback 到 section variant（如果 section variant 是 ItemHeader
+   * 也支持的值），否则 fallback 到 professional —— card-wrapped 是 section-level
+   * 视觉变体，不是 item header 级，所以 fallback 到 professional 是合理默认。
+   */
+  itemHeaderVariant?: ResumeItemHeaderVariant;
+  /**
+   * 模板级 section icon 覆盖。Skill 产出的 LayoutConfig.sectionIcons 形如
+   * `{experience: "Briefcase", custom_award: "Trophy"}`，渲染时优先于
+   * section-meta 默认 icon。Whitelist 外的 name 自动 fallback 到默认。
+   */
+  sectionIcons?: Record<string, string>;
 };
+
+/**
+ * Section variant 是 4 元 union，但 ResumeItemHeader 只接受 3 元 —— card-wrapped
+ * 是 section-level 视觉概念。这里把 section variant 收敛成合法的 item header
+ * variant：card-wrapped → professional（视觉风格上接近），其他原样穿透。
+ */
+function narrowToItemHeaderVariant(
+  v: ResumeSectionVariant,
+): ResumeItemHeaderVariant {
+  // card-wrapped + full-width-bar 是 section-level 视觉，item header 内部仍按 professional 渲染
+  if (v === "card-wrapped" || v === "full-width-bar") return "professional";
+  return v;
+}
 
 export function buildResumeSections(
   content: ResumeContent,
@@ -34,6 +67,12 @@ export function buildResumeSections(
 ): Record<string, React.ReactNode> {
   const includeBasicsSummary = options?.includeBasicsSummary ?? true;
   const shells = options?.showEmptyPlaceholders ?? false;
+  const itemHeaderVariant: ResumeItemHeaderVariant =
+    options?.itemHeaderVariant ?? narrowToItemHeaderVariant(variant);
+  const overrideIcon = (key: string): LucideIcon | undefined => {
+    const name = options?.sectionIcons?.[key];
+    return lookupLucideIcon(name) ?? undefined;
+  };
 
   const experienceTitle = getSectionMeta("experience").label;
   const educationTitle = getSectionMeta("education").label;
@@ -43,7 +82,13 @@ export function buildResumeSections(
   return {
     basics:
       includeBasicsSummary && content.basics.summary ? (
-        <ResumeSection key="basics" sectionKey="basics" title="自我介绍" variant={variant}>
+        <ResumeSection
+          key="basics"
+          sectionKey="basics"
+          title="自我介绍"
+          variant={variant}
+          iconOverride={overrideIcon("basics")}
+        >
           {wrapProfessionalEntry(
             variant,
             <p className="text-[0.92em] leading-relaxed text-neutral-700">{content.basics.summary}</p>,
@@ -57,18 +102,19 @@ export function buildResumeSections(
           sectionKey="experience"
           title={experienceTitle}
           variant={variant}
+          iconOverride={overrideIcon("experience")}
         >
           {content.experience.length > 0 ? (
             content.experience.map((e, i) => {
               const dateRange = formatDateRange(e.start, e.end);
               const header =
-                variant === "classic" ? (
+                itemHeaderVariant === "classic" ? (
                   <ResumeItemHeader
                     variant="classic"
                     primary={`${e.company} — ${e.title}`}
                     dateRange={dateRange}
                   />
-                ) : variant === "modern" ? (
+                ) : itemHeaderVariant === "modern" ? (
                   <ResumeItemHeader
                     variant="modern"
                     primary={`${e.title} @ ${e.company}`}
@@ -104,13 +150,14 @@ export function buildResumeSections(
           sectionKey="education"
           title={educationTitle}
           variant={variant}
+          iconOverride={overrideIcon("education")}
         >
           {content.education.length > 0 ? (
             content.education.map((e, i) =>
               renderResumeEntry(
                 variant,
                 i,
-                variant === "professional" ? (
+                itemHeaderVariant === "professional" ? (
                   <div data-testid="professional-education-entry">
                     <div className="flex items-baseline justify-between gap-4">
                       <div data-testid="education-school" className="font-bold leading-snug text-neutral-900">
@@ -138,7 +185,7 @@ export function buildResumeSections(
                 ) : (
                   <>
                     <ResumeItemHeader
-                      variant={variant}
+                      variant={itemHeaderVariant}
                       primary={
                         <>
                           <strong>{e.school}</strong>
@@ -170,13 +217,14 @@ export function buildResumeSections(
           sectionKey="projects"
           title={projectsTitle}
           variant={variant}
+          iconOverride={overrideIcon("projects")}
         >
           {content.projects.length > 0 ? (
             content.projects.map((p, i) =>
               renderResumeEntry(
                 variant,
                 i,
-                variant === "professional" ? (
+                itemHeaderVariant === "professional" ? (
                   <div data-testid="professional-project-entry">
                     <div data-testid="project-main-row" className="flex items-start justify-between gap-4">
                       <div data-testid="project-left" className="min-w-0 flex-1">
@@ -217,7 +265,7 @@ export function buildResumeSections(
                 ) : (
                   <>
                     <ResumeItemHeader
-                      variant={variant}
+                      variant={itemHeaderVariant}
                       primary={p.name}
                       secondary={
                         [p.role, p.location, p.stack.length > 0 ? p.stack.join(" · ") : ""]
@@ -238,8 +286,14 @@ export function buildResumeSections(
       ) : null,
     skills:
       content.skills.length > 0 || shells ? (
-        <ResumeSection key="skills" sectionKey="skills" title={skillsTitle} variant={variant}>
-          {variant === "professional" ? (
+        <ResumeSection
+          key="skills"
+          sectionKey="skills"
+          title={skillsTitle}
+          variant={variant}
+          iconOverride={overrideIcon("skills")}
+        >
+          {variant === "professional" || variant === "card-wrapped" ? (
             renderResumeEntry(
               variant,
               "skills-block",
@@ -287,7 +341,13 @@ export function buildResumeSections(
         if (!hasContent && !shells) return [cs.id, null];
         return [
           cs.id,
-          <ResumeSection key={cs.id} sectionKey={cs.id} title={cs.title} variant={variant}>
+          <ResumeSection
+            key={cs.id}
+            sectionKey={cs.id}
+            title={cs.title}
+            variant={variant}
+            iconOverride={overrideIcon(cs.id)}
+          >
             {hasContent
               ? renderResumeEntry(variant, cs.id, <ResumeRichText content={cs.content} />)
               : (

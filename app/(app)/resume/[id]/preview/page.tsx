@@ -4,7 +4,7 @@ import { requireUserId } from "@/lib/auth-helpers";
 import { db } from "@/db";
 import { resumes } from "@/db/schema";
 import { migrateContent } from "@/lib/migrate-content";
-import { TemplateRenderer } from "@/components/preview/template-renderer";
+import { TemplateRender } from "@/lib/templates/render-server";
 import { PdfPreview } from "@/components/preview/pdf-preview";
 import { verifyPdfToken } from "@/lib/pdf-token";
 
@@ -50,8 +50,8 @@ export default async function PreviewPage({
   // Normal preview (non-PDF)
   return (
     <div className="bg-slate-100 py-8">
-      <TemplateRenderer
-        templateId={row.templateId}
+      <TemplateRender
+        id={row.templateId}
         content={content}
         sectionOrder={content.sectionOrder}
         styleSettings={content.styleSettings}

@@ -14,8 +14,8 @@ describe("template registry", () => {
     expect(TEMPLATES.map((t) => t.id)).toEqual(["professional", "classic", "modern"]);
   });
 
-  it("resolves unknown template ids to professional", () => {
-    expect(resolveTemplateId("unknown")).toBe("professional");
+  it("preserves any non-empty id (DB lookup happens later) and falls back for null", () => {
+    expect(resolveTemplateId("unknown")).toBe("unknown");
     expect(resolveTemplateId(null)).toBe("professional");
     expect(resolveTemplateId("classic")).toBe("classic");
   });

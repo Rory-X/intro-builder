@@ -14,7 +14,7 @@ Next.js 16 App Router · React 19 · Drizzle ORM + Neon Postgres / 本地 Postgr
 
 - 结构化分区编辑：基础信息 / 教育 / 工作经历 / 项目 / 技能 / 自定义模块
 - TipTap 富文本编辑器，支持格式化、链接、对齐、字号调节
-- 三套模板（专业 / 经典 / 现代），编辑器内实时预览
+- 模板库（`/templates`）：三套内置（专业 / 经典 / 现代）+ DB 上传模板，预览抽屉直接套用到当前简历
 - 分区与条目拖拽排序（Pragmatic Drag & Drop）
 - 头像上传（Vercel Blob）
 - 2 秒防抖自动保存，串行队列防丢失

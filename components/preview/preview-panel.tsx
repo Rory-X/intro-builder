@@ -1,17 +1,17 @@
 import { forwardRef } from "react";
 import type { ResumeContent } from "@/lib/resume-schema";
-import type { TemplateId } from "@/lib/templates/registry";
+import type { SerializableResolvedTemplate } from "@/lib/templates/render";
 import { PaginatedPreview } from "./paginated-preview";
 
 type Props = {
   content: ResumeContent;
-  templateId: TemplateId | string;
+  resolvedTemplate: SerializableResolvedTemplate;
   onPaginationChange?: (data: { pageBreaks: number[]; totalHeight: number }) => void;
 };
 
 export const PreviewPanel = forwardRef<HTMLDivElement, Props>(function PreviewPanel({
   content,
-  templateId,
+  resolvedTemplate,
   onPaginationChange,
 }, ref) {
   return (
@@ -19,7 +19,7 @@ export const PreviewPanel = forwardRef<HTMLDivElement, Props>(function PreviewPa
       <PaginatedPreview
         ref={ref}
         content={content}
-        templateId={templateId}
+        resolvedTemplate={resolvedTemplate}
         styleSettings={content.styleSettings}
         showEmptyPlaceholders
         onPaginationChange={onPaginationChange}

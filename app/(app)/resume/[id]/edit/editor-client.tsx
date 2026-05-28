@@ -25,7 +25,14 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { Loader2, Share2, PanelRightClose, PanelRightOpen, MessageSquare } from "lucide-react";
-import { resolveTemplateId, type TemplateId } from "@/lib/templates/registry";
+import { resolveTemplateId, type AllTemplatesItem, type TemplateId } from "@/lib/templates/registry";
+import {
+  BUILTIN_TEMPLATE_IDS,
+  DEFAULT_TEMPLATE_ID,
+  type BuiltinTemplateId,
+} from "@/lib/templates/types";
+import type { SerializableResolvedTemplate } from "@/lib/templates/render";
+import type { UploadedTemplate } from "@/lib/templates/uploaded/types";
 import { monitorForElements } from "@atlaskit/pragmatic-drag-and-drop/element/adapter";
 import { autoScrollForElements } from "@atlaskit/pragmatic-drag-and-drop-auto-scroll/element";
 import { SectionWrapper } from "@/components/editor/section-wrapper";
@@ -59,6 +66,20 @@ type Props = {
   // serializer has dropped Date through the SC → CC boundary in dev, which
   // would crash `lastSavedAt.getTime()` on first render. Strings are safe.
   initialUpdatedAtIso: string;
+  // Pre-resolved template + the full set of uploaded templates so the
+  // client preview can dispatch built-in vs uploaded without a round
+  // trip on each template switch. Required because every code path that
+  // mounts EditorClient (server route, tests) must supply both — leaving
+  // them optional silently hides a real bundle on uploaded templates if
+  // a future caller forgets to pass them.
+  initialResolvedTemplate: SerializableResolvedTemplate;
+  uploadedTemplates: UploadedTemplate[];
+  /**
+   * Pre-merged list of every selectable template (built-in + uploaded) for
+   * the StyleEditor's picker UI. The page owns this fetch (server side), so
+   * the editor can render the gallery synchronously and stay client-only.
+   */
+  allTemplates: AllTemplatesItem[];
 };
 
 const DESKTOP_QUERY = "(min-width: 1024px)";
@@ -91,7 +112,7 @@ function formatRelativeSaveTime(savedAt: Date, now: Date): string {
   return `${days}天前保存`;
 }
 
-export default function EditorClient({ id, initialTitle, initialTemplate, initialContent, initialIsPublic, initialSlug, initialUpdatedAtIso }: Props) {
+export default function EditorClient({ id, initialTitle, initialTemplate, initialContent, initialIsPublic, initialSlug, initialUpdatedAtIso, initialResolvedTemplate, uploadedTemplates, allTemplates }: Props) {
   const isDesktop = useSyncExternalStore(
     subscribeToDesktopQuery,
     getDesktopSnapshot,
@@ -122,6 +143,38 @@ export default function EditorClient({ id, initialTitle, initialTemplate, initia
   const [sectionOrder, setSectionOrder] = useState<string[]>(
     initialContent.sectionOrder ?? [...DEFAULT_SECTION_ORDER]
   );
+
+  // Map of id → UploadedTemplate for instant client-side lookup when the
+  // user switches template. Empty map when DB has none yet (early
+  // foundation phase).
+  const uploadedById = useMemo(() => {
+    const map = new Map<string, UploadedTemplate>();
+    for (const t of uploadedTemplates) map.set(t.id, t);
+    return map;
+  }, [uploadedTemplates]);
+
+  // Project the current `template` selection into a serializable form
+  // <LivePreview> can dispatch on. Order: uploaded fast-path → use the
+  // server-pre-resolved value if it still matches → fall back to a
+  // built-in id (defaulting if `template` is no longer a known id).
+  const resolvedTemplate = useMemo<SerializableResolvedTemplate>(() => {
+    const uploaded = uploadedById.get(template);
+    if (uploaded) {
+      return { source: "uploaded", id: uploaded.id, template: uploaded };
+    }
+    if (
+      initialResolvedTemplate.source === "uploaded" &&
+      initialResolvedTemplate.id === template
+    ) {
+      return initialResolvedTemplate;
+    }
+    const builtinId: BuiltinTemplateId = (
+      BUILTIN_TEMPLATE_IDS as readonly string[]
+    ).includes(template)
+      ? (template as BuiltinTemplateId)
+      : DEFAULT_TEMPLATE_ID;
+    return { source: "builtin", id: builtinId };
+  }, [template, uploadedById, initialResolvedTemplate]);
   const persistResume = useCallback(
     async (content: ResumeContent, resumeTitle: string) => {
       await saveResume(id, content, resumeTitle);
@@ -372,9 +425,8 @@ export default function EditorClient({ id, initialTitle, initialTemplate, initia
     <FormProvider {...form}>
       {/* Toolbar — only visible on desktop */}
       {isDesktop && (
-      <div className="sticky top-16 z-30 border-b border-border/60 bg-background/80 backdrop-blur-xl backdrop-saturate-150">
-        <div className="flex items-center justify-between gap-4 px-4 py-2.5">
-          <div className="flex shrink-0 items-center gap-3">
+      <div className="sticky top-14 z-30 border-b border-border/60 bg-background/80 backdrop-blur-xl backdrop-saturate-150">
+        <div className="mx-auto flex max-w-7xl items-center gap-3 px-4 py-2.5">
           <Input
             value={title}
             onChange={(e) => setTitleState(e.target.value)}
@@ -412,18 +464,16 @@ export default function EditorClient({ id, initialTitle, initialTemplate, initia
             </span>
           </span>
           <CompletenessScore />
-          </div>
-          <div data-testid="editor-toolbar" className="flex flex-wrap items-center gap-2">
+          <div data-testid="editor-toolbar" className="ml-auto flex flex-nowrap items-center gap-2 overflow-x-auto">
             <SmartLayoutButton templateId={template} measureRef={previewRootRef} />
-            <Separator orientation="vertical" className="h-6" />
             <StyleEditor
               templateId={template}
               onTemplateChange={changeTemplate}
               pendingTemplateId={pendingTemplateId}
+              allTemplates={allTemplates}
+              resumeId={id}
             />
-            <Separator orientation="vertical" className="h-6" />
             <ModuleManager sectionOrder={sectionOrder} onOrderChange={handleOrderChange} />
-            <Separator orientation="vertical" className="h-6" />
             <Button
               size="sm"
               variant="outline"
@@ -455,7 +505,6 @@ export default function EditorClient({ id, initialTitle, initialTemplate, initia
                 /r/{publicSlug}
               </a>
             )}
-            <Separator orientation="vertical" className="h-6" />
             <ExportButton
               resumeId={id}
               filename={title}
@@ -463,7 +512,6 @@ export default function EditorClient({ id, initialTitle, initialTemplate, initia
               isExportingImage={isExportingImage}
               paginationData={paginationData}
             />
-            <Separator orientation="vertical" className="h-6" />
             <InviteCollabDialog resumeId={id} onSessionCreated={(sid) => setCollabSessionId(sid)} />
             {collabState?.isConnected && (
               <>
@@ -540,7 +588,7 @@ export default function EditorClient({ id, initialTitle, initialTemplate, initia
             className="thin-scrollbar overflow-y-auto bg-muted p-6"
             style={{ width: `${100 - splitPercent}%` }}
           >
-            <LivePreview ref={previewRootRef} templateId={template} onPaginationChange={setPaginationData} />
+            <LivePreview ref={previewRootRef} resolvedTemplate={resolvedTemplate} />
             {/* Annotation highlights on preview (when collab active) */}
             {collabAnnotations.length > 0 && (
               <AnnotationHighlights

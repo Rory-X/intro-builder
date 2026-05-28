@@ -1,5 +1,8 @@
 import type { ResumeSectionVariant } from "./resume-section";
-import { ResumeItemHeader } from "./resume-item-header";
+import {
+  ResumeItemHeader,
+  type ResumeItemHeaderVariant,
+} from "./resume-item-header";
 import { wrapProfessionalEntry } from "./professional-wrap";
 
 const PLACEHOLDER_CLASS = "text-neutral-400";
@@ -9,6 +12,16 @@ function shellWrap(
   content: React.ReactNode,
 ) {
   return wrapProfessionalEntry(variant, content, { muted: true });
+}
+
+/**
+ * Section variant 是 4 元 union，但 ResumeItemHeader 只接受 3 元。
+ * card-wrapped 是 section-level 视觉概念（圆角白卡片），item header 走
+ * professional 风格最匹配（也是空 shell 占位符的合理默认）。
+ */
+function narrow(v: ResumeSectionVariant): ResumeItemHeaderVariant {
+  if (v === "card-wrapped" || v === "full-width-bar") return "professional";
+  return v;
 }
 
 type ShellProps = {
@@ -56,7 +69,7 @@ export function EducationSectionShell({ variant }: ShellProps) {
   const body = (
     <div className={variant === "professional" ? PLACEHOLDER_CLASS : `mb-2 ${PLACEHOLDER_CLASS}`}>
       <ResumeItemHeader
-        variant={variant === "modern" ? "modern" : variant}
+        variant={narrow(variant)}
         primary={
           <>
             <strong>学校名称</strong>
@@ -75,7 +88,7 @@ export function ProjectsSectionShell({ variant }: ShellProps) {
   const body = (
     <div className={variant === "professional" ? PLACEHOLDER_CLASS : `mb-2.5 ${PLACEHOLDER_CLASS}`}>
       <ResumeItemHeader
-        variant={variant === "modern" ? "modern" : variant}
+        variant={narrow(variant)}
         primary="项目名称"
         secondary="React · TypeScript · Node.js"
       />

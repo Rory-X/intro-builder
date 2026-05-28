@@ -28,17 +28,17 @@ import { useCollabFormSync } from "@/hooks/use-collab-form-sync";
 import { useAnnotations } from "@/hooks/use-annotations";
 import { Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import type { TemplateId } from "@/lib/templates/registry";
+import type { SerializableResolvedTemplate } from "@/lib/templates/render";
 import type { ResumeContent as ResumeContentType } from "@/lib/resume-schema";
 
 type Props = {
   resumeTitle: string;
   initialContent: ResumeContentType;
-  templateId: TemplateId;
+  resolvedTemplate: SerializableResolvedTemplate;
   mode: "edit" | "comment";
 };
 
-export function MentorEditorClient({ resumeTitle, initialContent, templateId, mode }: Props) {
+export function MentorEditorClient({ resumeTitle, initialContent, resolvedTemplate, mode }: Props) {
   const [config, setConfig] = useState<CollabConfig | null>(null);
 
   // Load collab config from sessionStorage on mount
@@ -75,7 +75,7 @@ export function MentorEditorClient({ resumeTitle, initialContent, templateId, mo
     <MentorEditorInner
       resumeTitle={resumeTitle}
       initialContent={initialContent}
-      templateId={templateId}
+      resolvedTemplate={resolvedTemplate}
       mode={mode}
       ydoc={collabState.ydoc}
       provider={collabState.provider}
@@ -89,7 +89,7 @@ export function MentorEditorClient({ resumeTitle, initialContent, templateId, mo
 function MentorEditorInner({
   resumeTitle,
   initialContent,
-  templateId,
+  resolvedTemplate,
   mode,
   ydoc,
   provider,
@@ -99,7 +99,7 @@ function MentorEditorInner({
 }: {
   resumeTitle: string;
   initialContent: ResumeContentType;
-  templateId: TemplateId;
+  resolvedTemplate: SerializableResolvedTemplate;
   mode: "edit" | "comment";
   ydoc: import("yjs").Doc;
   provider: unknown;
@@ -201,7 +201,7 @@ function MentorEditorInner({
             </div>
             {/* Right: live preview (帮改模式) */}
             <div className="thin-scrollbar w-1/2 overflow-y-auto bg-muted p-6">
-              <LivePreview templateId={templateId} />
+              <LivePreview resolvedTemplate={resolvedTemplate} />
             </div>
           </>
         ) : (
@@ -216,7 +216,7 @@ function MentorEditorInner({
             </div>
             {/* Right: preview with annotation popover (批注模式) */}
             <div ref={previewRef} className="thin-scrollbar relative flex-1 overflow-y-auto bg-muted p-6">
-              <LivePreview ref={previewContentRef} templateId={templateId} />
+              <LivePreview ref={previewContentRef} resolvedTemplate={resolvedTemplate} />
               <AnnotationHighlights previewRef={previewContentRef} annotations={annotations} />
               <AnnotationPopover
                 previewRef={previewRef}
