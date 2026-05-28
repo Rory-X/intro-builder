@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import Link from "next/link";
+import Image from "next/image";
 import { Button } from "@/components/ui/button";
 import { ArrowRight, LogOut, Settings } from "lucide-react";
 import {
@@ -57,9 +58,12 @@ export function MarketingNav({ email, name, signOutAction, hideNavLinks, fullWid
     >
       {/* Logo */}
       <Link href="/" className="flex items-center gap-2">
-        <span className="inline-flex h-7 w-7 items-center justify-center rounded-lg bg-foreground text-[10px] font-extrabold text-background shadow-sm">
-          ib
-        </span>
+        <Image
+          src="/logo.png"
+          alt="intro-builder"
+          width={28}
+          height={28}
+        />
         <span className="hidden text-sm font-bold tracking-tight sm:inline">
           intro-builder
         </span>
