@@ -51,6 +51,10 @@ export function ResumePage({
     fontFamily: FONT_MAP[fontKey].css,
     backgroundColor: decoration?.pageBgColor ?? "#ffffff",
     color: "#000000",
+    // CSS 变量给 ResumeSection 和 v2 customCss 消费 —— smart-layout 算法
+    // 通过 setProperty 临时改这两个变量来测量压缩后高度。
+    ["--section-gap" as string]: `${ss.sectionGap}px`,
+    ["--item-gap" as string]: `${ss.itemGap}px`,
   };
 
   const hasDecorationImage = Boolean(decoration?.bgImageUrl);

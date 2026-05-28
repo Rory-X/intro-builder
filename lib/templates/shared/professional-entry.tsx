@@ -12,7 +12,9 @@ export function ProfessionalEntry({ children, className, muted = false }: Props)
     <div
       data-pagination-item
       className={cn(
-        "mb-2.5 break-inside-avoid last:mb-0",
+        // 最后一个 entry 不要底部间距 —— 用 :not(:last-child) selector 而不是
+        // inline style，否则最后一个 entry 会和下一个 section 距离过大。
+        "break-inside-avoid [&:not(:last-child)]:mb-[var(--item-gap)]",
         muted && "text-neutral-400",
         className,
       )}

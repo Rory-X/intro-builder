@@ -114,6 +114,9 @@ export function SlotRenderer({
     "--font-family": fontFamilyValue(styleSettings.fontFamily),
     "--font-size": `${styleSettings.fontSize}px`,
     "--line-height": String(styleSettings.lineHeight),
+    "--page-padding": `${styleSettings.pagePadding}px`,
+    "--section-gap": `${styleSettings.sectionGap}px`,
+    "--item-gap": `${styleSettings.itemGap}px`,
   };
 
   // 5. Sectioned LookupTable (memoized inside resolveSection per call) — pre-resolve

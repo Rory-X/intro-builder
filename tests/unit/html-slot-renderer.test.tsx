@@ -246,6 +246,9 @@ describe("SlotRenderer — CSS scope + style injection", () => {
     expect(root).not.toBeNull();
     expect(root.style.getPropertyValue("--font-size")).toBe("14px");
     expect(root.style.getPropertyValue("--line-height")).toBe("1.7");
+    expect(root.style.getPropertyValue("--page-padding")).toBe("40px");
+    expect(root.style.getPropertyValue("--section-gap")).toBe("16px");
+    expect(root.style.getPropertyValue("--item-gap")).toBe("12px");
     const styleEl = root.querySelector("style");
     expect(styleEl?.textContent).toContain('[data-template-id="test-tpl"] .my-name');
   });
