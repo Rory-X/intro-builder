@@ -1,13 +1,16 @@
 "use client";
 
 import { useLayoutEffect, useState, type RefObject } from "react";
+import { A4_WIDTH_PX } from "@/lib/pagination";
 
 /**
- * baseWidth = 595px = A4 width @ 72dpi (210mm × 72/25.4). 模板渲染区
- * 实际是 max-w-[800px]，但 thumbnail 把 stage 固定到 595 让缩放计算稳定，
- * 也匹配 PDF 的 A4 真实物理尺寸 —— 缩略图视觉跟最终 PDF 等比。
+ * baseWidth 与页面渲染（live preview / pagination / PDF 路由）共享同一个
+ * A4_WIDTH_PX (794px @ 96dpi)，保证缩略图、编辑器预览、PDF 三处的内容
+ * 排版宽度完全一致 —— 同一份简历在三处看到的字号 / 行宽 / 换行点是相同的。
+ * 之前 hard-code 595（A4@72dpi）会让缩略图按更窄的版面排版后再缩放，跟
+ * 实际页面密度不一致。
  */
-export const FIT_THUMBNAIL_DEFAULT_BASE_WIDTH = 595;
+export const FIT_THUMBNAIL_DEFAULT_BASE_WIDTH = A4_WIDTH_PX;
 
 type FitOpts = {
   containerRef: RefObject<HTMLElement | null>;

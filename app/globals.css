@@ -128,6 +128,9 @@
   }
   html {
     @apply font-sans;
+    /* 永远预留竖向滚动条位置 —— 防止页面内容收缩时滚动条消失引起的视口宽度抖动
+       (经典 CLS：搜索 / 切 tab 过滤后结果变少 → 滚动条收 → mx-auto 容器整体左右移)。 */
+    scrollbar-gutter: stable;
   }
 }
 

@@ -9,7 +9,7 @@ export function Brand() {
         alt="intro-builder"
         width={28}
         height={28}
-        className="transition-transform duration-200 group-hover:scale-105"
+        className="h-7 w-7 transition-transform duration-200 group-hover:scale-105"
       />
       <span className="bg-gradient-to-r from-foreground to-foreground/70 bg-clip-text text-transparent">
         intro-builder

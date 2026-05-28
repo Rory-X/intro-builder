@@ -1,4 +1,5 @@
 import { eq, desc } from "drizzle-orm";
+import Link from "next/link";
 import { requireUserId } from "@/lib/auth-helpers";
 import { auth } from "@/lib/auth";
 import { db } from "@/db";
@@ -9,9 +10,10 @@ import {
 import { Plus, MoreVertical, Edit, Copy, FolderOpen, Share2, Clock, FileText, Layers, BookOpen, CircleHelp } from "lucide-react";
 import { createResume, deleteResume, duplicateResume } from "./actions";
 import { migrateContent } from "@/lib/migrate-content";
-import { getTemplateMeta } from "@/lib/templates/registry";
-import { TemplateRenderer } from "@/components/preview/template-renderer";
+import { getTemplateMetaAsync } from "@/lib/templates/registry-server";
+import { TemplateRender } from "@/lib/templates/render-server";
 import { computeCompletenessScore } from "@/lib/completeness-score";
+import { A4_WIDTH_PX } from "@/lib/pagination";
 import { ImportResumeButton } from "@/components/editor/import-resume-button";
 import { DeleteResumeButton } from "@/components/editor/delete-resume-button";
 import type { Metadata } from "next";
@@ -26,6 +28,17 @@ export default async function DashboardPage() {
   const userName = session?.user?.name ?? session?.user?.email?.split("@")[0] ?? "你";
 
   const list = await db.select().from(resumes).where(eq(resumes.userId, userId)).orderBy(desc(resumes.updatedAt));
+
+  // Batch-resolve every resume's template once at the page level — collapses
+  // what would be N awaits in the map loop into a single Promise.all. Built-in
+  // ids resolve synchronously inside getTemplateMetaAsync (no DB roundtrip);
+  // only uploaded ids hit DB. Pass the result via `preResolved` so each
+  // <TemplateRender> renders without re-fetching.
+  const resolvedByResumeId = new Map(
+    await Promise.all(
+      list.map(async (r) => [r.id, await getTemplateMetaAsync(r.templateId)] as const),
+    ),
+  );
 
   const sharedCount = list.filter((r) => r.isPublic && r.slug).length;
   const scores = list.map((r) => computeCompletenessScore(migrateContent(r.content)).overall);
@@ -58,7 +71,7 @@ export default async function DashboardPage() {
             资源
           </div>
           <nav className="flex flex-col gap-0.5">
-            <SideItem icon={<Layers className="h-4 w-4" />} label="模板库" />
+            <SideItem icon={<Layers className="h-4 w-4" />} label="模板库" href="/templates" />
             <SideItem icon={<BookOpen className="h-4 w-4" />} label="简历指南" />
             <SideItem icon={<CircleHelp className="h-4 w-4" />} label="帮助中心" />
           </nav>
@@ -149,7 +162,10 @@ export default async function DashboardPage() {
             {/* Existing resume cards */}
             {list.map((r) => {
               const content = migrateContent(r.content);
-              const templateName = getTemplateMeta(r.templateId).name;
+              const resolved = resolvedByResumeId.get(r.id)!;
+              const templateName = resolved.source === "builtin"
+                ? resolved.meta.name
+                : resolved.template.name;
               const score = computeCompletenessScore(content).overall;
               const isShared = !!(r.isPublic && r.slug);
               return (
@@ -159,9 +175,16 @@ export default async function DashboardPage() {
                     <ResumeCardLink href={`/resume/${r.id}/edit`}>
                       <div className="relative m-3 mb-0 overflow-hidden rounded-xl border border-border/60 [container-type:inline-size]"
                            style={{ aspectRatio: "210/297", backgroundColor: "#ffffff" }}>
-                        <div className="pointer-events-none origin-top-left [transform:scale(calc(100cqw/820px))]" style={{ width: "820px" }}>
-                          <TemplateRenderer
-                            templateId={r.templateId}
+                        <div
+                          className="pointer-events-none origin-top-left"
+                          style={{
+                            width: `${A4_WIDTH_PX}px`,
+                            transform: `scale(calc(100cqw / ${A4_WIDTH_PX}px))`,
+                          }}
+                        >
+                          <TemplateRender
+                            id={r.templateId}
+                            preResolved={resolved}
                             content={content}
                             sectionOrder={content.sectionOrder}
                           />
@@ -237,20 +260,21 @@ function SideItem({
   label,
   count,
   active,
+  href,
 }: {
   icon: React.ReactNode;
   label: string;
   count?: number;
   active?: boolean;
+  href?: string;
 }) {
-  return (
-    <div
-      className={`flex items-center gap-3 rounded-lg px-2.5 py-2 text-sm font-medium cursor-pointer transition-colors ${
-        active
-          ? "bg-foreground text-background"
-          : "text-muted-foreground hover:bg-muted/50 hover:text-foreground"
-      }`}
-    >
+  const className = `flex items-center gap-3 rounded-lg px-2.5 py-2 text-sm font-medium cursor-pointer transition-colors ${
+    active
+      ? "bg-foreground text-background"
+      : "text-muted-foreground hover:bg-muted/50 hover:text-foreground"
+  }`;
+  const inner = (
+    <>
       {icon}
       {label}
       {count != null && (
@@ -260,8 +284,12 @@ function SideItem({
           {count}
         </span>
       )}
-    </div>
+    </>
   );
+  if (href) {
+    return <Link href={href} className={className}>{inner}</Link>;
+  }
+  return <div className={className}>{inner}</div>;
 }
 
 function StatCard({

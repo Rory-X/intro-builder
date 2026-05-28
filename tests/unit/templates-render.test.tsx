@@ -75,4 +75,36 @@ describe("TemplateRender (server) preResolved short-circuit", () => {
     expect(spy).not.toHaveBeenCalled();
     spy.mockRestore();
   });
+
+  it("dispatches uploaded preResolved to UploadedLayout (regression: dashboard / pdf used to fall back to builtin for uploaded ids)", async () => {
+    const tpl: UploadedTemplate = {
+      id: "uploaded-x",
+      name: "Custom",
+      description: null,
+      thumbnailUrl: null,
+      decoration: null,
+      layout: {
+        frame: { kind: "vertical" },
+        headerVariant: "professional",
+        sectionTitleVariant: "professional",
+        itemHeaderVariant: "professional",
+        theme: { primaryColor: "#abcdef" },
+        sectionIcons: {},
+      },
+      customHtml: null,
+      customCss: null,
+      category: null,
+      features: null,
+    };
+    const element = await TemplateRender({
+      id: "uploaded-x",
+      preResolved: { source: "uploaded", id: "uploaded-x", template: tpl },
+      content: demoResume,
+    });
+    const { container } = render(element);
+    // UploadedLayout pipes layout.theme.primaryColor onto article via --primary;
+    // a builtin fallback would not carry the same custom value through.
+    const article = container.querySelector("article");
+    expect(article?.style.getPropertyValue("--primary")).toBe("#abcdef");
+  });
 });

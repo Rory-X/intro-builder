@@ -5,6 +5,8 @@ import { db } from "@/db";
 import { resumes } from "@/db/schema";
 import { migrateContent } from "@/lib/migrate-content";
 import { TemplateRender } from "@/lib/templates/render-server";
+import { getTemplateMetaAsync } from "@/lib/templates/registry-server";
+import { toSerializable } from "@/lib/templates/render";
 import { PdfPreview } from "@/components/preview/pdf-preview";
 import { verifyPdfToken } from "@/lib/pdf-token";
 
@@ -38,9 +40,10 @@ export default async function PreviewPage({
   const isPdf = _pdf === "1";
 
   if (isPdf) {
+    const resolved = await getTemplateMetaAsync(row.templateId);
     return (
       <PdfPreview
-        templateId={row.templateId}
+        resolved={toSerializable(resolved)}
         content={content}
         styleSettings={content.styleSettings}
       />
