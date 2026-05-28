@@ -21,7 +21,7 @@ describe("Header", () => {
   });
 
   it("renders email initial in avatar when signed in", async () => {
-    (auth as unknown as Mock).mockResolvedValue({ user: { email: "alice@example.com" } });
+    (auth as unknown as Mock).mockResolvedValue({ user: { id: "u1", email: "alice@example.com" } });
     await renderHeader();
     expect(screen.getAllByText("A").length).toBeGreaterThan(0);
   });
