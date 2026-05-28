@@ -9,8 +9,8 @@ import {
 import { Plus, MoreVertical, Edit, Copy, FolderOpen, Share2, Clock, FileText, Layers, BookOpen, CircleHelp } from "lucide-react";
 import { createResume, deleteResume, duplicateResume } from "./actions";
 import { migrateContent } from "@/lib/migrate-content";
-import { getTemplateMeta } from "@/lib/templates/registry";
-import { TemplateRenderer } from "@/components/preview/template-renderer";
+import { getTemplateMetaAsync } from "@/lib/templates/registry-server";
+import { TemplateRender } from "@/lib/templates/render-server";
 import { computeCompletenessScore } from "@/lib/completeness-score";
 import { ImportResumeButton } from "@/components/editor/import-resume-button";
 import { DeleteResumeButton } from "@/components/editor/delete-resume-button";
@@ -26,6 +26,17 @@ export default async function DashboardPage() {
   const userName = session?.user?.name ?? session?.user?.email?.split("@")[0] ?? "你";
 
   const list = await db.select().from(resumes).where(eq(resumes.userId, userId)).orderBy(desc(resumes.updatedAt));
+
+  // Batch-resolve every resume's template once at the page level — collapses
+  // what would be N awaits in the map loop into a single Promise.all. Built-in
+  // ids resolve synchronously inside getTemplateMetaAsync (no DB roundtrip);
+  // only uploaded ids hit DB. Pass the result via `preResolved` so each
+  // <TemplateRender> renders without re-fetching.
+  const resolvedByResumeId = new Map(
+    await Promise.all(
+      list.map(async (r) => [r.id, await getTemplateMetaAsync(r.templateId)] as const),
+    ),
+  );
 
   const sharedCount = list.filter((r) => r.isPublic && r.slug).length;
   const scores = list.map((r) => computeCompletenessScore(migrateContent(r.content)).overall);
@@ -149,7 +160,10 @@ export default async function DashboardPage() {
             {/* Existing resume cards */}
             {list.map((r) => {
               const content = migrateContent(r.content);
-              const templateName = getTemplateMeta(r.templateId).name;
+              const resolved = resolvedByResumeId.get(r.id)!;
+              const templateName = resolved.source === "builtin"
+                ? resolved.meta.name
+                : resolved.template.name;
               const score = computeCompletenessScore(content).overall;
               const isShared = !!(r.isPublic && r.slug);
               return (
@@ -160,8 +174,9 @@ export default async function DashboardPage() {
                       <div className="relative m-3 mb-0 overflow-hidden rounded-xl border border-border/60 [container-type:inline-size]"
                            style={{ aspectRatio: "210/297", backgroundColor: "#ffffff" }}>
                         <div className="pointer-events-none origin-top-left [transform:scale(calc(100cqw/820px))]" style={{ width: "820px" }}>
-                          <TemplateRenderer
-                            templateId={r.templateId}
+                          <TemplateRender
+                            id={r.templateId}
+                            preResolved={resolved}
                             content={content}
                             sectionOrder={content.sectionOrder}
                           />

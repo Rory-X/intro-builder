@@ -13,13 +13,15 @@
 
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { ResumeContent, StyleSettings } from "@/lib/resume-schema";
-import type { TemplateId } from "@/lib/templates/registry";
-import { TemplateRenderer } from "./template-renderer";
+import {
+  ClientTemplateRenderFromSerializable,
+  type SerializableResolvedTemplate,
+} from "@/lib/templates/render";
 import { A4_HEIGHT_PX, A4_WIDTH_PX } from "@/lib/pagination";
 
 type Props = {
   content: ResumeContent;
-  templateId: TemplateId | string;
+  resolved: SerializableResolvedTemplate;
   styleSettings?: StyleSettings;
 };
 
@@ -114,7 +116,7 @@ function calculatePageBreaks(breakPoints: { bottom: number }[], totalHeight: num
   return breaks;
 }
 
-export function PdfPreview({ content, templateId, styleSettings }: Props) {
+export function PdfPreview({ content, resolved, styleSettings }: Props) {
   const measureRef = useRef<HTMLDivElement>(null);
   const [pageBreaks, setPageBreaks] = useState<number[]>([]);
   const [totalHeight, setTotalHeight] = useState(0);
@@ -141,7 +143,7 @@ export function PdfPreview({ content, templateId, styleSettings }: Props) {
 
   useLayoutEffect(() => {
     recalculate();
-  }, [recalculate, content, templateId, styleSettings]);
+  }, [recalculate, content, resolved, styleSettings]);
 
   useEffect(() => {
     const container = measureRef.current;
@@ -182,8 +184,8 @@ export function PdfPreview({ content, templateId, styleSettings }: Props) {
         aria-hidden="true"
         style={{ position: "absolute", left: "-9999px", opacity: 0, width: `${A4_WIDTH_PX}px` }}
       >
-        <TemplateRenderer
-          templateId={templateId}
+        <ClientTemplateRenderFromSerializable
+          resolved={resolved}
           content={content}
           sectionOrder={content.sectionOrder}
           styleSettings={styleSettings}
@@ -231,8 +233,8 @@ export function PdfPreview({ content, templateId, styleSettings }: Props) {
                   left: 0, right: 0, top: 0,
                   transform: `translateY(${(isFirstPage ? 0 : CONTINUATION_PADDING) - offset}px)`,
                 }}>
-                  <TemplateRenderer
-                    templateId={templateId}
+                  <ClientTemplateRenderFromSerializable
+                    resolved={resolved}
                     content={content}
                     sectionOrder={content.sectionOrder}
                     styleSettings={styleSettings}
@@ -255,8 +257,8 @@ export function PdfPreview({ content, templateId, styleSettings }: Props) {
 
       {!measured && (
         <div style={{ width: `${A4_WIDTH_PX}px`, backgroundColor: "#ffffff" }}>
-          <TemplateRenderer
-            templateId={templateId}
+          <ClientTemplateRenderFromSerializable
+            resolved={resolved}
             content={content}
             sectionOrder={content.sectionOrder}
             styleSettings={styleSettings}
