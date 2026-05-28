@@ -466,13 +466,7 @@ export default function EditorClient({ id, initialTitle, initialTemplate, initia
           <CompletenessScore />
           <div data-testid="editor-toolbar" className="ml-auto flex flex-nowrap items-center gap-2 overflow-x-auto">
             <SmartLayoutButton templateId={template} measureRef={previewRootRef} />
-            <StyleEditor
-              templateId={template}
-              onTemplateChange={changeTemplate}
-              pendingTemplateId={pendingTemplateId}
-              allTemplates={allTemplates}
-              resumeId={id}
-            />
+            <StyleEditor />
             <ModuleManager sectionOrder={sectionOrder} onOrderChange={handleOrderChange} />
             <Button
               size="sm"

@@ -139,8 +139,8 @@ describe("EditorClient live preview", () => {
     );
 
     const toolbar = screen.getByTestId("editor-toolbar");
-    expect(toolbar).toHaveTextContent("模板与排版");
-    expect(screen.getAllByRole("button", { name: /模板与排版/ })).toHaveLength(1);
+    expect(toolbar).toHaveTextContent("排版");
+    expect(screen.getAllByRole("button", { name: "排版" })).toHaveLength(1);
   });
 
   it("shows autosave status details on the save badge", () => {

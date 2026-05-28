@@ -1,37 +1,19 @@
 "use client";
-import Link from "next/link";
 import { useFormContext } from "react-hook-form";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { FONT_MAP, type FontKey } from "@/lib/font-map";
 import { DEFAULT_STYLE_SETTINGS, type ResumeContent } from "@/lib/resume-schema";
-import { type AllTemplatesItem, type TemplateId } from "@/lib/templates/registry";
 import { cn } from "@/lib/utils";
-import { ArrowRight, ChevronDown, LayoutTemplate, Loader2, RotateCcw } from "lucide-react";
+import { ChevronDown, RotateCcw, SlidersHorizontal } from "lucide-react";
 
 const FONT_KEYS: FontKey[] = ["sans", "serif", "mono"];
 const FONT_SIZE_OPTIONS = [10, 11, 12, 13, 14, 15, 16] as const;
 const LINE_HEIGHT_OPTIONS = [1.2, 1.3, 1.4, 1.5, 1.6, 1.7, 1.8, 1.9, 2.0] as const;
 const PAGE_PADDING_OPTIONS = [20, 25, 30, 35, 40, 45, 50, 55, 60] as const;
 
-type Props = {
-  templateId: TemplateId;
-  onTemplateChange: (id: TemplateId) => void;
-  pendingTemplateId?: TemplateId | null;
-  // Required because the editor page always pre-fetches via listAllTemplatesAsync; legacy fallback removed.
-  allTemplates: AllTemplatesItem[];
-  /** 当前简历 id —— 给「查看全部模板 →」CTA 拼成 ?from=editor&resumeId=<id> 用 */
-  resumeId: string;
-};
-
-export function StyleEditor({
-  templateId,
-  onTemplateChange,
-  pendingTemplateId = null,
-  allTemplates,
-  resumeId,
-}: Props) {
+export function StyleEditor() {
   const { watch, setValue } = useFormContext<ResumeContent>();
 
   const ss = { ...DEFAULT_STYLE_SETTINGS, ...watch("styleSettings") };
@@ -54,85 +36,15 @@ export function StyleEditor({
           <Button type="button" size="sm" variant="outline" className="gap-1.5" />
         }
       >
-        <LayoutTemplate className="h-3.5 w-3.5" />
-        模板与排版
+        <SlidersHorizontal className="h-3.5 w-3.5" />
+        排版
       </PopoverTrigger>
-      <PopoverContent align="end" className="w-[min(92vw,34rem)] gap-4 p-4">
+      <PopoverContent align="end" className="w-[min(92vw,22rem)] gap-4 p-4">
         <div>
-          <h3 className="text-sm font-semibold">模板与排版</h3>
+          <h3 className="text-sm font-semibold">排版</h3>
           <p className="mt-0.5 text-xs text-muted-foreground">
-            调整简历模板、密度、字体和页面尺度。
+            调整字体、密度和页面尺度。
           </p>
-        </div>
-
-        <div className="space-y-2">
-          <div className="flex items-center justify-between gap-2">
-            <Label>简历模板</Label>
-            <Link
-              href={`/templates?from=editor&resumeId=${resumeId}`}
-              className="inline-flex items-center gap-1 text-xs text-primary hover:underline"
-            >
-              查看全部模板
-              <ArrowRight className="h-3 w-3" />
-            </Link>
-          </div>
-          <div className="grid gap-2 sm:grid-cols-3">
-            {allTemplates.map((t) => {
-              const isPendingThis = pendingTemplateId === t.id;
-              const isOtherPending = pendingTemplateId !== null && !isPendingThis;
-              const isUploaded = t.source === "uploaded";
-              return (
-                <button
-                  key={t.id}
-                  type="button"
-                  onClick={() => onTemplateChange(t.id)}
-                  disabled={isOtherPending || isPendingThis}
-                  aria-busy={isPendingThis}
-                  className={cn(
-                    "relative rounded-lg border px-3 py-2 text-left transition-colors disabled:cursor-wait disabled:opacity-80",
-                    templateId === t.id
-                      ? "border-primary bg-primary/10 ring-1 ring-primary/40"
-                      : "border-border hover:border-primary/40 hover:bg-muted/50",
-                  )}
-                >
-                  {isUploaded ? (
-                    // Uploaded template preview: thumbnail if uploaded, otherwise
-                    // a name-only placeholder. Don't fall back to a built-in
-                    // preview — that would be misleading about what they're
-                    // about to render.
-                    <div
-                      className="mb-2 flex aspect-[210/297] items-center justify-center overflow-hidden rounded-md border bg-muted/40 text-center"
-                      data-testid={`template-thumb-${t.id}`}
-                    >
-                      {t.thumbnailUrl ? (
-                        // eslint-disable-next-line @next/next/no-img-element
-                        <img
-                          src={t.thumbnailUrl}
-                          alt={t.name}
-                          className="h-full w-full object-cover"
-                        />
-                      ) : (
-                        <span className="px-2 text-xs font-medium text-muted-foreground">
-                          {t.name}
-                        </span>
-                      )}
-                    </div>
-                  ) : null}
-                  <div className="flex items-center justify-between gap-2">
-                    <span className="text-sm font-medium">{t.name}</span>
-                    {isPendingThis ? (
-                      <Loader2 className="h-3.5 w-3.5 animate-spin text-primary" />
-                    ) : t.isRecommended ? (
-                      <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-medium text-primary">
-                        推荐
-                      </span>
-                    ) : null}
-                  </div>
-                  <p className="mt-0.5 text-xs text-muted-foreground">{t.description}</p>
-                </button>
-              );
-            })}
-          </div>
         </div>
 
         <div className="space-y-4 rounded-lg border bg-muted/20 p-3">
