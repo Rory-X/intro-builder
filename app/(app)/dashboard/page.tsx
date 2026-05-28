@@ -1,4 +1,5 @@
 import { eq, desc } from "drizzle-orm";
+import Link from "next/link";
 import { requireUserId } from "@/lib/auth-helpers";
 import { auth } from "@/lib/auth";
 import { db } from "@/db";
@@ -12,6 +13,7 @@ import { migrateContent } from "@/lib/migrate-content";
 import { getTemplateMetaAsync } from "@/lib/templates/registry-server";
 import { TemplateRender } from "@/lib/templates/render-server";
 import { computeCompletenessScore } from "@/lib/completeness-score";
+import { A4_WIDTH_PX } from "@/lib/pagination";
 import { ImportResumeButton } from "@/components/editor/import-resume-button";
 import { DeleteResumeButton } from "@/components/editor/delete-resume-button";
 import type { Metadata } from "next";
@@ -69,7 +71,7 @@ export default async function DashboardPage() {
             资源
           </div>
           <nav className="flex flex-col gap-0.5">
-            <SideItem icon={<Layers className="h-4 w-4" />} label="模板库" />
+            <SideItem icon={<Layers className="h-4 w-4" />} label="模板库" href="/templates" />
             <SideItem icon={<BookOpen className="h-4 w-4" />} label="简历指南" />
             <SideItem icon={<CircleHelp className="h-4 w-4" />} label="帮助中心" />
           </nav>
@@ -173,7 +175,13 @@ export default async function DashboardPage() {
                     <ResumeCardLink href={`/resume/${r.id}/edit`}>
                       <div className="relative m-3 mb-0 overflow-hidden rounded-xl border border-border/60 [container-type:inline-size]"
                            style={{ aspectRatio: "210/297", backgroundColor: "#ffffff" }}>
-                        <div className="pointer-events-none origin-top-left [transform:scale(calc(100cqw/820px))]" style={{ width: "820px" }}>
+                        <div
+                          className="pointer-events-none origin-top-left"
+                          style={{
+                            width: `${A4_WIDTH_PX}px`,
+                            transform: `scale(calc(100cqw / ${A4_WIDTH_PX}px))`,
+                          }}
+                        >
                           <TemplateRender
                             id={r.templateId}
                             preResolved={resolved}
@@ -252,20 +260,21 @@ function SideItem({
   label,
   count,
   active,
+  href,
 }: {
   icon: React.ReactNode;
   label: string;
   count?: number;
   active?: boolean;
+  href?: string;
 }) {
-  return (
-    <div
-      className={`flex items-center gap-3 rounded-lg px-2.5 py-2 text-sm font-medium cursor-pointer transition-colors ${
-        active
-          ? "bg-foreground text-background"
-          : "text-muted-foreground hover:bg-muted/50 hover:text-foreground"
-      }`}
-    >
+  const className = `flex items-center gap-3 rounded-lg px-2.5 py-2 text-sm font-medium cursor-pointer transition-colors ${
+    active
+      ? "bg-foreground text-background"
+      : "text-muted-foreground hover:bg-muted/50 hover:text-foreground"
+  }`;
+  const inner = (
+    <>
       {icon}
       {label}
       {count != null && (
@@ -275,8 +284,12 @@ function SideItem({
           {count}
         </span>
       )}
-    </div>
+    </>
   );
+  if (href) {
+    return <Link href={href} className={className}>{inner}</Link>;
+  }
+  return <div className={className}>{inner}</div>;
 }
 
 function StatCard({
