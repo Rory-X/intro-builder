@@ -74,9 +74,11 @@ export const BUILTIN_SECTION_KEYS = new Set(["basics", "experience", "education"
 
 export const StyleSettings = z.object({
   fontFamily: z.enum(["sans", "serif", "mono"]).default("sans"),
-  fontSize: z.number().min(10).max(16).default(13),
-  lineHeight: z.number().min(1.2).max(2.0).default(1.6),
-  pagePadding: z.number().min(20).max(60).default(40),
+  fontSize: z.number().min(8).max(16).default(13),
+  lineHeight: z.number().min(1.05).max(2.0).default(1.6),
+  pagePadding: z.number().min(8).max(60).default(40),
+  sectionGap: z.number().min(4).max(24).default(16),
+  itemGap: z.number().min(2).max(16).default(12),
 });
 
 export type StyleSettings = z.infer<typeof StyleSettings>;
@@ -86,6 +88,8 @@ export const DEFAULT_STYLE_SETTINGS: StyleSettings = {
   fontSize: 13,
   lineHeight: 1.6,
   pagePadding: 40,
+  sectionGap: 16,
+  itemGap: 12,
 };
 
 export const ResumeContent = z.object({

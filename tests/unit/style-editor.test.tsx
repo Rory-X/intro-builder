@@ -15,6 +15,8 @@ function Harness({
     fontSize: 15,
     lineHeight: 1.6,
     pagePadding: 40,
+    sectionGap: 16,
+    itemGap: 12,
   };
   const form = useForm<ResumeContent>({ defaultValues: content });
   onReady?.(form);
