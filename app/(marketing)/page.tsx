@@ -7,10 +7,14 @@ import { BentoFeatures } from "@/components/marketing/bento-features";
 import { TemplatesSection } from "@/components/marketing/templates-section";
 import { MarketingFooter } from "@/components/marketing/marketing-footer";
 import { ScrollReveal } from "@/components/marketing/scroll-reveal";
+import { listAllTemplatesAsync } from "@/lib/templates/registry-server";
+import { demoResume } from "@/lib/demo-resume";
 
 const COMPANIES = ["字节跳动", "美团", "腾讯", "阿里巴巴", "小红书", "百度", "京东"];
 
-export default function Landing() {
+export default async function Landing() {
+  const allTemplates = await listAllTemplatesAsync();
+
   return (
     <>
       <HeroSection />
@@ -36,7 +40,7 @@ export default function Landing() {
       </section>
 
       <BentoFeatures />
-      <TemplatesSection />
+      <TemplatesSection allTemplates={allTemplates} demoContent={demoResume} />
 
       {/* CTA Section */}
       <section className="relative overflow-hidden py-24 md:py-32">
