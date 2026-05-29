@@ -8,6 +8,7 @@ import parse, {
 import type { ReactElement } from "react";
 import type { ResumeContent, StyleSettings } from "@/lib/resume-schema";
 import type { TipTapJSON } from "@/lib/tiptap-types";
+import { FONT_MAP } from "@/lib/font-map";
 import { ResumeRichText } from "@/lib/templates/shared/resume-rich-text";
 import {
   BASICS_BINDINGS,
@@ -354,15 +355,12 @@ function placeholder(msg: string): ReactElement {
 }
 
 function fontFamilyValue(family: StyleSettings["fontFamily"]): string {
-  switch (family) {
-    case "serif":
-      return `"PingFang SC", "Songti SC", Georgia, serif`;
-    case "mono":
-      return `"JetBrains Mono", "SF Mono", Consolas, monospace`;
-    case "sans":
-    default:
-      return `-apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", sans-serif`;
-  }
+  // 直接用 FONT_MAP 作为唯一信源 —— 之前这里 hardcode 了一套字体，serif
+  // 第一选择居然是"PingFang SC"（苹方，黑体），切 sans/serif/mono 三个字
+  // 体在中文上都 fallback 到苹方，肉眼完全看不出区别。zoo 反馈"字体对中
+  // 文不生效"的根因。改用 FONT_MAP 后内置模板和 v2 模板共享同一套字体定
+  // 义，切换字体在中文 glyph 上有可见变化。
+  return FONT_MAP[family].css;
 }
 
 // Suppress unused import warning — domToReact may be needed if we extend
