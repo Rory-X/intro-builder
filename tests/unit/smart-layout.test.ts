@@ -26,12 +26,13 @@ describe("interpolateSettings", () => {
     expect(result.itemGap).toBe(12);
   });
 
-  it("returns min settings (8 / 1.05 / 8 / 4 / 2) when scale=0", () => {
+  it("returns min settings when scale=0 (pagePadding stays at current — algorithm doesn't compress it)", () => {
     const result = interpolateSettings(current, 0);
     expect(result.fontFamily).toBe("sans");
     expect(result.fontSize).toBe(8);
     expect(result.lineHeight).toBe(1.05);
-    expect(result.pagePadding).toBe(8);
+    // pagePadding 不参与算法压缩 —— 保留 current.pagePadding 不动
+    expect(result.pagePadding).toBe(40);
     expect(result.sectionGap).toBe(4);
     expect(result.itemGap).toBe(2);
   });
@@ -43,8 +44,8 @@ describe("interpolateSettings", () => {
     expect(result.fontSize).toBe(11);
     // lineHeight: 1.05 + (1.6-1.05)*0.5 = 1.325 → rounded to 1.33 (2 decimals)
     expect(result.lineHeight).toBe(1.33);
-    // pagePadding: 8 + (40-8)*0.5 = 24
-    expect(result.pagePadding).toBe(24);
+    // pagePadding: 不变，仍是 current.pagePadding
+    expect(result.pagePadding).toBe(40);
     // sectionGap: 4 + (16-4)*0.5 = 10
     expect(result.sectionGap).toBe(10);
     // itemGap: 2 + (12-2)*0.5 = 7
@@ -104,11 +105,11 @@ describe("findOptimalSettings", () => {
     const measure = async () => A4_HEIGHT_PX + 200; // always too tall
     const result = await findOptimalSettings(current, measure);
     expect(result.status).toBe("cannot-fit");
-    // Should still return the most compact settings (5-dim MIN)
+    // Should still return the most compact settings (4-dim MIN; pagePadding stays at current)
     if (result.status === "cannot-fit") {
       expect(result.settings.fontSize).toBe(8);
       expect(result.settings.lineHeight).toBe(1.05);
-      expect(result.settings.pagePadding).toBe(8);
+      expect(result.settings.pagePadding).toBe(40); // current.pagePadding，不被算法压缩
       expect(result.settings.sectionGap).toBe(4);
       expect(result.settings.itemGap).toBe(2);
     }
@@ -130,17 +131,16 @@ describe("findOptimalSettings", () => {
       const h = await measure(result.settings);
       expect(h).toBeLessThanOrEqual(A4_HEIGHT_PX);
 
-      // Settings should be reduced from current
+      // Settings should be reduced from current (pagePadding 除外，它不被压缩)
       expect(result.settings.fontSize).toBeLessThan(current.fontSize);
       expect(result.settings.lineHeight).toBeLessThan(current.lineHeight);
-      expect(result.settings.pagePadding).toBeLessThan(current.pagePadding);
+      expect(result.settings.pagePadding).toBe(current.pagePadding);
       expect(result.settings.sectionGap).toBeLessThan(current.sectionGap);
       expect(result.settings.itemGap).toBeLessThan(current.itemGap);
 
       // But still above new minimums
       expect(result.settings.fontSize).toBeGreaterThan(8);
       expect(result.settings.lineHeight).toBeGreaterThan(1.05);
-      expect(result.settings.pagePadding).toBeGreaterThan(8);
       expect(result.settings.sectionGap).toBeGreaterThan(4);
       expect(result.settings.itemGap).toBeGreaterThan(2);
     }
