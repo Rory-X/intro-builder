@@ -426,45 +426,12 @@ export default function EditorClient({ id, initialTitle, initialTemplate, initia
       {/* Toolbar — only visible on desktop */}
       {isDesktop && (
       <div className="sticky top-14 z-30 border-b border-border/60 bg-background/80 backdrop-blur-xl backdrop-saturate-150">
-        <div className="mx-auto flex max-w-7xl items-center gap-3 px-4 py-2.5">
-          <Input
-            value={title}
-            onChange={(e) => setTitleState(e.target.value)}
-            className="w-48 text-base font-medium"
-          />
-          <span
-            data-testid="autosave-status"
-            title={saveStatusDescription}
-            className={cn(
-              "group relative inline-flex cursor-default items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-medium",
-              saveError
-                ? "bg-destructive/10 text-destructive"
-                : isSaving
-                  ? "bg-orange-500/10 text-orange-600 dark:text-orange-400"
-                  : autosave.status === "pending"
-                    ? "bg-sky-500/10 text-sky-600 dark:text-sky-400"
-                  : "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400",
-            )}
+        <div className="flex items-center py-2.5">
+          <div
+            data-testid="editor-toolbar"
+            className="flex flex-nowrap items-center gap-2 overflow-x-auto px-6"
+            style={{ width: `${splitPercent}%` }}
           >
-            <span
-              className={cn(
-                "h-1.5 w-1.5 rounded-full",
-                saveError
-                  ? "bg-destructive"
-                  : isSaving
-                    ? "animate-pulse bg-orange-500"
-                    : autosave.status === "pending"
-                      ? "bg-sky-500"
-                    : "bg-emerald-500",
-              )}
-            />
-            {saveStatusLabel}
-            <span className="pointer-events-none absolute left-1/2 top-[calc(100%+0.4rem)] z-50 hidden w-max max-w-72 -translate-x-1/2 rounded-md bg-popover px-2.5 py-1.5 text-xs font-normal text-popover-foreground shadow-md ring-1 ring-foreground/10 group-hover:block">
-              {saveStatusDescription}
-            </span>
-          </span>
-          <CompletenessScore />
-          <div data-testid="editor-toolbar" className="ml-auto flex flex-nowrap items-center gap-2 overflow-x-auto">
             <SmartLayoutButton templateId={template} measureRef={previewRootRef} />
             <StyleEditor />
             <ModuleManager sectionOrder={sectionOrder} onOrderChange={handleOrderChange} />
@@ -518,6 +485,48 @@ export default function EditorClient({ id, initialTitle, initialTemplate, initia
                 <PresenceBar users={collabState.presenceUsers} isConnected={collabState.isConnected} />
               </>
             )}
+          </div>
+          <div
+            className="flex items-center justify-end gap-3 px-6"
+            style={{ width: `${100 - splitPercent}%` }}
+          >
+            <Input
+              value={title}
+              onChange={(e) => setTitleState(e.target.value)}
+              className="w-48 text-base font-medium"
+            />
+            <span
+              data-testid="autosave-status"
+              title={saveStatusDescription}
+              className={cn(
+                "group relative inline-flex cursor-default items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-medium",
+                saveError
+                  ? "bg-destructive/10 text-destructive"
+                  : isSaving
+                    ? "bg-orange-500/10 text-orange-600 dark:text-orange-400"
+                    : autosave.status === "pending"
+                      ? "bg-sky-500/10 text-sky-600 dark:text-sky-400"
+                    : "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400",
+              )}
+            >
+              <span
+                className={cn(
+                  "h-1.5 w-1.5 rounded-full",
+                  saveError
+                    ? "bg-destructive"
+                    : isSaving
+                      ? "animate-pulse bg-orange-500"
+                      : autosave.status === "pending"
+                        ? "bg-sky-500"
+                      : "bg-emerald-500",
+                )}
+              />
+              {saveStatusLabel}
+              <span className="pointer-events-none absolute left-1/2 top-[calc(100%+0.4rem)] z-50 hidden w-max max-w-72 -translate-x-1/2 rounded-md bg-popover px-2.5 py-1.5 text-xs font-normal text-popover-foreground shadow-md ring-1 ring-foreground/10 group-hover:block">
+                {saveStatusDescription}
+              </span>
+            </span>
+            <CompletenessScore />
           </div>
         </div>
       </div>
