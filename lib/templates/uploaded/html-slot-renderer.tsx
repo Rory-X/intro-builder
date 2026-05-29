@@ -1,5 +1,6 @@
 import DOMPurify from "isomorphic-dompurify";
 import parse, {
+  attributesToProps,
   domToReact,
   Element,
   type DOMNode,
@@ -12,8 +13,10 @@ import { FONT_MAP } from "@/lib/font-map";
 import { ResumeRichText } from "@/lib/templates/shared/resume-rich-text";
 import {
   BASICS_BINDINGS,
+  IMAGE_BINDINGS,
   ITEM_BINDINGS,
   SECTION_BINDINGS,
+  isImageBinding,
   isLoopBinding,
   isValidBinding,
   resolveSection,
@@ -164,8 +167,13 @@ function makeParserOptions(p: ParserCtx): HTMLReactParserOptions {
   const opts: HTMLReactParserOptions = {
     replace: (node: DOMNode) => {
       if (!isElement(node)) return undefined;
-      if (node.name !== "slot") return undefined;
-      return renderSlotElement(node, p);
+      if (node.name === "slot") return renderSlotElement(node, p);
+      // <img data-bind="..."> → 图片绑定（引擎注入 src）。普通 <img src="...">
+      // 不带 data-bind，原样保留。
+      if (node.name === "img" && node.attribs?.["data-bind"] != null) {
+        return renderImageBinding(node, p);
+      }
+      return undefined;
     },
   };
   return opts;
@@ -181,6 +189,10 @@ function renderSlotElement(
   }
   if (!isValidBinding(binding)) {
     return placeholder(`未知 slot: ${binding}`);
+  }
+  // 图片字段不能用 <slot>（会把一串 URL 当文字渲染）—— 引导到 <img data-bind>。
+  if (isImageBinding(binding)) {
+    return placeholder(`${binding} 是图片字段，请用 <img data-bind="${binding}">`);
   }
 
   // Loop slot
@@ -233,6 +245,25 @@ function renderSlotElement(
 
   // Should be unreachable — isValidBinding covered all categories
   return placeholder(`unhandled binding: ${binding}`);
+}
+
+/**
+ * Render `<img data-bind="basics.photo">` → 把解析出的 URL 注入 src。
+ * 空 URL → 返回空 Fragment（整个 img 移除）；返回 null 会让 html-react-parser
+ * 保留原 src-less <img>（→ 裂图 / React19 空 src 报错），所以必须返回空元素。
+ * 通用：任何 v2 模板都能用，形状 / 尺寸由模板 CSS 决定，引擎只管注入 src。
+ */
+function renderImageBinding(node: Element, p: ParserCtx): ReactElement {
+  const binding = node.attribs?.["data-bind"];
+  if (!binding || !isImageBinding(binding)) {
+    return placeholder(`<img data-bind> 仅支持图片字段，不能绑定: ${binding ?? "(空)"}`);
+  }
+  const url = IMAGE_BINDINGS[binding](p.content);
+  if (!url) return <></>;
+  const props = attributesToProps(node.attribs);
+  delete (props as Record<string, unknown>)["data-bind"];
+  // eslint-disable-next-line @next/next/no-img-element -- Puppeteer PDF uses plain img; alt 由模板作者在 data-bind img 上提供
+  return <img {...props} src={url} />;
 }
 
 function renderLoop(

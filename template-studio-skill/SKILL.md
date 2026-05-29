@@ -207,7 +207,7 @@ v2 模式下 `--layout` 仍要填——SlotRenderer 渲染失败时引擎降级�
    - 顶层 `<article>` 包外壳，所有 `<template id="...">` 在 `<article>` 之外
    - 合法 binding 名：见下表
    - 嵌套 ≤ 3 层（sectionOrder → section.items → 内层不再 loop）
-   - 头像/图片占位：v2 没有 image binding，用 `<div class="avatar-placeholder" aria-hidden="true"></div>` 之类的纯 div 占位，**禁止 `<img src="" />`**——React 19 把空字符串 src 升级成 dev overlay 错误。SlotRenderer 已对此做了防御（自动剥空 src 属性），但写代码时仍按"避免空 src" 来。
+   - 头像/图片：用 `<img data-bind="basics.photo" alt="头像" class="..." />`（**不要写 src**——引擎自动把 URL 注入 src；photo 为空时整个 `<img>` 不渲染，不会留裂图）。**形状/尺寸/裁剪全用 CSS 控制**（圆形头像 = `.avatar { border-radius:50%; object-fit:cover }`）。不要用 `<slot data-bind="basics.photo">`（会把 URL 当文字渲染），也不要写死 `<img src="" />`（React 19 报错）。
 3. **安全**——禁止 `<script>` / `on*` 属性 / `<iframe>` / `position: fixed` / `*` 选择器 / 裸 element 选择器（`body { ... }`）/ `@media` / `@keyframes`
 4. **A4 单页约束（hard rule）**——**自由排版的"自由"是视觉自由，不是尺寸自由**。渲染 demoResume 规模内容（5 项工作 + 3 项目 + 自我介绍 + 教育）必须严格塞进 A4 一页：
    - **gallery thumbnail 模式**（stage 595px 宽）：article 总高度 ≤ **841px** (A4 @72dpi)
@@ -220,7 +220,8 @@ v2 模式下 `--layout` 仍要填——SlotRenderer 渲染失败时引擎降级�
 
 | 类别 | binding | 何时可用 |
 |---|---|---|
-| basics value | `basics.name` `basics.title` `basics.email` `basics.phone` `basics.location` `basics.website` `basics.photo` `basics.status` `basics.summary` | 任何位置 |
+| basics value | `basics.name` `basics.title` `basics.email` `basics.phone` `basics.location` `basics.website` `basics.status` `basics.summary` | 任何位置（用 `<slot>`） |
+| 图片 | `basics.photo` | 任何位置，**必须用 `<img data-bind="basics.photo">`**（不是 `<slot>`） |
 | sectionOrder loop | `sectionOrder` (loop slot, 配 `data-template`) | 任何位置 |
 | section value | `section.id` `section.title` `section.icon` | 仅 sectionOrder loop 内 |
 | section.items loop | `section.items` (loop slot, 配 `data-template`) | 仅 sectionOrder loop 内 |

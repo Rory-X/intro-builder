@@ -64,12 +64,26 @@ export const BASICS_BINDINGS = {
   "basics.phone": (c: ResumeContent) => c.basics.phone,
   "basics.location": (c: ResumeContent) => c.basics.location,
   "basics.website": (c: ResumeContent) => c.basics.website,
-  "basics.photo": (c: ResumeContent) => c.basics.photo,
   "basics.status": (c: ResumeContent) => c.basics.status,
   "basics.summary": (c: ResumeContent) => c.basics.summary,
 } as const;
 
 export type BasicsBinding = keyof typeof BASICS_BINDINGS;
+
+// ─── Image binding (<img data-bind="...">) ────────────────────────
+// 图片类 binding 走 SlotRenderer 的 <img> 路径而非 <slot>：引擎把 URL 注入
+// img 的 src，空值则整个 img 不渲染。photo 故意不放进 BASICS_BINDINGS（文本
+// 路径）—— 否则 <slot data-bind="basics.photo"> 会把一长串 URL 当文字渲染出
+// 来（footgun）。集合形式预留未来扩展（如 logo、二维码）。
+export const IMAGE_BINDINGS = {
+  "basics.photo": (c: ResumeContent) => c.basics.photo,
+} as const;
+
+export type ImageBinding = keyof typeof IMAGE_BINDINGS;
+
+export function isImageBinding(name: string): name is ImageBinding {
+  return name in IMAGE_BINDINGS;
+}
 
 // ─── Section value slot (inside sectionOrder loop) ────────────────
 
@@ -102,11 +116,12 @@ export type LoopBinding = (typeof LOOP_BINDINGS)[number];
 
 // ─── All bindings union ───────────────────────────────────────────
 
-export type SlotBinding = BasicsBinding | SectionBinding | ItemBinding | LoopBinding;
+export type SlotBinding = BasicsBinding | ImageBinding | SectionBinding | ItemBinding | LoopBinding;
 
 export function isValidBinding(name: string): name is SlotBinding {
   return (
     name in BASICS_BINDINGS ||
+    name in IMAGE_BINDINGS ||
     name in SECTION_BINDINGS ||
     name in ITEM_BINDINGS ||
     (LOOP_BINDINGS as readonly string[]).includes(name)

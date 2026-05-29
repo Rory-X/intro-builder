@@ -13,7 +13,10 @@ function richDoc(text: string): ReturnType<typeof emptyDoc> {
   };
 }
 
-function makeContent(over: Partial<ResumeContent> = {}): ResumeContent {
+type ContentOverride = Partial<Omit<ResumeContent, "basics">> & {
+  basics?: Partial<ResumeContent["basics"]>;
+};
+function makeContent(over: ContentOverride = {}): ResumeContent {
   const base = emptyResumeContent();
   return {
     ...base,
@@ -315,6 +318,56 @@ describe("SlotRenderer — CSS scope + style injection", () => {
     const styleEls = container.querySelectorAll("style");
     expect(styleEls.length).toBe(1);
     expect(styleEls[0].textContent).toContain("--heading-gap");
+  });
+});
+
+describe("SlotRenderer — image binding (<img data-bind>)", () => {
+  const PHOTO = "https://x.public.blob.vercel-storage.com/photos/u/1-a.png";
+
+  it("injects basics.photo URL into <img src> when photo is non-empty", () => {
+    const { container } = render_({
+      content: makeContent({ basics: { photo: PHOTO } }),
+      html: `<article><img data-bind="basics.photo" class="avatar" alt="头像" /></article>`,
+    });
+    const img = container.querySelector("img");
+    expect(img).not.toBeNull();
+    expect(img?.getAttribute("src")).toBe(PHOTO);
+  });
+
+  it("keeps class/alt and does NOT leak data-bind to the DOM", () => {
+    const { container } = render_({
+      content: makeContent({ basics: { photo: PHOTO } }),
+      html: `<article><img data-bind="basics.photo" class="avatar" alt="头像" /></article>`,
+    });
+    const img = container.querySelector("img");
+    expect(img?.getAttribute("class")).toBe("avatar");
+    expect(img?.getAttribute("alt")).toBe("头像");
+    expect(img?.hasAttribute("data-bind")).toBe(false);
+  });
+
+  it("renders nothing (no <img>) when photo is empty — avoids broken-image", () => {
+    const { container } = render_({
+      content: makeContent({ basics: { photo: "" } }),
+      html: `<article><img data-bind="basics.photo" class="avatar" alt="头像" /></article>`,
+    });
+    expect(container.querySelector("img")).toBeNull();
+  });
+
+  it("renders placeholder when <img data-bind> targets a non-image binding", () => {
+    const { container } = render_({
+      html: `<article><img data-bind="basics.name" alt="x" /></article>`,
+    });
+    expect(container.querySelector("img")).toBeNull();
+    expect(container.textContent).toContain("仅支持图片字段");
+  });
+
+  it("renders placeholder when basics.photo is used via <slot> instead of <img>", () => {
+    const { container } = render_({
+      content: makeContent({ basics: { photo: PHOTO } }),
+      html: `<article><slot data-bind="basics.photo" /></article>`,
+    });
+    expect(container.textContent).not.toContain(PHOTO);
+    expect(container.textContent).toContain("请用");
   });
 });
 
