@@ -153,7 +153,10 @@ export function resolveSection(
     if (!content.basics.summary) return null;
     return {
       id: "basics",
-      title: getSectionMeta("basics").label,
+      // 硬编码 "自我介绍" 对齐内置模板（render-sections.tsx / modern Layout）。
+      // SECTION_META 没有 basics key，getSectionMeta("basics") 会 fallback 到
+      // custom → label "自定义"，与内置不一致。
+      title: "自我介绍",
       icon: sectionIcons.basics ?? "User",
       kind: "basics",
     };
@@ -319,7 +322,10 @@ function derivePresetItems(sectionId: string, content: ResumeContent): ItemView[
         dateRange: "",
         location: "",
         bullets: emptyDoc(),
-        tags: g.items,
+        // tags 留空：技能项已通过 subtitle 渲染，再塞进 tags 会让同时渲染
+        // subtitle + tags 的模板把技能项显示两遍（SKILL.md 派生表已注明
+        // skills 的 tags 为空）。projects 才用 tags 承载 stack。
+        tags: [],
         link: "",
       }));
 
