@@ -198,7 +198,11 @@ v2 模式下 `--layout` 仍要填——SlotRenderer 渲染失败时引擎降级�
 1. **对偶约束（dual constraint）**——用户能调的 CSS 必须用 `var(--*)`：
    - `font-size: var(--font-size)` ✅
    - `font-size: 14px` ❌（用户改字号失效）
-   - 装饰、颜色、padding/margin、圆角、阴影 → 可硬编码
+   - `line-height: var(--line-height)` ✅
+   - **page-level padding 必须 `var(--page-padding)`** —— `<article>` 自身的 padding 必须读这个变量，否则 smart-layout 算法压缩 pagePadding 时对你的模板物理失效（用户内容多时压不下来 → status=cannot-fit → 溢出第二页）
+   - **section / item 间距必须 `var(--section-gap)` / `var(--item-gap)`** —— section 之间的 margin、entry 之间的 margin 必须读这两个变量。同样的原因：算法的可调维度对硬编码间距物理失效
+   - 装饰、颜色、圆角、阴影、component-level padding（banner 内边距 / 卡片内边距 / 图标 padding 等"和密度无关的内层留白"） → 可硬编码
+   - 判断哪些是 page/section/item gap、哪些是 component-level：**密度调节会想压缩它吗？** 想压 → var；不想压 → 硬编码。banner 高度感、卡片视觉边缘是品牌属性不该压；section/entry 之间的呼吸空间是密度的物理体现，必须压。
 2. **slot 协议**——内容插槽必须用 `<slot data-bind="..." ></slot>`（**显式闭合，不要 self-close**——HTML5 slot 不是 void 元素）：
    - 顶层 `<article>` 包外壳，所有 `<template id="...">` 在 `<article>` 之外
    - 合法 binding 名：见下表
@@ -210,6 +214,7 @@ v2 模式下 `--layout` 仍要填——SlotRenderer 渲染失败时引擎降级�
    - **dev-preview / 编辑器预览 / PDF 模式**（容器 800px 宽）：article 总高度 ≤ **1123px** (A4 @96dpi)
    - 不遵守的后果：(a) gallery 缩略图宽度缩水产生左右白边、(b) PDF 第一页被截断、(c) 编辑器预览跟 PDF 不一致
    - 写完后跑 dev-preview 路由（`/dev-preview/template/<id>`）目测：800px 容器里内容**必须不超过一屏 viewport** (~1123px)。超出说明 padding / margin / banner 太奢侈，回头压缩。**常见可压缩位置**：banner padding（一开始就 60+ 太多）、section margin-top（22+ 太奢侈，14 通常够）、entry padding/margin、section-title padding。
+   - **超出 1123px 时不要指望 smart-layout 兜底**：smart-layout 算法可以把 page padding / section gap / item gap / 字号 / 行高动态压缩，但仅压缩用 `var(--page-padding)` / `var(--section-gap)` / `var(--item-gap)` / `var(--font-size)` / `var(--line-height)` 写的部分。模板里硬编码的 `padding: 60px` 算法压不动。把可调的间距全用 var()，模板默认状态下塞下 demoResume，剩下的内容多出来的部分由 smart-layout 兜底压缩。
 
 **合法 binding 名表**：
 

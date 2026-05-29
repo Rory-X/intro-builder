@@ -11,9 +11,11 @@ import { A4_HEIGHT_PX } from "@/lib/pagination";
 export { A4_HEIGHT_PX };
 
 // Minimum values for each adjustable setting
-const MIN_FONT = 10;
-const MIN_LINE_HEIGHT = 1.2;
-const MIN_PADDING = 20;
+const MIN_FONT = 8;
+const MIN_LINE_HEIGHT = 1.05;
+const MIN_PADDING = 8;
+const MIN_SECTION_GAP = 4;
+const MIN_ITEM_GAP = 2;
 
 export type SmartLayoutResult =
   | { status: "already-fits" }
@@ -41,6 +43,12 @@ export function interpolateSettings(
       ) / 100,
     pagePadding: Math.round(
       MIN_PADDING + (current.pagePadding - MIN_PADDING) * scale,
+    ),
+    sectionGap: Math.round(
+      MIN_SECTION_GAP + (current.sectionGap - MIN_SECTION_GAP) * scale,
+    ),
+    itemGap: Math.round(
+      MIN_ITEM_GAP + (current.itemGap - MIN_ITEM_GAP) * scale,
     ),
   };
 }

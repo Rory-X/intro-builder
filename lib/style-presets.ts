@@ -16,6 +16,8 @@ export const DENSITY_PRESETS: Record<
       fontSize: 11,
       lineHeight: 1.35,
       pagePadding: 28,
+      sectionGap: 10,
+      itemGap: 8,
     },
   },
   standard: {
@@ -31,6 +33,8 @@ export const DENSITY_PRESETS: Record<
       fontSize: 14,
       lineHeight: 1.75,
       pagePadding: 48,
+      sectionGap: 20,
+      itemGap: 14,
     },
   },
 };

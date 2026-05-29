@@ -174,16 +174,19 @@ export function resolveSection(
 }
 
 function isPresetSection(id: string): boolean {
+  // 只列实际有 derivePresetItems 实现的 builtIn section（experience /
+  // education / projects / skills）—— awards / research / portfolio /
+  // activities / summary 这些非 builtIn preset 的数据在 ResumeContent.custom
+  // 数组里（见 module-manager.tsx addSection 的 "if !BUILTIN_SECTION_KEYS.has"
+  // 分支），所以走 resolveSection 的 custom 分支查 content.custom.find，而
+  // 不是 preset 分支。之前误把这些 ID 列入 preset，导致 derivePresetItems
+  // 走 default 返回 [] → resolveSection 返回 null → v2 模板里这些 section
+  // 不渲染。
   return [
     "experience",
     "education",
     "projects",
     "skills",
-    "awards",
-    "research",
-    "portfolio",
-    "activities",
-    "summary",
   ].includes(id);
 }
 
@@ -240,7 +243,10 @@ export function deriveItems(
     if (!custom) return [];
     return [
       {
-        title: custom.title,
+        // entry-title 留空 —— section title 已经是 custom.title（"荣誉奖项"
+        // / "研究经历" 等），entry header 再重复一遍视觉冗余。v2 模板的 item
+        // 模板里 entry-title slot 渲染空字符串，CSS 自然不占空间。
+        title: "",
         subtitle: "",
         dateRange: "",
         location: "",

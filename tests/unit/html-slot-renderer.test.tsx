@@ -240,12 +240,15 @@ describe("SlotRenderer — CSS scope + style injection", () => {
     const { container } = render_({
       html: '<article><h1 class="my-name"><slot data-bind="basics.name" /></h1></article>',
       css: ".my-name { color: red }",
-      styleSettings: { fontFamily: "serif", fontSize: 14, lineHeight: 1.7, pagePadding: 40 },
+      styleSettings: { fontFamily: "serif", fontSize: 14, lineHeight: 1.7, pagePadding: 40, sectionGap: 16, itemGap: 12 },
     });
     const root = container.querySelector("[data-template-id='test-tpl']") as HTMLElement;
     expect(root).not.toBeNull();
     expect(root.style.getPropertyValue("--font-size")).toBe("14px");
     expect(root.style.getPropertyValue("--line-height")).toBe("1.7");
+    expect(root.style.getPropertyValue("--page-padding")).toBe("40px");
+    expect(root.style.getPropertyValue("--section-gap")).toBe("16px");
+    expect(root.style.getPropertyValue("--item-gap")).toBe("12px");
     const styleEl = root.querySelector("style");
     expect(styleEl?.textContent).toContain('[data-template-id="test-tpl"] .my-name');
   });

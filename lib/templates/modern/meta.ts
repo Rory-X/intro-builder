@@ -7,6 +7,8 @@ const MODERN_DEFAULT_STYLE_SETTINGS: StyleSettings = {
   fontSize: 12,
   lineHeight: 1.5,
   pagePadding: 32,
+  sectionGap: 14,
+  itemGap: 10,
 };
 
 export const modernMeta = {
