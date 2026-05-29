@@ -44,9 +44,8 @@ export function ResumeSection({
       <section
         data-pagination-section={sectionKey}
         data-section-variant="card-wrapped"
-        className={cn("break-inside-avoid", className)}
+        className={cn("mt-3 break-inside-avoid", className)}
         style={{
-          marginTop: "var(--section-gap)",
           backgroundColor: "var(--card-bg, #ffffff)",
           borderRadius: "var(--card-radius, 12px)",
           boxShadow: "var(--card-shadow, 0 1px 3px rgba(15, 23, 42, 0.06))",
@@ -76,8 +75,7 @@ export function ResumeSection({
       <section
         data-pagination-section={sectionKey}
         data-section-variant="full-width-bar"
-        className={cn("break-inside-avoid", className)}
-        style={{ marginTop: "var(--section-gap)" }}
+        className={cn("mt-4 break-inside-avoid", className)}
       >
         <div data-pagination-section-header>
           <div
@@ -102,36 +100,25 @@ export function ResumeSection({
             </h2>
           </div>
         </div>
-        <div className="px-2" style={{ marginTop: "var(--item-gap)" }}>{children}</div>
+        <div className="mt-3 px-2">{children}</div>
       </section>
     );
   }
 
   if (variant === "professional") {
     return (
-      <section
-        data-pagination-section={sectionKey}
-        className={cn("break-inside-avoid", className)}
-        style={{ marginTop: "var(--section-gap)" }}
-      >
+      <section data-pagination-section={sectionKey} className={cn("mt-3.5 break-inside-avoid", className)}>
         <div data-pagination-section-header>
           <ProfessionalSectionTitle title={title} icon={Icon ?? undefined} />
         </div>
-        <div style={{ marginTop: "var(--item-gap)" }}>{children}</div>
+        <div className="mt-2">{children}</div>
       </section>
     );
   }
 
   if (variant === "modern") {
-    // Modern Layout 用父级 `space-y-4` 控制 section 间距，本 variant 不再
-    // 加 marginTop —— 否则会和 space-y 叠加成双倍。modern 不响应
-    // styleSettings.sectionGap 是已知 trade-off，未来可能把 Layout.tsx
-    // 的 space-y-4 改成 var(--section-gap) 让 modern 也加入算法压缩。
     return (
-      <section
-        data-pagination-section={sectionKey}
-        className={cn("break-inside-avoid", className)}
-      >
+      <section data-pagination-section={sectionKey} className={cn("break-inside-avoid", className)}>
         <div data-pagination-section-header>
           <h2 className="mb-1 flex items-center gap-1 border-b border-neutral-300 pb-0.5 text-sm font-bold">
             {Icon && <Icon className={cn("h-[1em] w-[1em]", meta?.color)} />}
@@ -144,11 +131,7 @@ export function ResumeSection({
   }
 
   return (
-    <section
-      data-pagination-section={sectionKey}
-      className={cn("break-inside-avoid", className)}
-      style={{ marginTop: "var(--section-gap)" }}
-    >
+    <section data-pagination-section={sectionKey} className={cn("mt-4 break-inside-avoid", className)}>
       <div data-pagination-section-header>
         <h2 className="mb-1 flex items-center gap-1.5 border-b border-black pb-0.5 text-sm font-bold uppercase tracking-wide">
           {Icon && <Icon className={cn("h-[1em] w-[1em]", meta?.color)} />}
