@@ -2,40 +2,50 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import Image from "next/image";
 import { TEMPLATES } from "@/lib/templates/registry";
-import type { AllTemplatesItem } from "@/lib/templates/registry";
+import type { AllTemplatesItem, TemplateCategory } from "@/lib/templates/registry";
+import type { SerializableResolvedTemplate } from "@/lib/templates/render";
+import { ClientTemplateRenderFromSerializable } from "@/lib/templates/render";
 import type { ResumeContent } from "@/lib/resume-schema";
+import { TemplateThumbnail } from "@/components/templates/template-thumbnail";
 import { ScrollReveal } from "@/components/marketing/scroll-reveal";
 import { Button } from "@/components/ui/button";
 import { ArrowRight } from "lucide-react";
 
-const TEMPLATE_TAGS: Record<string, string> = {
-  professional: "单栏 · 通用",
-  classic: "衬线 · 国企友好",
-  modern: "双栏 · 头像",
+const CATEGORY_LABELS: Record<TemplateCategory, string> = {
+  academic: "学术",
+  tech: "互联网",
+  business: "商务",
+  creative: "创意",
+  general: "通用",
 };
 
-const CATEGORIES = [
+const CATEGORIES: { id: "all" | TemplateCategory; label: string }[] = [
   { id: "all", label: "全部" },
-  { id: "general", label: "简洁" },
-  { id: "tech", label: "时间线" },
-  { id: "business", label: "双栏" },
+  { id: "tech", label: "互联网" },
+  { id: "business", label: "商务" },
   { id: "creative", label: "创意" },
   { id: "academic", label: "学术" },
+  { id: "general", label: "通用" },
 ];
 
 interface TemplatesSectionProps {
   allTemplates: AllTemplatesItem[];
+  resolvedTemplates: SerializableResolvedTemplate[];
   demoContent: ResumeContent;
 }
 
-export function TemplatesSection({ allTemplates, demoContent }: TemplatesSectionProps) {
-  const [activeTab, setActiveTab] = useState("all");
+export function TemplatesSection({ allTemplates, resolvedTemplates, demoContent }: TemplatesSectionProps) {
+  const [activeTab, setActiveTab] = useState<"all" | TemplateCategory>("all");
 
   const filteredTemplates = activeTab === "all"
     ? allTemplates
     : allTemplates.filter((t) => t.category === activeTab);
+
+  // Find the matching resolved template for rendering
+  function getResolved(id: string): SerializableResolvedTemplate | undefined {
+    return resolvedTemplates.find((r) => r.id === id);
+  }
 
   return (
     <section id="templates" className="mx-auto max-w-6xl px-4 py-20 md:py-28">
@@ -80,11 +90,40 @@ export function TemplatesSection({ allTemplates, demoContent }: TemplatesSection
 
       {/* Template grid */}
       <div className="mt-10 grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-4">
-        {filteredTemplates.map((item, i) => (
-          <ScrollReveal key={item.id} delay={i * 0.08}>
-            <TemplateCard item={item} demoContent={demoContent} />
-          </ScrollReveal>
-        ))}
+        {filteredTemplates.map((item, i) => {
+          const resolved = getResolved(item.id);
+          return (
+            <ScrollReveal key={item.id} delay={i * 0.08}>
+              <div className="group overflow-hidden rounded-2xl border border-border/60 bg-card transition-all duration-300 hover:-translate-y-1 hover:shadow-xl hover:shadow-primary/5">
+                {resolved ? (
+                  <TemplateThumbnail>
+                    <ClientTemplateRenderFromSerializable
+                      resolved={resolved}
+                      content={demoContent}
+                      sectionOrder={demoContent.sectionOrder}
+                      styleSettings={demoContent.styleSettings}
+                    />
+                  </TemplateThumbnail>
+                ) : (
+                  <div className="flex aspect-[210/297] w-full items-center justify-center bg-muted/30">
+                    <div className="text-center text-muted-foreground/50">
+                      <div className="mx-auto mb-3 h-16 w-12 rounded border-2 border-dashed border-muted-foreground/20" />
+                      <span className="text-xs font-medium">即将上线</span>
+                    </div>
+                  </div>
+                )}
+                <div className="flex items-center justify-between p-4">
+                  <span className="text-sm font-bold">{item.name}</span>
+                  {item.category && (
+                    <span className="rounded-full bg-muted px-2 py-0.5 text-[10px] font-medium text-muted-foreground">
+                      {CATEGORY_LABELS[item.category] ?? item.category}
+                    </span>
+                  )}
+                </div>
+              </div>
+            </ScrollReveal>
+          );
+        })}
       </div>
 
       {/* Stats strip */}
@@ -97,70 +136,6 @@ export function TemplatesSection({ allTemplates, demoContent }: TemplatesSection
         </div>
       </ScrollReveal>
     </section>
-  );
-}
-
-function TemplateCard({ item, demoContent }: { item: AllTemplatesItem; demoContent: ResumeContent }) {
-  // Built-in templates: render live preview using Layout component
-  if (item.source === "builtin") {
-    const builtinMeta = TEMPLATES.find((t) => t.id === item.id);
-    if (builtinMeta) {
-      const Layout = builtinMeta.Layout;
-      const tag = TEMPLATE_TAGS[item.id] ?? item.tags?.[0] ?? "";
-      return (
-        <div className="group overflow-hidden rounded-2xl border border-border/60 bg-card transition-all duration-300 hover:-translate-y-1 hover:shadow-xl hover:shadow-primary/5">
-          <div className="aspect-[210/297] w-full overflow-hidden bg-white [container-type:inline-size]">
-            <div
-              className="origin-top-left [transform:scale(calc(100cqw/820px))]"
-              style={{ width: "820px" }}
-            >
-              <Layout content={demoContent} />
-            </div>
-          </div>
-          <div className="flex items-center justify-between p-4">
-            <span className="text-sm font-bold">{item.name}</span>
-            {tag && (
-              <span className="rounded-full bg-muted px-2 py-0.5 text-[10px] font-medium text-muted-foreground">
-                {tag}
-              </span>
-            )}
-          </div>
-        </div>
-      );
-    }
-  }
-
-  // Uploaded templates: show thumbnail or placeholder
-  const tag = item.tags?.[0] ?? item.category ?? "";
-  return (
-    <div className="group overflow-hidden rounded-2xl border border-border/60 bg-card transition-all duration-300 hover:-translate-y-1 hover:shadow-xl hover:shadow-primary/5">
-      <div className="aspect-[210/297] w-full overflow-hidden bg-muted/30">
-        {item.thumbnailUrl ? (
-          <Image
-            src={item.thumbnailUrl}
-            alt={item.name}
-            width={420}
-            height={594}
-            className="h-full w-full object-cover object-top"
-          />
-        ) : (
-          <div className="flex h-full w-full items-center justify-center">
-            <div className="text-center text-muted-foreground/50">
-              <div className="mx-auto mb-3 h-16 w-12 rounded border-2 border-dashed border-muted-foreground/20" />
-              <span className="text-xs font-medium">即将上线</span>
-            </div>
-          </div>
-        )}
-      </div>
-      <div className="flex items-center justify-between p-4">
-        <span className="text-sm font-bold">{item.name}</span>
-        {tag && (
-          <span className="rounded-full bg-muted px-2 py-0.5 text-[10px] font-medium text-muted-foreground">
-            {tag}
-          </span>
-        )}
-      </div>
-    </div>
   );
 }
 

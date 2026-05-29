@@ -18,6 +18,10 @@ vi.mock("@/lib/templates/registry-server", () => ({
   listAllTemplatesAsync: vi.fn().mockResolvedValue([]),
 }));
 
+vi.mock("@/lib/templates/uploaded/fetch", () => ({
+  listUploadedTemplates: vi.fn().mockResolvedValue([]),
+}));
+
 vi.mock("@/lib/templates/classic/Layout", () => ({
   ClassicLayout: () => <div>Classic preview</div>,
 }));
