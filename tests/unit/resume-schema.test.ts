@@ -127,11 +127,13 @@ describe("ResumeContent v2", () => {
 });
 
 describe("StyleSettings v2 (smart-layout 5-dim)", () => {
-  it("DEFAULT_STYLE_SETTINGS has 6 fields including sectionGap & itemGap", () => {
+  it("DEFAULT_STYLE_SETTINGS includes split heading/body line-height", () => {
     expect(DEFAULT_STYLE_SETTINGS).toEqual({
       fontFamily: "sans",
       fontSize: 13,
       lineHeight: 1.6,
+      headingLineHeight: 1.6,
+      bodyLineHeight: 1.6,
       pagePadding: 40,
       sectionGap: 16,
       itemGap: 12,
@@ -146,6 +148,38 @@ describe("StyleSettings v2 (smart-layout 5-dim)", () => {
     if (r.success) {
       expect(r.data.sectionGap).toBe(16);
       expect(r.data.itemGap).toBe(12);
+    }
+  });
+
+  it("preprocess migrates legacy lineHeight onto heading/body fields when both missing", () => {
+    // Pre-split rows wrote only `lineHeight`. The preprocess must copy the
+    // user's adjusted value into the new fields so it doesn't snap back to
+    // the 1.6 default after upgrade — that would silently undo their setting.
+    const legacy = {
+      fontFamily: "sans", fontSize: 13, lineHeight: 1.8,
+      pagePadding: 40, sectionGap: 16, itemGap: 12,
+    };
+    const r = StyleSettings.safeParse(legacy);
+    expect(r.success).toBe(true);
+    if (r.success) {
+      expect(r.data.headingLineHeight).toBe(1.8);
+      expect(r.data.bodyLineHeight).toBe(1.8);
+    }
+  });
+
+  it("preprocess does not overwrite explicit heading/body line-height", () => {
+    // Rows written by the new editor carry both legacy lineHeight (still in
+    // the schema for compat) and the explicit new fields. New fields win.
+    const newRow = {
+      fontFamily: "sans", fontSize: 13, lineHeight: 1.8,
+      headingLineHeight: 1.2, bodyLineHeight: 1.5,
+      pagePadding: 40, sectionGap: 16, itemGap: 12,
+    };
+    const r = StyleSettings.safeParse(newRow);
+    expect(r.success).toBe(true);
+    if (r.success) {
+      expect(r.data.headingLineHeight).toBe(1.2);
+      expect(r.data.bodyLineHeight).toBe(1.5);
     }
   });
 

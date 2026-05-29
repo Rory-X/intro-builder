@@ -10,7 +10,8 @@ import { ChevronDown, RotateCcw, SlidersHorizontal } from "lucide-react";
 
 const FONT_KEYS: FontKey[] = ["sans", "serif", "mono"];
 const FONT_SIZE_OPTIONS = [10, 11, 12, 13, 14, 15, 16] as const;
-const LINE_HEIGHT_OPTIONS = [1.2, 1.3, 1.4, 1.5, 1.6, 1.7, 1.8, 1.9, 2.0] as const;
+const HEADING_LINE_HEIGHT_OPTIONS = [1.0, 1.1, 1.2, 1.3, 1.4, 1.5, 1.6, 1.7, 1.8] as const;
+const BODY_LINE_HEIGHT_OPTIONS = [1.2, 1.3, 1.4, 1.5, 1.6, 1.7, 1.8, 1.9, 2.0] as const;
 const PAGE_PADDING_OPTIONS = [20, 25, 30, 35, 40, 45, 50, 55, 60] as const;
 
 export function StyleEditor() {
@@ -76,10 +77,17 @@ export function StyleEditor() {
           />
 
           <ValueDropdownRow
-            label="行距"
-            value={ss.lineHeight}
-            options={LINE_HEIGHT_OPTIONS}
-            onChange={(v) => set("lineHeight", Math.round(v * 10) / 10)}
+            label="标题行距"
+            value={ss.headingLineHeight}
+            options={HEADING_LINE_HEIGHT_OPTIONS}
+            onChange={(v) => set("headingLineHeight", Math.round(v * 10) / 10)}
+          />
+
+          <ValueDropdownRow
+            label="正文行距"
+            value={ss.bodyLineHeight}
+            options={BODY_LINE_HEIGHT_OPTIONS}
+            onChange={(v) => set("bodyLineHeight", Math.round(v * 10) / 10)}
           />
 
           <ValueDropdownRow

@@ -42,6 +42,16 @@ export function interpolateSettings(
         (MIN_LINE_HEIGHT + (current.lineHeight - MIN_LINE_HEIGHT) * scale) *
           100,
       ) / 100,
+    headingLineHeight:
+      Math.round(
+        (MIN_LINE_HEIGHT + (current.headingLineHeight - MIN_LINE_HEIGHT) * scale) *
+          100,
+      ) / 100,
+    bodyLineHeight:
+      Math.round(
+        (MIN_LINE_HEIGHT + (current.bodyLineHeight - MIN_LINE_HEIGHT) * scale) *
+          100,
+      ) / 100,
     // pagePadding 不参与算法压缩 —— 始终保留用户设定值。理由见 MIN_FONT
     // 上方注释：页边距是品牌/视觉决策（用户调整 slider 是想让纸边一圈留白
     // 改变），算法把它压到 MIN 时用户感知"页边距被自动改了"= bug。

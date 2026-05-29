@@ -14,6 +14,8 @@ function Harness({
     fontFamily: "sans",
     fontSize: 15,
     lineHeight: 1.6,
+    headingLineHeight: 1.6,
+    bodyLineHeight: 1.6,
     pagePadding: 40,
     sectionGap: 16,
     itemGap: 12,
@@ -29,16 +31,35 @@ function Harness({
 }
 
 describe("StyleEditor", () => {
-  it("line-height dropdown does not overwrite the current font size", () => {
+  it("body line-height dropdown does not overwrite the current font size", () => {
     let form!: UseFormReturn<ResumeContent>;
     render(<Harness onReady={(readyForm) => { form = readyForm; }} />);
 
     fireEvent.click(screen.getByRole("button", { name: "排版" }));
-    fireEvent.click(screen.getByRole("button", { name: "行距：1.6" }));
-    fireEvent.click(screen.getByRole("button", { name: "行距：1.8" }));
+    fireEvent.click(screen.getByRole("button", { name: "正文行距：1.6" }));
+    fireEvent.click(screen.getByRole("button", { name: "正文行距：1.8" }));
 
     expect(form.getValues("styleSettings")?.fontSize).toBe(15);
-    expect(form.getValues("styleSettings")?.lineHeight).toBe(1.8);
+    expect(form.getValues("styleSettings")?.bodyLineHeight).toBe(1.8);
+  });
+
+  it("heading and body line-heights are independent", () => {
+    let form!: UseFormReturn<ResumeContent>;
+    render(<Harness onReady={(readyForm) => { form = readyForm; }} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "排版" }));
+
+    // Adjust heading first; body should remain at its initial 1.6.
+    fireEvent.click(screen.getByRole("button", { name: "标题行距：1.6" }));
+    fireEvent.click(screen.getByRole("button", { name: "标题行距：1.2" }));
+    expect(form.getValues("styleSettings")?.headingLineHeight).toBe(1.2);
+    expect(form.getValues("styleSettings")?.bodyLineHeight).toBe(1.6);
+
+    // Then adjust body; heading should keep the 1.2 we just set.
+    fireEvent.click(screen.getByRole("button", { name: "正文行距：1.6" }));
+    fireEvent.click(screen.getByRole("button", { name: "正文行距：1.9" }));
+    expect(form.getValues("styleSettings")?.headingLineHeight).toBe(1.2);
+    expect(form.getValues("styleSettings")?.bodyLineHeight).toBe(1.9);
   });
 
   it("uses dropdown value pickers for font size and page padding", () => {

@@ -279,12 +279,20 @@ describe("SlotRenderer — CSS scope + style injection", () => {
     const { container } = render_({
       html: '<article><h1 class="my-name"><slot data-bind="basics.name" /></h1></article>',
       css: ".my-name { color: red }",
-      styleSettings: { fontFamily: "serif", fontSize: 14, lineHeight: 1.7, pagePadding: 40, sectionGap: 16, itemGap: 12 },
+      styleSettings: {
+        fontFamily: "serif", fontSize: 14,
+        lineHeight: 1.7, headingLineHeight: 1.3, bodyLineHeight: 1.7,
+        pagePadding: 40, sectionGap: 16, itemGap: 12,
+      },
     });
     const root = container.querySelector("[data-template-id='test-tpl']") as HTMLElement;
     expect(root).not.toBeNull();
     expect(root.style.getPropertyValue("--font-size")).toBe("14px");
+    // --line-height kept as a back-compat alias of body line-height for v2
+    // customCss authored before the split — same value as --body-line-height.
     expect(root.style.getPropertyValue("--line-height")).toBe("1.7");
+    expect(root.style.getPropertyValue("--heading-line-height")).toBe("1.3");
+    expect(root.style.getPropertyValue("--body-line-height")).toBe("1.7");
     expect(root.style.getPropertyValue("--page-padding")).toBe("40px");
     expect(root.style.getPropertyValue("--section-gap")).toBe("16px");
     expect(root.style.getPropertyValue("--item-gap")).toBe("12px");

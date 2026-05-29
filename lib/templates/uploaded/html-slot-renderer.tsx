@@ -113,7 +113,9 @@ export function SlotRenderer({
   const cssVars: Record<string, string> = {
     "--font-family": fontFamilyValue(styleSettings.fontFamily),
     "--font-size": `${styleSettings.fontSize}px`,
-    "--line-height": String(styleSettings.lineHeight),
+    "--line-height": String(styleSettings.bodyLineHeight),
+    "--heading-line-height": String(styleSettings.headingLineHeight),
+    "--body-line-height": String(styleSettings.bodyLineHeight),
     "--page-padding": `${styleSettings.pagePadding}px`,
     "--section-gap": `${styleSettings.sectionGap}px`,
     "--item-gap": `${styleSettings.itemGap}px`,

@@ -46,7 +46,7 @@ export function ResumePage({
   const articleStyle: React.CSSProperties = {
     ...style,
     fontSize: `${ss.fontSize}px`,
-    lineHeight: ss.lineHeight,
+    lineHeight: ss.bodyLineHeight,
     padding: `${ss.pagePadding}px`,
     fontFamily: FONT_MAP[fontKey].css,
     backgroundColor: decoration?.pageBgColor ?? "#ffffff",
@@ -55,6 +55,10 @@ export function ResumePage({
     // 通过 setProperty 临时改这两个变量来测量压缩后高度。
     ["--section-gap" as string]: `${ss.sectionGap}px`,
     ["--item-gap" as string]: `${ss.itemGap}px`,
+    // Heading line-height is consumed by the `[data-resume-page] :where(h1,h2,h3,h4)`
+    // rule in globals.css; see the body line-height applied via inline `lineHeight` above.
+    ["--heading-line-height" as string]: String(ss.headingLineHeight),
+    ["--body-line-height" as string]: String(ss.bodyLineHeight),
   };
 
   const hasDecorationImage = Boolean(decoration?.bgImageUrl);
@@ -64,6 +68,7 @@ export function ResumePage({
       className={cn("relative mx-auto", maxWidthClass, className)}
       style={articleStyle}
       data-frame={dataFrame}
+      data-resume-page=""
     >
       {hasDecorationImage && (
         // eslint-disable-next-line @next/next/no-img-element

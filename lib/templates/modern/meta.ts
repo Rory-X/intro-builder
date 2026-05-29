@@ -6,6 +6,8 @@ const MODERN_DEFAULT_STYLE_SETTINGS: StyleSettings = {
   fontFamily: "sans",
   fontSize: 12,
   lineHeight: 1.5,
+  headingLineHeight: 1.5,
+  bodyLineHeight: 1.5,
   pagePadding: 32,
   sectionGap: 14,
   itemGap: 10,

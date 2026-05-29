@@ -211,6 +211,15 @@
   line-height: 1.4;
 }
 
+/* ─── Resume page heading line-height ─────────────────────────
+   The resume <article> sets --heading-line-height (consumed below) and applies
+   --body-line-height as its inline `line-height`. Without this rule headings
+   would inherit body line-height — :where keeps specificity at 0 so a template
+   author's own h1/h2/h3 line-height still wins. */
+[data-resume-page] :where(h1, h2, h3, h4) {
+  line-height: var(--heading-line-height, inherit);
+}
+
 /* ─── NProgress ───────────────────────────────────────────── */
 #nprogress {
   pointer-events: none;
