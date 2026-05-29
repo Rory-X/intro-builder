@@ -234,10 +234,15 @@ function renderLoop(
       .filter((s): s is NonNullable<typeof s> => s !== null);
     return items.map((section, i) => {
       const childCtx: IterationContext = { ...p.ctx, section };
+      const tplWithAttr = injectAttrIntoFirstTag(
+        tplHtml,
+        "data-pagination-section",
+        section.id,
+      );
       return (
         <SlotChunk
           key={`section-${i}-${section.id}`}
-          html={tplHtml}
+          html={tplWithAttr}
           parserCtx={{ ...p, ctx: childCtx, depth: p.depth + 1 }}
         />
       );
@@ -249,12 +254,13 @@ function renderLoop(
       return placeholder(`section.items 必须在 sectionOrder loop 内`);
     }
     const items = deriveItems(p.ctx, p.content);
+    const tplWithAttr = injectAttrIntoFirstTag(tplHtml, "data-pagination-item");
     return items.map((item, i) => {
       const childCtx: IterationContext = { ...p.ctx, item };
       return (
         <SlotChunk
           key={`item-${i}`}
-          html={tplHtml}
+          html={tplWithAttr}
           parserCtx={{ ...p, ctx: childCtx, depth: p.depth + 1 }}
         />
       );
@@ -262,6 +268,34 @@ function renderLoop(
   }
 
   return placeholder(`未知 loop: ${loopName}`);
+}
+
+/**
+ * Inject a data attribute into the first opening tag of the template HTML.
+ *
+ * 为什么需要：v2 模板的 customHtml 里 `<section>` / 每个 entry `<div>` 都
+ * 是 AI 自由写的，没标 `data-pagination-*`。paginated-preview.tsx 找断点
+ * 靠这两个属性 —— 缺了就 fallback 到 block-level children，section header
+ * 和 entry 内容会被切到分页线中间（zoo 多次反馈）。
+ *
+ * 在引擎层注入而不是要求 SKILL.md 显式写：(1) 一次修复所有 v2 模板都受益，
+ * (2) AI 写 HTML 时不需要记这个工程细节，(3) 现存 abbey-blue /
+ * handcoded-crimson 不用回去改 customHtml。
+ *
+ * 实现：regex 匹配第一个开标签，在标签名后插属性。AI 写的模板必然以单根
+ * 元素 `<section>` / `<div>` 开头（spec §4.2 第 2 条 slot 协议要求），所以
+ * 第一个标签 = 顶层 wrapper。
+ */
+function injectAttrIntoFirstTag(
+  html: string,
+  attr: string,
+  value?: string,
+): string {
+  const match = html.match(/^(\s*<[a-zA-Z][a-zA-Z0-9]*)\b/);
+  if (!match) return html;
+  const insertAt = match[0].length;
+  const valueStr = value !== undefined ? `="${value}"` : "";
+  return html.slice(0, insertAt) + ` ${attr}${valueStr}` + html.slice(insertAt);
 }
 
 /**

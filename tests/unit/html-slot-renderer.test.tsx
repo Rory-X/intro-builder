@@ -135,6 +135,45 @@ describe("SlotRenderer — sectionOrder loop", () => {
     expect(ids).toEqual(["experience", "education"]);
   });
 
+  it("auto-injects data-pagination-section on each section template's root tag", () => {
+    // 防御 zoo 多次反馈的 v2 模板分页切到 section header 中间的 bug：
+    // SlotRenderer 必须给 section template 的根标签加 data-pagination-section
+    // 让 paginated-preview 的 findBreakPoints 能找到合法断点。
+    const { container } = render_({
+      html: `<article>
+        <slot data-bind="sectionOrder" data-template="sec" />
+      </article>
+      <template id="sec">
+        <section class="my-section"><slot data-bind="section.title" /></section>
+      </template>`,
+    });
+    const sections = Array.from(
+      container.querySelectorAll("section.my-section"),
+    );
+    expect(sections.length).toBe(2);
+    expect(sections[0].getAttribute("data-pagination-section")).toBe("experience");
+    expect(sections[1].getAttribute("data-pagination-section")).toBe("education");
+  });
+
+  it("auto-injects data-pagination-item on each section.items template's root tag", () => {
+    const { container } = render_({
+      html: `<article>
+        <slot data-bind="sectionOrder" data-template="sec" />
+      </article>
+      <template id="sec">
+        <section><slot data-bind="section.items" data-template="entry" /></section>
+      </template>
+      <template id="entry">
+        <div class="my-entry"><slot data-bind="item.title" /></div>
+      </template>`,
+    });
+    const entries = Array.from(container.querySelectorAll("div.my-entry"));
+    expect(entries.length).toBeGreaterThan(0);
+    entries.forEach((entry) => {
+      expect(entry.hasAttribute("data-pagination-item")).toBe(true);
+    });
+  });
+
   it("skips sections with no content", () => {
     const { container } = render_({
       content: makeContent({ experience: [], education: [] }),
