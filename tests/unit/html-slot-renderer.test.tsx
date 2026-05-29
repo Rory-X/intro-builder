@@ -281,7 +281,7 @@ describe("SlotRenderer — CSS scope + style injection", () => {
       css: ".my-name { color: red }",
       styleSettings: {
         fontFamily: "serif", fontSize: 14,
-        lineHeight: 1.7, headingLineHeight: 1.3, bodyLineHeight: 1.7,
+        lineHeight: 1.7, bodyLineHeight: 1.7, headingGap: 12,
         pagePadding: 40, sectionGap: 16, itemGap: 12,
       },
     });
@@ -291,13 +291,17 @@ describe("SlotRenderer — CSS scope + style injection", () => {
     // --line-height kept as a back-compat alias of body line-height for v2
     // customCss authored before the split — same value as --body-line-height.
     expect(root.style.getPropertyValue("--line-height")).toBe("1.7");
-    expect(root.style.getPropertyValue("--heading-line-height")).toBe("1.3");
     expect(root.style.getPropertyValue("--body-line-height")).toBe("1.7");
+    expect(root.style.getPropertyValue("--heading-gap")).toBe("12px");
     expect(root.style.getPropertyValue("--page-padding")).toBe("40px");
     expect(root.style.getPropertyValue("--section-gap")).toBe("16px");
     expect(root.style.getPropertyValue("--item-gap")).toBe("12px");
-    const styleEl = root.querySelector("style");
-    expect(styleEl?.textContent).toContain('[data-template-id="test-tpl"] .my-name');
+    // Two <style> children: [0] is the heading-gap enforcement rule (always
+    // emitted), [1] is the scoped customCss. Index against position so the
+    // assertion stays robust to inline-style additions.
+    const styleEls = root.querySelectorAll("style");
+    expect(styleEls.length).toBe(2);
+    expect(styleEls[1].textContent).toContain('[data-template-id="test-tpl"] .my-name');
   });
 
   it("silently bails on forbidden CSS at-rules without crashing", () => {
@@ -305,9 +309,12 @@ describe("SlotRenderer — CSS scope + style injection", () => {
       html: '<article><h1><slot data-bind="basics.name" /></h1></article>',
       css: "@media (min-width: 600px) { .x { color: red } }",
     });
-    // Should still render the h1; no <style> tag emitted because scopeCss threw
+    // Should still render the h1; only the heading-gap enforcement <style>
+    // is emitted (scopedCss skipped because scopeCss threw).
     expect(container.querySelector("h1")?.textContent).toBe("张三");
-    expect(container.querySelector("style")).toBeNull();
+    const styleEls = container.querySelectorAll("style");
+    expect(styleEls.length).toBe(1);
+    expect(styleEls[0].textContent).toContain("--heading-gap");
   });
 });
 

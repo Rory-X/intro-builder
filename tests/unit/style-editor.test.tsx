@@ -14,8 +14,8 @@ function Harness({
     fontFamily: "sans",
     fontSize: 15,
     lineHeight: 1.6,
-    headingLineHeight: 1.6,
     bodyLineHeight: 1.6,
+    headingGap: 8,
     pagePadding: 40,
     sectionGap: 16,
     itemGap: 12,
@@ -43,22 +43,22 @@ describe("StyleEditor", () => {
     expect(form.getValues("styleSettings")?.bodyLineHeight).toBe(1.8);
   });
 
-  it("heading and body line-heights are independent", () => {
+  it("heading gap and body line-height are independent", () => {
     let form!: UseFormReturn<ResumeContent>;
     render(<Harness onReady={(readyForm) => { form = readyForm; }} />);
 
     fireEvent.click(screen.getByRole("button", { name: "排版" }));
 
-    // Adjust heading first; body should remain at its initial 1.6.
-    fireEvent.click(screen.getByRole("button", { name: "标题行距：1.6" }));
-    fireEvent.click(screen.getByRole("button", { name: "标题行距：1.2" }));
-    expect(form.getValues("styleSettings")?.headingLineHeight).toBe(1.2);
+    // Adjust heading gap first; body line-height should remain at 1.6.
+    fireEvent.click(screen.getByRole("button", { name: "标题间距：8px" }));
+    fireEvent.click(screen.getByRole("button", { name: "标题间距：16px" }));
+    expect(form.getValues("styleSettings")?.headingGap).toBe(16);
     expect(form.getValues("styleSettings")?.bodyLineHeight).toBe(1.6);
 
-    // Then adjust body; heading should keep the 1.2 we just set.
+    // Then adjust body; heading gap should keep the 16 we just set.
     fireEvent.click(screen.getByRole("button", { name: "正文行距：1.6" }));
     fireEvent.click(screen.getByRole("button", { name: "正文行距：1.9" }));
-    expect(form.getValues("styleSettings")?.headingLineHeight).toBe(1.2);
+    expect(form.getValues("styleSettings")?.headingGap).toBe(16);
     expect(form.getValues("styleSettings")?.bodyLineHeight).toBe(1.9);
   });
 

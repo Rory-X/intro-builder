@@ -115,8 +115,8 @@ export function SlotRenderer({
     "--font-family": fontFamilyValue(styleSettings.fontFamily),
     "--font-size": `${styleSettings.fontSize}px`,
     "--line-height": String(styleSettings.bodyLineHeight),
-    "--heading-line-height": String(styleSettings.headingLineHeight),
     "--body-line-height": String(styleSettings.bodyLineHeight),
+    "--heading-gap": `${styleSettings.headingGap}px`,
     "--page-padding": `${styleSettings.pagePadding}px`,
     "--section-gap": `${styleSettings.sectionGap}px`,
     "--item-gap": `${styleSettings.itemGap}px`,
@@ -132,8 +132,18 @@ export function SlotRenderer({
     content, templates, ctx: rootCtx, depth: 0, sectionIcons,
   }));
 
+  // Heading-to-content gap enforcement — see resume-page.tsx for rationale.
+  // v2 uploaded templates frequently set `h2 { margin: 0 }` in customCss,
+  // which after scopeCss gets specificity 0,0,2,2. We need !important to win.
+  const headingGapStyle = `[data-resume-page] h1, [data-resume-page] h2, [data-resume-page] h3, [data-resume-page] h4 { margin-bottom: var(--heading-gap) !important; }`;
+
   return (
-    <div data-template-id={templateId} style={cssVars as React.CSSProperties}>
+    <div
+      data-template-id={templateId}
+      data-resume-page=""
+      style={cssVars as React.CSSProperties}
+    >
+      <style dangerouslySetInnerHTML={{ __html: headingGapStyle }} />
       {scopedCss && <style dangerouslySetInnerHTML={{ __html: scopedCss }} />}
       {reactTree}
     </div>

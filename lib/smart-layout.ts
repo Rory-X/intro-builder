@@ -17,6 +17,7 @@ const MIN_FONT = 8;
 const MIN_LINE_HEIGHT = 1.05;
 const MIN_SECTION_GAP = 4;
 const MIN_ITEM_GAP = 2;
+const MIN_HEADING_GAP = 0;
 
 export type SmartLayoutResult =
   | { status: "already-fits" }
@@ -42,11 +43,9 @@ export function interpolateSettings(
         (MIN_LINE_HEIGHT + (current.lineHeight - MIN_LINE_HEIGHT) * scale) *
           100,
       ) / 100,
-    headingLineHeight:
-      Math.round(
-        (MIN_LINE_HEIGHT + (current.headingLineHeight - MIN_LINE_HEIGHT) * scale) *
-          100,
-      ) / 100,
+    headingGap: Math.round(
+      MIN_HEADING_GAP + (current.headingGap - MIN_HEADING_GAP) * scale,
+    ),
     bodyLineHeight:
       Math.round(
         (MIN_LINE_HEIGHT + (current.bodyLineHeight - MIN_LINE_HEIGHT) * scale) *

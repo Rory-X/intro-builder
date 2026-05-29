@@ -127,13 +127,13 @@ describe("ResumeContent v2", () => {
 });
 
 describe("StyleSettings v2 (smart-layout 5-dim)", () => {
-  it("DEFAULT_STYLE_SETTINGS includes split heading/body line-height", () => {
+  it("DEFAULT_STYLE_SETTINGS includes split body line-height + heading gap", () => {
     expect(DEFAULT_STYLE_SETTINGS).toEqual({
       fontFamily: "sans",
       fontSize: 13,
       lineHeight: 1.6,
-      headingLineHeight: 1.6,
       bodyLineHeight: 1.6,
+      headingGap: 8,
       pagePadding: 40,
       sectionGap: 16,
       itemGap: 12,
@@ -151,9 +151,9 @@ describe("StyleSettings v2 (smart-layout 5-dim)", () => {
     }
   });
 
-  it("preprocess migrates legacy lineHeight onto heading/body fields when both missing", () => {
+  it("preprocess migrates legacy lineHeight onto bodyLineHeight when missing", () => {
     // Pre-split rows wrote only `lineHeight`. The preprocess must copy the
-    // user's adjusted value into the new fields so it doesn't snap back to
+    // user's adjusted value into bodyLineHeight so it doesn't snap back to
     // the 1.6 default after upgrade — that would silently undo their setting.
     const legacy = {
       fontFamily: "sans", fontSize: 13, lineHeight: 1.8,
@@ -162,24 +162,23 @@ describe("StyleSettings v2 (smart-layout 5-dim)", () => {
     const r = StyleSettings.safeParse(legacy);
     expect(r.success).toBe(true);
     if (r.success) {
-      expect(r.data.headingLineHeight).toBe(1.8);
       expect(r.data.bodyLineHeight).toBe(1.8);
     }
   });
 
-  it("preprocess does not overwrite explicit heading/body line-height", () => {
+  it("preprocess does not overwrite explicit bodyLineHeight", () => {
     // Rows written by the new editor carry both legacy lineHeight (still in
-    // the schema for compat) and the explicit new fields. New fields win.
+    // the schema for compat) and the explicit new field. New field wins.
     const newRow = {
       fontFamily: "sans", fontSize: 13, lineHeight: 1.8,
-      headingLineHeight: 1.2, bodyLineHeight: 1.5,
+      bodyLineHeight: 1.5, headingGap: 12,
       pagePadding: 40, sectionGap: 16, itemGap: 12,
     };
     const r = StyleSettings.safeParse(newRow);
     expect(r.success).toBe(true);
     if (r.success) {
-      expect(r.data.headingLineHeight).toBe(1.2);
       expect(r.data.bodyLineHeight).toBe(1.5);
+      expect(r.data.headingGap).toBe(12);
     }
   });
 

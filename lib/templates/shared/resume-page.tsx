@@ -55,13 +55,21 @@ export function ResumePage({
     // 通过 setProperty 临时改这两个变量来测量压缩后高度。
     ["--section-gap" as string]: `${ss.sectionGap}px`,
     ["--item-gap" as string]: `${ss.itemGap}px`,
-    // Heading line-height is consumed by the `[data-resume-page] :where(h1,h2,h3,h4)`
-    // rule in globals.css; see the body line-height applied via inline `lineHeight` above.
-    ["--heading-line-height" as string]: String(ss.headingLineHeight),
+    // Heading-to-content gap is consumed by the inline <style> below as
+    // margin-bottom on h1..h4. body-line-height is the inline `lineHeight`
+    // applied above; this var exposes it to v2 customCss as well.
+    ["--heading-gap" as string]: `${ss.headingGap}px`,
     ["--body-line-height" as string]: String(ss.bodyLineHeight),
   };
 
   const hasDecorationImage = Boolean(decoration?.bgImageUrl);
+
+  // Inline scoped rule for heading-to-content gap. Lives here (not
+  // globals.css) because Tailwind v4's CSS pipeline drops scoped rules on
+  // build, and templates (especially v2 uploads) ship their own
+  // `h2 { margin: 0 }` declarations that outrank low-specificity globals.
+  // !important is the cheapest way to guarantee the user's排版 control wins.
+  const headingGapStyle = `[data-resume-page] h1, [data-resume-page] h2, [data-resume-page] h3, [data-resume-page] h4 { margin-bottom: var(--heading-gap) !important; }`;
 
   return (
     <article
@@ -70,6 +78,7 @@ export function ResumePage({
       data-frame={dataFrame}
       data-resume-page=""
     >
+      <style dangerouslySetInnerHTML={{ __html: headingGapStyle }} />
       {hasDecorationImage && (
         // eslint-disable-next-line @next/next/no-img-element
         <img
