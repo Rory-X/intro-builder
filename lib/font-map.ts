@@ -4,12 +4,14 @@
 // 顺序原则：
 // 1. 先 web font (var(--font-geist-*)) 给西文用 —— layout.tsx 用 next/font
 //    加载的 Geist 系列只覆盖 latin subset，中文 glyph 不在里面
-// 2. 然后系统中文字体（macOS 苹方 / Windows 微软雅黑 / Linux 思源黑体）
-//    —— 切换 sans/serif/mono 时中文 glyph 走不同字体，肉眼可见
+// 2. 然后系统中文字体 —— 三种字体走不同中文字形让用户能看出差异：
+//    - sans → 苹方 / 思源黑体（无衬线，现代）
+//    - serif → 宋体 / Noto Serif SC（衬线，正式）
+//    - mono → 仿宋 STFangsong（字形收紧接近等宽视觉，明显不同于苹方/宋体）
+//    macOS 没有原生中文等宽字体，所以 mono 中文用仿宋是次优解 —— 严格等
+//    宽中文要引入 web font (Sarasa Mono SC ≈ 200KB)，本期不做。如果 mono
+//    也 fallback 到苹方，sans/mono 切换在中文上肉眼无差异（zoo 实测）。
 // 3. 最后 generic family fallback (sans-serif / serif / monospace)
-//
-// mono 找不到原生等宽中文字体时回退到普通中文字体，这是已知 trade-off：
-// 严格的等宽中文字体（Sarasa Mono SC 等）需要 web font，本期不引入。
 export const FONT_MAP = {
   sans: {
     label: "无衬线",
@@ -21,8 +23,9 @@ export const FONT_MAP = {
   },
   mono: {
     label: "等宽体",
-    css: 'var(--font-geist-mono), "Cascadia Mono", "SF Mono", Consolas, "Courier New", "PingFang SC", "Microsoft YaHei", monospace',
+    css: 'var(--font-geist-mono), "Cascadia Mono", "SF Mono", Consolas, "Courier New", "STFangsong", FangSong, "STKaiti", KaiTi, monospace',
   },
 } as const;
 
 export type FontKey = keyof typeof FONT_MAP;
+
