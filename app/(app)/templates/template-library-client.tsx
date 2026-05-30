@@ -295,24 +295,6 @@ function TemplateCard({
     <article
       className="group relative flex flex-col overflow-hidden rounded-xl border border-border bg-card shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:border-primary/30 hover:shadow-lg hover:shadow-primary/5"
     >
-      {/* 收藏五角星：缩略图按钮的兄弟节点（不嵌套），点击 stopPropagation 防止
-          冒泡触发任何卡片级 onClick。收藏后填充黄色。 */}
-      <button
-        type="button"
-        onClick={(e) => {
-          e.stopPropagation();
-          onToggleFavorite();
-        }}
-        aria-label={isFavorited ? `取消收藏 ${name}` : `收藏 ${name}`}
-        aria-pressed={isFavorited}
-        className="absolute right-2 top-2 z-10 grid size-8 place-items-center rounded-full bg-background/80 text-muted-foreground shadow-sm backdrop-blur transition-colors hover:bg-background hover:text-foreground dark:bg-background/60 dark:hover:bg-background/90"
-      >
-        <Star
-          className={
-            isFavorited ? "size-4 fill-yellow-400 text-yellow-400" : "size-4"
-          }
-        />
-      </button>
       <button
         type="button"
         onClick={onClick}
@@ -344,11 +326,31 @@ function TemplateCard({
             )}
           </div>
         </div>
-        {description && (
-          <p className="line-clamp-2 text-xs text-muted-foreground">
-            {description}
-          </p>
-        )}
+        {/* 信息区底行：描述（左）+ 收藏五角星（右下角）。星放在 meta footer 内而
+            非缩略图上方，绝不遮挡简历预览。收藏后填充黄色。 */}
+        <div className="flex items-end gap-2">
+          {description && (
+            <p className="line-clamp-2 text-xs text-muted-foreground">
+              {description}
+            </p>
+          )}
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              onToggleFavorite();
+            }}
+            aria-label={isFavorited ? `取消收藏 ${name}` : `收藏 ${name}`}
+            aria-pressed={isFavorited}
+            className="ml-auto grid size-8 shrink-0 place-items-center rounded-full text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+          >
+            <Star
+              className={
+                isFavorited ? "size-4 fill-yellow-400 text-yellow-400" : "size-4"
+              }
+            />
+          </button>
+        </div>
       </div>
     </article>
   );
