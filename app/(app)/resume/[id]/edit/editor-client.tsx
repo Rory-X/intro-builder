@@ -190,15 +190,16 @@ export default function EditorClient({ id, initialTitle, initialTemplate, initia
     return { source: "builtin", id: builtinId };
   }, [template, uploadedById, initialResolvedTemplate]);
 
-  // 模板面板的列表：全部模板（去重，builtin id 的 uploaded 重复项剔除——内置模板
-  // schema 化后也会 seed 进 DB，但要走 React Layout 而非 UploadedLayout）+ 收藏子集。
-  const { allTemplateItems, favoriteTemplateItems } = useMemo(() => {
+  // 模板面板只展示「我收藏的模板」。从 allTemplates 解析出可渲染的 resolved
+  // （builtin id 的 uploaded 重复项剔除——内置模板 schema 化后也 seed 进 DB，但要
+  // 走 React Layout 而非 UploadedLayout），再筛出收藏子集。
+  const favoriteTemplateItems = useMemo<TemplatePanelItem[]>(() => {
     const builtinIdSet = new Set(BUILTIN_TEMPLATE_IDS as readonly string[]);
     const favSet = new Set(favoritedTemplateIds);
     const seen = new Set<string>();
-    const all: TemplatePanelItem[] = [];
+    const items: TemplatePanelItem[] = [];
     for (const t of allTemplates) {
-      if (seen.has(t.id)) continue;
+      if (seen.has(t.id) || !favSet.has(t.id)) continue;
       let resolved: SerializableResolvedTemplate;
       if (t.source === "uploaded") {
         if (builtinIdSet.has(t.id)) continue; // seeded builtin 重复项，跳过
@@ -209,12 +210,9 @@ export default function EditorClient({ id, initialTitle, initialTemplate, initia
         resolved = { source: "builtin", id: t.id as BuiltinTemplateId };
       }
       seen.add(t.id);
-      all.push({ id: t.id, name: t.name, resolved });
+      items.push({ id: t.id, name: t.name, resolved });
     }
-    return {
-      allTemplateItems: all,
-      favoriteTemplateItems: all.filter((it) => favSet.has(it.id)),
-    };
+    return items;
   }, [allTemplates, favoritedTemplateIds, uploadedById]);
   const persistResume = useCallback(
     async (content: ResumeContent, resumeTitle: string) => {
@@ -646,7 +644,6 @@ export default function EditorClient({ id, initialTitle, initialTemplate, initia
               <TemplateSwitchPanel
                 className="absolute inset-0 z-20"
                 favorites={favoriteTemplateItems}
-                all={allTemplateItems}
                 currentTemplateId={template}
                 pendingTemplateId={pendingTemplateId}
                 previewContent={form.getValues() as ResumeContent}

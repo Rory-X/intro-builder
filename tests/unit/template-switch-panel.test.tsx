@@ -20,10 +20,9 @@ class MockObserver {
   }
 }
 
-const all: TemplatePanelItem[] = [
+const favorites: TemplatePanelItem[] = [
   { id: "professional", name: "专业", resolved: { source: "builtin", id: "professional" } },
   { id: "modern", name: "现代", resolved: { source: "builtin", id: "modern" } },
-  { id: "classic", name: "经典", resolved: { source: "builtin", id: "classic" } },
 ];
 
 function renderPanel(overrides: Partial<React.ComponentProps<typeof TemplateSwitchPanel>> = {}) {
@@ -31,8 +30,7 @@ function renderPanel(overrides: Partial<React.ComponentProps<typeof TemplateSwit
   const onClose = vi.fn();
   render(
     <TemplateSwitchPanel
-      favorites={[all[0]]}
-      all={all}
+      favorites={favorites}
       currentTemplateId="professional"
       pendingTemplateId={null}
       previewContent={demoResume}
@@ -50,32 +48,31 @@ describe("TemplateSwitchPanel", () => {
     vi.stubGlobal("ResizeObserver", MockObserver);
   });
 
-  it("有收藏时渲染「已收藏」+「全部模板」两个分组", () => {
+  it("只渲染收藏的模板（无「全部模板」分组）", () => {
     renderPanel();
-    expect(screen.getByText("已收藏")).toBeInTheDocument();
-    expect(screen.getByText("全部模板")).toBeInTheDocument();
+    expect(screen.getByText("我收藏的模板")).toBeInTheDocument();
+    expect(screen.queryByText("全部模板")).toBeNull();
+    expect(screen.getByRole("button", { name: "套用模板 现代" })).toBeInTheDocument();
   });
 
-  it("无收藏时不渲染「已收藏」分组，仍有「全部模板」", () => {
+  it("没有收藏时显示空状态 + 去模板库链接", () => {
     renderPanel({ favorites: [] });
-    expect(screen.queryByText("已收藏")).toBeNull();
-    expect(screen.getByText("全部模板")).toBeInTheDocument();
+    expect(screen.getByText(/还没有收藏的模板/)).toBeInTheDocument();
+    const link = screen.getByRole("link", { name: "模板库" });
+    expect(link).toHaveAttribute("href", "/templates");
   });
 
   it("点非当前模板调 onApply(id)", () => {
     const { onApply } = renderPanel();
-    // modern 在「全部模板」里（非当前），点击应套用
     fireEvent.click(screen.getByRole("button", { name: "套用模板 现代" }));
     expect(onApply).toHaveBeenCalledWith("modern");
   });
 
-  it("当前模板项标「使用中」且禁用（不可再点）", () => {
+  it("当前模板项标「使用中」且禁用", () => {
     const { onApply } = renderPanel();
-    // professional 同时在收藏与全部，至少有一个标使用中
-    const currentBtns = screen.getAllByRole("button", { name: "专业（使用中）" });
-    expect(currentBtns.length).toBeGreaterThan(0);
-    currentBtns.forEach((b) => expect(b).toBeDisabled());
-    fireEvent.click(currentBtns[0]);
+    const current = screen.getByRole("button", { name: "专业（使用中）" });
+    expect(current).toBeDisabled();
+    fireEvent.click(current);
     expect(onApply).not.toHaveBeenCalled();
   });
 
@@ -87,7 +84,7 @@ describe("TemplateSwitchPanel", () => {
 
   it("套用中（pending）时其它项禁用防连点", () => {
     const { onApply } = renderPanel({ pendingTemplateId: "modern" });
-    fireEvent.click(screen.getByRole("button", { name: "套用模板 经典" }));
+    fireEvent.click(screen.getByRole("button", { name: "套用模板 现代" }));
     expect(onApply).not.toHaveBeenCalled();
   });
 });
