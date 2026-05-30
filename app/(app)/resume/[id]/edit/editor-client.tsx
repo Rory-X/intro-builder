@@ -145,11 +145,15 @@ export default function EditorClient({ id, initialTitle, initialTemplate, initia
   );
 
   // Map of id → UploadedTemplate for instant client-side lookup when the
-  // user switches template. Empty map when DB has none yet (early
-  // foundation phase).
+  // user switches template. Excludes builtin ids that may exist in DB after
+  // seed — those must go through the React Layout path, not UploadedLayout.
   const uploadedById = useMemo(() => {
     const map = new Map<string, UploadedTemplate>();
-    for (const t of uploadedTemplates) map.set(t.id, t);
+    for (const t of uploadedTemplates) {
+      if (!(BUILTIN_TEMPLATE_IDS as readonly string[]).includes(t.id)) {
+        map.set(t.id, t);
+      }
+    }
     return map;
   }, [uploadedTemplates]);
 
