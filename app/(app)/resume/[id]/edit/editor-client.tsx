@@ -24,7 +24,7 @@ import { SkillsEditor } from "@/components/editor/skills-editor";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
-import { Loader2, Share2, PanelRightClose, PanelRightOpen, MessageSquare } from "lucide-react";
+import { Loader2, Share2, PanelRightClose, PanelRightOpen, MessageSquare, LayoutTemplate } from "lucide-react";
 import { resolveTemplateId, type AllTemplatesItem, type TemplateId } from "@/lib/templates/registry";
 import {
   BUILTIN_TEMPLATE_IDS,
@@ -39,6 +39,7 @@ import { SectionWrapper } from "@/components/editor/section-wrapper";
 import { ModuleManager } from "@/components/editor/module-manager";
 import { CustomSectionEditor } from "@/components/editor/custom-section-editor";
 import { StyleEditor } from "@/components/editor/style-editor";
+import { TemplateSwitchPanel, type TemplatePanelItem } from "@/components/editor/template-switch-panel";
 import { arrayMove } from "@/lib/array-move";
 import { DEFAULT_SECTION_ORDER, BUILTIN_SECTION_KEYS } from "@/lib/resume-schema";
 import { cn } from "@/lib/utils";
@@ -80,6 +81,11 @@ type Props = {
    * the editor can render the gallery synchronously and stay client-only.
    */
   allTemplates: AllTemplatesItem[];
+  /**
+   * 当前用户收藏的 templateId 列表（编辑器内模板面板的「已收藏」置顶分组）。
+   * 可选，缺省 [] —— 老调用方/测试不传也不报错，只是没有收藏分组。
+   */
+  favoritedTemplateIds?: string[];
 };
 
 const DESKTOP_QUERY = "(min-width: 1024px)";
@@ -112,7 +118,7 @@ function formatRelativeSaveTime(savedAt: Date, now: Date): string {
   return `${days}天前保存`;
 }
 
-export default function EditorClient({ id, initialTitle, initialTemplate, initialContent, initialIsPublic, initialSlug, initialUpdatedAtIso, initialResolvedTemplate, uploadedTemplates, allTemplates }: Props) {
+export default function EditorClient({ id, initialTitle, initialTemplate, initialContent, initialIsPublic, initialSlug, initialUpdatedAtIso, initialResolvedTemplate, uploadedTemplates, allTemplates, favoritedTemplateIds = [] }: Props) {
   const isDesktop = useSyncExternalStore(
     subscribeToDesktopQuery,
     getDesktopSnapshot,
@@ -136,6 +142,7 @@ export default function EditorClient({ id, initialTitle, initialTemplate, initia
   const [isExportingImage, setIsExportingImage] = useState(false);
   const [paginationData, setPaginationData] = useState<{ pageBreaks: number[]; totalHeight: number } | null>(null);
   const [pendingTemplateId, setPendingTemplateId] = useState<TemplateId | null>(null);
+  const [showTemplatePanel, setShowTemplatePanel] = useState(false);
   const [isTogglingShare, setIsTogglingShare] = useState(false);
   const [isPending, startTransition] = useTransition();
   const previewRootRef = useRef<HTMLDivElement>(null);
@@ -179,6 +186,33 @@ export default function EditorClient({ id, initialTitle, initialTemplate, initia
       : DEFAULT_TEMPLATE_ID;
     return { source: "builtin", id: builtinId };
   }, [template, uploadedById, initialResolvedTemplate]);
+
+  // 模板面板的列表：全部模板（去重，builtin id 的 uploaded 重复项剔除——内置模板
+  // schema 化后也会 seed 进 DB，但要走 React Layout 而非 UploadedLayout）+ 收藏子集。
+  const { allTemplateItems, favoriteTemplateItems } = useMemo(() => {
+    const builtinIdSet = new Set(BUILTIN_TEMPLATE_IDS as readonly string[]);
+    const favSet = new Set(favoritedTemplateIds);
+    const seen = new Set<string>();
+    const all: TemplatePanelItem[] = [];
+    for (const t of allTemplates) {
+      if (seen.has(t.id)) continue;
+      let resolved: SerializableResolvedTemplate;
+      if (t.source === "uploaded") {
+        if (builtinIdSet.has(t.id)) continue; // seeded builtin 重复项，跳过
+        const up = uploadedById.get(t.id);
+        if (!up) continue; // 孤儿（DB 里没有了）
+        resolved = { source: "uploaded", id: t.id, template: up };
+      } else {
+        resolved = { source: "builtin", id: t.id as BuiltinTemplateId };
+      }
+      seen.add(t.id);
+      all.push({ id: t.id, name: t.name, resolved });
+    }
+    return {
+      allTemplateItems: all,
+      favoriteTemplateItems: all.filter((it) => favSet.has(it.id)),
+    };
+  }, [allTemplates, favoritedTemplateIds, uploadedById]);
   const persistResume = useCallback(
     async (content: ResumeContent, resumeTitle: string) => {
       await saveResume(id, content, resumeTitle);
@@ -435,6 +469,19 @@ export default function EditorClient({ id, initialTitle, initialTemplate, initia
             data-testid="editor-toolbar"
             className="flex min-w-0 flex-1 flex-nowrap items-center gap-2 overflow-x-auto px-6"
           >
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => setShowTemplatePanel((v) => !v)}
+              aria-pressed={showTemplatePanel}
+              className={cn(
+                "gap-1.5",
+                showTemplatePanel && "border-primary bg-primary/5 text-primary",
+              )}
+            >
+              <LayoutTemplate className="h-3.5 w-3.5" />
+              模板
+            </Button>
             <SmartLayoutButton templateId={template} measureRef={previewRootRef} />
             <StyleEditor />
             <ModuleManager sectionOrder={sectionOrder} onOrderChange={handleOrderChange} />
@@ -556,31 +603,46 @@ export default function EditorClient({ id, initialTitle, initialTemplate, initia
 
       {isDesktop ? (
         <div className="flex h-[calc(100vh-3.5rem-4rem)] overflow-hidden">
-          <div
-            ref={editorPanelRef}
-            className="thin-scrollbar min-w-0 space-y-6 overflow-y-auto border-r p-6"
-            style={{ flex: `0 0 ${splitPercent}%` }}
-          >
-            <div className={cn(
-              "rounded-lg transition-all duration-500",
-              collabSync.highlightedFields.has("basics") && "ring-2 ring-violet-400/60 bg-violet-50/30 dark:bg-violet-950/20"
-            )}>
-              <BasicsEditor />
-            </div>
-            {sectionOrder.filter(k => k !== "basics").map((key) => (
-              <div key={key} className={cn(
+          <div className="relative min-w-0 border-r" style={{ flex: `0 0 ${splitPercent}%` }}>
+            <div
+              ref={editorPanelRef}
+              className="thin-scrollbar h-full space-y-6 overflow-y-auto p-6"
+            >
+              <div className={cn(
                 "rounded-lg transition-all duration-500",
-                collabSync.highlightedFields.has(key) && "ring-2 ring-violet-400/60 bg-violet-50/30 dark:bg-violet-950/20"
+                collabSync.highlightedFields.has("basics") && "ring-2 ring-violet-400/60 bg-violet-50/30 dark:bg-violet-950/20"
               )}>
-                <SectionWrapper id={key}>
-                  {key === "experience" && <ExperienceEditor />}
-                  {key === "education" && <EducationEditor />}
-                  {key === "projects" && <ProjectsEditor />}
-                  {key === "skills" && <SkillsEditor />}
-                  {isCustomSection(key) && <CustomSectionEditor sectionId={key} />}
-                </SectionWrapper>
+                <BasicsEditor />
               </div>
-            ))}
+              {sectionOrder.filter(k => k !== "basics").map((key) => (
+                <div key={key} className={cn(
+                  "rounded-lg transition-all duration-500",
+                  collabSync.highlightedFields.has(key) && "ring-2 ring-violet-400/60 bg-violet-50/30 dark:bg-violet-950/20"
+                )}>
+                  <SectionWrapper id={key}>
+                    {key === "experience" && <ExperienceEditor />}
+                    {key === "education" && <EducationEditor />}
+                    {key === "projects" && <ProjectsEditor />}
+                    {key === "skills" && <SkillsEditor />}
+                    {isCustomSection(key) && <CustomSectionEditor sectionId={key} />}
+                  </SectionWrapper>
+                </div>
+              ))}
+            </div>
+            {/* 模板面板：覆盖左侧表单列（右侧预览常驻可见，换模板实时看效果）。
+                表单不卸载（仅被遮住），保留编辑状态与滚动位置。 */}
+            {showTemplatePanel && (
+              <TemplateSwitchPanel
+                className="absolute inset-0 z-20"
+                favorites={favoriteTemplateItems}
+                all={allTemplateItems}
+                currentTemplateId={template}
+                pendingTemplateId={pendingTemplateId}
+                previewContent={form.getValues() as ResumeContent}
+                onApply={changeTemplate}
+                onClose={() => setShowTemplatePanel(false)}
+              />
+            )}
           </div>
           {/* Resize handle */}
           <div

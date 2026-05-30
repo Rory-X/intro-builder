@@ -9,6 +9,7 @@ import EditorClient from "./editor-client";
 import { resolveTemplateId } from "@/lib/templates/registry";
 import { getTemplateMetaAsync, listAllTemplatesAsync } from "@/lib/templates/registry-server";
 import { listUploadedTemplates } from "@/lib/templates/uploaded/fetch";
+import { getFavoriteTemplateIds } from "@/app/(app)/templates/actions";
 import { toSerializable } from "@/lib/templates/render";
 import type { Metadata } from "next";
 export const metadata: Metadata = { title: "编辑简历" };
@@ -28,10 +29,11 @@ export default async function EditPage({ params }: { params: Promise<{ id: strin
   // templateId change. Bundle size scales with uploaded-template count
   // (Option C from the foundation plan); revisit if that count grows past
   // a few hundred.
-  const [initialResolved, allTemplates, uploadedTemplates] = await Promise.all([
+  const [initialResolved, allTemplates, uploadedTemplates, favoritedTemplateIds] = await Promise.all([
     getTemplateMetaAsync(row.templateId),
     listAllTemplatesAsync(),
     listUploadedTemplates(),
+    getFavoriteTemplateIds(userId),
   ]);
   return (
     <EditorClient
@@ -45,6 +47,7 @@ export default async function EditPage({ params }: { params: Promise<{ id: strin
       initialResolvedTemplate={toSerializable(initialResolved)}
       uploadedTemplates={uploadedTemplates}
       allTemplates={allTemplates}
+      favoritedTemplateIds={favoritedTemplateIds}
     />
   );
 }
