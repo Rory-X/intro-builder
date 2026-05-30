@@ -429,8 +429,7 @@ export default function EditorClient({ id, initialTitle, initialTemplate, initia
         <div className="flex items-center py-2.5">
           <div
             data-testid="editor-toolbar"
-            className="flex flex-nowrap items-center gap-2 overflow-x-auto px-6"
-            style={{ width: `${splitPercent}%` }}
+            className="flex min-w-0 flex-1 flex-nowrap items-center gap-2 overflow-x-auto px-6"
           >
             <SmartLayoutButton templateId={template} measureRef={previewRootRef} />
             <StyleEditor />
@@ -487,8 +486,7 @@ export default function EditorClient({ id, initialTitle, initialTemplate, initia
             )}
           </div>
           <div
-            className="flex items-center justify-end gap-3 px-6"
-            style={{ width: `${100 - splitPercent}%` }}
+            className="flex shrink-0 items-center justify-end gap-3 px-6"
           >
             <Input
               value={title}
@@ -553,11 +551,11 @@ export default function EditorClient({ id, initialTitle, initialTemplate, initia
       )}
 
       {isDesktop ? (
-        <div className="flex h-[calc(100vh-3.5rem-4rem)]">
+        <div className="flex h-[calc(100vh-3.5rem-4rem)] overflow-hidden">
           <div
             ref={editorPanelRef}
-            className="thin-scrollbar space-y-6 overflow-y-auto border-r p-6"
-            style={{ width: `${splitPercent}%` }}
+            className="thin-scrollbar min-w-0 space-y-6 overflow-y-auto border-r p-6"
+            style={{ flex: `0 0 ${splitPercent}%` }}
           >
             <div className={cn(
               "rounded-lg transition-all duration-500",
@@ -588,8 +586,8 @@ export default function EditorClient({ id, initialTitle, initialTemplate, initia
             <div className="h-8 w-0.5 rounded-full bg-border" />
           </div>
           <div
-            className="thin-scrollbar overflow-y-auto bg-muted p-6"
-            style={{ width: `${100 - splitPercent}%` }}
+            className="thin-scrollbar min-w-0 overflow-y-auto bg-muted p-6"
+            style={{ flex: `1 1 ${100 - splitPercent}%` }}
           >
             <LivePreview ref={previewRootRef} resolvedTemplate={resolvedTemplate} />
             {/* Annotation highlights on preview (when collab active) */}

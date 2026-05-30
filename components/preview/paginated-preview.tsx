@@ -187,7 +187,7 @@ export const PaginatedPreview = forwardRef<HTMLDivElement, Props>(function Pagin
   ref,
 ) {
   const containerRef = useRef<HTMLDivElement>(null);
-  const [scale, setScale] = useState(1);
+  const [scale, setScale] = useState<number | null>(null);
   const measureRef = useRef<HTMLDivElement>(null);
   const [pageBreaks, setPageBreaks] = useState<number[]>([]);
   const [totalHeight, setTotalHeight] = useState(0);
@@ -289,7 +289,10 @@ export const PaginatedPreview = forwardRef<HTMLDivElement, Props>(function Pagin
         ref={ref}
         data-testid="resume-export-preview"
         className="flex flex-col items-center gap-8"
-        style={{ zoom: scale < 1 ? scale : undefined }}
+        style={{
+          zoom: scale !== null && scale < 1 ? scale : undefined,
+          visibility: scale === null ? "hidden" : undefined,
+        }}
       >
 
       {/* Visible pages */}
