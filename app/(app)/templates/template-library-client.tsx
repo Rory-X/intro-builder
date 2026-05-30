@@ -266,6 +266,10 @@ export function TemplateLibraryClient({
         resumeId={userResume?.id ?? null}
         isApplying={isApplying}
         onApply={handleApply}
+        isFavorited={selected ? favorites.has(selected.id) : false}
+        onToggleFavorite={
+          selected ? () => toggleFavorite(selected.id) : undefined
+        }
       />
     </div>
   );

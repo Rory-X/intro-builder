@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Loader2, Check } from "lucide-react";
+import { Loader2, Check, Star } from "lucide-react";
 import {
   Sheet,
   SheetContent,
@@ -32,6 +32,10 @@ type Props = {
   isApplying?: boolean;
   /** apply 回调 —— 父组件接管 setTemplate / toast / redirect 链路 */
   onApply: () => void | Promise<void>;
+  /** 当前模板是否已被收藏（父组件的 favorites Set 派生）。 */
+  isFavorited?: boolean;
+  /** 收藏切换回调 —— 父组件接管乐观更新 + action。缺省时不渲染收藏控件。 */
+  onToggleFavorite?: () => void;
 };
 
 function getDisplayMeta(resolved: SerializableResolvedTemplate) {
@@ -61,6 +65,8 @@ export function TemplatePreviewDrawer({
   resumeId,
   isApplying = false,
   onApply,
+  isFavorited = false,
+  onToggleFavorite,
 }: Props) {
   // toggle 控件 state（默认 OFF —— demo 内容预览）。
   // 限制：userContent === null 时强制 OFF（没简历可用），UI 上 disabled 提示。
@@ -209,6 +215,32 @@ export function TemplatePreviewDrawer({
             </label>
 
             <div className="mt-auto flex flex-col gap-2 pt-4">
+              {/* 收藏控件：右下角对齐，应用 CTA 上方。收藏后五角星填充黄色。
+                  父组件没传 onToggleFavorite 时不渲染（向后兼容）。 */}
+              {onToggleFavorite && resolved && (
+                <div className="flex justify-end">
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    onClick={onToggleFavorite}
+                    aria-pressed={isFavorited}
+                    aria-label={
+                      isFavorited ? `取消收藏 ${meta?.name ?? ""}` : `收藏 ${meta?.name ?? ""}`
+                    }
+                    className="gap-1.5 text-muted-foreground hover:text-foreground"
+                    data-testid="drawer-favorite"
+                  >
+                    <Star
+                      className={cn(
+                        "size-4",
+                        isFavorited && "fill-yellow-400 text-yellow-400",
+                      )}
+                    />
+                    {isFavorited ? "已收藏" : "收藏"}
+                  </Button>
+                </div>
+              )}
               {resumeId === null ? (
                 <p className="rounded-md border border-dashed border-border/80 bg-muted/40 p-3 text-xs text-muted-foreground">
                   你还没创建简历。先到{" "}
