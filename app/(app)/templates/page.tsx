@@ -63,6 +63,7 @@ export default async function TemplatesPage({
   // 自带数据）。
   const uploaded = await listUploadedTemplates();
   const favoritedIds = await getFavoriteTemplateIds(userId);
+  const builtinIds = new Set(TEMPLATES.map((t) => t.id));
   const resolvedList: SerializableResolvedTemplate[] = [
     ...TEMPLATES.map(
       (t): SerializableResolvedTemplate => ({
@@ -70,13 +71,15 @@ export default async function TemplatesPage({
         id: t.id as BuiltinTemplateId,
       }),
     ),
-    ...uploaded.map(
-      (t): SerializableResolvedTemplate => ({
-        source: "uploaded",
-        id: t.id,
-        template: t,
-      }),
-    ),
+    ...uploaded
+      .filter((t) => !builtinIds.has(t.id))
+      .map(
+        (t): SerializableResolvedTemplate => ({
+          source: "uploaded",
+          id: t.id,
+          template: t,
+        }),
+      ),
   ];
 
   return (
