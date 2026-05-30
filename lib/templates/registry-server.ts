@@ -73,31 +73,86 @@ const UPLOADED_DEFAULT_STYLE_SETTINGS: StyleSettings = {
 };
 
 export async function listAllTemplatesAsync(): Promise<AllTemplatesItem[]> {
-  const builtin: AllTemplatesItem[] = TEMPLATES.map((t) => ({
+  const dbTemplates = await listUploadedTemplates();
+
+  if (dbTemplates.length > 0) {
+    // DB available — build list from DB rows, enriching builtin rows with
+    // code-only fields (defaultStyleSettings, isRecommended, tags).
+    const builtinMetaMap = new Map(TEMPLATES.map((t) => [t.id, t]));
+    const seenBuiltinIds = new Set<string>();
+
+    const items: AllTemplatesItem[] = dbTemplates.map((t) => {
+      const codeMeta = builtinMetaMap.get(t.id);
+      if (codeMeta) {
+        seenBuiltinIds.add(t.id);
+        return {
+          id: t.id,
+          name: t.name,
+          description: t.description ?? "",
+          thumbnailUrl: t.thumbnailUrl,
+          source: "builtin" as const,
+          isRecommended: codeMeta.isRecommended,
+          defaultStyleSettings: codeMeta.defaultStyleSettings,
+          category: t.category ?? codeMeta.category,
+          features: t.features ?? codeMeta.features,
+          tags: codeMeta.tags,
+        };
+      }
+      return {
+        id: t.id,
+        name: t.name,
+        description: t.description ?? "",
+        thumbnailUrl: t.thumbnailUrl,
+        source: "uploaded" as const,
+        defaultStyleSettings: UPLOADED_DEFAULT_STYLE_SETTINGS,
+        category: t.category ?? undefined,
+        features: t.features ?? undefined,
+        tags: undefined,
+      };
+    });
+
+    // Append any builtin templates not yet seeded into DB (fallback safety)
+    for (const t of TEMPLATES) {
+      if (!seenBuiltinIds.has(t.id)) {
+        items.unshift({
+          id: t.id,
+          name: t.name,
+          description: t.description,
+          thumbnailUrl: null,
+          source: "builtin",
+          isRecommended: t.isRecommended,
+          defaultStyleSettings: t.defaultStyleSettings,
+          category: t.category,
+          features: t.features,
+          tags: t.tags,
+        });
+      }
+    }
+
+    // Stable ordering: builtin first (in TEMPLATES[] order), then uploaded (DB order)
+    const builtinItems = items.filter((i) => i.source === "builtin");
+    const uploadedItems = items.filter((i) => i.source === "uploaded");
+    const builtinOrder = TEMPLATES.map((t) => t.id);
+    builtinItems.sort(
+      (a, b) => builtinOrder.indexOf(a.id) - builtinOrder.indexOf(b.id),
+    );
+
+    return [...builtinItems, ...uploadedItems];
+  }
+
+  // DB not available — fallback to code-only built-in list
+  return TEMPLATES.map((t) => ({
     id: t.id,
     name: t.name,
     description: t.description,
     thumbnailUrl: null,
-    source: "builtin",
+    source: "builtin" as const,
     isRecommended: t.isRecommended,
     defaultStyleSettings: t.defaultStyleSettings,
     category: t.category,
     features: t.features,
     tags: t.tags,
   }));
-  const uploaded = await listUploadedTemplates();
-  const uploadedItems: AllTemplatesItem[] = uploaded.map((t) => ({
-    id: t.id,
-    name: t.name,
-    description: t.description ?? "",
-    thumbnailUrl: t.thumbnailUrl,
-    source: "uploaded",
-    defaultStyleSettings: UPLOADED_DEFAULT_STYLE_SETTINGS,
-    category: t.category ?? undefined,
-    features: t.features ?? undefined,
-    tags: undefined,
-  }));
-  return [...builtin, ...uploadedItems];
 }
 
 /**
