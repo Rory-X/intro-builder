@@ -24,7 +24,7 @@ import { SkillsEditor } from "@/components/editor/skills-editor";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
-import { Loader2, Share2, PanelRightClose, PanelRightOpen, MessageSquare, LayoutTemplate } from "lucide-react";
+import { Loader2, Share2, PanelRightClose, PanelRightOpen, MessageSquare, LayoutTemplate, ChevronLeft } from "lucide-react";
 import { resolveTemplateId, type AllTemplatesItem, type TemplateId } from "@/lib/templates/registry";
 import {
   BUILTIN_TEMPLATE_IDS,
@@ -86,6 +86,7 @@ type Props = {
    * 可选，缺省 [] —— 老调用方/测试不传也不报错，只是没有收藏分组。
    */
   favoritedTemplateIds?: string[];
+  from: string | null;
 };
 
 const DESKTOP_QUERY = "(min-width: 1024px)";
@@ -118,7 +119,9 @@ function formatRelativeSaveTime(savedAt: Date, now: Date): string {
   return `${days}天前保存`;
 }
 
-export default function EditorClient({ id, initialTitle, initialTemplate, initialContent, initialIsPublic, initialSlug, initialUpdatedAtIso, initialResolvedTemplate, uploadedTemplates, allTemplates, favoritedTemplateIds = [] }: Props) {
+export default function EditorClient({ id, initialTitle, initialTemplate, initialContent, initialIsPublic, initialSlug, initialUpdatedAtIso, initialResolvedTemplate, uploadedTemplates, allTemplates, favoritedTemplateIds = [], from }: Props) {
+  const backHref = from === "templates" ? "/templates" : "/dashboard";
+  const backLabel = from === "templates" ? "模板库" : "我的简历";
   const isDesktop = useSyncExternalStore(
     subscribeToDesktopQuery,
     getDesktopSnapshot,
@@ -469,6 +472,14 @@ export default function EditorClient({ id, initialTitle, initialTemplate, initia
             data-testid="editor-toolbar"
             className="flex min-w-0 flex-1 flex-nowrap items-center gap-2 overflow-x-auto px-6"
           >
+            <a
+              href={backHref}
+              className="inline-flex shrink-0 items-center gap-0.5 rounded-md px-2 py-1.5 text-sm text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+            >
+              <ChevronLeft className="h-4 w-4" />
+              {backLabel}
+            </a>
+            <Separator orientation="vertical" className="h-5" />
             <Button
               size="sm"
               variant="outline"

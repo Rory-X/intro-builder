@@ -99,6 +99,7 @@ describe("EditorClient live preview", () => {
         initialResolvedTemplate={BUILTIN_RESOLVED}
         uploadedTemplates={[]}
         allTemplates={BUILTIN_TEMPLATES_LIST}
+        from={null}
       />,
     );
 
@@ -135,6 +136,7 @@ describe("EditorClient live preview", () => {
         initialResolvedTemplate={BUILTIN_RESOLVED}
         uploadedTemplates={[]}
         allTemplates={BUILTIN_TEMPLATES_LIST}
+        from={null}
       />,
     );
 
@@ -158,6 +160,7 @@ describe("EditorClient live preview", () => {
         initialResolvedTemplate={BUILTIN_RESOLVED}
         uploadedTemplates={[]}
         allTemplates={BUILTIN_TEMPLATES_LIST}
+        from={null}
       />,
     );
 
@@ -180,6 +183,7 @@ describe("EditorClient live preview", () => {
         initialResolvedTemplate={BUILTIN_RESOLVED}
         uploadedTemplates={[]}
         allTemplates={BUILTIN_TEMPLATES_LIST}
+        from={null}
       />,
     );
 
@@ -218,6 +222,7 @@ describe("EditorClient live preview", () => {
           initialResolvedTemplate={BUILTIN_RESOLVED}
           uploadedTemplates={[]}
           allTemplates={BUILTIN_TEMPLATES_LIST}
+        from={null}
         />,
       ),
     ).not.toThrow();
@@ -239,6 +244,7 @@ describe("EditorClient live preview", () => {
         initialResolvedTemplate={BUILTIN_RESOLVED}
         uploadedTemplates={[]}
         allTemplates={BUILTIN_TEMPLATES_LIST}
+        from={null}
       />,
     );
 
