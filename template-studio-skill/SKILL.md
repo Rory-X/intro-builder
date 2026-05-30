@@ -208,6 +208,18 @@ v2 模式下 `--layout` 仍要填——SlotRenderer 渲染失败时引擎降级�
    - 合法 binding 名：见下表
    - 嵌套 ≤ 3 层（sectionOrder → section.items → 内层不再 loop）
    - 头像/图片：用 `<img data-bind="basics.photo" alt="头像" class="..." />`（**不要写 src**——引擎自动把 URL 注入 src；photo 为空时整个 `<img>` 不渲染，不会留裂图）。**形状/尺寸/裁剪全用 CSS 控制**（圆形头像 = `.avatar { border-radius:50%; object-fit:cover }`）。不要用 `<slot data-bind="basics.photo">`（会把 URL 当文字渲染），也不要写死 `<img src="" />`（React 19 报错）。
+   - **header 必须包含全部个人信息字段**——用户填了什么就渲染什么，缺一个字段 = 用户数据丢失。`<header>` 区域必须放齐以下 8 项（排列/分隔/样式你自由决定）：
+     ```html
+     <img data-bind="basics.photo" alt="头像" class="avatar" />
+     <slot data-bind="basics.name"></slot>
+     <slot data-bind="basics.title"></slot>
+     <slot data-bind="basics.status"></slot>
+     <slot data-bind="basics.email"></slot>
+     <slot data-bind="basics.phone"></slot>
+     <slot data-bind="basics.location"></slot>
+     <slot data-bind="basics.website"></slot>
+     ```
+     引擎对空值处理：photo 空 → img 不渲染；其余文本字段空 → 渲染空字符串（你的 CSS 用 `:empty` 隐藏或模板里 separator 不会裸露）。不要因为"参考图里没看到某字段"就省略——参考图是视觉参考不是数据契约。
 3. **安全**——禁止 `<script>` / `on*` 属性 / `<iframe>` / `position: fixed` / `*` 选择器 / 裸 element 选择器（`body { ... }`）/ `@media` / `@keyframes`
 4. **A4 单页约束（hard rule）**——**自由排版的"自由"是视觉自由，不是尺寸自由**。渲染 demoResume 规模内容（5 项工作 + 3 项目 + 自我介绍 + 教育）必须严格塞进 A4 一页：
    - **gallery thumbnail 模式**（stage 595px 宽）：article 总高度 ≤ **841px** (A4 @72dpi)
@@ -237,7 +249,7 @@ v2 模式下 `--layout` 仍要填——SlotRenderer 渲染失败时引擎降级�
 | skills | category | items.join("、") | (空) |
 | basics | (空) | (空) | summary (wrapped) |
 
-**完整 v2 PoC 参考**：`prototypes/handcoded-crimson/index-with-slots.html`
+**完整 v2 PoC 参考**（包含全部 8 个 header 字段的完整示例）：`prototypes/handcoded-crimson/index-with-slots.html`
 
 ---
 
