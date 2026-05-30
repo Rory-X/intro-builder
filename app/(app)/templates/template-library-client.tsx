@@ -6,7 +6,7 @@ import {
   useTransition,
 } from "react";
 import { useRouter } from "next/navigation";
-import { Search } from "lucide-react";
+import { Search, Star } from "lucide-react";
 import { toast } from "sonner";
 import { TEMPLATES } from "@/lib/templates/registry";
 import { ClientTemplateRenderFromSerializable } from "@/lib/templates/render";
@@ -17,11 +17,12 @@ import { Input } from "@/components/ui/input";
 import { TemplateThumbnail } from "@/components/templates/template-thumbnail";
 import { TemplatePreviewDrawer } from "@/components/templates/template-preview-drawer";
 import { setTemplate } from "@/app/(app)/resume/[id]/edit/actions";
+import { toggleTemplateFavorite } from "./actions";
 import type { TemplateCategory } from "@/lib/templates/registry";
 
-// "all" 表示不过滤，否则按 category 值精确匹配。tab 列表 derive 自当前模板
-// 列表实际出现的 category，避免空 tab。
-type TabValue = "all" | TemplateCategory;
+// "all" 表示不过滤，"favorites" 表示只看当前用户收藏的，否则按 category 值精确
+// 匹配。tab 列表 derive 自当前模板列表实际出现的 category，避免空 tab。
+type TabValue = "all" | "favorites" | TemplateCategory;
 
 const CATEGORY_LABELS: Record<TemplateCategory, string> = {
   academic: "学术",
@@ -45,6 +46,8 @@ type Props = {
   /** 用户最近一份简历；null 表示没有简历，drawer 里的 toggle 会被禁用。 */
   userResume: { id: string; content: ResumeContent } | null;
   demoResume: ResumeContent;
+  /** 当前用户已收藏的 templateId 列表，作为客户端收藏状态的初始值。 */
+  favoritedIds: string[];
 };
 
 /**
@@ -80,6 +83,7 @@ export function TemplateLibraryClient({
   templates,
   userResume,
   demoResume,
+  favoritedIds,
 }: Props) {
   // 网格里的所有缩略图永远用 demoResume —— /templates 是全局浏览入口，
   // "用我的内容预览"已经下沉到 TemplatePreviewDrawer（点击卡片打开后才决定）。
@@ -89,13 +93,49 @@ export function TemplateLibraryClient({
   const [selected, setSelected] =
     useState<SerializableResolvedTemplate | null>(null);
   const [isApplying, startApplying] = useTransition();
+  // 收藏状态用本地 Set 做乐观更新：点击立即变黄，server action 失败再回滚。
+  // 初始值来自 server 预取的 favoritedIds（page.tsx）。
+  const [favorites, setFavorites] = useState<Set<string>>(
+    () => new Set(favoritedIds),
+  );
+  const [, startToggleFavorite] = useTransition();
   const router = useRouter();
 
-  // 过滤：tab + search。search 不区分大小写、按 name 子串匹配。tab=all 不限。
+  // 收藏切换：先乐观改本地 Set（UI 立刻反馈），再调 action；失败回滚 + toast。
+  // 不 await，借 useTransition 标记 pending，连点也不会丢状态（onConflictDoNothing
+  // + delete 幂等，server 侧无副作用）。
+  const toggleFavorite = (templateId: string) => {
+    const willFavorite = !favorites.has(templateId);
+    setFavorites((cur) => {
+      const next = new Set(cur);
+      if (willFavorite) next.add(templateId);
+      else next.delete(templateId);
+      return next;
+    });
+    startToggleFavorite(async () => {
+      const res = await toggleTemplateFavorite(templateId, willFavorite);
+      if (!res.success) {
+        // 回滚到操作前状态
+        setFavorites((cur) => {
+          const reverted = new Set(cur);
+          if (willFavorite) reverted.delete(templateId);
+          else reverted.add(templateId);
+          return reverted;
+        });
+        toast.error(`收藏失败：${res.error ?? "未知错误"}`);
+      }
+    });
+  };
+
+  // 过滤：tab + search。search 不区分大小写、按 name 子串匹配。tab=all 不限；
+  // tab=favorites 只看收藏（按 resolved.id 匹配，与套用用的 id 一致）；其余按
+  // category 精确匹配。
   const filtered = useMemo(() => {
     const q = searchInput.trim().toLowerCase();
     return templates.filter((t) => {
-      if (tab !== "all") {
+      if (tab === "favorites") {
+        if (!favorites.has(t.id)) return false;
+      } else if (tab !== "all") {
         const { category } = getDisplayMeta(t);
         if (category !== tab) return false;
       }
@@ -106,7 +146,7 @@ export function TemplateLibraryClient({
       }
       return true;
     });
-  }, [templates, tab, searchInput]);
+  }, [templates, tab, searchInput, favorites]);
 
   // 实际出现的 category 集合（按 CATEGORY_ORDER 顺序，不显示空 tab）。
   // 例如只有 tech / business 模板时，tab 列表只显示「全部 / 互联网 / 商务」。
@@ -170,6 +210,10 @@ export function TemplateLibraryClient({
         >
           <TabsList>
             <TabsTrigger value="all">全部</TabsTrigger>
+            <TabsTrigger value="favorites" className="gap-1">
+              <Star className="size-3.5" />
+              我收藏的{favorites.size > 0 ? ` ${favorites.size}` : ""}
+            </TabsTrigger>
             {availableCategories.map((c) => (
               <TabsTrigger key={c} value={c}>
                 {CATEGORY_LABELS[c]}
@@ -192,7 +236,9 @@ export function TemplateLibraryClient({
       {/* Grid */}
       {filtered.length === 0 ? (
         <div className="rounded-xl border-2 border-dashed border-border/60 p-16 text-center text-muted-foreground">
-          没有匹配的模板。试试别的关键词？(｡•́︿•̀｡)
+          {tab === "favorites"
+            ? "还没有收藏任何模板。点模板右上角的 ⭐ 收藏，方便下次快速套用 ✨"
+            : "没有匹配的模板。试试别的关键词？(｡•́︿•̀｡)"}
         </div>
       ) : (
         <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4">
@@ -201,6 +247,8 @@ export function TemplateLibraryClient({
               key={`${resolved.source}:${resolved.id}`}
               resolved={resolved}
               content={demoResume}
+              isFavorited={favorites.has(resolved.id)}
+              onToggleFavorite={() => toggleFavorite(resolved.id)}
               onClick={() => handleCardClick(resolved)}
             />
           ))}
@@ -226,10 +274,14 @@ export function TemplateLibraryClient({
 function TemplateCard({
   resolved,
   content,
+  isFavorited,
+  onToggleFavorite,
   onClick,
 }: {
   resolved: SerializableResolvedTemplate;
   content: ResumeContent;
+  isFavorited: boolean;
+  onToggleFavorite: () => void;
   onClick: () => void;
 }) {
   const { name, description, isRecommended, category } = getDisplayMeta(resolved);
@@ -239,6 +291,24 @@ function TemplateCard({
     <article
       className="group relative flex flex-col overflow-hidden rounded-xl border border-border bg-card shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:border-primary/30 hover:shadow-lg hover:shadow-primary/5"
     >
+      {/* 收藏五角星：缩略图按钮的兄弟节点（不嵌套），点击 stopPropagation 防止
+          冒泡触发任何卡片级 onClick。收藏后填充黄色。 */}
+      <button
+        type="button"
+        onClick={(e) => {
+          e.stopPropagation();
+          onToggleFavorite();
+        }}
+        aria-label={isFavorited ? `取消收藏 ${name}` : `收藏 ${name}`}
+        aria-pressed={isFavorited}
+        className="absolute right-2 top-2 z-10 grid size-8 place-items-center rounded-full bg-background/80 text-muted-foreground shadow-sm backdrop-blur transition-colors hover:bg-background hover:text-foreground dark:bg-background/60 dark:hover:bg-background/90"
+      >
+        <Star
+          className={
+            isFavorited ? "size-4 fill-yellow-400 text-yellow-400" : "size-4"
+          }
+        />
+      </button>
       <button
         type="button"
         onClick={onClick}
