@@ -77,6 +77,20 @@ describe("EditorClient live preview", () => {
         removeEventListener: vi.fn(),
       })),
     });
+    // jsdom doesn't do layout — scrollHeight is always 0. PaginatedPreview
+    // guards visible page rendering behind `measured` which requires
+    // scrollHeight > 0. Stub it so the preview content actually renders.
+    Object.defineProperty(HTMLElement.prototype, "scrollHeight", {
+      configurable: true,
+      get() { return 800; },
+    });
+    // PaginatedPreview uses ResizeObserver to compute scale; without it
+    // scale stays null and visible pages get visibility:hidden.
+    global.ResizeObserver = class {
+      observe() {}
+      unobserve() {}
+      disconnect() {}
+    } as unknown as typeof ResizeObserver;
   });
 
   afterEach(() => {
