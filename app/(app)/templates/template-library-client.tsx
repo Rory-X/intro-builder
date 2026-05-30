@@ -326,9 +326,9 @@ function TemplateCard({
             )}
           </div>
         </div>
-        {/* 信息区底行：描述（左）+ 收藏五角星（右下角）。星放在 meta footer 内而
-            非缩略图上方，绝不遮挡简历预览。收藏后填充黄色。 */}
-        <div className="flex items-end gap-2">
+        {/* 信息区底行：描述（左）+ 收藏五角星（右下角，与描述同行居中对齐）。
+            星放在 meta footer 内而非缩略图上方，绝不遮挡简历预览。收藏后填充黄色。 */}
+        <div className="flex min-h-8 items-center gap-2">
           {description && (
             <p className="line-clamp-2 text-xs text-muted-foreground">
               {description}

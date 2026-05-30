@@ -152,30 +152,6 @@ export function TemplatePreviewDrawer({
                       推荐
                     </span>
                   )}
-                  {/* 收藏控件：信息栏顶部右对齐，打开抽屉即可见，不抢底部 CTA、
-                      不遮左侧预览。收藏后五角星填充黄色。缺省不渲染（向后兼容）。 */}
-                  {onToggleFavorite && (
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="sm"
-                      onClick={onToggleFavorite}
-                      aria-pressed={isFavorited}
-                      aria-label={
-                        isFavorited ? `取消收藏 ${meta.name}` : `收藏 ${meta.name}`
-                      }
-                      className="ml-auto h-8 gap-1.5 text-muted-foreground hover:text-foreground"
-                      data-testid="drawer-favorite"
-                    >
-                      <Star
-                        className={cn(
-                          "size-4",
-                          isFavorited && "fill-yellow-400 text-yellow-400",
-                        )}
-                      />
-                      {isFavorited ? "已收藏" : "收藏"}
-                    </Button>
-                  )}
                 </div>
                 {meta.description && (
                   <p className="text-sm text-muted-foreground">
@@ -237,6 +213,31 @@ export function TemplatePreviewDrawer({
                 </span>
               </span>
             </label>
+
+            {/* 收藏控件：放「用我的内容预览」下方 —— 顶部和底部都不好找，这里在
+                信息流中间、apply CTA 上方，最易发现。收藏后五角星填充黄色。
+                缺省不渲染（向后兼容）。 */}
+            {onToggleFavorite && (
+              <Button
+                type="button"
+                variant="outline"
+                onClick={onToggleFavorite}
+                aria-pressed={isFavorited}
+                aria-label={
+                  isFavorited ? `取消收藏 ${meta?.name ?? ""}` : `收藏 ${meta?.name ?? ""}`
+                }
+                className="justify-center gap-2 text-muted-foreground hover:text-foreground"
+                data-testid="drawer-favorite"
+              >
+                <Star
+                  className={cn(
+                    "size-4",
+                    isFavorited && "fill-yellow-400 text-yellow-400",
+                  )}
+                />
+                {isFavorited ? "已收藏" : "收藏此模板"}
+              </Button>
+            )}
 
             <div className="mt-auto flex flex-col gap-2 pt-4">
               {resumeId === null ? (
