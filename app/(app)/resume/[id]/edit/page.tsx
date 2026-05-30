@@ -13,8 +13,9 @@ import { toSerializable } from "@/lib/templates/render";
 import type { Metadata } from "next";
 export const metadata: Metadata = { title: "编辑简历" };
 
-export default async function EditPage({ params }: { params: Promise<{ id: string }> }) {
+export default async function EditPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ from?: string }> }) {
   const { id } = await params;
+  const { from } = await searchParams;
   const userId = await requireUserId();
   const row = await withDbRetry("EditPage.resumeLookup", () =>
     db.query.resumes.findFirst({
@@ -45,6 +46,7 @@ export default async function EditPage({ params }: { params: Promise<{ id: strin
       initialResolvedTemplate={toSerializable(initialResolved)}
       uploadedTemplates={uploadedTemplates}
       allTemplates={allTemplates}
+      from={from ?? null}
     />
   );
 }

@@ -11,7 +11,6 @@ import {
 import { useForm, FormProvider } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { toast } from "sonner";
-import { useSearchParams } from "next/navigation";
 import { ResumeContent } from "@/lib/resume-schema";
 import { saveResume, setTemplate, toggleShare } from "./actions";
 import { useResumeAutosave } from "@/hooks/use-resume-autosave";
@@ -81,6 +80,7 @@ type Props = {
    * the editor can render the gallery synchronously and stay client-only.
    */
   allTemplates: AllTemplatesItem[];
+  from: string | null;
 };
 
 const DESKTOP_QUERY = "(min-width: 1024px)";
@@ -113,10 +113,9 @@ function formatRelativeSaveTime(savedAt: Date, now: Date): string {
   return `${days}天前保存`;
 }
 
-export default function EditorClient({ id, initialTitle, initialTemplate, initialContent, initialIsPublic, initialSlug, initialUpdatedAtIso, initialResolvedTemplate, uploadedTemplates, allTemplates }: Props) {
-  const searchParams = useSearchParams();
-  const backHref = searchParams.get("from") === "templates" ? "/templates" : "/dashboard";
-  const backLabel = searchParams.get("from") === "templates" ? "模板库" : "我的简历";
+export default function EditorClient({ id, initialTitle, initialTemplate, initialContent, initialIsPublic, initialSlug, initialUpdatedAtIso, initialResolvedTemplate, uploadedTemplates, allTemplates, from }: Props) {
+  const backHref = from === "templates" ? "/templates" : "/dashboard";
+  const backLabel = from === "templates" ? "模板库" : "我的简历";
   const isDesktop = useSyncExternalStore(
     subscribeToDesktopQuery,
     getDesktopSnapshot,
