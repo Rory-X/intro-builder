@@ -184,7 +184,7 @@ export function TemplateLibraryClient({
         await setTemplate(targetResumeId, targetTemplateId);
         toast.success(`已应用模板：${targetName}`);
         setSelected(null);
-        router.push(`/resume/${targetResumeId}/edit`);
+        router.push(`/resume/${targetResumeId}/edit?from=templates`);
       } catch (error) {
         console.error("[templates] apply failed:", error);
         const message = error instanceof Error ? error.message : "未知错误";
