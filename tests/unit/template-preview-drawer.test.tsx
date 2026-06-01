@@ -175,4 +175,57 @@ describe("TemplatePreviewDrawer", () => {
     // screen import 用法验证（避免 unused import 警告）
     expect(screen.getByTestId("drawer-apply")).toBeInTheDocument();
   });
+
+  it("不传 onToggleFavorite 时不渲染收藏控件（向后兼容）", () => {
+    const { queryByTestId } = render(
+      <TemplatePreviewDrawer
+        open={true}
+        onOpenChange={vi.fn()}
+        resolved={builtinResolved}
+        demoContent={demoResume}
+        userContent={null}
+        resumeId="r1"
+        onApply={vi.fn()}
+      />,
+    );
+    expect(queryByTestId("drawer-favorite")).toBeNull();
+  });
+
+  it("传 onToggleFavorite 时渲染收藏控件，点击调用回调", () => {
+    const onToggleFavorite = vi.fn();
+    const { getByTestId } = render(
+      <TemplatePreviewDrawer
+        open={true}
+        onOpenChange={vi.fn()}
+        resolved={builtinResolved}
+        demoContent={demoResume}
+        userContent={null}
+        resumeId="r1"
+        onApply={vi.fn()}
+        isFavorited={false}
+        onToggleFavorite={onToggleFavorite}
+      />,
+    );
+    const favBtn = getByTestId("drawer-favorite");
+    expect(favBtn.textContent).toMatch(/收藏/);
+    fireEvent.click(favBtn);
+    expect(onToggleFavorite).toHaveBeenCalledTimes(1);
+  });
+
+  it("isFavorited=true 时收藏控件显示「已收藏」", () => {
+    const { getByTestId } = render(
+      <TemplatePreviewDrawer
+        open={true}
+        onOpenChange={vi.fn()}
+        resolved={builtinResolved}
+        demoContent={demoResume}
+        userContent={null}
+        resumeId="r1"
+        onApply={vi.fn()}
+        isFavorited
+        onToggleFavorite={vi.fn()}
+      />,
+    );
+    expect(getByTestId("drawer-favorite").textContent).toMatch(/已收藏/);
+  });
 });

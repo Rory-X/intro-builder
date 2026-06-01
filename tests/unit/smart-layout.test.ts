@@ -11,7 +11,11 @@ describe("interpolateSettings", () => {
     fontFamily: "sans",
     fontSize: 14,
     lineHeight: 1.6,
+    headingGap: 8,
+    bodyLineHeight: 1.6,
     pagePadding: 40,
+    sectionGap: 16,
+    itemGap: 12,
   };
 
   it("returns current settings when scale=1", () => {
@@ -20,25 +24,34 @@ describe("interpolateSettings", () => {
     expect(result.fontSize).toBe(14);
     expect(result.lineHeight).toBe(1.6);
     expect(result.pagePadding).toBe(40);
+    expect(result.sectionGap).toBe(16);
+    expect(result.itemGap).toBe(12);
   });
 
-  it("returns min settings when scale=0", () => {
+  it("returns min settings when scale=0 (pagePadding stays at current — algorithm doesn't compress it)", () => {
     const result = interpolateSettings(current, 0);
     expect(result.fontFamily).toBe("sans");
-    expect(result.fontSize).toBe(10);
-    expect(result.lineHeight).toBe(1.2);
-    expect(result.pagePadding).toBe(20);
+    expect(result.fontSize).toBe(8);
+    expect(result.lineHeight).toBe(1.05);
+    // pagePadding 不参与算法压缩 —— 保留 current.pagePadding 不动
+    expect(result.pagePadding).toBe(40);
+    expect(result.sectionGap).toBe(4);
+    expect(result.itemGap).toBe(2);
   });
 
   it("returns midpoint settings when scale=0.5", () => {
     const result = interpolateSettings(current, 0.5);
     expect(result.fontFamily).toBe("sans");
-    // fontSize: 10 + (14-10)*0.5 = 12
-    expect(result.fontSize).toBe(12);
-    // lineHeight: 1.2 + (1.6-1.2)*0.5 = 1.4
-    expect(result.lineHeight).toBe(1.4);
-    // pagePadding: 20 + (40-20)*0.5 = 30
-    expect(result.pagePadding).toBe(30);
+    // fontSize: 8 + (14-8)*0.5 = 11
+    expect(result.fontSize).toBe(11);
+    // lineHeight: 1.05 + (1.6-1.05)*0.5 = 1.325 → rounded to 1.33 (2 decimals)
+    expect(result.lineHeight).toBe(1.33);
+    // pagePadding: 不变，仍是 current.pagePadding
+    expect(result.pagePadding).toBe(40);
+    // sectionGap: 4 + (16-4)*0.5 = 10
+    expect(result.sectionGap).toBe(10);
+    // itemGap: 2 + (12-2)*0.5 = 7
+    expect(result.itemGap).toBe(7);
   });
 
   it("preserves fontFamily regardless of scale", () => {
@@ -48,12 +61,22 @@ describe("interpolateSettings", () => {
     expect(interpolateSettings(serif, 1).fontFamily).toBe("serif");
   });
 
-  it("keeps fontSize within bounds [10, 16]", () => {
+  it("keeps fontSize within bounds [8, 16]", () => {
     const maxFont: StyleSettings = { ...current, fontSize: 16 };
     for (let s = 0; s <= 1; s += 0.1) {
       const result = interpolateSettings(maxFont, s);
-      expect(result.fontSize).toBeGreaterThanOrEqual(10);
+      expect(result.fontSize).toBeGreaterThanOrEqual(8);
       expect(result.fontSize).toBeLessThanOrEqual(16);
+    }
+  });
+
+  it("keeps sectionGap and itemGap within new bounds", () => {
+    for (let s = 0; s <= 1; s += 0.1) {
+      const result = interpolateSettings(current, s);
+      expect(result.sectionGap).toBeGreaterThanOrEqual(4);
+      expect(result.sectionGap).toBeLessThanOrEqual(16);
+      expect(result.itemGap).toBeGreaterThanOrEqual(2);
+      expect(result.itemGap).toBeLessThanOrEqual(12);
     }
   });
 });
@@ -63,7 +86,11 @@ describe("findOptimalSettings", () => {
     fontFamily: "sans",
     fontSize: 14,
     lineHeight: 1.6,
+    headingGap: 8,
+    bodyLineHeight: 1.6,
     pagePadding: 40,
+    sectionGap: 16,
+    itemGap: 12,
   };
 
   it("returns 'already-fits' when content fits at current settings", async () => {
@@ -82,11 +109,13 @@ describe("findOptimalSettings", () => {
     const measure = async () => A4_HEIGHT_PX + 200; // always too tall
     const result = await findOptimalSettings(current, measure);
     expect(result.status).toBe("cannot-fit");
-    // Should still return the most compact settings
+    // Should still return the most compact settings (4-dim MIN; pagePadding stays at current)
     if (result.status === "cannot-fit") {
-      expect(result.settings.fontSize).toBe(10);
-      expect(result.settings.lineHeight).toBe(1.2);
-      expect(result.settings.pagePadding).toBe(20);
+      expect(result.settings.fontSize).toBe(8);
+      expect(result.settings.lineHeight).toBe(1.05);
+      expect(result.settings.pagePadding).toBe(40); // current.pagePadding，不被算法压缩
+      expect(result.settings.sectionGap).toBe(4);
+      expect(result.settings.itemGap).toBe(2);
     }
   });
 
@@ -94,11 +123,8 @@ describe("findOptimalSettings", () => {
     // Simulate: content height decreases linearly as settings shrink
     // At scale=1 (current): 1300px (overflows)
     // At scale=0 (min): 900px (fits)
-    // Crossover at scale ~0.56 (1300 - 400*scale = 1123 → scale ≈ 0.44 above)
     const measure = async (settings: StyleSettings) => {
-      // Simple linear model based on fontSize
-      // fontSize ranges from 10 (scale=0) to 14 (scale=1)
-      const ratio = (settings.fontSize - 10) / (14 - 10); // 0..1
+      const ratio = (settings.fontSize - 8) / (14 - 8); // 0..1
       return 900 + ratio * 400; // 900..1300
     };
 
@@ -106,29 +132,28 @@ describe("findOptimalSettings", () => {
     expect(result.status).toBe("optimized");
 
     if (result.status === "optimized") {
-      // The optimized settings should produce content <= A4_HEIGHT_PX
       const h = await measure(result.settings);
       expect(h).toBeLessThanOrEqual(A4_HEIGHT_PX);
 
-      // Settings should be reduced from current
+      // Settings should be reduced from current (pagePadding 除外，它不被压缩)
       expect(result.settings.fontSize).toBeLessThan(current.fontSize);
       expect(result.settings.lineHeight).toBeLessThan(current.lineHeight);
-      expect(result.settings.pagePadding).toBeLessThan(current.pagePadding);
+      expect(result.settings.pagePadding).toBe(current.pagePadding);
+      expect(result.settings.sectionGap).toBeLessThan(current.sectionGap);
+      expect(result.settings.itemGap).toBeLessThan(current.itemGap);
 
-      // But still above minimums (since we have room)
-      expect(result.settings.fontSize).toBeGreaterThan(10);
-      expect(result.settings.lineHeight).toBeGreaterThan(1.2);
-      expect(result.settings.pagePadding).toBeGreaterThan(20);
+      // But still above new minimums
+      expect(result.settings.fontSize).toBeGreaterThan(8);
+      expect(result.settings.lineHeight).toBeGreaterThan(1.05);
+      expect(result.settings.sectionGap).toBeGreaterThan(4);
+      expect(result.settings.itemGap).toBeGreaterThan(2);
     }
   });
 
   it("binary search converges close to optimal", async () => {
     // Precise model: fits exactly at scale=0.7
-    // height = 1123 when scale=0.7, height > 1123 when scale > 0.7
     const measure = async (settings: StyleSettings) => {
-      const scale = (settings.fontSize - 10) / (14 - 10);
-      // At scale=0.7: height = 1123 (exactly fits)
-      // Linear: height = 800 + scale * (1123 - 800) / 0.7
+      const scale = (settings.fontSize - 8) / (14 - 8);
       return 800 + scale * (323 / 0.7);
     };
 
@@ -137,8 +162,7 @@ describe("findOptimalSettings", () => {
 
     if (result.status === "optimized") {
       // After 8 iterations, precision is 1/256 ≈ 0.004
-      // The found scale should be close to 0.7
-      const foundScale = (result.settings.fontSize - 10) / (14 - 10);
+      const foundScale = (result.settings.fontSize - 8) / (14 - 8);
       expect(foundScale).toBeCloseTo(0.7, 1); // within 0.05
     }
   });

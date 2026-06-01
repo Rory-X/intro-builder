@@ -72,12 +72,34 @@ export const MODULE_PRESETS = [
 /** Built-in section keys (have dedicated editors) */
 export const BUILTIN_SECTION_KEYS = new Set(["basics", "experience", "education", "projects", "skills"]);
 
-export const StyleSettings = z.object({
-  fontFamily: z.enum(["sans", "serif", "mono"]).default("sans"),
-  fontSize: z.number().min(10).max(16).default(13),
-  lineHeight: z.number().min(1.2).max(2.0).default(1.6),
-  pagePadding: z.number().min(20).max(60).default(40),
-});
+// preprocess fires before defaults — required so a legacy row that has
+// `lineHeight: 1.8` but no bodyLineHeight can backfill the new field.
+// Without this, Zod fills it with default 1.6 and the user's adjusted
+// line-height silently disappears on first edit.
+export const StyleSettings = z.preprocess(
+  (raw) => {
+    if (typeof raw !== "object" || raw === null) return raw;
+    const r: Record<string, unknown> = { ...(raw as Record<string, unknown>) };
+    if (typeof r.lineHeight === "number" && r.bodyLineHeight === undefined) {
+      r.bodyLineHeight = r.lineHeight;
+    }
+    return r;
+  },
+  z.object({
+    fontFamily: z.enum(["sans", "serif", "mono"]).default("sans"),
+    fontSize: z.number().min(8).max(16).default(13),
+    // Deprecated: kept so legacy DB rows still parse and so the preprocess
+    // above can read it; new code reads bodyLineHeight (段内行高) and
+    // headingGap (标题与正文间距) instead.
+    lineHeight: z.number().min(1.05).max(2.0).default(1.6),
+    bodyLineHeight: z.number().min(1.05).max(2.0).default(1.6),
+    // 标题与下方正文之间的间距 (px) — applied as margin-bottom on h1..h4.
+    headingGap: z.number().min(0).max(32).default(8),
+    pagePadding: z.number().min(8).max(60).default(40),
+    sectionGap: z.number().min(4).max(24).default(16),
+    itemGap: z.number().min(2).max(16).default(12),
+  }),
+);
 
 export type StyleSettings = z.infer<typeof StyleSettings>;
 
@@ -85,7 +107,11 @@ export const DEFAULT_STYLE_SETTINGS: StyleSettings = {
   fontFamily: "sans",
   fontSize: 13,
   lineHeight: 1.6,
+  bodyLineHeight: 1.6,
+  headingGap: 8,
   pagePadding: 40,
+  sectionGap: 16,
+  itemGap: 12,
 };
 
 export const ResumeContent = z.object({

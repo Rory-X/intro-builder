@@ -92,6 +92,35 @@ function checkDualConstraint(css: string): string[] {
   return violations;
 }
 
+/**
+ * v2 header completeness guard: every template MUST include all basics
+ * bindings so user data never silently disappears. Photo uses <img data-bind>,
+ * others use <slot data-bind>.
+ */
+const REQUIRED_BASICS_BINDINGS = [
+  "basics.photo",
+  "basics.name",
+  "basics.title",
+  "basics.status",
+  "basics.email",
+  "basics.phone",
+  "basics.location",
+  "basics.website",
+] as const;
+
+function checkRequiredBindings(html: string): string[] {
+  const missing: string[] = [];
+  for (const binding of REQUIRED_BASICS_BINDINGS) {
+    // basics.photo: must appear as <img data-bind="basics.photo"
+    // others: must appear as data-bind="basics.xxx"
+    const re = new RegExp(`data-bind=["']${binding.replace(".", "\\.")}["']`);
+    if (!re.test(html)) {
+      missing.push(binding);
+    }
+  }
+  return missing;
+}
+
 async function main() {
   const { values } = parseArgs({
     options: {
@@ -192,6 +221,31 @@ async function main() {
       console.log(
         `[hint] auto-extracted ${collected.length} <style> block(s) from --custom-html ` +
           `(${customCss.length} chars). Pass --custom-css explicitly to override.`,
+      );
+    }
+  }
+
+  // v2 header completeness check: every uploaded template header must
+  // include ALL basics bindings. Missing a binding = user's data silently
+  // disappears from the rendered resume (zoo reported: photo, website,
+  // status, title all invisible). Fail-fast here so skill must re-add them.
+  if (customHtml) {
+    const missing = checkRequiredBindings(customHtml);
+    if (missing.length > 0) {
+      fail(
+        1,
+        `--custom-html is missing required header bindings:\n  ` +
+          missing.join("\n  ") +
+          `\n\nEvery v2 template header must include ALL of:\n` +
+          `  <img data-bind="basics.photo" .../>  (for photo)\n` +
+          `  <slot data-bind="basics.name">       (for name)\n` +
+          `  <slot data-bind="basics.title">      (for title/求职方向)\n` +
+          `  <slot data-bind="basics.status">     (for 求职状态)\n` +
+          `  <slot data-bind="basics.email">      (for email)\n` +
+          `  <slot data-bind="basics.phone">      (for phone)\n` +
+          `  <slot data-bind="basics.location">   (for city)\n` +
+          `  <slot data-bind="basics.website">    (for 知识库/个人网站)\n` +
+          `\nSee SKILL.md §slot-protocol "header 必须包含全部个人信息字段".`,
       );
     }
   }

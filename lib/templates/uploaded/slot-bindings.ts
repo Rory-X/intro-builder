@@ -64,12 +64,26 @@ export const BASICS_BINDINGS = {
   "basics.phone": (c: ResumeContent) => c.basics.phone,
   "basics.location": (c: ResumeContent) => c.basics.location,
   "basics.website": (c: ResumeContent) => c.basics.website,
-  "basics.photo": (c: ResumeContent) => c.basics.photo,
   "basics.status": (c: ResumeContent) => c.basics.status,
   "basics.summary": (c: ResumeContent) => c.basics.summary,
 } as const;
 
 export type BasicsBinding = keyof typeof BASICS_BINDINGS;
+
+// ─── Image binding (<img data-bind="...">) ────────────────────────
+// 图片类 binding 走 SlotRenderer 的 <img> 路径而非 <slot>：引擎把 URL 注入
+// img 的 src，空值则整个 img 不渲染。photo 故意不放进 BASICS_BINDINGS（文本
+// 路径）—— 否则 <slot data-bind="basics.photo"> 会把一长串 URL 当文字渲染出
+// 来（footgun）。集合形式预留未来扩展（如 logo、二维码）。
+export const IMAGE_BINDINGS = {
+  "basics.photo": (c: ResumeContent) => c.basics.photo,
+} as const;
+
+export type ImageBinding = keyof typeof IMAGE_BINDINGS;
+
+export function isImageBinding(name: string): name is ImageBinding {
+  return name in IMAGE_BINDINGS;
+}
 
 // ─── Section value slot (inside sectionOrder loop) ────────────────
 
@@ -102,11 +116,12 @@ export type LoopBinding = (typeof LOOP_BINDINGS)[number];
 
 // ─── All bindings union ───────────────────────────────────────────
 
-export type SlotBinding = BasicsBinding | SectionBinding | ItemBinding | LoopBinding;
+export type SlotBinding = BasicsBinding | ImageBinding | SectionBinding | ItemBinding | LoopBinding;
 
 export function isValidBinding(name: string): name is SlotBinding {
   return (
     name in BASICS_BINDINGS ||
+    name in IMAGE_BINDINGS ||
     name in SECTION_BINDINGS ||
     name in ITEM_BINDINGS ||
     (LOOP_BINDINGS as readonly string[]).includes(name)
@@ -138,7 +153,10 @@ export function resolveSection(
     if (!content.basics.summary) return null;
     return {
       id: "basics",
-      title: getSectionMeta("basics").label,
+      // 硬编码 "自我介绍" 对齐内置模板（render-sections.tsx / modern Layout）。
+      // SECTION_META 没有 basics key，getSectionMeta("basics") 会 fallback 到
+      // custom → label "自定义"，与内置不一致。
+      title: "自我介绍",
       icon: sectionIcons.basics ?? "User",
       kind: "basics",
     };
@@ -174,16 +192,19 @@ export function resolveSection(
 }
 
 function isPresetSection(id: string): boolean {
+  // 只列实际有 derivePresetItems 实现的 builtIn section（experience /
+  // education / projects / skills）—— awards / research / portfolio /
+  // activities / summary 这些非 builtIn preset 的数据在 ResumeContent.custom
+  // 数组里（见 module-manager.tsx addSection 的 "if !BUILTIN_SECTION_KEYS.has"
+  // 分支），所以走 resolveSection 的 custom 分支查 content.custom.find，而
+  // 不是 preset 分支。之前误把这些 ID 列入 preset，导致 derivePresetItems
+  // 走 default 返回 [] → resolveSection 返回 null → v2 模板里这些 section
+  // 不渲染。
   return [
     "experience",
     "education",
     "projects",
     "skills",
-    "awards",
-    "research",
-    "portfolio",
-    "activities",
-    "summary",
   ].includes(id);
 }
 
@@ -240,7 +261,10 @@ export function deriveItems(
     if (!custom) return [];
     return [
       {
-        title: custom.title,
+        // entry-title 留空 —— section title 已经是 custom.title（"荣誉奖项"
+        // / "研究经历" 等），entry header 再重复一遍视觉冗余。v2 模板的 item
+        // 模板里 entry-title slot 渲染空字符串，CSS 自然不占空间。
+        title: "",
         subtitle: "",
         dateRange: "",
         location: "",
@@ -298,7 +322,10 @@ function derivePresetItems(sectionId: string, content: ResumeContent): ItemView[
         dateRange: "",
         location: "",
         bullets: emptyDoc(),
-        tags: g.items,
+        // tags 留空：技能项已通过 subtitle 渲染，再塞进 tags 会让同时渲染
+        // subtitle + tags 的模板把技能项显示两遍（SKILL.md 派生表已注明
+        // skills 的 tags 为空）。projects 才用 tags 承载 stack。
+        tags: [],
         link: "",
       }));
 

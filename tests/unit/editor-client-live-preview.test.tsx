@@ -77,6 +77,20 @@ describe("EditorClient live preview", () => {
         removeEventListener: vi.fn(),
       })),
     });
+    // jsdom doesn't do layout — scrollHeight is always 0. PaginatedPreview
+    // guards visible page rendering behind `measured` which requires
+    // scrollHeight > 0. Stub it so the preview content actually renders.
+    Object.defineProperty(HTMLElement.prototype, "scrollHeight", {
+      configurable: true,
+      get() { return 800; },
+    });
+    // PaginatedPreview uses ResizeObserver to compute scale; without it
+    // scale stays null and visible pages get visibility:hidden.
+    global.ResizeObserver = class {
+      observe() {}
+      unobserve() {}
+      disconnect() {}
+    } as unknown as typeof ResizeObserver;
   });
 
   afterEach(() => {
@@ -99,6 +113,7 @@ describe("EditorClient live preview", () => {
         initialResolvedTemplate={BUILTIN_RESOLVED}
         uploadedTemplates={[]}
         allTemplates={BUILTIN_TEMPLATES_LIST}
+        from={null}
       />,
     );
 
@@ -135,12 +150,13 @@ describe("EditorClient live preview", () => {
         initialResolvedTemplate={BUILTIN_RESOLVED}
         uploadedTemplates={[]}
         allTemplates={BUILTIN_TEMPLATES_LIST}
+        from={null}
       />,
     );
 
     const toolbar = screen.getByTestId("editor-toolbar");
-    expect(toolbar).toHaveTextContent("模板与排版");
-    expect(screen.getAllByRole("button", { name: /模板与排版/ })).toHaveLength(1);
+    expect(toolbar).toHaveTextContent("排版");
+    expect(screen.getAllByRole("button", { name: "排版" })).toHaveLength(1);
   });
 
   it("shows autosave status details on the save badge", () => {
@@ -158,6 +174,7 @@ describe("EditorClient live preview", () => {
         initialResolvedTemplate={BUILTIN_RESOLVED}
         uploadedTemplates={[]}
         allTemplates={BUILTIN_TEMPLATES_LIST}
+        from={null}
       />,
     );
 
@@ -180,6 +197,7 @@ describe("EditorClient live preview", () => {
         initialResolvedTemplate={BUILTIN_RESOLVED}
         uploadedTemplates={[]}
         allTemplates={BUILTIN_TEMPLATES_LIST}
+        from={null}
       />,
     );
 
@@ -218,6 +236,7 @@ describe("EditorClient live preview", () => {
           initialResolvedTemplate={BUILTIN_RESOLVED}
           uploadedTemplates={[]}
           allTemplates={BUILTIN_TEMPLATES_LIST}
+        from={null}
         />,
       ),
     ).not.toThrow();
@@ -239,6 +258,7 @@ describe("EditorClient live preview", () => {
         initialResolvedTemplate={BUILTIN_RESOLVED}
         uploadedTemplates={[]}
         allTemplates={BUILTIN_TEMPLATES_LIST}
+        from={null}
       />,
     );
 

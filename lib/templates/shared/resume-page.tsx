@@ -46,21 +46,39 @@ export function ResumePage({
   const articleStyle: React.CSSProperties = {
     ...style,
     fontSize: `${ss.fontSize}px`,
-    lineHeight: ss.lineHeight,
+    lineHeight: ss.bodyLineHeight,
     padding: `${ss.pagePadding}px`,
     fontFamily: FONT_MAP[fontKey].css,
     backgroundColor: decoration?.pageBgColor ?? "#ffffff",
     color: "#000000",
+    // CSS 变量给 ResumeSection 和 v2 customCss 消费 —— smart-layout 算法
+    // 通过 setProperty 临时改这两个变量来测量压缩后高度。
+    ["--section-gap" as string]: `${ss.sectionGap}px`,
+    ["--item-gap" as string]: `${ss.itemGap}px`,
+    // Heading-to-content gap is consumed by the inline <style> below as
+    // margin-bottom on h1..h4. body-line-height is the inline `lineHeight`
+    // applied above; this var exposes it to v2 customCss as well.
+    ["--heading-gap" as string]: `${ss.headingGap}px`,
+    ["--body-line-height" as string]: String(ss.bodyLineHeight),
   };
 
   const hasDecorationImage = Boolean(decoration?.bgImageUrl);
+
+  // Inline scoped rule for heading-to-content gap. Lives here (not
+  // globals.css) because Tailwind v4's CSS pipeline drops scoped rules on
+  // build, and templates (especially v2 uploads) ship their own
+  // `h2 { margin: 0 }` declarations that outrank low-specificity globals.
+  // !important is the cheapest way to guarantee the user's排版 control wins.
+  const headingGapStyle = `[data-resume-page] h1, [data-resume-page] h2, [data-resume-page] h3, [data-resume-page] h4 { margin-bottom: var(--heading-gap) !important; }`;
 
   return (
     <article
       className={cn("relative mx-auto", maxWidthClass, className)}
       style={articleStyle}
       data-frame={dataFrame}
+      data-resume-page=""
     >
+      <style dangerouslySetInnerHTML={{ __html: headingGapStyle }} />
       {hasDecorationImage && (
         // eslint-disable-next-line @next/next/no-img-element
         <img

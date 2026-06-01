@@ -10,10 +10,14 @@ import { A4_HEIGHT_PX } from "@/lib/pagination";
 
 export { A4_HEIGHT_PX };
 
-// Minimum values for each adjustable setting
-const MIN_FONT = 10;
-const MIN_LINE_HEIGHT = 1.2;
-const MIN_PADDING = 20;
+// Minimum values for each adjustable setting.
+// pagePadding 不在算法可调维度内 —— 用户设的页边距是品牌/视觉决策，不是
+// 密度调节，算法压缩时必须保留 (zoo 反馈：智能排版不能影响页边距)。
+const MIN_FONT = 8;
+const MIN_LINE_HEIGHT = 1.05;
+const MIN_SECTION_GAP = 4;
+const MIN_ITEM_GAP = 2;
+const MIN_HEADING_GAP = 0;
 
 export type SmartLayoutResult =
   | { status: "already-fits" }
@@ -39,8 +43,23 @@ export function interpolateSettings(
         (MIN_LINE_HEIGHT + (current.lineHeight - MIN_LINE_HEIGHT) * scale) *
           100,
       ) / 100,
-    pagePadding: Math.round(
-      MIN_PADDING + (current.pagePadding - MIN_PADDING) * scale,
+    headingGap: Math.round(
+      MIN_HEADING_GAP + (current.headingGap - MIN_HEADING_GAP) * scale,
+    ),
+    bodyLineHeight:
+      Math.round(
+        (MIN_LINE_HEIGHT + (current.bodyLineHeight - MIN_LINE_HEIGHT) * scale) *
+          100,
+      ) / 100,
+    // pagePadding 不参与算法压缩 —— 始终保留用户设定值。理由见 MIN_FONT
+    // 上方注释：页边距是品牌/视觉决策（用户调整 slider 是想让纸边一圈留白
+    // 改变），算法把它压到 MIN 时用户感知"页边距被自动改了"= bug。
+    pagePadding: current.pagePadding,
+    sectionGap: Math.round(
+      MIN_SECTION_GAP + (current.sectionGap - MIN_SECTION_GAP) * scale,
+    ),
+    itemGap: Math.round(
+      MIN_ITEM_GAP + (current.itemGap - MIN_ITEM_GAP) * scale,
     ),
   };
 }

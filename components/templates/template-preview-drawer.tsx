@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Loader2, Check } from "lucide-react";
+import { Loader2, Check, Star } from "lucide-react";
 import {
   Sheet,
   SheetContent,
@@ -32,6 +32,10 @@ type Props = {
   isApplying?: boolean;
   /** apply 回调 —— 父组件接管 setTemplate / toast / redirect 链路 */
   onApply: () => void | Promise<void>;
+  /** 当前模板是否已被收藏（父组件的 favorites Set 派生）。 */
+  isFavorited?: boolean;
+  /** 收藏切换回调 —— 父组件接管乐观更新 + action。缺省时不渲染收藏控件。 */
+  onToggleFavorite?: () => void;
 };
 
 function getDisplayMeta(resolved: SerializableResolvedTemplate) {
@@ -61,6 +65,8 @@ export function TemplatePreviewDrawer({
   resumeId,
   isApplying = false,
   onApply,
+  isFavorited = false,
+  onToggleFavorite,
 }: Props) {
   // toggle 控件 state（默认 OFF —— demo 内容预览）。
   // 限制：userContent === null 时强制 OFF（没简历可用），UI 上 disabled 提示。
@@ -207,6 +213,31 @@ export function TemplatePreviewDrawer({
                 </span>
               </span>
             </label>
+
+            {/* 收藏控件：放「用我的内容预览」下方 —— 顶部和底部都不好找，这里在
+                信息流中间、apply CTA 上方，最易发现。收藏后五角星填充黄色。
+                缺省不渲染（向后兼容）。 */}
+            {onToggleFavorite && (
+              <Button
+                type="button"
+                variant="outline"
+                onClick={onToggleFavorite}
+                aria-pressed={isFavorited}
+                aria-label={
+                  isFavorited ? `取消收藏 ${meta?.name ?? ""}` : `收藏 ${meta?.name ?? ""}`
+                }
+                className="justify-center gap-2 text-muted-foreground hover:text-foreground"
+                data-testid="drawer-favorite"
+              >
+                <Star
+                  className={cn(
+                    "size-4",
+                    isFavorited && "fill-yellow-400 text-yellow-400",
+                  )}
+                />
+                {isFavorited ? "已收藏" : "收藏此模板"}
+              </Button>
+            )}
 
             <div className="mt-auto flex flex-col gap-2 pt-4">
               {resumeId === null ? (

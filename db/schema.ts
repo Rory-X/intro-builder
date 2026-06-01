@@ -107,3 +107,23 @@ export const templates = pgTable("templates", {
 
 export type DbTemplate = typeof templates.$inferSelect;
 export type NewDbTemplate = typeof templates.$inferInsert;
+
+// ─── Template Favorites (user-level) ─────────────────────────
+
+// 用户级模板收藏夹。templateId 故意**不加外键指向 templates 表**：三个内置
+// 模板（professional / classic / modern）硬编码在 lib/templates/registry.ts，
+// 根本不存在于 DB templates 表（该表只装 uploaded 模板）。加 FK 会让"收藏内置
+// 模板"违反外键约束。故 templateId 用纯 text，收藏 builtin / uploaded 都通吃。
+// uploaded 模板被删后留下的孤儿行无害：渲染时模板不在列表里自然被过滤掉。
+export const templateFavorites = pgTable("template_favorite", {
+  id: text("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  userId: text("userId").notNull().references(() => users.id, { onDelete: "cascade" }),
+  templateId: text("templateId").notNull(),
+  createdAt: timestamp("createdAt").notNull().defaultNow(),
+}, (t) => ({
+  userTemplateIdx: uniqueIndex("template_favorite_user_template_idx").on(t.userId, t.templateId),
+  userIdx: index("template_favorite_user_idx").on(t.userId),
+}));
+
+export type DbTemplateFavorite = typeof templateFavorites.$inferSelect;
+export type NewDbTemplateFavorite = typeof templateFavorites.$inferInsert;

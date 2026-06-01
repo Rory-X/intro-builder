@@ -1,5 +1,6 @@
 import sanitizeHtml from "sanitize-html";
 import parse, {
+  attributesToProps,
   domToReact,
   Element,
   type DOMNode,
@@ -8,11 +9,14 @@ import parse, {
 import type { ReactElement } from "react";
 import type { ResumeContent, StyleSettings } from "@/lib/resume-schema";
 import type { TipTapJSON } from "@/lib/tiptap-types";
+import { FONT_MAP } from "@/lib/font-map";
 import { ResumeRichText } from "@/lib/templates/shared/resume-rich-text";
 import {
   BASICS_BINDINGS,
+  IMAGE_BINDINGS,
   ITEM_BINDINGS,
   SECTION_BINDINGS,
+  isImageBinding,
   isLoopBinding,
   isValidBinding,
   resolveSection,
@@ -113,7 +117,12 @@ export function SlotRenderer({
   const cssVars: Record<string, string> = {
     "--font-family": fontFamilyValue(styleSettings.fontFamily),
     "--font-size": `${styleSettings.fontSize}px`,
-    "--line-height": String(styleSettings.lineHeight),
+    "--line-height": String(styleSettings.bodyLineHeight),
+    "--body-line-height": String(styleSettings.bodyLineHeight),
+    "--heading-gap": `${styleSettings.headingGap}px`,
+    "--page-padding": `${styleSettings.pagePadding}px`,
+    "--section-gap": `${styleSettings.sectionGap}px`,
+    "--item-gap": `${styleSettings.itemGap}px`,
   };
 
   // 5. Sectioned LookupTable (memoized inside resolveSection per call) — pre-resolve
@@ -126,8 +135,18 @@ export function SlotRenderer({
     content, templates, ctx: rootCtx, depth: 0, sectionIcons,
   }));
 
+  // Heading-to-content gap enforcement — see resume-page.tsx for rationale.
+  // v2 uploaded templates frequently set `h2 { margin: 0 }` in customCss,
+  // which after scopeCss gets specificity 0,0,2,2. We need !important to win.
+  const headingGapStyle = `[data-resume-page] h1, [data-resume-page] h2, [data-resume-page] h3, [data-resume-page] h4 { margin-bottom: var(--heading-gap) !important; }`;
+
   return (
-    <div data-template-id={templateId} style={cssVars as React.CSSProperties}>
+    <div
+      data-template-id={templateId}
+      data-resume-page=""
+      style={cssVars as React.CSSProperties}
+    >
+      <style dangerouslySetInnerHTML={{ __html: headingGapStyle }} />
       {scopedCss && <style dangerouslySetInnerHTML={{ __html: scopedCss }} />}
       {reactTree}
     </div>
@@ -148,8 +167,13 @@ function makeParserOptions(p: ParserCtx): HTMLReactParserOptions {
   const opts: HTMLReactParserOptions = {
     replace: (node: DOMNode) => {
       if (!isElement(node)) return undefined;
-      if (node.name !== "slot") return undefined;
-      return renderSlotElement(node, p);
+      if (node.name === "slot") return renderSlotElement(node, p);
+      // <img data-bind="..."> → 图片绑定（引擎注入 src）。普通 <img src="...">
+      // 不带 data-bind，原样保留。
+      if (node.name === "img" && node.attribs?.["data-bind"] != null) {
+        return renderImageBinding(node, p);
+      }
+      return undefined;
     },
   };
   return opts;
@@ -165,6 +189,10 @@ function renderSlotElement(
   }
   if (!isValidBinding(binding)) {
     return placeholder(`未知 slot: ${binding}`);
+  }
+  // 图片字段不能用 <slot>（会把一串 URL 当文字渲染）—— 引导到 <img data-bind>。
+  if (isImageBinding(binding)) {
+    return placeholder(`${binding} 是图片字段，请用 <img data-bind="${binding}">`);
   }
 
   // Loop slot
@@ -219,6 +247,25 @@ function renderSlotElement(
   return placeholder(`unhandled binding: ${binding}`);
 }
 
+/**
+ * Render `<img data-bind="basics.photo">` → 把解析出的 URL 注入 src。
+ * 空 URL → 返回空 Fragment（整个 img 移除）；返回 null 会让 html-react-parser
+ * 保留原 src-less <img>（→ 裂图 / React19 空 src 报错），所以必须返回空元素。
+ * 通用：任何 v2 模板都能用，形状 / 尺寸由模板 CSS 决定，引擎只管注入 src。
+ */
+function renderImageBinding(node: Element, p: ParserCtx): ReactElement {
+  const binding = node.attribs?.["data-bind"];
+  if (!binding || !isImageBinding(binding)) {
+    return placeholder(`<img data-bind> 仅支持图片字段，不能绑定: ${binding ?? "(空)"}`);
+  }
+  const url = IMAGE_BINDINGS[binding](p.content);
+  if (!url) return <></>;
+  const props = attributesToProps(node.attribs);
+  delete (props as Record<string, unknown>)["data-bind"];
+  // eslint-disable-next-line @next/next/no-img-element -- Puppeteer PDF uses plain img; alt 由模板作者在 data-bind img 上提供
+  return <img {...props} src={url} />;
+}
+
 function renderLoop(
   loopName: string,
   tplHtml: string,
@@ -231,10 +278,15 @@ function renderLoop(
       .filter((s): s is NonNullable<typeof s> => s !== null);
     return items.map((section, i) => {
       const childCtx: IterationContext = { ...p.ctx, section };
+      const tplWithAttr = injectAttrIntoFirstTag(
+        tplHtml,
+        "data-pagination-section",
+        section.id,
+      );
       return (
         <SlotChunk
           key={`section-${i}-${section.id}`}
-          html={tplHtml}
+          html={tplWithAttr}
           parserCtx={{ ...p, ctx: childCtx, depth: p.depth + 1 }}
         />
       );
@@ -246,12 +298,13 @@ function renderLoop(
       return placeholder(`section.items 必须在 sectionOrder loop 内`);
     }
     const items = deriveItems(p.ctx, p.content);
+    const tplWithAttr = injectAttrIntoFirstTag(tplHtml, "data-pagination-item");
     return items.map((item, i) => {
       const childCtx: IterationContext = { ...p.ctx, item };
       return (
         <SlotChunk
           key={`item-${i}`}
-          html={tplHtml}
+          html={tplWithAttr}
           parserCtx={{ ...p, ctx: childCtx, depth: p.depth + 1 }}
         />
       );
@@ -259,6 +312,34 @@ function renderLoop(
   }
 
   return placeholder(`未知 loop: ${loopName}`);
+}
+
+/**
+ * Inject a data attribute into the first opening tag of the template HTML.
+ *
+ * 为什么需要：v2 模板的 customHtml 里 `<section>` / 每个 entry `<div>` 都
+ * 是 AI 自由写的，没标 `data-pagination-*`。paginated-preview.tsx 找断点
+ * 靠这两个属性 —— 缺了就 fallback 到 block-level children，section header
+ * 和 entry 内容会被切到分页线中间（zoo 多次反馈）。
+ *
+ * 在引擎层注入而不是要求 SKILL.md 显式写：(1) 一次修复所有 v2 模板都受益，
+ * (2) AI 写 HTML 时不需要记这个工程细节，(3) 现存 abbey-blue /
+ * handcoded-crimson 不用回去改 customHtml。
+ *
+ * 实现：regex 匹配第一个开标签，在标签名后插属性。AI 写的模板必然以单根
+ * 元素 `<section>` / `<div>` 开头（spec §4.2 第 2 条 slot 协议要求），所以
+ * 第一个标签 = 顶层 wrapper。
+ */
+function injectAttrIntoFirstTag(
+  html: string,
+  attr: string,
+  value?: string,
+): string {
+  const match = html.match(/^(\s*<[a-zA-Z][a-zA-Z0-9]*)\b/);
+  if (!match) return html;
+  const insertAt = match[0].length;
+  const valueStr = value !== undefined ? `="${value}"` : "";
+  return html.slice(0, insertAt) + ` ${attr}${valueStr}` + html.slice(insertAt);
 }
 
 /**
@@ -315,15 +396,12 @@ function placeholder(msg: string): ReactElement {
 }
 
 function fontFamilyValue(family: StyleSettings["fontFamily"]): string {
-  switch (family) {
-    case "serif":
-      return `"PingFang SC", "Songti SC", Georgia, serif`;
-    case "mono":
-      return `"JetBrains Mono", "SF Mono", Consolas, monospace`;
-    case "sans":
-    default:
-      return `-apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", sans-serif`;
-  }
+  // 直接用 FONT_MAP 作为唯一信源 —— 之前这里 hardcode 了一套字体，serif
+  // 第一选择居然是"PingFang SC"（苹方，黑体），切 sans/serif/mono 三个字
+  // 体在中文上都 fallback 到苹方，肉眼完全看不出区别。zoo 反馈"字体对中
+  // 文不生效"的根因。改用 FONT_MAP 后内置模板和 v2 模板共享同一套字体定
+  // 义，切换字体在中文 glyph 上有可见变化。
+  return FONT_MAP[family].css;
 }
 
 // Suppress unused import warning — domToReact may be needed if we extend

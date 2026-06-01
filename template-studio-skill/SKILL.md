@@ -198,24 +198,42 @@ v2 模式下 `--layout` 仍要填——SlotRenderer 渲染失败时引擎降级�
 1. **对偶约束（dual constraint）**——用户能调的 CSS 必须用 `var(--*)`：
    - `font-size: var(--font-size)` ✅
    - `font-size: 14px` ❌（用户改字号失效）
-   - 装饰、颜色、padding/margin、圆角、阴影 → 可硬编码
+   - `line-height: var(--line-height)` ✅
+   - **page-level padding 必须 `var(--page-padding)`** —— `<article>` 自身的 padding 必须读这个变量，否则 smart-layout 算法压缩 pagePadding 时对你的模板物理失效（用户内容多时压不下来 → status=cannot-fit → 溢出第二页）
+   - **section / item 间距必须 `var(--section-gap)` / `var(--item-gap)`** —— section 之间的 margin、entry 之间的 margin 必须读这两个变量。同样的原因：算法的可调维度对硬编码间距物理失效
+   - 装饰、颜色、圆角、阴影、component-level padding（banner 内边距 / 卡片内边距 / 图标 padding 等"和密度无关的内层留白"） → 可硬编码
+   - 判断哪些是 page/section/item gap、哪些是 component-level：**密度调节会想压缩它吗？** 想压 → var；不想压 → 硬编码。banner 高度感、卡片视觉边缘是品牌属性不该压；section/entry 之间的呼吸空间是密度的物理体现，必须压。
 2. **slot 协议**——内容插槽必须用 `<slot data-bind="..." ></slot>`（**显式闭合，不要 self-close**——HTML5 slot 不是 void 元素）：
    - 顶层 `<article>` 包外壳，所有 `<template id="...">` 在 `<article>` 之外
    - 合法 binding 名：见下表
    - 嵌套 ≤ 3 层（sectionOrder → section.items → 内层不再 loop）
-   - 头像/图片占位：v2 没有 image binding，用 `<div class="avatar-placeholder" aria-hidden="true"></div>` 之类的纯 div 占位，**禁止 `<img src="" />`**——React 19 把空字符串 src 升级成 dev overlay 错误。SlotRenderer 已对此做了防御（自动剥空 src 属性），但写代码时仍按"避免空 src" 来。
+   - 头像/图片：用 `<img data-bind="basics.photo" alt="头像" class="..." />`（**不要写 src**——引擎自动把 URL 注入 src；photo 为空时整个 `<img>` 不渲染，不会留裂图）。**形状/尺寸/裁剪全用 CSS 控制**（圆形头像 = `.avatar { border-radius:50%; object-fit:cover }`）。不要用 `<slot data-bind="basics.photo">`（会把 URL 当文字渲染），也不要写死 `<img src="" />`（React 19 报错）。
+   - **header 必须包含全部个人信息字段**——用户填了什么就渲染什么，缺一个字段 = 用户数据丢失。`<header>` 区域必须放齐以下 8 项（排列/分隔/样式你自由决定）：
+     ```html
+     <img data-bind="basics.photo" alt="头像" class="avatar" />
+     <slot data-bind="basics.name"></slot>
+     <slot data-bind="basics.title"></slot>
+     <slot data-bind="basics.status"></slot>
+     <slot data-bind="basics.email"></slot>
+     <slot data-bind="basics.phone"></slot>
+     <slot data-bind="basics.location"></slot>
+     <slot data-bind="basics.website"></slot>
+     ```
+     引擎对空值处理：photo 空 → img 不渲染；其余文本字段空 → 渲染空字符串（你的 CSS 用 `:empty` 隐藏或模板里 separator 不会裸露）。不要因为"参考图里没看到某字段"就省略——参考图是视觉参考不是数据契约。
 3. **安全**——禁止 `<script>` / `on*` 属性 / `<iframe>` / `position: fixed` / `*` 选择器 / 裸 element 选择器（`body { ... }`）/ `@media` / `@keyframes`
 4. **A4 单页约束（hard rule）**——**自由排版的"自由"是视觉自由，不是尺寸自由**。渲染 demoResume 规模内容（5 项工作 + 3 项目 + 自我介绍 + 教育）必须严格塞进 A4 一页：
    - **gallery thumbnail 模式**（stage 595px 宽）：article 总高度 ≤ **841px** (A4 @72dpi)
    - **dev-preview / 编辑器预览 / PDF 模式**（容器 800px 宽）：article 总高度 ≤ **1123px** (A4 @96dpi)
    - 不遵守的后果：(a) gallery 缩略图宽度缩水产生左右白边、(b) PDF 第一页被截断、(c) 编辑器预览跟 PDF 不一致
    - 写完后跑 dev-preview 路由（`/dev-preview/template/<id>`）目测：800px 容器里内容**必须不超过一屏 viewport** (~1123px)。超出说明 padding / margin / banner 太奢侈，回头压缩。**常见可压缩位置**：banner padding（一开始就 60+ 太多）、section margin-top（22+ 太奢侈，14 通常够）、entry padding/margin、section-title padding。
+   - **超出 1123px 时不要指望 smart-layout 兜底**：smart-layout 算法可以把 page padding / section gap / item gap / 字号 / 行高动态压缩，但仅压缩用 `var(--page-padding)` / `var(--section-gap)` / `var(--item-gap)` / `var(--font-size)` / `var(--line-height)` 写的部分。模板里硬编码的 `padding: 60px` 算法压不动。把可调的间距全用 var()，模板默认状态下塞下 demoResume，剩下的内容多出来的部分由 smart-layout 兜底压缩。
 
 **合法 binding 名表**：
 
 | 类别 | binding | 何时可用 |
 |---|---|---|
-| basics value | `basics.name` `basics.title` `basics.email` `basics.phone` `basics.location` `basics.website` `basics.photo` `basics.status` `basics.summary` | 任何位置 |
+| basics value | `basics.name` `basics.title` `basics.email` `basics.phone` `basics.location` `basics.website` `basics.status` `basics.summary` | 任何位置（用 `<slot>`） |
+| 图片 | `basics.photo` | 任何位置，**必须用 `<img data-bind="basics.photo">`**（不是 `<slot>`） |
 | sectionOrder loop | `sectionOrder` (loop slot, 配 `data-template`) | 任何位置 |
 | section value | `section.id` `section.title` `section.icon` | 仅 sectionOrder loop 内 |
 | section.items loop | `section.items` (loop slot, 配 `data-template`) | 仅 sectionOrder loop 内 |
@@ -231,7 +249,7 @@ v2 模式下 `--layout` 仍要填——SlotRenderer 渲染失败时引擎降级�
 | skills | category | items.join("、") | (空) |
 | basics | (空) | (空) | summary (wrapped) |
 
-**完整 v2 PoC 参考**：`prototypes/handcoded-crimson/index-with-slots.html`
+**完整 v2 PoC 参考**（包含全部 8 个 header 字段的完整示例）：`prototypes/handcoded-crimson/index-with-slots.html`
 
 ---
 

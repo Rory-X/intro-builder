@@ -24,7 +24,7 @@ import { SkillsEditor } from "@/components/editor/skills-editor";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
-import { Loader2, Share2, PanelRightClose, PanelRightOpen, MessageSquare } from "lucide-react";
+import { Loader2, Share2, PanelRightClose, PanelRightOpen, MessageSquare, LayoutTemplate, ChevronLeft } from "lucide-react";
 import { resolveTemplateId, type AllTemplatesItem, type TemplateId } from "@/lib/templates/registry";
 import {
   BUILTIN_TEMPLATE_IDS,
@@ -39,6 +39,7 @@ import { SectionWrapper } from "@/components/editor/section-wrapper";
 import { ModuleManager } from "@/components/editor/module-manager";
 import { CustomSectionEditor } from "@/components/editor/custom-section-editor";
 import { StyleEditor } from "@/components/editor/style-editor";
+import { TemplateSwitchPanel, type TemplatePanelItem } from "@/components/editor/template-switch-panel";
 import { arrayMove } from "@/lib/array-move";
 import { DEFAULT_SECTION_ORDER, BUILTIN_SECTION_KEYS } from "@/lib/resume-schema";
 import { cn } from "@/lib/utils";
@@ -80,6 +81,12 @@ type Props = {
    * the editor can render the gallery synchronously and stay client-only.
    */
   allTemplates: AllTemplatesItem[];
+  /**
+   * 当前用户收藏的 templateId 列表（编辑器内模板面板的「已收藏」置顶分组）。
+   * 可选，缺省 [] —— 老调用方/测试不传也不报错，只是没有收藏分组。
+   */
+  favoritedTemplateIds?: string[];
+  from: string | null;
 };
 
 const DESKTOP_QUERY = "(min-width: 1024px)";
@@ -112,7 +119,9 @@ function formatRelativeSaveTime(savedAt: Date, now: Date): string {
   return `${days}天前保存`;
 }
 
-export default function EditorClient({ id, initialTitle, initialTemplate, initialContent, initialIsPublic, initialSlug, initialUpdatedAtIso, initialResolvedTemplate, uploadedTemplates, allTemplates }: Props) {
+export default function EditorClient({ id, initialTitle, initialTemplate, initialContent, initialIsPublic, initialSlug, initialUpdatedAtIso, initialResolvedTemplate, uploadedTemplates, allTemplates, favoritedTemplateIds = [], from }: Props) {
+  const backHref = from === "templates" ? "/templates" : "/dashboard";
+  const backLabel = from === "templates" ? "模板库" : "我的简历";
   const isDesktop = useSyncExternalStore(
     subscribeToDesktopQuery,
     getDesktopSnapshot,
@@ -136,6 +145,7 @@ export default function EditorClient({ id, initialTitle, initialTemplate, initia
   const [isExportingImage, setIsExportingImage] = useState(false);
   const [paginationData, setPaginationData] = useState<{ pageBreaks: number[]; totalHeight: number } | null>(null);
   const [pendingTemplateId, setPendingTemplateId] = useState<TemplateId | null>(null);
+  const [showTemplatePanel, setShowTemplatePanel] = useState(false);
   const [isTogglingShare, setIsTogglingShare] = useState(false);
   const [isPending, startTransition] = useTransition();
   const previewRootRef = useRef<HTMLDivElement>(null);
@@ -145,11 +155,15 @@ export default function EditorClient({ id, initialTitle, initialTemplate, initia
   );
 
   // Map of id → UploadedTemplate for instant client-side lookup when the
-  // user switches template. Empty map when DB has none yet (early
-  // foundation phase).
+  // user switches template. Excludes builtin ids that may exist in DB after
+  // seed — those must go through the React Layout path, not UploadedLayout.
   const uploadedById = useMemo(() => {
     const map = new Map<string, UploadedTemplate>();
-    for (const t of uploadedTemplates) map.set(t.id, t);
+    for (const t of uploadedTemplates) {
+      if (!(BUILTIN_TEMPLATE_IDS as readonly string[]).includes(t.id)) {
+        map.set(t.id, t);
+      }
+    }
     return map;
   }, [uploadedTemplates]);
 
@@ -175,6 +189,31 @@ export default function EditorClient({ id, initialTitle, initialTemplate, initia
       : DEFAULT_TEMPLATE_ID;
     return { source: "builtin", id: builtinId };
   }, [template, uploadedById, initialResolvedTemplate]);
+
+  // 模板面板只展示「我收藏的模板」。从 allTemplates 解析出可渲染的 resolved
+  // （builtin id 的 uploaded 重复项剔除——内置模板 schema 化后也 seed 进 DB，但要
+  // 走 React Layout 而非 UploadedLayout），再筛出收藏子集。
+  const favoriteTemplateItems = useMemo<TemplatePanelItem[]>(() => {
+    const builtinIdSet = new Set(BUILTIN_TEMPLATE_IDS as readonly string[]);
+    const favSet = new Set(favoritedTemplateIds);
+    const seen = new Set<string>();
+    const items: TemplatePanelItem[] = [];
+    for (const t of allTemplates) {
+      if (seen.has(t.id) || !favSet.has(t.id)) continue;
+      let resolved: SerializableResolvedTemplate;
+      if (t.source === "uploaded") {
+        if (builtinIdSet.has(t.id)) continue; // seeded builtin 重复项，跳过
+        const up = uploadedById.get(t.id);
+        if (!up) continue; // 孤儿（DB 里没有了）
+        resolved = { source: "uploaded", id: t.id, template: up };
+      } else {
+        resolved = { source: "builtin", id: t.id as BuiltinTemplateId };
+      }
+      seen.add(t.id);
+      items.push({ id: t.id, name: t.name, resolved });
+    }
+    return items;
+  }, [allTemplates, favoritedTemplateIds, uploadedById]);
   const persistResume = useCallback(
     async (content: ResumeContent, resumeTitle: string) => {
       await saveResume(id, content, resumeTitle);
@@ -426,53 +465,34 @@ export default function EditorClient({ id, initialTitle, initialTemplate, initia
       {/* Toolbar — only visible on desktop */}
       {isDesktop && (
       <div className="sticky top-14 z-30 border-b border-border/60 bg-background/80 backdrop-blur-xl backdrop-saturate-150">
-        <div className="mx-auto flex max-w-7xl items-center gap-3 px-4 py-2.5">
-          <Input
-            value={title}
-            onChange={(e) => setTitleState(e.target.value)}
-            className="w-48 text-base font-medium"
-          />
-          <span
-            data-testid="autosave-status"
-            title={saveStatusDescription}
-            className={cn(
-              "group relative inline-flex cursor-default items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-medium",
-              saveError
-                ? "bg-destructive/10 text-destructive"
-                : isSaving
-                  ? "bg-orange-500/10 text-orange-600 dark:text-orange-400"
-                  : autosave.status === "pending"
-                    ? "bg-sky-500/10 text-sky-600 dark:text-sky-400"
-                  : "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400",
-            )}
+        <div className="flex items-center py-2.5">
+          <div
+            data-testid="editor-toolbar"
+            className="flex min-w-0 flex-1 flex-nowrap items-center gap-2 overflow-x-auto px-6"
           >
-            <span
+            <a
+              href={backHref}
+              className="inline-flex shrink-0 items-center gap-0.5 rounded-md px-2 py-1.5 text-sm text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+            >
+              <ChevronLeft className="h-4 w-4" />
+              {backLabel}
+            </a>
+            <Separator orientation="vertical" className="h-5" />
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => setShowTemplatePanel((v) => !v)}
+              aria-pressed={showTemplatePanel}
               className={cn(
-                "h-1.5 w-1.5 rounded-full",
-                saveError
-                  ? "bg-destructive"
-                  : isSaving
-                    ? "animate-pulse bg-orange-500"
-                    : autosave.status === "pending"
-                      ? "bg-sky-500"
-                    : "bg-emerald-500",
+                "gap-1.5",
+                showTemplatePanel && "border-primary bg-primary/5 text-primary",
               )}
-            />
-            {saveStatusLabel}
-            <span className="pointer-events-none absolute left-1/2 top-[calc(100%+0.4rem)] z-50 hidden w-max max-w-72 -translate-x-1/2 rounded-md bg-popover px-2.5 py-1.5 text-xs font-normal text-popover-foreground shadow-md ring-1 ring-foreground/10 group-hover:block">
-              {saveStatusDescription}
-            </span>
-          </span>
-          <CompletenessScore />
-          <div data-testid="editor-toolbar" className="ml-auto flex flex-nowrap items-center gap-2 overflow-x-auto">
+            >
+              <LayoutTemplate className="h-3.5 w-3.5" />
+              模板
+            </Button>
             <SmartLayoutButton templateId={template} measureRef={previewRootRef} />
-            <StyleEditor
-              templateId={template}
-              onTemplateChange={changeTemplate}
-              pendingTemplateId={pendingTemplateId}
-              allTemplates={allTemplates}
-              resumeId={id}
-            />
+            <StyleEditor />
             <ModuleManager sectionOrder={sectionOrder} onOrderChange={handleOrderChange} />
             <Button
               size="sm"
@@ -525,6 +545,47 @@ export default function EditorClient({ id, initialTitle, initialTemplate, initia
               </>
             )}
           </div>
+          <div
+            className="flex shrink-0 items-center justify-end gap-3 px-6"
+          >
+            <Input
+              value={title}
+              onChange={(e) => setTitleState(e.target.value)}
+              className="w-48 text-base font-medium"
+            />
+            <span
+              data-testid="autosave-status"
+              title={saveStatusDescription}
+              className={cn(
+                "group relative inline-flex cursor-default items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-medium",
+                saveError
+                  ? "bg-destructive/10 text-destructive"
+                  : isSaving
+                    ? "bg-orange-500/10 text-orange-600 dark:text-orange-400"
+                    : autosave.status === "pending"
+                      ? "bg-sky-500/10 text-sky-600 dark:text-sky-400"
+                    : "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400",
+              )}
+            >
+              <span
+                className={cn(
+                  "h-1.5 w-1.5 rounded-full",
+                  saveError
+                    ? "bg-destructive"
+                    : isSaving
+                      ? "animate-pulse bg-orange-500"
+                      : autosave.status === "pending"
+                        ? "bg-sky-500"
+                      : "bg-emerald-500",
+                )}
+              />
+              {saveStatusLabel}
+              <span className="pointer-events-none absolute left-1/2 top-[calc(100%+0.4rem)] z-50 hidden w-max max-w-72 -translate-x-1/2 rounded-md bg-popover px-2.5 py-1.5 text-xs font-normal text-popover-foreground shadow-md ring-1 ring-foreground/10 group-hover:block">
+                {saveStatusDescription}
+              </span>
+            </span>
+            <CompletenessScore />
+          </div>
         </div>
       </div>
       )}
@@ -550,32 +611,46 @@ export default function EditorClient({ id, initialTitle, initialTemplate, initia
       )}
 
       {isDesktop ? (
-        <div className="flex h-[calc(100vh-3.5rem-4rem)]">
-          <div
-            ref={editorPanelRef}
-            className="thin-scrollbar space-y-6 overflow-y-auto border-r p-6"
-            style={{ width: `${splitPercent}%` }}
-          >
-            <div className={cn(
-              "rounded-lg transition-all duration-500",
-              collabSync.highlightedFields.has("basics") && "ring-2 ring-violet-400/60 bg-violet-50/30 dark:bg-violet-950/20"
-            )}>
-              <BasicsEditor />
-            </div>
-            {sectionOrder.filter(k => k !== "basics").map((key) => (
-              <div key={key} className={cn(
+        <div className="flex h-[calc(100vh-3.5rem-4rem)] overflow-hidden">
+          <div className="relative min-w-0 border-r" style={{ flex: `0 0 ${splitPercent}%` }}>
+            <div
+              ref={editorPanelRef}
+              className="thin-scrollbar h-full space-y-6 overflow-y-auto p-6"
+            >
+              <div className={cn(
                 "rounded-lg transition-all duration-500",
-                collabSync.highlightedFields.has(key) && "ring-2 ring-violet-400/60 bg-violet-50/30 dark:bg-violet-950/20"
+                collabSync.highlightedFields.has("basics") && "ring-2 ring-violet-400/60 bg-violet-50/30 dark:bg-violet-950/20"
               )}>
-                <SectionWrapper id={key}>
-                  {key === "experience" && <ExperienceEditor />}
-                  {key === "education" && <EducationEditor />}
-                  {key === "projects" && <ProjectsEditor />}
-                  {key === "skills" && <SkillsEditor />}
-                  {isCustomSection(key) && <CustomSectionEditor sectionId={key} />}
-                </SectionWrapper>
+                <BasicsEditor />
               </div>
-            ))}
+              {sectionOrder.filter(k => k !== "basics").map((key) => (
+                <div key={key} className={cn(
+                  "rounded-lg transition-all duration-500",
+                  collabSync.highlightedFields.has(key) && "ring-2 ring-violet-400/60 bg-violet-50/30 dark:bg-violet-950/20"
+                )}>
+                  <SectionWrapper id={key}>
+                    {key === "experience" && <ExperienceEditor />}
+                    {key === "education" && <EducationEditor />}
+                    {key === "projects" && <ProjectsEditor />}
+                    {key === "skills" && <SkillsEditor />}
+                    {isCustomSection(key) && <CustomSectionEditor sectionId={key} />}
+                  </SectionWrapper>
+                </div>
+              ))}
+            </div>
+            {/* 模板面板：覆盖左侧表单列（右侧预览常驻可见，换模板实时看效果）。
+                表单不卸载（仅被遮住），保留编辑状态与滚动位置。 */}
+            {showTemplatePanel && (
+              <TemplateSwitchPanel
+                className="absolute inset-0 z-20"
+                favorites={favoriteTemplateItems}
+                currentTemplateId={template}
+                pendingTemplateId={pendingTemplateId}
+                previewContent={form.getValues() as ResumeContent}
+                onApply={changeTemplate}
+                onClose={() => setShowTemplatePanel(false)}
+              />
+            )}
           </div>
           {/* Resize handle */}
           <div
@@ -585,8 +660,8 @@ export default function EditorClient({ id, initialTitle, initialTemplate, initia
             <div className="h-8 w-0.5 rounded-full bg-border" />
           </div>
           <div
-            className="thin-scrollbar overflow-y-auto bg-muted p-6"
-            style={{ width: `${100 - splitPercent}%` }}
+            className="thin-scrollbar min-w-0 overflow-y-auto bg-muted p-6"
+            style={{ flex: `1 1 ${100 - splitPercent}%` }}
           >
             <LivePreview ref={previewRootRef} resolvedTemplate={resolvedTemplate} />
             {/* Annotation highlights on preview (when collab active) */}

@@ -10,6 +10,7 @@ import { demoResume } from "@/lib/demo-resume";
 import type { ResumeContent } from "@/lib/resume-schema";
 import type { SerializableResolvedTemplate } from "@/lib/templates/render";
 import type { BuiltinTemplateId } from "@/lib/templates/types";
+import { getFavoriteTemplateIds } from "./actions";
 import { TemplateLibraryClient } from "./template-library-client";
 
 export const metadata: Metadata = { title: "模板库" };
@@ -61,6 +62,8 @@ export default async function TemplatesPage({
   // 通过 id 在客户端的 TEMPLATES 静态表查找，uploaded 通过 template 字段
   // 自带数据）。
   const uploaded = await listUploadedTemplates();
+  const favoritedIds = await getFavoriteTemplateIds(userId);
+  const builtinIds = new Set(TEMPLATES.map((t) => t.id));
   const resolvedList: SerializableResolvedTemplate[] = [
     ...TEMPLATES.map(
       (t): SerializableResolvedTemplate => ({
@@ -68,13 +71,15 @@ export default async function TemplatesPage({
         id: t.id as BuiltinTemplateId,
       }),
     ),
-    ...uploaded.map(
-      (t): SerializableResolvedTemplate => ({
-        source: "uploaded",
-        id: t.id,
-        template: t,
-      }),
-    ),
+    ...uploaded
+      .filter((t) => !builtinIds.has(t.id))
+      .map(
+        (t): SerializableResolvedTemplate => ({
+          source: "uploaded",
+          id: t.id,
+          template: t,
+        }),
+      ),
   ];
 
   return (
@@ -82,6 +87,7 @@ export default async function TemplatesPage({
       templates={resolvedList}
       userResume={userResume}
       demoResume={demoResume}
+      favoritedIds={favoritedIds}
     />
   );
 }

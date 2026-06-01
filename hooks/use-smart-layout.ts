@@ -57,6 +57,12 @@ export function useSmartLayout({ measureRef }: UseSmartLayoutOptions) {
         article.style.lineHeight = `${ss.lineHeight}`;
         article.style.padding = `${ss.pagePadding}px`;
         article.style.fontFamily = FONT_MAP[ss.fontFamily].css;
+        // sectionGap/itemGap 走 CSS 变量管道——内置模板的 ResumeSection 和
+        // v2 模板的用户 customCss 都通过 var(--section-gap)/var(--item-gap)
+        // 消费。setProperty/setAttribute("style", original) 恢复机制天然
+        // 覆盖 CSS 自定义属性，不需要单独清理。
+        article.style.setProperty("--section-gap", `${ss.sectionGap}px`);
+        article.style.setProperty("--item-gap", `${ss.itemGap}px`);
 
         // Wait for layout to settle, then measure
         if (rafRef.current) cancelAnimationFrame(rafRef.current);

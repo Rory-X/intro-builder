@@ -13,7 +13,10 @@ function richDoc(text: string): ReturnType<typeof emptyDoc> {
   };
 }
 
-function makeContent(over: Partial<ResumeContent> = {}): ResumeContent {
+type ContentOverride = Partial<Omit<ResumeContent, "basics">> & {
+  basics?: Partial<ResumeContent["basics"]>;
+};
+function makeContent(over: ContentOverride = {}): ResumeContent {
   const base = emptyResumeContent();
   return {
     ...base,
@@ -135,6 +138,45 @@ describe("SlotRenderer — sectionOrder loop", () => {
     expect(ids).toEqual(["experience", "education"]);
   });
 
+  it("auto-injects data-pagination-section on each section template's root tag", () => {
+    // 防御 zoo 多次反馈的 v2 模板分页切到 section header 中间的 bug：
+    // SlotRenderer 必须给 section template 的根标签加 data-pagination-section
+    // 让 paginated-preview 的 findBreakPoints 能找到合法断点。
+    const { container } = render_({
+      html: `<article>
+        <slot data-bind="sectionOrder" data-template="sec" />
+      </article>
+      <template id="sec">
+        <section class="my-section"><slot data-bind="section.title" /></section>
+      </template>`,
+    });
+    const sections = Array.from(
+      container.querySelectorAll("section.my-section"),
+    );
+    expect(sections.length).toBe(2);
+    expect(sections[0].getAttribute("data-pagination-section")).toBe("experience");
+    expect(sections[1].getAttribute("data-pagination-section")).toBe("education");
+  });
+
+  it("auto-injects data-pagination-item on each section.items template's root tag", () => {
+    const { container } = render_({
+      html: `<article>
+        <slot data-bind="sectionOrder" data-template="sec" />
+      </article>
+      <template id="sec">
+        <section><slot data-bind="section.items" data-template="entry" /></section>
+      </template>
+      <template id="entry">
+        <div class="my-entry"><slot data-bind="item.title" /></div>
+      </template>`,
+    });
+    const entries = Array.from(container.querySelectorAll("div.my-entry"));
+    expect(entries.length).toBeGreaterThan(0);
+    entries.forEach((entry) => {
+      expect(entry.hasAttribute("data-pagination-item")).toBe(true);
+    });
+  });
+
   it("skips sections with no content", () => {
     const { container } = render_({
       content: makeContent({ experience: [], education: [] }),
@@ -240,14 +282,29 @@ describe("SlotRenderer — CSS scope + style injection", () => {
     const { container } = render_({
       html: '<article><h1 class="my-name"><slot data-bind="basics.name" /></h1></article>',
       css: ".my-name { color: red }",
-      styleSettings: { fontFamily: "serif", fontSize: 14, lineHeight: 1.7, pagePadding: 40 },
+      styleSettings: {
+        fontFamily: "serif", fontSize: 14,
+        lineHeight: 1.7, bodyLineHeight: 1.7, headingGap: 12,
+        pagePadding: 40, sectionGap: 16, itemGap: 12,
+      },
     });
     const root = container.querySelector("[data-template-id='test-tpl']") as HTMLElement;
     expect(root).not.toBeNull();
     expect(root.style.getPropertyValue("--font-size")).toBe("14px");
+    // --line-height kept as a back-compat alias of body line-height for v2
+    // customCss authored before the split — same value as --body-line-height.
     expect(root.style.getPropertyValue("--line-height")).toBe("1.7");
-    const styleEl = root.querySelector("style");
-    expect(styleEl?.textContent).toContain('[data-template-id="test-tpl"] .my-name');
+    expect(root.style.getPropertyValue("--body-line-height")).toBe("1.7");
+    expect(root.style.getPropertyValue("--heading-gap")).toBe("12px");
+    expect(root.style.getPropertyValue("--page-padding")).toBe("40px");
+    expect(root.style.getPropertyValue("--section-gap")).toBe("16px");
+    expect(root.style.getPropertyValue("--item-gap")).toBe("12px");
+    // Two <style> children: [0] is the heading-gap enforcement rule (always
+    // emitted), [1] is the scoped customCss. Index against position so the
+    // assertion stays robust to inline-style additions.
+    const styleEls = root.querySelectorAll("style");
+    expect(styleEls.length).toBe(2);
+    expect(styleEls[1].textContent).toContain('[data-template-id="test-tpl"] .my-name');
   });
 
   it("silently bails on forbidden CSS at-rules without crashing", () => {
@@ -255,9 +312,62 @@ describe("SlotRenderer — CSS scope + style injection", () => {
       html: '<article><h1><slot data-bind="basics.name" /></h1></article>',
       css: "@media (min-width: 600px) { .x { color: red } }",
     });
-    // Should still render the h1; no <style> tag emitted because scopeCss threw
+    // Should still render the h1; only the heading-gap enforcement <style>
+    // is emitted (scopedCss skipped because scopeCss threw).
     expect(container.querySelector("h1")?.textContent).toBe("张三");
-    expect(container.querySelector("style")).toBeNull();
+    const styleEls = container.querySelectorAll("style");
+    expect(styleEls.length).toBe(1);
+    expect(styleEls[0].textContent).toContain("--heading-gap");
+  });
+});
+
+describe("SlotRenderer — image binding (<img data-bind>)", () => {
+  const PHOTO = "https://x.public.blob.vercel-storage.com/photos/u/1-a.png";
+
+  it("injects basics.photo URL into <img src> when photo is non-empty", () => {
+    const { container } = render_({
+      content: makeContent({ basics: { photo: PHOTO } }),
+      html: `<article><img data-bind="basics.photo" class="avatar" alt="头像" /></article>`,
+    });
+    const img = container.querySelector("img");
+    expect(img).not.toBeNull();
+    expect(img?.getAttribute("src")).toBe(PHOTO);
+  });
+
+  it("keeps class/alt and does NOT leak data-bind to the DOM", () => {
+    const { container } = render_({
+      content: makeContent({ basics: { photo: PHOTO } }),
+      html: `<article><img data-bind="basics.photo" class="avatar" alt="头像" /></article>`,
+    });
+    const img = container.querySelector("img");
+    expect(img?.getAttribute("class")).toBe("avatar");
+    expect(img?.getAttribute("alt")).toBe("头像");
+    expect(img?.hasAttribute("data-bind")).toBe(false);
+  });
+
+  it("renders nothing (no <img>) when photo is empty — avoids broken-image", () => {
+    const { container } = render_({
+      content: makeContent({ basics: { photo: "" } }),
+      html: `<article><img data-bind="basics.photo" class="avatar" alt="头像" /></article>`,
+    });
+    expect(container.querySelector("img")).toBeNull();
+  });
+
+  it("renders placeholder when <img data-bind> targets a non-image binding", () => {
+    const { container } = render_({
+      html: `<article><img data-bind="basics.name" alt="x" /></article>`,
+    });
+    expect(container.querySelector("img")).toBeNull();
+    expect(container.textContent).toContain("仅支持图片字段");
+  });
+
+  it("renders placeholder when basics.photo is used via <slot> instead of <img>", () => {
+    const { container } = render_({
+      content: makeContent({ basics: { photo: PHOTO } }),
+      html: `<article><slot data-bind="basics.photo" /></article>`,
+    });
+    expect(container.textContent).not.toContain(PHOTO);
+    expect(container.textContent).toContain("请用");
   });
 });
 

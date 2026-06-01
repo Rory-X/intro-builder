@@ -95,6 +95,36 @@ function migrateAllFontSizes(obj: Record<string, unknown>): void {
 }
 
 /**
+ * Clamp legacy styleSettings numeric fields to current schema bounds.
+ *
+ * 为什么需要：smart-layout v2 把 schema MIN 从 10/1.2/20 压低到 8/1.05/8 +
+ * 加了 sectionGap/itemGap。如果用户在新 schema 下点智能排版让 fontSize 压到
+ * 8，autosave 写到 DB；之后 dev server hot reload 不完全或回滚部署，schema
+ * 变回旧 min=10，下次 load 时 ZodError。clamp 兜底让 parse 永远不挂。
+ *
+ * 这里的 [min, max] 必须和 lib/resume-schema.ts 里 StyleSettings 的 min/max
+ * 一致 —— 改 schema 时同步改这里。冗余但解耦：schema 不暴露 min/max 元数据。
+ */
+function sanitizeStyleSettings(obj: Record<string, unknown>): void {
+  const ss = obj.styleSettings;
+  if (!ss || typeof ss !== "object") return;
+  const settings = ss as Record<string, unknown>;
+  const clamps: Array<[string, number, number]> = [
+    ["fontSize", 8, 16],
+    ["lineHeight", 1.05, 2.0],
+    ["pagePadding", 8, 60],
+    ["sectionGap", 4, 24],
+    ["itemGap", 2, 16],
+  ];
+  for (const [key, min, max] of clamps) {
+    const val = settings[key];
+    if (typeof val === "number") {
+      settings[key] = Math.max(min, Math.min(max, val));
+    }
+  }
+}
+
+/**
  * Transparently upgrade legacy content to current schema.
  * Handles: v1 bullets→TipTapJSON, old custom string→TipTapJSON, missing fields.
  * Pure function — no side effects.
@@ -178,6 +208,9 @@ export function migrateContent(raw: unknown): ResumeContent {
 
   // Migrate any px font sizes in rich text to em (relative) units
   migrateAllFontSizes(migrated);
+
+  // Clamp legacy styleSettings numeric fields to current schema bounds
+  sanitizeStyleSettings(migrated);
 
   return ResumeContentSchema.parse(migrated);
 }

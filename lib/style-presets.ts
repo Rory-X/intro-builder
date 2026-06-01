@@ -15,7 +15,11 @@ export const DENSITY_PRESETS: Record<
       fontFamily: "sans",
       fontSize: 11,
       lineHeight: 1.35,
+      bodyLineHeight: 1.35,
+      headingGap: 4,
       pagePadding: 28,
+      sectionGap: 10,
+      itemGap: 8,
     },
   },
   standard: {
@@ -30,7 +34,11 @@ export const DENSITY_PRESETS: Record<
       fontFamily: "sans",
       fontSize: 14,
       lineHeight: 1.75,
+      bodyLineHeight: 1.75,
+      headingGap: 14,
       pagePadding: 48,
+      sectionGap: 20,
+      itemGap: 14,
     },
   },
 };

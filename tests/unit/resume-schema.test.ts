@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { ResumeContent, emptyResumeContent } from "@/lib/resume-schema";
+import { ResumeContent, StyleSettings, DEFAULT_STYLE_SETTINGS, emptyResumeContent } from "@/lib/resume-schema";
 
 describe("ResumeContent v2", () => {
   it("accepts empty default skeleton", () => {
@@ -123,5 +123,88 @@ describe("ResumeContent v2", () => {
   it("defaults photo to empty string", () => {
     const c = emptyResumeContent();
     expect(c.basics.photo).toBe("");
+  });
+});
+
+describe("StyleSettings v2 (smart-layout 5-dim)", () => {
+  it("DEFAULT_STYLE_SETTINGS includes split body line-height + heading gap", () => {
+    expect(DEFAULT_STYLE_SETTINGS).toEqual({
+      fontFamily: "sans",
+      fontSize: 13,
+      lineHeight: 1.6,
+      bodyLineHeight: 1.6,
+      headingGap: 8,
+      pagePadding: 40,
+      sectionGap: 16,
+      itemGap: 12,
+    });
+  });
+
+  it("backward compat: legacy styleSettings (without sectionGap/itemGap) parses with defaults filled in", () => {
+    // 现存简历的 styleSettings 可能是旧 4 字段形态 — Zod default 必须兜底
+    const legacy = { fontFamily: "sans", fontSize: 13, lineHeight: 1.6, pagePadding: 40 };
+    const r = StyleSettings.safeParse(legacy);
+    expect(r.success).toBe(true);
+    if (r.success) {
+      expect(r.data.sectionGap).toBe(16);
+      expect(r.data.itemGap).toBe(12);
+    }
+  });
+
+  it("preprocess migrates legacy lineHeight onto bodyLineHeight when missing", () => {
+    // Pre-split rows wrote only `lineHeight`. The preprocess must copy the
+    // user's adjusted value into bodyLineHeight so it doesn't snap back to
+    // the 1.6 default after upgrade — that would silently undo their setting.
+    const legacy = {
+      fontFamily: "sans", fontSize: 13, lineHeight: 1.8,
+      pagePadding: 40, sectionGap: 16, itemGap: 12,
+    };
+    const r = StyleSettings.safeParse(legacy);
+    expect(r.success).toBe(true);
+    if (r.success) {
+      expect(r.data.bodyLineHeight).toBe(1.8);
+    }
+  });
+
+  it("preprocess does not overwrite explicit bodyLineHeight", () => {
+    // Rows written by the new editor carry both legacy lineHeight (still in
+    // the schema for compat) and the explicit new field. New field wins.
+    const newRow = {
+      fontFamily: "sans", fontSize: 13, lineHeight: 1.8,
+      bodyLineHeight: 1.5, headingGap: 12,
+      pagePadding: 40, sectionGap: 16, itemGap: 12,
+    };
+    const r = StyleSettings.safeParse(newRow);
+    expect(r.success).toBe(true);
+    if (r.success) {
+      expect(r.data.bodyLineHeight).toBe(1.5);
+      expect(r.data.headingGap).toBe(12);
+    }
+  });
+
+  it("accepts new MIN bounds (8 / 1.05 / 8 / 4 / 2)", () => {
+    const r = StyleSettings.safeParse({
+      fontFamily: "sans",
+      fontSize: 8,
+      lineHeight: 1.05,
+      pagePadding: 8,
+      sectionGap: 4,
+      itemGap: 2,
+    });
+    expect(r.success).toBe(true);
+  });
+
+  it("rejects values below new MIN", () => {
+    expect(StyleSettings.safeParse({ fontSize: 7, lineHeight: 1.05, pagePadding: 8, sectionGap: 4, itemGap: 2 }).success).toBe(false);
+    expect(StyleSettings.safeParse({ fontSize: 8, lineHeight: 1.04, pagePadding: 8, sectionGap: 4, itemGap: 2 }).success).toBe(false);
+    expect(StyleSettings.safeParse({ fontSize: 8, lineHeight: 1.05, pagePadding: 7, sectionGap: 4, itemGap: 2 }).success).toBe(false);
+    expect(StyleSettings.safeParse({ fontSize: 8, lineHeight: 1.05, pagePadding: 8, sectionGap: 3, itemGap: 2 }).success).toBe(false);
+    expect(StyleSettings.safeParse({ fontSize: 8, lineHeight: 1.05, pagePadding: 8, sectionGap: 4, itemGap: 1 }).success).toBe(false);
+  });
+
+  it("rejects values above MAX", () => {
+    expect(StyleSettings.safeParse({ fontSize: 17, lineHeight: 1.05, pagePadding: 8, sectionGap: 4, itemGap: 2 }).success).toBe(false);
+    expect(StyleSettings.safeParse({ fontSize: 8, lineHeight: 1.05, pagePadding: 8, sectionGap: 25, itemGap: 2 }).success).toBe(false);
+    expect(StyleSettings.safeParse({ fontSize: 8, lineHeight: 1.05, pagePadding: 8, sectionGap: 4, itemGap: 17 }).success).toBe(false);
   });
 });

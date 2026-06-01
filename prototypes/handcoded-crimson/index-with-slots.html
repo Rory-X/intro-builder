@@ -53,12 +53,17 @@
     opacity: 0.95;
     letter-spacing: 0.5px;
   }
-  .crimson-banner .avatar-placeholder {
+  .crimson-banner .avatar {
     width: 70px; height: 70px;
     border-radius: 6px;
-    background: rgba(255, 255, 255, 0.92);
+    object-fit: cover;
     flex-shrink: 0;
     z-index: 1;
+  }
+  .crimson-banner .subtitle {
+    font-size: 13px;
+    opacity: 0.9;
+    margin-top: 2px;
   }
 
   /* === Body === */
@@ -127,13 +132,18 @@
 
   <!-- === Banner === -->
   <header class="crimson-banner">
-    <div class="avatar-placeholder" aria-hidden="true"></div>
+    <img data-bind="basics.photo" alt="头像" class="avatar" />
     <div class="banner-text">
       <h1><slot data-bind="basics.name"></slot></h1>
+      <div class="subtitle"><slot data-bind="basics.title"></slot><span> · </span><slot data-bind="basics.status"></slot></div>
       <div class="contact">
         <slot data-bind="basics.phone"></slot>
         <span>　|　</span>
         <slot data-bind="basics.email"></slot>
+        <span>　|　</span>
+        <slot data-bind="basics.location"></slot>
+        <span>　|　</span>
+        <slot data-bind="basics.website"></slot>
       </div>
     </div>
   </header>
