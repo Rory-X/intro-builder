@@ -32,7 +32,7 @@ export function RichTextRenderer({ content, className }: { content: TipTapJSON; 
   const html = normalizeInlineFontSizes(rawHtml);
   return (
     <div
-      className={className ?? "prose prose-sm max-w-none"}
+      className={className ?? "prose prose-sm max-w-none resume-prose"}
       dangerouslySetInnerHTML={{ __html: html }}
     />
   );

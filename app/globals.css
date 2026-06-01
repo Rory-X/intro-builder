@@ -153,6 +153,16 @@
   margin: 0.5em 0;
 }
 
+/*
+ * fumadocs typography sets strong to fontWeight 500 (design choice for docs).
+ * Resume previews need actual bold (700) with proper foreground color.
+ * Scoped to .resume-prose to avoid affecting fumadocs docs pages.
+ */
+.resume-prose strong {
+  font-weight: 700;
+  color: var(--tw-prose-bold, inherit);
+}
+
 .ProseMirror li,
 .prose li {
   margin: 0.25em 0;
