@@ -131,6 +131,16 @@ const CONTINUATION_PADDING = 32; // px — breathing room on continuation pages
 const BREAK_SAFETY_MARGIN = 2; // px
 
 /**
+ * Extra pixels added beyond the break point to ensure text descenders,
+ * line-height overflow, and sub-pixel rendering don't get clipped by
+ * the bottom overlay. Without this, the last line on each page can
+ * appear "cut in half" because the overlay starts exactly at the
+ * element's bounding box bottom while the visual text extends slightly
+ * further due to line-height.
+ */
+const LINE_OVERFLOW_BUFFER = 6; // px
+
+/**
  * If the last page would contain less than this much content (px), merge it
  * back into the previous page. Prevents near-empty trailing pages caused by
  * bottom margins, padding, or minor overflows.
@@ -324,8 +334,10 @@ export const PaginatedPreview = forwardRef<HTMLDivElement, Props>(function Pagin
         const nextOffset = i < numPages - 1 ? pageOffsets[i + 1] : totalHeight;
         const isFirstPage = i === 0;
         const contentHeight = nextOffset - offset;
-        // Bottom overlay: hide content beyond break + add bottom margin on continuation pages
-        const bottomOverlay = Math.max(0, A4_HEIGHT_PX - contentHeight) + (isFirstPage ? 0 : CONTINUATION_PADDING);
+        // Bottom overlay: hide content beyond break point.
+        // LINE_OVERFLOW_BUFFER: give the last line a few extra pixels so text
+        // descenders/line-height don't get clipped by the overlay edge.
+        const bottomOverlay = Math.max(0, A4_HEIGHT_PX - contentHeight - LINE_OVERFLOW_BUFFER) + (isFirstPage ? 0 : CONTINUATION_PADDING);
 
         return (
           <div
@@ -341,7 +353,7 @@ export const PaginatedPreview = forwardRef<HTMLDivElement, Props>(function Pagin
             {!isFirstPage && (
               <div
                 className="absolute inset-x-0 top-0 z-[1]"
-                style={{ backgroundColor: "#ffffff", height: `${CONTINUATION_PADDING}px` }}
+                style={{ backgroundColor: "#ffffff", height: `${CONTINUATION_PADDING - LINE_OVERFLOW_BUFFER}px` }}
               />
             )}
             {/* Content shifted to show this page's portion */}
