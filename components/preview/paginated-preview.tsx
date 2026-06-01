@@ -54,6 +54,9 @@ function findBreakPoints(container: HTMLElement): BreakableElement[] {
     if (element.hasAttribute("data-pagination-section")) {
       const hasItems = element.querySelector("[data-pagination-item]");
       if (hasItems) return;
+      // Section without items (e.g., rich-text-only sections like skills):
+      // scan its children for fine-grained break points so we don't force-cut
+      // through content when the section spans a page boundary.
     }
 
     // Skip items nested inside other items
@@ -68,10 +71,13 @@ function findBreakPoints(container: HTMLElement): BreakableElement[] {
     const bottom = getAbsoluteBottom(element, container);
     bottomSet.add(Math.round(bottom));
 
-    // Level 2: For pagination items, also add their block-level children as
-    // finer break points. This allows splitting a tall entry (e.g., work
-    // experience with many bullets) across pages at the paragraph/list-item level.
-    if (element.hasAttribute("data-pagination-item")) {
+    // Level 2: For pagination items OR sections without items, add their
+    // block-level children as finer break points. This allows splitting tall
+    // content across pages at the paragraph/list-item level.
+    if (
+      element.hasAttribute("data-pagination-item") ||
+      (element.hasAttribute("data-pagination-section") && !element.querySelector("[data-pagination-item]"))
+    ) {
       addChildBreakPoints(element, container, bottomSet);
     }
   });
