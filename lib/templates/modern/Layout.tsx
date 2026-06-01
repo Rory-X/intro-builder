@@ -36,18 +36,11 @@ export function ModernLayout({
         {order
           .filter((k) => SIDEBAR_KEYS.has(k))
           .map((key) => {
-            if (key === "skills" && (content.skills.length > 0 || shells)) {
+            if (key === "skills" && ((content.skills?.content?.length ?? 0) > 0 || shells)) {
               return (
                 <ResumeSection key="skills" sectionKey="skills" title="技能" variant="modern">
-                  {content.skills.length > 0 ? (
-                    content.skills.map((s, i) => (
-                      <div key={i} className="mb-1.5 last:mb-0">
-                        <div className="text-xs font-semibold">{s.category}</div>
-                        <div className="text-xs leading-relaxed text-neutral-700">
-                          {s.items.join("、")}
-                        </div>
-                      </div>
-                    ))
+                  {(content.skills?.content?.length ?? 0) > 0 ? (
+                    <ResumeRichText content={content.skills} />
                   ) : (
                     <SkillsSectionShell variant="modern" />
                   )}

@@ -63,11 +63,23 @@ export const demoResume: ResumeContent = {
       ]),
     },
   ],
-  skills: [
-    { category: "语言", items: ["TypeScript", "JavaScript", "Python"] },
-    { category: "框架", items: ["React", "Next.js", "Vue"] },
-    { category: "工具", items: ["Vite", "Playwright", "Docker"] },
-  ],
+  skills: {
+    type: "doc",
+    content: [
+      { type: "paragraph", content: [
+        { type: "text", marks: [{ type: "bold" }], text: "语言：" },
+        { type: "text", text: "TypeScript、JavaScript、Python" },
+      ]},
+      { type: "paragraph", content: [
+        { type: "text", marks: [{ type: "bold" }], text: "框架：" },
+        { type: "text", text: "React、Next.js、Vue" },
+      ]},
+      { type: "paragraph", content: [
+        { type: "text", marks: [{ type: "bold" }], text: "工具：" },
+        { type: "text", text: "Vite、Playwright、Docker" },
+      ]},
+    ],
+  },
   custom: [
     {
       id: "custom_awards",

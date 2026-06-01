@@ -413,7 +413,7 @@ describe("UploadedLayout", () => {
     };
     const customContent = {
       ...demoResume,
-      skills: [{ category: "测试技能", items: ["A", "B"] }],
+      skills: { type: "doc", content: [{ type: "paragraph", content: [{ type: "text", marks: [{ type: "bold" }], text: "测试技能：" }, { type: "text", text: "A、B" }] }] },
     } as typeof demoResume;
     const { container } = render(
       <UploadedLayout content={customContent} template={cardWithSkills} />

@@ -44,10 +44,31 @@ export const Project = z.object({
   content: TipTapJSON.default(() => emptyDoc()),
 });
 
+/** @deprecated 旧格式，保留仅用于迁移兼容。新代码不应使用。 */
 export const SkillGroup = z.object({
   category: z.string().default(""),
   items: z.array(z.string()).default([]),
 });
+
+/**
+ * 将旧格式 SkillGroup[] 迁移为 TipTapJSON 富文本。
+ * 每个 group 转为一个段落：`<strong>分类名：</strong>项目1、项目2`
+ */
+function migrateSkills(input: unknown): unknown {
+  if (!Array.isArray(input)) return input; // 已是新格式（TipTapJSON 对象）
+  const groups = input as Array<{ category?: string; items?: string[] }>;
+  if (groups.length === 0) return emptyDoc();
+  const content = groups.map((g) => ({
+    type: "paragraph" as const,
+    content: [
+      ...(g.category ? [
+        { type: "text" as const, marks: [{ type: "bold" as const }], text: `${g.category}：` },
+      ] : []),
+      { type: "text" as const, text: (g.items ?? []).join("、") },
+    ].filter((node) => node.text), // 过滤空文本节点
+  }));
+  return { type: "doc", content };
+}
 
 export const CustomSection = z.object({
   id: z.string(),
@@ -119,7 +140,7 @@ export const ResumeContent = z.object({
   education: z.array(Education).default([]),
   experience: z.array(Experience).default([]),
   projects: z.array(Project).default([]),
-  skills: z.array(SkillGroup).default([]),
+  skills: z.preprocess(migrateSkills, TipTapJSON).default(() => emptyDoc()),
   custom: z.array(CustomSection).default([]),
   sectionOrder: z.array(z.string()).default([...DEFAULT_SECTION_ORDER]),
   styleSettings: StyleSettings.optional(),
@@ -146,7 +167,7 @@ export const emptyResumeContent = (): ResumeContent => ({
   education: [],
   experience: [],
   projects: [],
-  skills: [],
+  skills: emptyDoc(),
   custom: [],
   sectionOrder: [...DEFAULT_SECTION_ORDER],
 });
