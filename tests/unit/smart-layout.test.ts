@@ -15,7 +15,7 @@ describe("interpolateSettings", () => {
     bodyLineHeight: 1.6,
     pagePadding: 40,
     sectionGap: 16,
-    itemGap: 12,
+    itemGap: 12, photoScale: 1,
   };
 
   it("returns current settings when scale=1", () => {
@@ -90,7 +90,7 @@ describe("findOptimalSettings", () => {
     bodyLineHeight: 1.6,
     pagePadding: 40,
     sectionGap: 16,
-    itemGap: 12,
+    itemGap: 12, photoScale: 1,
   };
 
   it("returns 'already-fits' when content fits at current settings", async () => {

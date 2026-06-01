@@ -123,6 +123,7 @@ export function SlotRenderer({
     "--page-padding": `${styleSettings.pagePadding}px`,
     "--section-gap": `${styleSettings.sectionGap}px`,
     "--item-gap": `${styleSettings.itemGap}px`,
+    "--photo-scale": String(styleSettings.photoScale ?? 1),
   };
 
   // 5. Sectioned LookupTable (memoized inside resolveSection per call) — pre-resolve

@@ -10,9 +10,10 @@ type Props = {
   variant: ResumeHeaderVariant;
   className?: string;
   showEmptyPlaceholders?: boolean;
+  photoScale?: number;
 };
 
-export function ResumeHeader({ basics, variant, className }: Props) {
+export function ResumeHeader({ basics, variant, className, photoScale = 1 }: Props) {
   const contactItems = buildContactItems(basics);
 
   if (variant === "modern-sidebar") {
@@ -23,7 +24,8 @@ export function ResumeHeader({ basics, variant, className }: Props) {
           <img
             src={basics.photo}
             alt={basics.name}
-            className="mx-auto h-24 w-24 rounded-full object-cover"
+            className="mx-auto rounded-full object-cover"
+            style={{ width: `${6 * photoScale}rem`, height: `${6 * photoScale}rem` }}
           />
         )}
         <div>
@@ -45,7 +47,7 @@ export function ResumeHeader({ basics, variant, className }: Props) {
   if (variant === "professional") {
     return (
       <header data-pagination-header className={cn("mb-3 break-inside-avoid pb-2", className)}>
-        <ProfessionalHeader basics={basics} />
+        <ProfessionalHeader basics={basics} photoScale={photoScale} />
       </header>
     );
   }
@@ -62,7 +64,8 @@ export function ResumeHeader({ basics, variant, className }: Props) {
           <img
             src={basics.photo}
             alt={basics.name}
-            className="ml-4 h-20 w-20 shrink-0 rounded object-cover"
+            className="ml-4 shrink-0 rounded object-cover"
+            style={{ width: `${5 * photoScale}rem`, height: `${5 * photoScale}rem` }}
           />
         )}
       </div>

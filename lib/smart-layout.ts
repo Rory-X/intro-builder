@@ -61,6 +61,8 @@ export function interpolateSettings(
     itemGap: Math.round(
       MIN_ITEM_GAP + (current.itemGap - MIN_ITEM_GAP) * scale,
     ),
+    // photoScale 不参与算法压缩 — 用户主动设置的头像尺寸不应被自动改变
+    photoScale: current.photoScale,
   };
 }
 

@@ -2,11 +2,20 @@
 import { useRef, useState } from "react";
 import { useFormContext } from "react-hook-form";
 import { Camera, Loader2, User } from "lucide-react";
-import type { ResumeContent } from "@/lib/resume-schema";
+import { DEFAULT_STYLE_SETTINGS, type ResumeContent } from "@/lib/resume-schema";
+
+const PHOTO_SCALE_OPTIONS = [
+  { value: 0.75, label: "75%" },
+  { value: 0.85, label: "85%" },
+  { value: 1, label: "100%" },
+  { value: 1.15, label: "115%" },
+  { value: 1.25, label: "125%" },
+];
 
 export function PhotoUpload() {
   const { watch, setValue } = useFormContext<ResumeContent>();
   const photo = watch("basics.photo");
+  const ss = { ...DEFAULT_STYLE_SETTINGS, ...watch("styleSettings") };
   const inputRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
 
@@ -26,6 +35,10 @@ export function PhotoUpload() {
     } finally {
       setUploading(false);
     }
+  }
+
+  function setPhotoScale(scale: number) {
+    setValue("styleSettings", { ...ss, photoScale: scale }, { shouldDirty: true });
   }
 
   return (
@@ -54,7 +67,25 @@ export function PhotoUpload() {
         className="hidden"
         onChange={handleFile}
       />
-      <span className="text-xs text-muted-foreground">点击上传头像（可选，4MB 以内）</span>
+      <div className="flex flex-col gap-1.5">
+        <span className="text-xs text-muted-foreground">点击上传头像（可选，4MB 以内）</span>
+        {photo && (
+          <div className="flex items-center gap-1.5">
+            <span className="text-xs text-muted-foreground">尺寸</span>
+            <select
+              className="h-7 rounded-md border border-input bg-background px-2 text-xs"
+              value={ss.photoScale}
+              onChange={(e) => setPhotoScale(Number(e.target.value))}
+            >
+              {PHOTO_SCALE_OPTIONS.map((opt) => (
+                <option key={opt.value} value={opt.value}>
+                  {opt.label}
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
+      </div>
     </div>
   );
 }

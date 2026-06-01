@@ -3,8 +3,9 @@ import type { ResumeContent } from "@/lib/resume-schema";
 import { cn } from "@/lib/utils";
 
 const CELL = "py-0.5 text-[0.82em] leading-snug text-neutral-700";
-const PHOTO_W = "4rem";
-const PHOTO_H = "5.25rem";
+const BASE_PHOTO_W = 4; // rem
+const BASE_PHOTO_H = 5.25; // rem
+const BASE_PHOTO_PR = 4.75; // rem
 
 function formatWebsiteLabel(url: string): string {
   const trimmed = url.trim();
@@ -26,7 +27,7 @@ function ContactCell({ icon: Icon, text }: { icon: LucideIcon; text: string }) {
 }
 
 /** Professional header: name on top; contact info centered in compact rows. */
-export function ProfessionalHeader({ basics }: { basics: ResumeContent["basics"] }) {
+export function ProfessionalHeader({ basics, photoScale = 1 }: { basics: ResumeContent["basics"]; photoScale?: number }) {
   const hasPhoto = Boolean(basics.photo?.trim());
   const phone = basics.phone?.trim() ?? "";
   const email = basics.email?.trim() ?? "";
@@ -39,6 +40,10 @@ export function ProfessionalHeader({ basics }: { basics: ResumeContent["basics"]
   const showBottomRow = Boolean(status || location || career);
   const showContactRows = Boolean(showTopRow || website || showBottomRow);
 
+  const scaledW = `${BASE_PHOTO_W * photoScale}rem`;
+  const scaledH = `${BASE_PHOTO_H * photoScale}rem`;
+  const scaledPR = `${BASE_PHOTO_PR * photoScale}rem`;
+
   return (
     <div className="relative w-full">
       {hasPhoto && (
@@ -47,10 +52,10 @@ export function ProfessionalHeader({ basics }: { basics: ResumeContent["basics"]
           src={basics.photo}
           alt={basics.name}
           className="absolute top-0 right-0 rounded-sm object-contain object-top"
-          style={{ width: PHOTO_W, height: PHOTO_H }}
+          style={{ width: scaledW, height: scaledH }}
         />
       )}
-      <div className={cn(hasPhoto && "pr-[4.75rem]")}>
+      <div style={hasPhoto ? { paddingRight: scaledPR } : undefined}>
         <h1 className="pb-1.5 text-center text-[1.65em] font-bold leading-tight tracking-tight text-neutral-900">
           {basics.name}
         </h1>

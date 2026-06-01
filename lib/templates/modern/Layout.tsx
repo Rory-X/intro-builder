@@ -15,6 +15,8 @@ import {
 
 const SIDEBAR_KEYS = new Set(["skills", "education"]);
 
+import { DEFAULT_STYLE_SETTINGS } from "@/lib/resume-schema";
+
 export function ModernLayout({
   content,
   sectionOrder,
@@ -24,6 +26,7 @@ export function ModernLayout({
   const b = content.basics;
   const order = getSectionOrder(content, sectionOrder);
   const shells = showEmptyPlaceholders ?? false;
+  const ss = { ...DEFAULT_STYLE_SETTINGS, ...styleSettings };
 
   return (
     <ResumePage
@@ -32,7 +35,7 @@ export function ModernLayout({
       className="grid grid-cols-[240px_1fr] gap-6"
     >
       <aside className="space-y-4 border-r border-neutral-200 pr-4">
-        <ResumeHeader basics={b} variant="modern-sidebar" />
+        <ResumeHeader basics={b} variant="modern-sidebar" photoScale={ss.photoScale} />
         {order
           .filter((k) => SIDEBAR_KEYS.has(k))
           .map((key) => {

@@ -10,7 +10,7 @@ const MODERN_DEFAULT_STYLE_SETTINGS: StyleSettings = {
   headingGap: 6,
   pagePadding: 32,
   sectionGap: 14,
-  itemGap: 10,
+  itemGap: 10, photoScale: 1,
 };
 
 export const modernMeta = {

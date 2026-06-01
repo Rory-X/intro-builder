@@ -119,6 +119,7 @@ export const StyleSettings = z.preprocess(
     pagePadding: z.number().min(8).max(60).default(40),
     sectionGap: z.number().min(4).max(24).default(16),
     itemGap: z.number().min(2).max(16).default(12),
+    photoScale: z.number().min(0.5).max(1.5).default(1),
   }),
 );
 
@@ -133,6 +134,7 @@ export const DEFAULT_STYLE_SETTINGS: StyleSettings = {
   pagePadding: 40,
   sectionGap: 16,
   itemGap: 12,
+  photoScale: 1,
 };
 
 export const ResumeContent = z.object({
