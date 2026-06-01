@@ -9,6 +9,7 @@
     "lint": "eslint",
     "test": "vitest run",
     "test:watch": "vitest",
+    "postinstall": "fumadocs-mdx",
     "verify": "pnpm lint && pnpm tsc --noEmit && pnpm test && pnpm build"
   },
   "dependencies": {
