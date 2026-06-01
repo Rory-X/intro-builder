@@ -1,4 +1,5 @@
 import { docs, blog } from "collections/server";
+import { toFumadocsSource } from "fumadocs-mdx/runtime/server";
 import { loader } from "fumadocs-core/source";
 
 export const docsSource = loader({
@@ -8,5 +9,5 @@ export const docsSource = loader({
 
 export const blogSource = loader({
   baseUrl: "/blog",
-  source: blog.toFumadocsSource(),
+  source: toFumadocsSource(blog, []),
 });

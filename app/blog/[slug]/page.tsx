@@ -13,7 +13,7 @@ export default async function BlogPost({ params }: PageProps) {
 
   if (!post || post.data.draft) notFound();
 
-  const { body: Mdx } = await post.data.load();
+  const Mdx = post.data.body;
 
   return (
     <article>
@@ -39,7 +39,9 @@ export default async function BlogPost({ params }: PageProps) {
 }
 
 export function generateStaticParams() {
-  return blogSource.generateParams();
+  return blogSource.generateParams().map((params) => ({
+    slug: params.slug.join("/"),
+  }));
 }
 
 export async function generateMetadata({ params }: PageProps): Promise<Metadata> {

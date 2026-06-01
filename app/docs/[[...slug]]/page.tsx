@@ -13,7 +13,7 @@ export default async function Page({ params }: PageProps) {
 
   if (!page) notFound();
 
-  const { body: Mdx } = await page.data.load();
+  const Mdx = page.data.body;
 
   return (
     <DocsPage toc={page.data.toc}>
