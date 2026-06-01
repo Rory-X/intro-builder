@@ -16,8 +16,8 @@ import { ThemeToggle } from "@/components/theme-toggle";
 const NAV_LINKS = [
   { label: "产品功能", href: "#features" },
   { label: "模板", href: "#templates" },
-  { label: "定价", href: "#pricing" },
-  { label: "更新日志", href: "#changelog" },
+  { label: "求职指南", href: "/docs" },
+  { label: "博客", href: "/blog" },
 ];
 
 interface MarketingNavProps {
@@ -72,15 +72,29 @@ export function MarketingNav({ email, name, signOutAction, hideNavLinks, fullWid
       {/* Nav links — only on landing page */}
       {!hideNavLinks && (
         <div className="hidden items-center gap-0.5 md:flex">
-          {NAV_LINKS.map((link) => (
-            <a
-              key={link.href}
-              href={link.href}
-              className="rounded-full px-3 py-1.5 text-sm font-medium text-muted-foreground transition-colors hover:bg-foreground/5 hover:text-foreground"
-            >
-              {link.label}
-            </a>
-          ))}
+          {NAV_LINKS.map((link) => {
+            const isHash = link.href.startsWith("#");
+            if (isHash) {
+              return (
+                <a
+                  key={link.href}
+                  href={link.href}
+                  className="rounded-full px-3 py-1.5 text-sm font-medium text-muted-foreground transition-colors hover:bg-foreground/5 hover:text-foreground"
+                >
+                  {link.label}
+                </a>
+              );
+            }
+            return (
+              <Link
+                key={link.href}
+                href={link.href}
+                className="rounded-full px-3 py-1.5 text-sm font-medium text-muted-foreground transition-colors hover:bg-foreground/5 hover:text-foreground"
+              >
+                {link.label}
+              </Link>
+            );
+          })}
         </div>
       )}
 
