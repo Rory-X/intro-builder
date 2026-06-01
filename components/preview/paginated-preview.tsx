@@ -117,11 +117,14 @@ function addChildBreakPoints(
 /**
  * Get the bottom edge of an element relative to a container.
  * Uses getBoundingClientRect for pixel-perfect accuracy.
+ * Adds LINE_OVERFLOW_BUFFER so break points are placed slightly below
+ * the element's box — ensuring text descenders/line-height don't get
+ * clipped by the page overlay.
  */
 function getAbsoluteBottom(element: HTMLElement, container: HTMLElement): number {
   const elementRect = element.getBoundingClientRect();
   const containerRect = container.getBoundingClientRect();
-  return elementRect.bottom - containerRect.top;
+  return elementRect.bottom - containerRect.top + LINE_OVERFLOW_BUFFER;
 }
 
 /** Padding applied to top/bottom of continuation pages (page 2+) */
@@ -334,10 +337,8 @@ export const PaginatedPreview = forwardRef<HTMLDivElement, Props>(function Pagin
         const nextOffset = i < numPages - 1 ? pageOffsets[i + 1] : totalHeight;
         const isFirstPage = i === 0;
         const contentHeight = nextOffset - offset;
-        // Bottom overlay: hide content beyond break point.
-        // LINE_OVERFLOW_BUFFER: give the last line a few extra pixels so text
-        // descenders/line-height don't get clipped by the overlay edge.
-        const bottomOverlay = Math.max(0, A4_HEIGHT_PX - contentHeight - LINE_OVERFLOW_BUFFER) + (isFirstPage ? 0 : CONTINUATION_PADDING);
+        // Bottom overlay: hide content beyond break point
+        const bottomOverlay = Math.max(0, A4_HEIGHT_PX - contentHeight) + (isFirstPage ? 0 : CONTINUATION_PADDING);
 
         return (
           <div
@@ -353,7 +354,7 @@ export const PaginatedPreview = forwardRef<HTMLDivElement, Props>(function Pagin
             {!isFirstPage && (
               <div
                 className="absolute inset-x-0 top-0 z-[1]"
-                style={{ backgroundColor: "#ffffff", height: `${CONTINUATION_PADDING - LINE_OVERFLOW_BUFFER}px` }}
+                style={{ backgroundColor: "#ffffff", height: `${CONTINUATION_PADDING}px` }}
               />
             )}
             {/* Content shifted to show this page's portion */}
