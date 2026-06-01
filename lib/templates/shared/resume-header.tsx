@@ -52,19 +52,18 @@ export function ResumeHeader({ basics, variant, className }: Props) {
 
   return (
     <header data-pagination-header className={cn("mb-4 break-inside-avoid", className)}>
-      <div className="flex items-start justify-between gap-4">
-        <div className="flex-1 text-center">
-          <h1 className="text-2xl font-bold">{basics.name}</h1>
-          {basics.title && <p className="text-base text-neutral-700">{basics.title}</p>}
-        </div>
-        {basics.photo && (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img
-            src={basics.photo}
-            alt={basics.name}
-            className="ml-4 h-20 w-20 shrink-0 rounded object-cover"
-          />
-        )}
+      {basics.photo && (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img
+          src={basics.photo}
+          alt={basics.name}
+          className="absolute rounded object-cover"
+          style={{ width: "5rem", height: "5rem", top: "40px", right: "40px" }}
+        />
+      )}
+      <div className={cn("text-center", basics.photo && "pr-[5.5rem]")}>
+        <h1 className="text-2xl font-bold">{basics.name}</h1>
+        {basics.title && <p className="text-base text-neutral-700">{basics.title}</p>}
       </div>
       {contactItems.length > 0 && (
         <div className="mt-2 flex flex-wrap items-center justify-center gap-x-4 gap-y-1 text-xs text-neutral-600">

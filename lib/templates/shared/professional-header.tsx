@@ -40,14 +40,14 @@ export function ProfessionalHeader({ basics }: { basics: ResumeContent["basics"]
   const showContactRows = Boolean(showTopRow || website || showBottomRow);
 
   return (
-    <div className="relative w-full">
+    <div className="w-full">
       {hasPhoto && (
         // eslint-disable-next-line @next/next/no-img-element
         <img
           src={basics.photo}
           alt={basics.name}
-          className="absolute top-0 right-0 rounded-sm object-contain object-top"
-          style={{ width: PHOTO_W, height: PHOTO_H }}
+          className="absolute rounded-sm object-contain object-top"
+          style={{ width: PHOTO_W, height: PHOTO_H, top: "40px", right: "40px" }}
         />
       )}
       <div className={cn(hasPhoto && "pr-[4.75rem]")}>
