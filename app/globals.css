@@ -1,8 +1,13 @@
 @import "tailwindcss";
 @import "fumadocs-ui/css/shadcn.css";
-@import "fumadocs-ui/css/preset.css";
+@import "fumadocs-ui/css/lib/base.css";
+@import "fumadocs-ui/css/lib/shiki.css";
+@import "fumadocs-ui/css/generated/docs.css";
+@import "fumadocs-ui/css/generated/shared.css";
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
+
+@plugin "@tailwindcss/typography";
 
 @custom-variant dark (&:is(.dark *));
 
@@ -138,6 +143,29 @@
   }
 }
 
+/*
+ * fumadocs docs prose color overrides — scoped to #nd-docs-layout only.
+ * Maps standard prose CSS variables to fumadocs --color-fd-* tokens so
+ * dark mode and theming work correctly inside docs pages, without
+ * polluting prose styles in the rest of the app (resume preview, etc.).
+ */
+#nd-docs-layout .prose {
+  --tw-prose-body: color-mix(in oklab, var(--color-fd-foreground) 90%, transparent);
+  --tw-prose-headings: var(--color-fd-foreground);
+  --tw-prose-lead: var(--color-fd-foreground);
+  --tw-prose-links: var(--color-fd-foreground);
+  --tw-prose-bold: var(--color-fd-foreground);
+  --tw-prose-counters: var(--color-fd-muted-foreground);
+  --tw-prose-bullets: var(--color-fd-muted-foreground);
+  --tw-prose-hr: var(--color-fd-border);
+  --tw-prose-quotes: var(--color-fd-foreground);
+  --tw-prose-quote-borders: var(--color-fd-border);
+  --tw-prose-captions: var(--color-fd-foreground);
+  --tw-prose-code: var(--color-fd-foreground);
+  --tw-prose-th-borders: var(--color-fd-border);
+  --tw-prose-td-borders: var(--color-fd-border);
+}
+
 /* TipTap / ProseMirror list styles */
 .ProseMirror ul,
 .prose ul {
@@ -153,15 +181,6 @@
   margin: 0.5em 0;
 }
 
-/*
- * fumadocs typography sets strong to fontWeight 500 (design choice for docs).
- * Resume previews need actual bold (700) with proper foreground color.
- * Scoped to .resume-prose to avoid affecting fumadocs docs pages.
- */
-.resume-prose strong {
-  font-weight: 700;
-  color: var(--tw-prose-bold, inherit);
-}
 
 .ProseMirror li,
 .prose li {
