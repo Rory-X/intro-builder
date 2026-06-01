@@ -1,6 +1,5 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
-import { DocsBody } from "fumadocs-ui/page";
 import { blogSource } from "@/lib/source";
 
 interface PageProps {
@@ -31,9 +30,9 @@ export default async function BlogPost({ params }: PageProps) {
           <span>· {post.data.author}</span>
         </div>
       </header>
-      <DocsBody>
+      <div className="prose prose-neutral dark:prose-invert max-w-none">
         <Mdx />
-      </DocsBody>
+      </div>
     </article>
   );
 }
