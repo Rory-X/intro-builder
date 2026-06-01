@@ -337,8 +337,10 @@ export const PaginatedPreview = forwardRef<HTMLDivElement, Props>(function Pagin
         const nextOffset = i < numPages - 1 ? pageOffsets[i + 1] : totalHeight;
         const isFirstPage = i === 0;
         const contentHeight = nextOffset - offset;
-        // Bottom overlay: hide content beyond break point
-        const bottomOverlay = Math.max(0, A4_HEIGHT_PX - contentHeight) + (isFirstPage ? 0 : CONTINUATION_PADDING);
+        // Bottom overlay: cover empty space below content + hide next-page content.
+        // Calculate where content ends ON THE PAGE (accounting for top padding shift).
+        const contentEndOnPage = (isFirstPage ? 0 : CONTINUATION_PADDING) + contentHeight;
+        const bottomOverlay = Math.max(0, A4_HEIGHT_PX - contentEndOnPage);
 
         return (
           <div
