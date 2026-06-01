@@ -125,6 +125,13 @@ const CONTINUATION_PADDING = 32; // px — breathing room on continuation pages
 const BREAK_SAFETY_MARGIN = 2; // px
 
 /**
+ * If the last page would contain less than this much content (px), merge it
+ * back into the previous page. Prevents near-empty trailing pages caused by
+ * bottom margins, padding, or minor overflows.
+ */
+const MIN_LAST_PAGE_CONTENT = 80; // px
+
+/**
  * Calculate page break Y-offsets using absolute positions.
  * Each page break is at the bottom edge of the last element that fits.
  * Continuation pages reserve padding at top+bottom for breathing room.
@@ -167,6 +174,16 @@ function calculatePageBreaks(
     }
 
     isFirstPage = false;
+  }
+
+  // Remove trailing break if the last page would have negligible content
+  // (prevents near-empty pages from bottom margins or minor overflows)
+  if (breaks.length > 0) {
+    const lastBreak = breaks[breaks.length - 1];
+    const lastPageContent = totalHeight - lastBreak;
+    if (lastPageContent < MIN_LAST_PAGE_CONTENT) {
+      breaks.pop();
+    }
   }
 
   return breaks;
