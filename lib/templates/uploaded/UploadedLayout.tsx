@@ -53,7 +53,7 @@ export function UploadedLayout({
   const themeStyle: React.CSSProperties = {
     ["--primary" as string]: template.layout.theme.primaryColor,
     ...(template.layout.theme.accentColor && {
-      ["--accent" as string]: template.layout.theme.accentColor,
+      ["--resume-accent" as string]: template.layout.theme.accentColor,
     }),
     // Card-wrapped variant 用的 3 个 CSS 变量（仅当 Skill 设了对应字段时注入；
     // 未设时 ResumeSection 的 card-wrapped 分支走 inline fallback 默认值）
