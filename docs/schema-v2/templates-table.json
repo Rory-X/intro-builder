@@ -60,6 +60,27 @@
       "photoScale": 1
     }
   },
+  "layout": {
+    "type": "JSONB NOT NULL",
+    "description": "排版结构配置。决定单栏/双栏、sidebar 位置和宽度、哪些 section 归 sidebar。",
+    "schema": {
+      "type": { "type": "string", "enum": ["vertical", "horizontal"], "description": "vertical = 单栏从上到下；horizontal = 左右双栏" },
+      "sidebar": {
+        "type": "object | null",
+        "description": "仅 horizontal 时存在",
+        "fields": {
+          "side": { "type": "string", "enum": ["left", "right"], "description": "sidebar 在哪一侧" },
+          "width": { "type": "string", "description": "sidebar 宽度，CSS 值如 240px 或 30%" },
+          "sections": { "type": "string[]", "description": "放入 sidebar 的 section id 列表，支持任意 section（basics/skills/education/自定义等）。不在此列表中的 section 全部去 main。" }
+        }
+      }
+    },
+    "examples": [
+      { "type": "vertical" },
+      { "type": "horizontal", "sidebar": { "side": "left", "width": "240px", "sections": ["basics", "skills"] } },
+      { "type": "horizontal", "sidebar": { "side": "right", "width": "220px", "sections": ["basics"] } }
+    ]
+  },
   "status": {
     "type": "TEXT NOT NULL DEFAULT 'draft'",
     "description": "模板状态",

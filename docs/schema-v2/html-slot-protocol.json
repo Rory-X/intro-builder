@@ -27,7 +27,17 @@
       {
         "data-bind": "sectionOrder",
         "data-template": "section-tpl",
-        "description": "按 sectionOrder 顺序循环渲染各个分区"
+        "description": "单栏模板用：按 sectionOrder 顺序循环渲染所有分区"
+      },
+      {
+        "data-bind": "sidebarSections",
+        "data-template": "section-tpl",
+        "description": "双栏模板用：只渲染 layout.sidebar.sections 里指定的分区"
+      },
+      {
+        "data-bind": "mainSections",
+        "data-template": "section-tpl",
+        "description": "双栏模板用：渲染不在 sidebar 列表里的分区"
       },
       {
         "data-bind": "section.items",
