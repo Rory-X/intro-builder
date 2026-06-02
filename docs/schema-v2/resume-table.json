@@ -1,0 +1,38 @@
+{
+  "id": {
+    "type": "TEXT PRIMARY KEY",
+    "description": "简历唯一 ID"
+  },
+  "userId": {
+    "type": "TEXT NOT NULL FK→user.id",
+    "description": "所属用户"
+  },
+  "title": {
+    "type": "TEXT NOT NULL DEFAULT '我的简历'",
+    "description": "简历标题（dashboard 显示）"
+  },
+  "templateId": {
+    "type": "TEXT NOT NULL DEFAULT 'professional'",
+    "description": "使用的模板 ID，指向 templates 表"
+  },
+  "content": {
+    "type": "JSONB NOT NULL",
+    "description": "简历全部内容 + 排版设置，结构见 resume-content.json"
+  },
+  "slug": {
+    "type": "TEXT UNIQUE",
+    "description": "公开分享短链标识，如 /r/zhangsan-frontend"
+  },
+  "isPublic": {
+    "type": "BOOLEAN NOT NULL DEFAULT false",
+    "description": "是否公开可访问"
+  },
+  "createdAt": {
+    "type": "TIMESTAMP NOT NULL DEFAULT now()",
+    "description": "创建时间"
+  },
+  "updatedAt": {
+    "type": "TIMESTAMP NOT NULL DEFAULT now()",
+    "description": "最后更新时间"
+  }
+}

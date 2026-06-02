@@ -1,0 +1,76 @@
+{
+  "id": {
+    "type": "TEXT PRIMARY KEY",
+    "description": "模板唯一标识，如 professional、abbey-blue"
+  },
+  "name": {
+    "type": "TEXT NOT NULL",
+    "description": "模板显示名，如「蓝调清新」「专业」"
+  },
+  "description": {
+    "type": "TEXT",
+    "description": "一句话描述模板风格和适合人群"
+  },
+  "thumbnailUrl": {
+    "type": "TEXT",
+    "description": "模板选择器里展示的缩略图 URL"
+  },
+  "category": {
+    "type": "TEXT",
+    "description": "用户视角分类，决定模板库 tab 归属",
+    "enum": ["academic", "tech", "business", "creative", "general"]
+  },
+  "features": {
+    "type": "JSONB",
+    "description": "模板特点文案，固定 3 条，每条 ≤ 60 字，模板抽屉里展示",
+    "example": ["蓝色波浪 banner + 圆形头像框", "居中分区标题，适合内容较少的应届生", "清新配色，适合互联网/教育/传媒行业"]
+  },
+  "html": {
+    "type": "TEXT NOT NULL",
+    "description": "模板 HTML，含 slot 标记（data-bind）。引擎解析 slot 替换为简历内容。"
+  },
+  "css": {
+    "type": "TEXT",
+    "description": "模板 CSS，必须遵守 CSS 变量合约。引擎自动加 scope 前缀防污染。"
+  },
+  "assets": {
+    "type": "JSONB",
+    "description": "GPT 生成的装饰图片列表，HTML 里通过 URL 引用这些图",
+    "item_schema": {
+      "url": { "type": "string", "description": "图片 CDN 地址（Vercel Blob）" },
+      "role": { "type": "string", "description": "用途标识", "enum": ["banner", "decoration", "icon"] }
+    },
+    "example": [
+      { "url": "https://xxx.vercel-storage.com/abbey-blue-banner.png", "role": "banner" },
+      { "url": "https://xxx.vercel-storage.com/abbey-blue-corner.png", "role": "decoration" }
+    ]
+  },
+  "defaultStyleSettings": {
+    "type": "JSONB",
+    "description": "模板推荐的初始排版设置。用户首次选用该模板时写入简历的 styleSettings。结构同 styleSettings。",
+    "example": {
+      "fontFamily": "sans",
+      "fontSize": 13,
+      "bodyLineHeight": 1.6,
+      "lineHeight": 1.6,
+      "headingGap": 8,
+      "pagePadding": 40,
+      "sectionGap": 16,
+      "itemGap": 12,
+      "photoScale": 1
+    }
+  },
+  "status": {
+    "type": "TEXT NOT NULL DEFAULT 'draft'",
+    "description": "模板状态",
+    "enum": ["draft", "published"]
+  },
+  "createdAt": {
+    "type": "TIMESTAMP NOT NULL DEFAULT now()",
+    "description": "创建时间"
+  },
+  "updatedAt": {
+    "type": "TIMESTAMP NOT NULL DEFAULT now()",
+    "description": "最后更新时间"
+  }
+}

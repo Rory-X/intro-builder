@@ -1,0 +1,93 @@
+{
+  "_description": "排版设置。所有字段通过 CSS 变量注入到模板根元素，模板 CSS 消费这些变量。",
+
+  "fontFamily": {
+    "type": "enum",
+    "enum": ["sans", "serif", "mono"],
+    "default": "sans",
+    "css_variable": "--font-family",
+    "user_visible": true,
+    "smart_layout_adjustable": false,
+    "description": "字体：无衬线/衬线/等宽"
+  },
+  "fontSize": {
+    "type": "number",
+    "min": 8,
+    "max": 16,
+    "default": 13,
+    "css_variable": "--font-size",
+    "user_visible": true,
+    "smart_layout_adjustable": false,
+    "description": "正文字号 (px)"
+  },
+  "bodyLineHeight": {
+    "type": "number",
+    "min": 1.05,
+    "max": 2.0,
+    "default": 1.6,
+    "css_variable": "--line-height",
+    "user_visible": true,
+    "smart_layout_adjustable": true,
+    "description": "正文行高"
+  },
+  "lineHeight": {
+    "type": "number",
+    "min": 1.05,
+    "max": 2.0,
+    "default": 1.6,
+    "css_variable": null,
+    "user_visible": false,
+    "smart_layout_adjustable": false,
+    "description": "已废弃，向后兼容解析后映射到 bodyLineHeight"
+  },
+  "headingGap": {
+    "type": "number",
+    "min": 0,
+    "max": 32,
+    "default": 8,
+    "css_variable": "--heading-gap",
+    "user_visible": true,
+    "smart_layout_adjustable": true,
+    "description": "标题间距：section title 下方到正文的 margin-bottom (px)"
+  },
+  "pagePadding": {
+    "type": "number",
+    "min": 8,
+    "max": 60,
+    "default": 40,
+    "css_variable": "--page-padding",
+    "user_visible": true,
+    "smart_layout_adjustable": false,
+    "description": "页面左右边距 (px)"
+  },
+  "sectionGap": {
+    "type": "number",
+    "min": 4,
+    "max": 24,
+    "default": 16,
+    "css_variable": "--section-gap",
+    "user_visible": false,
+    "smart_layout_adjustable": true,
+    "description": "模块间距：两个 section 之间的 margin-top (px)"
+  },
+  "itemGap": {
+    "type": "number",
+    "min": 2,
+    "max": 16,
+    "default": 12,
+    "css_variable": "--item-gap",
+    "user_visible": false,
+    "smart_layout_adjustable": true,
+    "description": "条目间距：同一 section 内两个 item 之间的 margin-bottom (px)"
+  },
+  "photoScale": {
+    "type": "number",
+    "min": 0.5,
+    "max": 1.5,
+    "default": 1,
+    "css_variable": "--photo-scale",
+    "user_visible": true,
+    "smart_layout_adjustable": false,
+    "description": "头像缩放倍数，通过 transform: scale() 控制大小，不影响文档流"
+  }
+}
