@@ -48,6 +48,14 @@ function getDisplayMeta(resolved: SerializableResolvedTemplate) {
       features: meta?.features as readonly string[] | undefined,
     };
   }
+  if (resolved.source === "unified") {
+    return {
+      name: resolved.id,
+      description: "",
+      isRecommended: false as const,
+      features: undefined,
+    };
+  }
   return {
     name: resolved.template.name,
     description: resolved.template.description ?? "",
@@ -172,7 +180,7 @@ export function TemplatePreviewDrawer({
                       "不动你的简历内容，只换排版",
                       "切换后随时再换，可逆",
                     ]
-                ).map((feature, i) => (
+                ).map((feature: string, i: number) => (
                   <li key={i} className="flex items-start gap-2">
                     <Check className="mt-0.5 size-4 shrink-0 text-primary" />
                     <span>{feature}</span>
