@@ -63,11 +63,22 @@ export function HeroSection() {
           面向中文互联网求职者的在线简历工作台。结构化编辑、实时 A4 预览、一键导出像素级 PDF — 一站搞定从撰写到投递。
         </motion.p>
 
-        {/* CTA Buttons */}
+        {/* Core feature chips */}
         <motion.div
           {...fadeUp}
           transition={{ duration: 0.6, delay: 0.4 }}
-          className="mt-10 flex flex-col items-center justify-center gap-3 sm:flex-row"
+          className="mt-8 flex flex-wrap items-center justify-center gap-2.5"
+        >
+          <FeatureChip icon={<LayoutGrid className="h-3.5 w-3.5" />} label="结构化编辑" />
+          <FeatureChip icon={<Eye className="h-3.5 w-3.5" />} label="实时预览" />
+          <FeatureChip icon={<Share2 className="h-3.5 w-3.5" />} label="PDF / 分享" />
+        </motion.div>
+
+        {/* CTA Buttons */}
+        <motion.div
+          {...fadeUp}
+          transition={{ duration: 0.6, delay: 0.55 }}
+          className="mt-8 flex flex-col items-center justify-center gap-3 sm:flex-row"
         >
           <Link href="/login">
             <Button
@@ -89,17 +100,6 @@ export function HeroSection() {
             </Button>
           </Link>
         </motion.div>
-
-        {/* Core feature chips */}
-        <motion.div
-          {...fadeUp}
-          transition={{ duration: 0.6, delay: 0.55 }}
-          className="mt-8 flex flex-wrap items-center justify-center gap-2.5"
-        >
-          <FeatureChip icon={<LayoutGrid className="h-3.5 w-3.5" />} label="结构化编辑" />
-          <FeatureChip icon={<Eye className="h-3.5 w-3.5" />} label="实时预览" />
-          <FeatureChip icon={<Share2 className="h-3.5 w-3.5" />} label="PDF / 分享" />
-        </motion.div>
       </div>
     </section>
   );
@@ -107,7 +107,7 @@ export function HeroSection() {
 
 function FeatureChip({ icon, label }: { icon: React.ReactNode; label: string }) {
   return (
-    <span className="inline-flex items-center gap-1.5 rounded-full border border-border/60 bg-background/60 px-3.5 py-1.5 text-sm font-medium text-muted-foreground shadow-sm backdrop-blur-sm transition-colors hover:border-primary/30 hover:text-foreground">
+    <span className="inline-flex items-center gap-1.5 rounded-full bg-muted/60 px-3.5 py-1.5 text-sm font-medium text-muted-foreground backdrop-blur-sm transition-colors hover:text-foreground">
       <span className="text-primary">{icon}</span>
       {label}
     </span>

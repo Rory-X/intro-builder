@@ -285,7 +285,7 @@ describe("SlotRenderer — CSS scope + style injection", () => {
       styleSettings: {
         fontFamily: "serif", fontSize: 14,
         lineHeight: 1.7, bodyLineHeight: 1.7, headingGap: 12,
-        pagePadding: 40, sectionGap: 16, itemGap: 12,
+        pagePadding: 40, sectionGap: 16, itemGap: 12, photoScale: 1,
       },
     });
     const root = container.querySelector("[data-template-id='test-tpl']") as HTMLElement;

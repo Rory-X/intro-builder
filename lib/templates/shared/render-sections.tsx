@@ -285,7 +285,7 @@ export function buildResumeSections(
         </ResumeSection>
       ) : null,
     skills:
-      content.skills.length > 0 || shells ? (
+      (content.skills?.content?.length ?? 0) > 0 || shells ? (
         <ResumeSection
           key="skills"
           sectionKey="skills"
@@ -293,46 +293,9 @@ export function buildResumeSections(
           variant={variant}
           iconOverride={overrideIcon("skills")}
         >
-          {variant === "professional" || variant === "card-wrapped" ? (
-            renderResumeEntry(
-              variant,
-              "skills-block",
-              content.skills.length > 0 ? (
-                <div className="space-y-1">
-                  {content.skills.map((s, i) => (
-                    <p key={i} className="text-[0.92em] leading-relaxed text-neutral-800">
-                      <span className="font-semibold">{s.category}：</span>
-                      {s.items.join("、")}
-                    </p>
-                  ))}
-                </div>
-              ) : (
-                <div className="space-y-1">
-                  <p className="text-[0.92em] leading-relaxed">
-                    <span className="font-semibold">编程语言：</span>
-                    JavaScript、TypeScript、Python
-                  </p>
-                  <p className="text-[0.92em] leading-relaxed">
-                    <span className="font-semibold">框架 / 工具：</span>
-                    React、Next.js、Git
-                  </p>
-                </div>
-              ),
-              { muted: shells && content.skills.length === 0 },
-            )
-          ) : content.skills.length > 0 ? (
-            content.skills.map((s, i) =>
-              renderResumeEntry(
-                variant,
-                i,
-                <>
-                  <strong>{s.category}:</strong> {s.items.join("、")}
-                </>,
-              ),
-            )
-          ) : (
-            <SkillsSectionShell variant={variant} />
-          )}
+          {(content.skills?.content?.length ?? 0) > 0
+            ? renderResumeEntry(variant, "skills", <ResumeRichText content={content.skills} />)
+            : <SkillsSectionShell variant={variant} />}
         </ResumeSection>
       ) : null,
     ...Object.fromEntries(

@@ -1,4 +1,4 @@
-import DOMPurify from "isomorphic-dompurify";
+import sanitizeHtml from "sanitize-html";
 import parse, {
   attributesToProps,
   domToReact,
@@ -59,11 +59,11 @@ const SAFE_TAGS = [
   // Skill v2 模板 schema 标签
   "template", "slot",
 ];
-const SAFE_ATTRS = [
-  "class", "id",
-  "data-bind", "data-template",
-  "src", "alt", "href", "title",
-];
+const SAFE_ATTRS: Record<string, sanitizeHtml.AllowedAttribute[]> = {
+  "*": ["class", "id", "title", "data-*"],
+  a: ["href"],
+  img: ["src", "alt"],
+};
 
 /** 嵌套深度上限 —— spec §6.3 #5 */
 const MAX_NEST_DEPTH = 3;
@@ -86,11 +86,11 @@ export function SlotRenderer({
     // Skill v2 has no image-content mechanism yet — drop empty src so the
     // browser keeps the img as a placeholder shell instead of crashing render.
     .replace(/(<img\b[^>]*?)\s+src=(""|'')/gi, "$1");
-  const cleanHtml = DOMPurify.sanitize(normalizedHtml, {
-    ALLOWED_TAGS: SAFE_TAGS,
-    ALLOWED_ATTR: SAFE_ATTRS,
-    ADD_TAGS: ["template", "slot"],  // ensure not stripped
-    ADD_ATTR: ["data-bind", "data-template"],
+  const cleanHtml = sanitizeHtml(normalizedHtml, {
+    allowedTags: SAFE_TAGS,
+    allowedAttributes: SAFE_ATTRS,
+    // Don't strip <template>/<slot> — they are used by the renderer
+    exclusiveFilter: undefined,
   });
 
   // 2. Extract <template id="..."> definitions and remove from main HTML.
@@ -123,6 +123,7 @@ export function SlotRenderer({
     "--page-padding": `${styleSettings.pagePadding}px`,
     "--section-gap": `${styleSettings.sectionGap}px`,
     "--item-gap": `${styleSettings.itemGap}px`,
+    "--photo-scale": String(styleSettings.photoScale ?? 1),
   };
 
   // 5. Sectioned LookupTable (memoized inside resolveSection per call) — pre-resolve

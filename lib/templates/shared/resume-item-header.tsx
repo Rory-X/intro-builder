@@ -28,8 +28,8 @@ export function ResumeItemHeader({
           {dateRange && (
             <span
               className="shrink-0 text-xs tabular-nums"
-              // var(--accent) 由 UploadedLayout 注入；built-in 模板不设走 fallback 保持原色
-              style={{ color: "var(--accent, #525252)" }}
+              // var(--resume-accent) 由 UploadedLayout 注入；built-in 模板不设走 fallback 保持原色
+              style={{ color: "var(--resume-accent, #525252)" }}
             >
               {dateRange}
             </span>
@@ -48,7 +48,7 @@ export function ResumeItemHeader({
           {dateRange && (
             <span
               className="font-normal tabular-nums"
-              style={{ color: "var(--accent, currentColor)" }}
+              style={{ color: "var(--resume-accent, currentColor)" }}
             >
               {dateRange}
             </span>
@@ -66,7 +66,7 @@ export function ResumeItemHeader({
         {dateRange && (
           <span
             className="shrink-0 text-[0.9em] font-normal tabular-nums"
-            style={{ color: "var(--accent, #525252)" }}
+            style={{ color: "var(--resume-accent, #525252)" }}
           >
             {dateRange}
           </span>

@@ -2,6 +2,7 @@ import type { TemplateLayoutProps } from "@/lib/templates/types";
 import { ResumeHeader } from "@/lib/templates/shared/resume-header";
 import { ResumePage } from "@/lib/templates/shared/resume-page";
 import { buildResumeSections, getSectionOrder } from "@/lib/templates/shared/render-sections";
+import { DEFAULT_STYLE_SETTINGS } from "@/lib/resume-schema";
 
 export function ProfessionalLayout({
   content,
@@ -14,6 +15,7 @@ export function ProfessionalLayout({
     includeBasicsSummary: true,
     showEmptyPlaceholders,
   });
+  const ss = { ...DEFAULT_STYLE_SETTINGS, ...styleSettings };
 
   return (
     <ResumePage styleSettings={styleSettings} maxWidthClass="max-w-[800px]">
@@ -21,6 +23,7 @@ export function ProfessionalLayout({
         basics={content.basics}
         variant="professional"
         showEmptyPlaceholders={showEmptyPlaceholders}
+        photoScale={ss.photoScale}
       />
       {order.map((key) => sections[key] ?? null)}
     </ResumePage>

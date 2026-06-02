@@ -53,7 +53,7 @@ export function UploadedLayout({
   const themeStyle: React.CSSProperties = {
     ["--primary" as string]: template.layout.theme.primaryColor,
     ...(template.layout.theme.accentColor && {
-      ["--accent" as string]: template.layout.theme.accentColor,
+      ["--resume-accent" as string]: template.layout.theme.accentColor,
     }),
     // Card-wrapped variant 用的 3 个 CSS 变量（仅当 Skill 设了对应字段时注入；
     // 未设时 ResumeSection 的 card-wrapped 分支走 inline fallback 默认值）
@@ -69,12 +69,15 @@ export function UploadedLayout({
   };
 
   const frame = template.layout.frame;
+  const mergedStyle = { ...DEFAULT_STYLE_SETTINGS, ...styleSettings };
+
   // theme.hideHeader=true 时整个 ResumeHeader 不渲染 — 用于 banner-PNG 自带姓名/头像/联系方式的模板
   const header = template.layout.theme.hideHeader ? null : (
     <ResumeHeader
       basics={content.basics}
       variant={template.layout.headerVariant}
       showEmptyPlaceholders={showEmptyPlaceholders}
+      photoScale={mergedStyle.photoScale}
     />
   );
 

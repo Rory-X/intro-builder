@@ -1,7 +1,23 @@
 import type { ResumeContent } from "@/lib/resume-schema";
 import { bulletsToDoc, emptyDoc } from "@/lib/tiptap-types";
+import type { TipTapJSON } from "@/lib/tiptap-types";
 import { DEFAULT_SECTION_ORDER } from "@/lib/resume-schema";
 import OpenAI from "openai";
+
+/** Convert parsed skill groups from AI into TipTapJSON rich text. */
+function skillGroupsToDoc(groups: Array<{ category: string; items: string[] }>): TipTapJSON {
+  if (groups.length === 0) return emptyDoc();
+  const content = groups.map((g) => ({
+    type: "paragraph" as const,
+    content: [
+      ...(g.category ? [
+        { type: "text" as const, marks: [{ type: "bold" as const }], text: `${g.category}：` },
+      ] : []),
+      { type: "text" as const, text: (g.items ?? []).join("、") },
+    ].filter((node) => node.text),
+  }));
+  return { type: "doc", content } as TipTapJSON;
+}
 
 function getDeepSeekClient() {
   return new OpenAI({
@@ -259,10 +275,7 @@ function llmDataToResumeContent(data: LLMResumeData): ResumeContent {
       link: p.link || "",
       content: textToTipTapContent(p.contentText || ""),
     })),
-    skills: (data.skills || []).map((s) => ({
-      category: s.category || "",
-      items: s.items || [],
-    })),
+    skills: skillGroupsToDoc(data.skills || []),
     custom: [],
     sectionOrder,
   };

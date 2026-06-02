@@ -54,6 +54,9 @@ function findBreakPoints(container: HTMLElement): BreakableElement[] {
     if (element.hasAttribute("data-pagination-section")) {
       const hasItems = element.querySelector("[data-pagination-item]");
       if (hasItems) return;
+      // Section without items (e.g., rich-text-only sections like skills):
+      // scan its children for fine-grained break points so we don't force-cut
+      // through content when the section spans a page boundary.
     }
 
     // Skip items nested inside other items
@@ -68,10 +71,13 @@ function findBreakPoints(container: HTMLElement): BreakableElement[] {
     const bottom = getAbsoluteBottom(element, container);
     bottomSet.add(Math.round(bottom));
 
-    // Level 2: For pagination items, also add their block-level children as
-    // finer break points. This allows splitting a tall entry (e.g., work
-    // experience with many bullets) across pages at the paragraph/list-item level.
-    if (element.hasAttribute("data-pagination-item")) {
+    // Level 2: For pagination items OR sections without items, add their
+    // block-level children as finer break points. This allows splitting tall
+    // content across pages at the paragraph/list-item level.
+    if (
+      element.hasAttribute("data-pagination-item") ||
+      (element.hasAttribute("data-pagination-section") && !element.querySelector("[data-pagination-item]"))
+    ) {
       addChildBreakPoints(element, container, bottomSet);
     }
   });
@@ -111,11 +117,14 @@ function addChildBreakPoints(
 /**
  * Get the bottom edge of an element relative to a container.
  * Uses getBoundingClientRect for pixel-perfect accuracy.
+ * Adds LINE_OVERFLOW_BUFFER so break points are placed slightly below
+ * the element's box — ensuring text descenders/line-height don't get
+ * clipped by the page overlay.
  */
 function getAbsoluteBottom(element: HTMLElement, container: HTMLElement): number {
   const elementRect = element.getBoundingClientRect();
   const containerRect = container.getBoundingClientRect();
-  return elementRect.bottom - containerRect.top;
+  return elementRect.bottom - containerRect.top + LINE_OVERFLOW_BUFFER;
 }
 
 /** Padding applied to top/bottom of continuation pages (page 2+) */
@@ -123,6 +132,23 @@ const CONTINUATION_PADDING = 32; // px — breathing room on continuation pages
 
 /** Small safety buffer to prevent sub-pixel rendering cuts at page boundaries */
 const BREAK_SAFETY_MARGIN = 2; // px
+
+/**
+ * Extra pixels added beyond the break point to ensure text descenders,
+ * line-height overflow, and sub-pixel rendering don't get clipped by
+ * the bottom overlay. Without this, the last line on each page can
+ * appear "cut in half" because the overlay starts exactly at the
+ * element's bounding box bottom while the visual text extends slightly
+ * further due to line-height.
+ */
+const LINE_OVERFLOW_BUFFER = 6; // px
+
+/**
+ * If the last page would contain less than this much content (px), merge it
+ * back into the previous page. Prevents near-empty trailing pages caused by
+ * bottom margins, padding, or minor overflows.
+ */
+const MIN_LAST_PAGE_CONTENT = 80; // px
 
 /**
  * Calculate page break Y-offsets using absolute positions.
@@ -167,6 +193,16 @@ function calculatePageBreaks(
     }
 
     isFirstPage = false;
+  }
+
+  // Remove trailing break if the last page would have negligible content
+  // (prevents near-empty pages from bottom margins or minor overflows)
+  if (breaks.length > 0) {
+    const lastBreak = breaks[breaks.length - 1];
+    const lastPageContent = totalHeight - lastBreak;
+    if (lastPageContent < MIN_LAST_PAGE_CONTENT) {
+      breaks.pop();
+    }
   }
 
   return breaks;
@@ -301,8 +337,10 @@ export const PaginatedPreview = forwardRef<HTMLDivElement, Props>(function Pagin
         const nextOffset = i < numPages - 1 ? pageOffsets[i + 1] : totalHeight;
         const isFirstPage = i === 0;
         const contentHeight = nextOffset - offset;
-        // Bottom overlay: hide content beyond break + add bottom margin on continuation pages
-        const bottomOverlay = Math.max(0, A4_HEIGHT_PX - contentHeight) + (isFirstPage ? 0 : CONTINUATION_PADDING);
+        // Bottom overlay: cover empty space below content + hide next-page content.
+        // Calculate where content ends ON THE PAGE (accounting for top padding shift).
+        const contentEndOnPage = (isFirstPage ? 0 : CONTINUATION_PADDING) + contentHeight;
+        const bottomOverlay = Math.max(0, A4_HEIGHT_PX - contentEndOnPage);
 
         return (
           <div

@@ -19,7 +19,7 @@ export const DENSITY_PRESETS: Record<
       headingGap: 4,
       pagePadding: 28,
       sectionGap: 10,
-      itemGap: 8,
+      itemGap: 8, photoScale: 1,
     },
   },
   standard: {
@@ -38,7 +38,7 @@ export const DENSITY_PRESETS: Record<
       headingGap: 14,
       pagePadding: 48,
       sectionGap: 20,
-      itemGap: 14,
+      itemGap: 14, photoScale: 1,
     },
   },
 };

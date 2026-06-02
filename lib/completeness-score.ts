@@ -136,19 +136,17 @@ function scoreProjects(items: ResumeContent["projects"]): number {
   return Math.round(avg * SECTION_MAX);
 }
 
-function scoreSkills(groups: ResumeContent["skills"]): number {
-  if (groups.length === 0) return 0;
-
-  const scores = groups.map((group): number => {
-    const hasCat = isFilled(group.category);
-    const hasItems = group.items.length > 0 && group.items.some((i) => i.trim() !== "");
-    if (hasCat && hasItems) return 1;
-    if (hasCat || hasItems) return 0.5;
-    return 0;
+function scoreSkills(skills: ResumeContent["skills"]): number {
+  // 新格式：TipTapJSON 富文本。判断是否有内容。
+  if (!skills || !skills.content || skills.content.length === 0) return 0;
+  // 检查是否有非空文本节点
+  const hasText = skills.content.some((node: Record<string, unknown>) => {
+    if (!node.content) return false;
+    return (node.content as Array<Record<string, unknown>>).some(
+      (child) => typeof child.text === "string" && child.text.trim() !== "",
+    );
   });
-
-  const avg = scores.reduce((a, b) => a + b, 0) / scores.length;
-  return Math.round(avg * SECTION_MAX);
+  return hasText ? SECTION_MAX : 0;
 }
 
 /**

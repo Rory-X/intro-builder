@@ -316,18 +316,16 @@ function derivePresetItems(sectionId: string, content: ResumeContent): ItemView[
       }));
 
     case "skills":
-      return content.skills.map((g) => ({
-        title: g.category,
-        subtitle: g.items.join("、"),
+      if (!content.skills?.content?.length) return [];
+      return [{
+        title: "",
+        subtitle: "",
         dateRange: "",
         location: "",
-        bullets: emptyDoc(),
-        // tags 留空：技能项已通过 subtitle 渲染，再塞进 tags 会让同时渲染
-        // subtitle + tags 的模板把技能项显示两遍（SKILL.md 派生表已注明
-        // skills 的 tags 为空）。projects 才用 tags 承载 stack。
+        bullets: content.skills,
         tags: [],
         link: "",
-      }));
+      }];
 
     default:
       return [];

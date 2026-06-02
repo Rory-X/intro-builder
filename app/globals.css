@@ -1,4 +1,9 @@
 @import "tailwindcss";
+@import "fumadocs-ui/css/shadcn.css";
+@import "fumadocs-ui/css/lib/base.css";
+@import "fumadocs-ui/css/lib/shiki.css";
+@import "fumadocs-ui/css/generated/docs.css";
+@import "fumadocs-ui/css/generated/shared.css";
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
 
@@ -117,6 +122,10 @@
   --sidebar-accent-foreground: oklch(0.965 0.005 260);
   --sidebar-border: oklch(1 0 0 / 12%);
   --sidebar-ring: oklch(0.62 0.24 264);
+
+  /* fumadocs: 暗色模式下标题/链接用高对比度前景色，而非中亮度主色 */
+  --color-fd-primary: oklch(0.965 0.005 260);
+  --color-fd-primary-foreground: oklch(0.155 0.015 260);
 }
 
 @layer base {
@@ -134,6 +143,29 @@
   }
 }
 
+/*
+ * fumadocs docs prose color overrides — scoped to #nd-docs-layout only.
+ * Maps standard prose CSS variables to fumadocs --color-fd-* tokens so
+ * dark mode and theming work correctly inside docs pages, without
+ * polluting prose styles in the rest of the app (resume preview, etc.).
+ */
+#nd-docs-layout .prose {
+  --tw-prose-body: color-mix(in oklab, var(--color-fd-foreground) 90%, transparent);
+  --tw-prose-headings: var(--color-fd-foreground);
+  --tw-prose-lead: var(--color-fd-foreground);
+  --tw-prose-links: var(--color-fd-foreground);
+  --tw-prose-bold: var(--color-fd-foreground);
+  --tw-prose-counters: var(--color-fd-muted-foreground);
+  --tw-prose-bullets: var(--color-fd-muted-foreground);
+  --tw-prose-hr: var(--color-fd-border);
+  --tw-prose-quotes: var(--color-fd-foreground);
+  --tw-prose-quote-borders: var(--color-fd-border);
+  --tw-prose-captions: var(--color-fd-foreground);
+  --tw-prose-code: var(--color-fd-foreground);
+  --tw-prose-th-borders: var(--color-fd-border);
+  --tw-prose-td-borders: var(--color-fd-border);
+}
+
 /* TipTap / ProseMirror list styles */
 .ProseMirror ul,
 .prose ul {
@@ -148,6 +180,7 @@
   padding-left: 1.5em;
   margin: 0.5em 0;
 }
+
 
 .ProseMirror li,
 .prose li {

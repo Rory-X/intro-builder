@@ -64,10 +64,19 @@ function fullResume(): ResumeContent {
         content: filledDoc(),
       },
     ],
-    skills: [
-      { category: "前端", items: ["React", "TypeScript", "Vue"] },
-      { category: "工具", items: ["Git", "Docker"] },
-    ],
+    skills: {
+      type: "doc",
+      content: [
+        { type: "paragraph", content: [
+          { type: "text", marks: [{ type: "bold" }], text: "前端：" },
+          { type: "text", text: "React、TypeScript、Vue" },
+        ]},
+        { type: "paragraph", content: [
+          { type: "text", marks: [{ type: "bold" }], text: "工具：" },
+          { type: "text", text: "Git、Docker" },
+        ]},
+      ],
+    },
     custom: [],
     sectionOrder: ["basics", "experience", "education", "projects", "skills"],
   };
@@ -281,29 +290,30 @@ describe("computeCompletenessScore", () => {
     expect(projSection.score).toBe(10);
   });
 
-  it("scores skills = 0 when no groups", () => {
+  it("scores skills = 0 when empty doc", () => {
     const content: ResumeContent = {
       ...emptyResumeContent(),
-      skills: [],
+      skills: emptyDoc(),
     };
     const result = computeCompletenessScore(content);
     const skillsSection = result.sections.find((s) => s.key === "skills")!;
     expect(skillsSection.score).toBe(0);
   });
 
-  it("scores skills based on category and items", () => {
+  it("scores skills = 10 when has content", () => {
     const content: ResumeContent = {
       ...emptyResumeContent(),
-      skills: [
-        { category: "前端", items: ["React", "Vue"] },
-        { category: "", items: [] },
-      ],
+      skills: {
+        type: "doc",
+        content: [
+          { type: "paragraph", content: [{ type: "text", text: "React、Vue" }] },
+        ],
+      },
     };
     const result = computeCompletenessScore(content);
     const skillsSection = result.sections.find((s) => s.key === "skills")!;
 
-    // First group: full, second group: empty → average = 5
-    expect(skillsSection.score).toBe(5);
+    expect(skillsSection.score).toBe(10);
   });
 
   it("detects TipTap empty doc as unfilled", () => {

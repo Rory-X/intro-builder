@@ -30,6 +30,9 @@ export async function Header() {
                 模板库
               </Link>
             )}
+            <Link href="/docs" className="rounded-md px-3 py-1.5 text-muted-foreground transition-colors duration-200 hover:bg-accent hover:text-foreground">
+              求职指南
+            </Link>
           </nav>
         </div>
         <div className="flex items-center gap-2">

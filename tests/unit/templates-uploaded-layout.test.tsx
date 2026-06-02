@@ -72,7 +72,7 @@ describe("UploadedLayout", () => {
       />
     );
     const article = container.querySelector("article")!;
-    expect(article.style.getPropertyValue("--accent")).toBe("#9eb8be");
+    expect(article.style.getPropertyValue("--resume-accent")).toBe("#9eb8be");
   });
 
   it("works without decoration (decoration: null)", () => {
@@ -296,11 +296,11 @@ describe("UploadedLayout", () => {
       <UploadedLayout content={demoResume} template={accentTemplate} />
     );
     const article = container.querySelector("article")!;
-    expect(article.style.getPropertyValue("--accent")).toBe("#FF6B6B");
+    expect(article.style.getPropertyValue("--resume-accent")).toBe("#FF6B6B");
 
-    // dateRange span 通过 inline style 消费 var(--accent, fallback)
+    // dateRange span 通过 inline style 消费 var(--resume-accent, fallback)
     const dateRangeEl = container.querySelector(
-      "span[style*='var(--accent'], span[style*='var(--accent,']"
+      "span[style*='var(--resume-accent'], span[style*='var(--resume-accent,']"
     );
     expect(dateRangeEl).not.toBeNull();
   });
@@ -413,7 +413,7 @@ describe("UploadedLayout", () => {
     };
     const customContent = {
       ...demoResume,
-      skills: [{ category: "测试技能", items: ["A", "B"] }],
+      skills: { type: "doc", content: [{ type: "paragraph", content: [{ type: "text", marks: [{ type: "bold" }], text: "测试技能：" }, { type: "text", text: "A、B" }] }] },
     } as typeof demoResume;
     const { container } = render(
       <UploadedLayout content={customContent} template={cardWithSkills} />

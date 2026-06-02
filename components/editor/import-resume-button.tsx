@@ -158,13 +158,13 @@ export function ImportResumeButton() {
 
       {/* Gray backdrop overlay when popover is open during processing */}
       {open && step === "uploading" && (
-        <div className="fixed inset-0 z-40 bg-black/20" aria-hidden="true" />
+        <div className="fixed inset-0 z-30 bg-black/20" aria-hidden="true" />
       )}
 
       <Popover open={open} onOpenChange={handleOpenChange}>
         <PopoverTrigger
           render={
-            <Button variant="outline" size="sm" className="relative z-50 gap-1.5">
+            <Button variant="outline" size="sm" className="relative gap-1.5">
               <FileUp className="h-4 w-4" />
               导入简历
             </Button>
@@ -173,7 +173,7 @@ export function ImportResumeButton() {
         <PopoverContent
           align="end"
           sideOffset={8}
-          className="z-50 w-80"
+          className="z-40 w-80"
         >
           {step === "idle" && (
             <div className="flex flex-col items-center gap-3 py-2">

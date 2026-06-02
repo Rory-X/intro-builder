@@ -137,6 +137,7 @@ describe("StyleSettings v2 (smart-layout 5-dim)", () => {
       pagePadding: 40,
       sectionGap: 16,
       itemGap: 12,
+      photoScale: 1,
     });
   });
 

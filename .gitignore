@@ -58,3 +58,6 @@ public/handcoded/
 docs/*.png
 logo-transparent.png
 screenshots/
+
+# fumadocs generated
+.source

@@ -1,6 +1,5 @@
 import { render, screen } from "@testing-library/react";
 import { describe, expect, it, vi, beforeAll } from "vitest";
-import Landing from "@/app/(marketing)/page";
 
 // Mock IntersectionObserver for motion/react whileInView
 beforeAll(() => {
@@ -15,6 +14,14 @@ beforeAll(() => {
   } as unknown as typeof global.IntersectionObserver;
 });
 
+vi.mock("@/lib/templates/registry-server", () => ({
+  listAllTemplatesAsync: vi.fn().mockResolvedValue([]),
+}));
+
+vi.mock("@/lib/templates/uploaded/fetch", () => ({
+  listUploadedTemplates: vi.fn().mockResolvedValue([]),
+}));
+
 vi.mock("@/lib/templates/classic/Layout", () => ({
   ClassicLayout: () => <div>Classic preview</div>,
 }));
@@ -28,8 +35,10 @@ vi.mock("@/lib/templates/professional/Layout", () => ({
 }));
 
 describe("Landing hero", () => {
-  it("renders the main headline and feature chips", () => {
-    render(<Landing />);
+  it("renders the main headline and feature chips", async () => {
+    const Landing = (await import("@/app/(marketing)/page")).default;
+    const element = await Landing();
+    render(element);
 
     // Headline text
     expect(screen.getByText(/把简历/)).toBeInTheDocument();
@@ -39,8 +48,10 @@ describe("Landing hero", () => {
     expect(screen.getByText("PDF / 分享")).toBeInTheDocument();
   });
 
-  it("shows the features section heading", () => {
-    render(<Landing />);
+  it("shows the features section heading", async () => {
+    const Landing = (await import("@/app/(marketing)/page")).default;
+    const element = await Landing();
+    render(element);
 
     expect(screen.getByText(/不只是简历模板/)).toBeInTheDocument();
   });
