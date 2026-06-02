@@ -1,0 +1,113 @@
+/* ===== 固定区域 ===== */
+.tpl-header {
+  position: relative;
+  text-align: center;
+  padding-bottom: 1.5em;
+}
+
+.banner-bg {
+  width: 100%;
+  height: 120px;
+  overflow: hidden;
+}
+
+.banner-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.avatar {
+  position: absolute;
+  bottom: 0;
+  left: 50%;
+  transform: translateX(-50%) scale(var(--photo-scale));
+  width: 72px;
+  height: 72px;
+  border-radius: 50%;
+  border: 3px solid #fff;
+  object-fit: cover;
+}
+
+.name {
+  margin-top: 0.5em;
+  font-size: 1.6em;
+  font-weight: 700;
+  color: #1a1a1a;
+}
+
+/* ===== 可变区域（消费 CSS 变量） ===== */
+.tpl-body {
+  font-size: var(--font-size);
+  font-family: var(--font-family);
+  line-height: var(--line-height);
+  padding: 0 var(--page-padding);
+}
+
+.subtitle-row {
+  text-align: center;
+  color: #555;
+  margin-bottom: 0.4em;
+}
+
+.dot-sep {
+  margin: 0 0.3em;
+  color: #999;
+}
+
+.contact-bar {
+  text-align: center;
+  color: #444;
+  margin-bottom: 1em;
+}
+
+.contact-sep {
+  margin: 0 0.6em;
+  color: #ccc;
+}
+
+/* ===== 分区 ===== */
+.resume-section {
+  margin-top: var(--section-gap);
+}
+
+.section-title {
+  /* 内部 padding 用 em —— 跟字号联动 */
+  padding: 0.25em 0.6em;
+  margin-bottom: var(--heading-gap);
+  font-size: 1.1em;
+  font-weight: 600;
+  color: #2563eb;
+  background: rgba(37, 99, 235, 0.08);
+  border-left: 3px solid #2563eb;
+}
+
+/* ===== 条目 ===== */
+.resume-item {
+  margin-bottom: var(--item-gap);
+}
+
+.item-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+}
+
+.item-title {
+  font-weight: 600;
+  color: #2563eb;
+}
+
+.item-date {
+  color: #888;
+  font-size: 0.9em;
+}
+
+.item-subtitle {
+  color: #555;
+  font-size: 0.95em;
+}
+
+.item-body {
+  margin-top: 0.3em;
+}

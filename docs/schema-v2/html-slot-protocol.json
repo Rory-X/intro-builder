@@ -1,0 +1,83 @@
+{
+  "_description": "模板 HTML 的 slot 标记协议。引擎解析 data-bind 属性替换为简历内容。",
+
+  "fixed_area": {
+    "_description": "智能排版不影响的区域：banner 装饰、头像（absolute 定位）、姓名",
+    "wrapper": "<header class=\"tpl-header\">",
+    "bindings": [
+      { "tag": "img", "data-bind": "basics.photo", "description": "头像，absolute 定位不影响文档流，通过 var(--photo-scale) 缩放" },
+      { "tag": "h1", "data-bind": "basics.name", "description": "姓名，位置固定" }
+    ]
+  },
+
+  "flexible_area": {
+    "_description": "智能排版影响的区域：目标岗位、求职状态、联系信息、所有正文分区",
+    "wrapper": "<div class=\"tpl-body\">",
+
+    "value_bindings": [
+      { "data-bind": "basics.title", "description": "目标岗位" },
+      { "data-bind": "basics.status", "description": "求职状态" },
+      { "data-bind": "basics.email", "description": "邮箱" },
+      { "data-bind": "basics.phone", "description": "手机号" },
+      { "data-bind": "basics.location", "description": "城市" },
+      { "data-bind": "basics.website", "description": "个人网站" }
+    ],
+
+    "loop_bindings": [
+      {
+        "data-bind": "sectionOrder",
+        "data-template": "section-tpl",
+        "description": "单栏模板用：按 sectionOrder 顺序循环渲染所有分区"
+      },
+      {
+        "data-bind": "sidebarSections",
+        "data-template": "section-tpl",
+        "description": "双栏模板用：只渲染 layout.sidebar.sections 里指定的分区"
+      },
+      {
+        "data-bind": "mainSections",
+        "data-template": "section-tpl",
+        "description": "双栏模板用：渲染不在 sidebar 列表里的分区"
+      },
+      {
+        "data-bind": "section.items",
+        "data-template": "item-tpl",
+        "description": "循环渲染分区内的条目"
+      }
+    ],
+
+    "section_bindings": [
+      { "data-bind": "section.title", "description": "分区标题，如「工作经历」「教育背景」" },
+      { "data-bind": "section.id", "description": "分区 ID，如 experience、education" }
+    ],
+
+    "item_bindings": [
+      { "data-bind": "item.title", "description": "条目标题（experience→公司名，education→学校名，projects→项目名）" },
+      { "data-bind": "item.subtitle", "description": "条目副标题（experience→职位，education→学位+专业+GPA，projects→角色）" },
+      { "data-bind": "item.dateRange", "description": "时间范围，如 2025.06 - 2025.09" },
+      { "data-bind": "item.location", "description": "城市" },
+      { "data-bind": "item.bullets", "description": "条目正文内容（TipTap 富文本渲染）" },
+      { "data-bind": "item.tags", "description": "标签数组（如项目技术栈）" },
+      { "data-bind": "item.link", "description": "链接（如项目 URL）" }
+    ]
+  },
+
+  "css_variable_contract": {
+    "_description": "模板 CSS 必须用这些变量，不能写死对应值",
+    "rules": {
+      "font-size": "正文用 var(--font-size)",
+      "font-family": "正文用 var(--font-family)",
+      "line-height": "正文用 var(--line-height)",
+      "page-padding": "页面左右用 var(--page-padding)",
+      "heading-gap": "section title 外部 margin-bottom 用 var(--heading-gap)",
+      "section-gap": "section 之间 margin-top 用 var(--section-gap)",
+      "item-gap": "item 之间 margin-bottom 用 var(--item-gap)",
+      "photo-scale": "头像用 transform: scale(var(--photo-scale))"
+    },
+    "additional_rules": {
+      "section_title_padding": "内部 padding 必须用 em 单位（跟字号联动），禁止用 px",
+      "colors_and_decorations": "颜色、背景、阴影、圆角可写死（模板锁定）",
+      "decoration_images": "在 HTML 中通过 assets 里的 URL 引用"
+    }
+  }
+}

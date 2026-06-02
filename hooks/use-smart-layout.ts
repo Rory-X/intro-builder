@@ -54,15 +54,20 @@ export function useSmartLayout({ measureRef }: UseSmartLayoutOptions) {
         const ss = mergeStyleSettings(settings);
         const originalStyle = article.getAttribute("style") ?? "";
         article.style.fontSize = `${ss.fontSize}px`;
-        article.style.lineHeight = `${ss.lineHeight}`;
-        article.style.padding = `${ss.pagePadding}px`;
+        article.style.lineHeight = `${ss.bodyLineHeight}`;
+        article.style.paddingTop = "40px";
+        article.style.paddingBottom = "40px";
+        article.style.paddingLeft = `${ss.pagePadding}px`;
+        article.style.paddingRight = `${ss.pagePadding}px`;
         article.style.fontFamily = FONT_MAP[ss.fontFamily].css;
-        // sectionGap/itemGap 走 CSS 变量管道——内置模板的 ResumeSection 和
-        // v2 模板的用户 customCss 都通过 var(--section-gap)/var(--item-gap)
-        // 消费。setProperty/setAttribute("style", original) 恢复机制天然
-        // 覆盖 CSS 自定义属性，不需要单独清理。
+        // sectionGap/itemGap/headingGap 走 CSS 变量管道——内置模板的
+        // ResumeSection 和 v2 模板的用户 customCss 都通过
+        // var(--section-gap)/var(--item-gap)/var(--heading-gap) 消费。
+        // setProperty/setAttribute("style", original) 恢复机制天然覆盖
+        // CSS 自定义属性，不需要单独清理。
         article.style.setProperty("--section-gap", `${ss.sectionGap}px`);
         article.style.setProperty("--item-gap", `${ss.itemGap}px`);
+        article.style.setProperty("--heading-gap", `${ss.headingGap}px`);
 
         // Wait for layout to settle, then measure
         if (rafRef.current) cancelAnimationFrame(rafRef.current);

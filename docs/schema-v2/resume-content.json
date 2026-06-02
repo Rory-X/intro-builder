@@ -1,0 +1,90 @@
+{
+  "_description": "resume.content JSONB 的完整结构",
+
+  "basics": {
+    "_description": "个人基本信息",
+    "name": { "type": "string", "description": "姓名" },
+    "status": { "type": "string", "description": "求职状态，如「大三」「在职看机会」" },
+    "title": { "type": "string", "description": "目标岗位，如「前端开发实习」" },
+    "email": { "type": "string", "description": "邮箱" },
+    "phone": { "type": "string", "description": "手机号" },
+    "location": { "type": "string", "description": "城市" },
+    "website": { "type": "string", "description": "个人网站/GitHub" },
+    "summary": { "type": "string", "description": "个人简介（部分模板展示）" },
+    "photo": { "type": "string", "description": "头像图片 URL" }
+  },
+
+  "education": {
+    "_description": "教育经历数组",
+    "type": "array",
+    "item_schema": {
+      "school": { "type": "string", "description": "学校名" },
+      "degree": { "type": "string", "description": "学位，如「本科」「硕士」" },
+      "major": { "type": "string", "description": "专业" },
+      "location": { "type": "string", "description": "城市" },
+      "start": { "type": "string", "description": "开始时间，如 2023-09" },
+      "end": { "type": "string", "description": "结束时间，如 2027-06" },
+      "gpa": { "type": "string", "description": "GPA，如 3.8/4.0" },
+      "highlights": { "type": "TipTapJSON", "description": "补充描述（富文本）" }
+    }
+  },
+
+  "experience": {
+    "_description": "工作/实习经历数组",
+    "type": "array",
+    "item_schema": {
+      "company": { "type": "string", "description": "公司名" },
+      "title": { "type": "string", "description": "职位" },
+      "start": { "type": "string", "description": "开始时间" },
+      "end": { "type": "string", "description": "结束时间" },
+      "location": { "type": "string", "description": "城市" },
+      "content": { "type": "TipTapJSON", "description": "工作内容描述（富文本）" }
+    }
+  },
+
+  "projects": {
+    "_description": "项目经历数组",
+    "type": "array",
+    "item_schema": {
+      "name": { "type": "string", "description": "项目名" },
+      "role": { "type": "string", "description": "角色，如「独立开发」「核心成员」" },
+      "location": { "type": "string", "description": "城市" },
+      "start": { "type": "string", "description": "开始时间" },
+      "end": { "type": "string", "description": "结束时间" },
+      "stack": { "type": "string[]", "description": "技术栈标签" },
+      "link": { "type": "string", "description": "项目链接" },
+      "content": { "type": "TipTapJSON", "description": "项目描述（富文本）" }
+    }
+  },
+
+  "skills": {
+    "type": "TipTapJSON",
+    "_description": "专业技能（富文本，一整块）"
+  },
+
+  "custom": {
+    "_description": "用户自建的自定义分区数组",
+    "type": "array",
+    "item_schema": {
+      "id": { "type": "string", "description": "分区唯一 ID" },
+      "title": { "type": "string", "description": "分区标题，如「荣誉奖项」" },
+      "content": { "type": "TipTapJSON", "description": "分区内容（富文本）" }
+    }
+  },
+
+  "sectionOrder": {
+    "type": "string[]",
+    "_description": "分区排列顺序",
+    "example": ["experience", "education", "projects", "skills"]
+  },
+
+  "styleSettings": {
+    "_description": "排版设置，所有值通过 CSS 变量注入到模板。结构见 style-settings.json"
+  },
+
+  "smartLayout": {
+    "_description": "智能排版状态",
+    "enabled": { "type": "boolean", "description": "是否开启智能排版" },
+    "originalSettings": { "type": "styleSettings", "description": "开启前的原始排版设置备份，用于恢复" }
+  }
+}

@@ -45,14 +45,14 @@ export function ProfessionalHeader({ basics, photoScale = 1 }: { basics: ResumeC
   const scaledPR = `${BASE_PHOTO_PR * photoScale}rem`;
 
   return (
-    <div className="relative w-full">
+    <div className="w-full">
       {hasPhoto && (
         // eslint-disable-next-line @next/next/no-img-element
         <img
           src={basics.photo}
           alt={basics.name}
-          className="absolute top-0 right-0 rounded-sm object-contain object-top"
-          style={{ width: scaledW, height: scaledH }}
+          className="absolute rounded-sm object-contain object-top"
+          style={{ width: scaledW, height: scaledH, top: "40px", right: "40px" }}
         />
       )}
       <div style={hasPhoto ? { paddingRight: scaledPR } : undefined}>
