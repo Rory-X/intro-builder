@@ -31,7 +31,7 @@ import type { UploadedTemplate } from "./uploaded/types";
 export type SerializableResolvedTemplate =
   | { source: "builtin"; id: BuiltinTemplateId }
   | { source: "uploaded"; id: string; template: UploadedTemplate }
-  | { source: "unified"; id: string; html: string; css: string | null; templateId: string };
+  | { source: "unified"; id: string; html: string; css: string | null; templateId: string; sidebarSections?: string[] };
 
 export function toSerializable(
   resolved: ResolvedTemplateMeta,
@@ -39,15 +39,21 @@ export function toSerializable(
   if (resolved.source === "builtin") {
     return { source: "builtin", id: resolved.id };
   }
-  // 如果 uploaded 模板有新的 html 字段（v2 统一路径），优先用 unified 形状
+  // uploaded 模板有 customHtml 时走 unified 路径（SlotRenderer）
   const t = resolved.template;
-  if ((t as Record<string, unknown>).html) {
+  if (t.customHtml) {
+    const tplLayout = (t as Record<string, unknown>).templateLayout as
+      | { type: string; sidebar?: { sections?: string[] } }
+      | null;
+    const sidebarSections =
+      tplLayout?.type === "horizontal" ? tplLayout.sidebar?.sections : undefined;
     return {
       source: "unified",
       id: resolved.id,
-      html: (t as Record<string, unknown>).html as string,
-      css: ((t as Record<string, unknown>).css as string | null) ?? t.customCss,
+      html: t.customHtml,
+      css: t.customCss,
       templateId: t.id,
+      sidebarSections,
     };
   }
   return {
@@ -75,6 +81,7 @@ export function ClientTemplateRenderFromSerializable({
         content={layoutProps.content}
         styleSettings={layoutProps.styleSettings ?? DEFAULT_STYLE_SETTINGS}
         templateId={resolved.templateId}
+        sidebarSections={resolved.sidebarSections}
       />
     );
   }

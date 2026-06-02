@@ -1,0 +1,44 @@
+<header class="tpl-header" data-pagination-header>
+  <img data-bind="basics.photo" class="classic-photo" />
+  <h1 data-bind="basics.name" class="classic-name"></h1>
+</header>
+
+<div class="tpl-body">
+  <div class="classic-subtitle">
+    <slot data-bind="basics.title"></slot>
+  </div>
+  <div class="classic-contact">
+    <span class="classic-contact-item"><slot data-bind="basics.phone"></slot></span>
+    <span class="classic-contact-item"><slot data-bind="basics.email"></slot></span>
+    <span class="classic-contact-item"><slot data-bind="basics.website"></slot></span>
+    <span class="classic-contact-item"><slot data-bind="basics.location"></slot></span>
+    <span class="classic-contact-item"><slot data-bind="basics.status"></slot></span>
+  </div>
+
+  <slot data-bind="sectionOrder" data-template="section-tpl"></slot>
+
+  <template id="section-tpl">
+    <section class="classic-section" data-pagination-section>
+      <div class="classic-section-title" data-pagination-section-header>
+        <h2><slot data-bind="section.title"></slot></h2>
+      </div>
+      <div class="classic-section-content">
+        <slot data-bind="section.items" data-template="item-tpl"></slot>
+      </div>
+    </section>
+  </template>
+
+  <template id="item-tpl">
+    <div class="classic-item" data-pagination-item>
+      <div class="classic-item-header">
+        <span class="classic-item-primary">
+          <span class="classic-item-title"><slot data-bind="item.title"></slot></span>
+          <span class="classic-item-sep"> — </span>
+          <span class="classic-item-subtitle"><slot data-bind="item.subtitle"></slot></span>
+        </span>
+        <span class="classic-item-date"><slot data-bind="item.dateRange"></slot></span>
+      </div>
+      <div class="classic-item-body"><slot data-bind="item.bullets"></slot></div>
+    </div>
+  </template>
+</div>

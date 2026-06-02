@@ -1,0 +1,45 @@
+<div class="modern-layout">
+  <aside class="modern-sidebar">
+    <header class="tpl-header" data-pagination-header>
+      <img data-bind="basics.photo" class="modern-photo" />
+      <h1 data-bind="basics.name" class="modern-name"></h1>
+    </header>
+
+    <div class="modern-sidebar-contact">
+      <div class="modern-contact-item"><slot data-bind="basics.title"></slot></div>
+      <div class="modern-contact-item"><slot data-bind="basics.status"></slot></div>
+      <div class="modern-contact-item"><slot data-bind="basics.phone"></slot></div>
+      <div class="modern-contact-item"><slot data-bind="basics.email"></slot></div>
+      <div class="modern-contact-item"><slot data-bind="basics.location"></slot></div>
+      <div class="modern-contact-item"><slot data-bind="basics.website"></slot></div>
+    </div>
+
+    <slot data-bind="sidebarSections" data-template="section-tpl"></slot>
+  </aside>
+
+  <main class="modern-main tpl-body">
+    <slot data-bind="mainSections" data-template="section-tpl"></slot>
+  </main>
+</div>
+
+<template id="section-tpl">
+  <section class="modern-section" data-pagination-section>
+    <div class="modern-section-title" data-pagination-section-header>
+      <h2><slot data-bind="section.title"></slot></h2>
+    </div>
+    <div class="modern-section-content">
+      <slot data-bind="section.items" data-template="item-tpl"></slot>
+    </div>
+  </section>
+</template>
+
+<template id="item-tpl">
+  <div class="modern-item" data-pagination-item>
+    <div class="modern-item-header">
+      <span class="modern-item-title"><slot data-bind="item.title"></slot></span>
+      <span class="modern-item-date"><slot data-bind="item.dateRange"></slot></span>
+    </div>
+    <div class="modern-item-subtitle"><slot data-bind="item.subtitle"></slot></div>
+    <div class="modern-item-body"><slot data-bind="item.bullets"></slot></div>
+  </div>
+</template>

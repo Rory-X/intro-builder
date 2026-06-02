@@ -1,0 +1,111 @@
+/* ===== Modern Template (Dual Column) ===== */
+
+.modern-layout {
+  display: grid;
+  grid-template-columns: 240px 1fr;
+  min-height: 100%;
+}
+
+/* --- Sidebar --- */
+.modern-sidebar {
+  padding: 1.5em 1em;
+  border-right: 1px solid #e5e5e5;
+  font-size: var(--font-size);
+  font-family: var(--font-family);
+  line-height: var(--line-height);
+}
+
+.tpl-header {
+  text-align: center;
+  margin-bottom: 1em;
+  break-inside: avoid;
+}
+
+.modern-photo {
+  display: block;
+  margin: 0 auto 0.5em;
+  width: calc(6rem * var(--photo-scale, 1));
+  height: calc(6rem * var(--photo-scale, 1));
+  border-radius: 50%;
+  object-fit: cover;
+}
+
+.modern-name {
+  font-size: 1.3em;
+  font-weight: 700;
+  color: #171717;
+}
+
+.modern-sidebar-contact {
+  margin-bottom: 1em;
+  font-size: 0.8em;
+  color: #525252;
+}
+
+.modern-contact-item {
+  margin-bottom: 0.3em;
+  word-break: break-all;
+}
+
+.modern-contact-item:empty {
+  display: none;
+}
+
+/* --- Main --- */
+.modern-main {
+  padding: 1.5em;
+  font-size: var(--font-size);
+  font-family: var(--font-family);
+  line-height: var(--line-height);
+}
+
+/* --- 共用分区样式 --- */
+.modern-section {
+  margin-top: var(--section-gap);
+  break-inside: avoid;
+}
+
+.modern-section:first-child {
+  margin-top: 0;
+}
+
+.modern-section-title h2 {
+  margin: 0;
+  padding-bottom: 0.2em;
+  border-bottom: 1px solid #d4d4d4;
+  font-size: 0.9em;
+  font-weight: 700;
+  margin-bottom: var(--heading-gap);
+}
+
+/* --- 条目 --- */
+.modern-item {
+  margin-bottom: var(--item-gap);
+  break-inside: avoid;
+}
+
+.modern-item-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+}
+
+.modern-item-title {
+  font-weight: 600;
+  color: #171717;
+}
+
+.modern-item-date {
+  font-size: 0.8em;
+  color: #737373;
+  white-space: nowrap;
+}
+
+.modern-item-subtitle {
+  font-size: 0.85em;
+  color: #525252;
+}
+
+.modern-item-body {
+  margin-top: 0.2em;
+}

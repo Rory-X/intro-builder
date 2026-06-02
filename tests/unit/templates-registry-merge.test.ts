@@ -39,7 +39,8 @@ const mockTemplate: UploadedTemplate = {
 describe("getTemplateMetaAsync", () => {
   beforeEach(() => vi.clearAllMocks());
 
-  it("returns built-in meta without hitting DB for built-in ids", async () => {
+  it("returns built-in meta for built-in ids (DB miss fallback)", async () => {
+    vi.mocked(fetchUploadedTemplate).mockResolvedValue(null);
     for (const id of BUILTIN_TEMPLATE_IDS) {
       const resolved = await getTemplateMetaAsync(id);
       expect(resolved.source).toBe("builtin");
@@ -48,7 +49,6 @@ describe("getTemplateMetaAsync", () => {
         expect(resolved.meta.id).toBe(id);
       }
     }
-    expect(fetchUploadedTemplate).not.toHaveBeenCalled();
   });
 
   it("queries DB for unknown id and returns uploaded template", async () => {

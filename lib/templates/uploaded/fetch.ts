@@ -110,8 +110,9 @@ export function parseTemplateRow(
     thumbnailUrl: row.thumbnailUrl,
     decoration: row.decoration,
     layout: row.layout,
-    customHtml: row.customHtml,
-    customCss: row.customCss,
+    // v2 统一路径：优先读新字段 html/css，fallback 旧字段 customHtml/customCss
+    customHtml: row.html ?? row.customHtml,
+    customCss: row.css ?? row.customCss,
     category: row.category,
     features: row.features,
   };
@@ -123,5 +124,8 @@ export function parseTemplateRow(
     );
     return null;
   }
-  return result.data;
+  // Attach templateLayout for sidebar sections (v2 unified path)
+  const parsed = result.data as UploadedTemplateType & { templateLayout?: unknown };
+  parsed.templateLayout = row.templateLayout;
+  return parsed;
 }

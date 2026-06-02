@@ -111,7 +111,7 @@ export type ItemBinding = keyof typeof ITEM_BINDINGS;
 
 // ─── Loop slots ───────────────────────────────────────────────────
 
-export const LOOP_BINDINGS = ["sectionOrder", "section.items"] as const;
+export const LOOP_BINDINGS = ["sectionOrder", "sidebarSections", "mainSections", "section.items"] as const;
 export type LoopBinding = (typeof LOOP_BINDINGS)[number];
 
 // ─── All bindings union ───────────────────────────────────────────

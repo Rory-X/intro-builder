@@ -43,19 +43,18 @@ function isBuiltinId(id: string): id is BuiltinTemplateId {
 export async function getTemplateMetaAsync(
   id: string | null | undefined,
 ): Promise<ResolvedTemplateMeta> {
-  // Built-in fast path — no DB call
-  if (id && isBuiltinId(id)) {
-    const meta = TEMPLATES.find((t) => t.id === id)!;
-    return { source: "builtin", id, meta };
-  }
-  // DB lookup for non-empty unknown ids
+  // 尝试从 DB 查（含 builtin — 它们现在也有 html 字段了）
   if (id) {
     const dbTemplate = await fetchUploadedTemplate(id);
     if (dbTemplate) {
       return { source: "uploaded", id: dbTemplate.id, template: dbTemplate };
     }
   }
-  // Fallback to default built-in (DB miss or empty id)
+  // DB 没找到时 fallback 到代码侧 builtin（兼容 DB 未 seed 的情况）
+  if (id && isBuiltinId(id)) {
+    const meta = TEMPLATES.find((t) => t.id === id)!;
+    return { source: "builtin", id, meta };
+  }
   const fallback = TEMPLATES.find((t) => t.id === DEFAULT_TEMPLATE_ID)!;
   return { source: "builtin", id: DEFAULT_TEMPLATE_ID, meta: fallback };
 }

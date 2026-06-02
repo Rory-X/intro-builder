@@ -1,0 +1,136 @@
+/* ===== Professional Template ===== */
+
+/* --- 固定区域：header --- */
+.tpl-header {
+  position: relative;
+  margin-bottom: 0.5em;
+  padding-bottom: 0.5em;
+  break-inside: avoid;
+}
+
+.pro-photo {
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: calc(4rem * var(--photo-scale, 1));
+  height: calc(5.25rem * var(--photo-scale, 1));
+  border-radius: 4px;
+  object-fit: contain;
+  object-position: top;
+}
+
+.pro-name {
+  padding-bottom: 0.4em;
+  text-align: center;
+  font-size: 1.65em;
+  font-weight: 700;
+  line-height: 1.2;
+  letter-spacing: -0.01em;
+  color: #171717;
+}
+
+/* --- 可变区域 --- */
+.tpl-body {
+  font-size: var(--font-size);
+  font-family: var(--font-family);
+  line-height: var(--line-height);
+  padding: 0 var(--page-padding);
+}
+
+/* --- 联系信息 --- */
+.pro-contact {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.3em;
+  margin-bottom: 0.8em;
+}
+
+.pro-contact-row {
+  display: flex;
+  justify-content: center;
+  gap: 2em;
+  font-size: 0.82em;
+  line-height: 1.4;
+  color: #404040;
+}
+
+.pro-contact-item:empty {
+  display: none;
+}
+
+/* --- 分区 --- */
+.pro-section {
+  margin-top: var(--section-gap);
+  break-inside: avoid;
+}
+
+.pro-section-title {
+  position: relative;
+  display: inline-flex;
+  max-width: 100%;
+  overflow: visible;
+  border-bottom: 1px solid #d4d4d4;
+  width: 100%;
+  line-height: 1;
+  margin-bottom: var(--heading-gap);
+}
+
+.pro-title-shadow {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  background: rgba(115, 115, 115, 0.35);
+  clip-path: polygon(0 0, calc(100% - 12px) 0, 100% 100%, 0 100%);
+  transform: translateX(18%) scale(0.88);
+  transform-origin: bottom left;
+}
+
+.pro-title-tab {
+  position: relative;
+  z-index: 1;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4em;
+  margin: 0;
+  padding: 0.3em 0.75em 0.3em 0.6em;
+  font-size: 0.92em;
+  font-weight: 700;
+  line-height: 1.4;
+  color: #fff;
+  background: var(--primary, #171717);
+  clip-path: polygon(0 0, calc(100% - 12px) 0, 100% 100%, 0 100%);
+}
+
+/* --- 条目 --- */
+.pro-item {
+  margin-bottom: var(--item-gap);
+  break-inside: avoid;
+}
+
+.pro-item-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+}
+
+.pro-item-title {
+  font-weight: 600;
+  color: #171717;
+}
+
+.pro-item-meta {
+  font-size: 0.85em;
+  color: #525252;
+  white-space: nowrap;
+}
+
+.pro-item-subtitle {
+  font-size: 0.9em;
+  color: #525252;
+  margin-top: 0.1em;
+}
+
+.pro-item-body {
+  margin-top: 0.25em;
+}

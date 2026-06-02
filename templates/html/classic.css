@@ -1,0 +1,109 @@
+/* ===== Classic Template ===== */
+
+.tpl-header {
+  position: relative;
+  margin-bottom: 1em;
+  break-inside: avoid;
+}
+
+.classic-photo {
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: calc(5rem * var(--photo-scale, 1));
+  height: calc(5rem * var(--photo-scale, 1));
+  border-radius: 4px;
+  object-fit: cover;
+}
+
+.classic-name {
+  text-align: center;
+  font-size: 2em;
+  font-weight: 700;
+  color: #000;
+}
+
+.tpl-body {
+  font-size: var(--font-size);
+  font-family: var(--font-family);
+  line-height: var(--line-height);
+  padding: 0 var(--page-padding);
+}
+
+.classic-subtitle {
+  text-align: center;
+  font-size: 1em;
+  color: #404040;
+  margin-bottom: 0.4em;
+}
+
+.classic-contact {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 1em;
+  font-size: 0.8em;
+  color: #525252;
+  margin-bottom: 1em;
+}
+
+.classic-contact-item:empty {
+  display: none;
+}
+
+/* --- 分区 --- */
+.classic-section {
+  margin-top: var(--section-gap);
+  break-inside: avoid;
+}
+
+.classic-section-title h2 {
+  margin: 0 0 0.2em 0;
+  padding-bottom: 0.2em;
+  border-bottom: 2px solid #000;
+  font-size: 0.9em;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin-bottom: var(--heading-gap);
+}
+
+/* --- 条目 --- */
+.classic-item {
+  margin-bottom: var(--item-gap);
+  break-inside: avoid;
+}
+
+.classic-item-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+}
+
+.classic-item-primary {
+  font-weight: 600;
+  color: #000;
+}
+
+.classic-item-title {
+  font-weight: 700;
+}
+
+.classic-item-sep {
+  color: #666;
+}
+
+.classic-item-subtitle {
+  font-weight: 400;
+  font-style: italic;
+}
+
+.classic-item-date {
+  font-size: 0.85em;
+  color: #525252;
+  white-space: nowrap;
+}
+
+.classic-item-body {
+  margin-top: 0.2em;
+}

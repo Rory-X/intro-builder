@@ -47,6 +47,7 @@ export type SlotRendererProps = {
   content: ResumeContent;
   styleSettings: StyleSettings;
   templateId: string;
+  sidebarSections?: string[];
 };
 
 /** DOMPurify whitelist —— spec §4.6 SAFE_TAGS */
@@ -74,6 +75,7 @@ export function SlotRenderer({
   content,
   styleSettings,
   templateId,
+  sidebarSections,
 }: SlotRendererProps) {
   // 1. Sanitize HTML
   // Pre-step: HTML5 doesn't treat <slot /> as self-closing (it's not a void
@@ -133,7 +135,7 @@ export function SlotRenderer({
 
   // 6. Parse main HTML, walking nodes; replace <slot> elements
   const reactTree = parse(mainHtml, makeParserOptions({
-    content, templates, ctx: rootCtx, depth: 0, sectionIcons,
+    content, templates, ctx: rootCtx, depth: 0, sectionIcons, sidebarSections,
   }));
 
   // Heading-to-content gap enforcement — see resume-page.tsx for rationale.
@@ -162,6 +164,7 @@ type ParserCtx = {
   ctx: IterationContext;
   depth: number;
   sectionIcons: Record<string, string>;
+  sidebarSections?: string[];
 };
 
 function makeParserOptions(p: ParserCtx): HTMLReactParserOptions {
@@ -272,9 +275,19 @@ function renderLoop(
   tplHtml: string,
   p: ParserCtx,
 ): React.ReactNode {
-  if (loopName === "sectionOrder") {
+  if (loopName === "sectionOrder" || loopName === "sidebarSections" || loopName === "mainSections") {
     const order = p.content.sectionOrder ?? [];
-    const items = order
+
+    // 对于 sidebarSections/mainSections，需要根据 templateLayout 过滤
+    let filteredOrder = order;
+    if (loopName === "sidebarSections" || loopName === "mainSections") {
+      const sidebarSet = new Set(p.sidebarSections ?? []);
+      filteredOrder = loopName === "sidebarSections"
+        ? order.filter((id) => sidebarSet.has(id))
+        : order.filter((id) => !sidebarSet.has(id));
+    }
+
+    const items = filteredOrder
       .map((sectionId) => resolveSection(sectionId, p.content, p.sectionIcons))
       .filter((s): s is NonNullable<typeof s> => s !== null);
     return items.map((section, i) => {
