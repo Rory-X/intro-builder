@@ -275,6 +275,7 @@ function llmDataToResumeContent(data: LLMResumeData): ResumeContent {
       link: p.link || "",
       content: textToTipTapContent(p.contentText || ""),
     })),
+    research: [],
     skills: skillGroupsToDoc(data.skills || []),
     custom: [],
     sectionOrder,

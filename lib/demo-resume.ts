@@ -63,6 +63,7 @@ export const demoResume: ResumeContent = {
       ]),
     },
   ],
+  research: [],
   skills: {
     type: "doc",
     content: [

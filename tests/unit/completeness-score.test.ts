@@ -64,6 +64,7 @@ function fullResume(): ResumeContent {
         content: filledDoc(),
       },
     ],
+    research: [],
     skills: {
       type: "doc",
       content: [

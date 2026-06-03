@@ -70,6 +70,15 @@ function migrateSkills(input: unknown): unknown {
   return { type: "doc", content };
 }
 
+export const Research = z.object({
+  name: z.string().default(""),
+  role: z.string().default(""),
+  start: z.string().default(""),
+  end: z.string().default(""),
+  link: z.string().optional().default(""),
+  content: TipTapJSON.default(() => emptyDoc()),
+});
+
 export const CustomSection = z.object({
   id: z.string(),
   title: z.string().default(""),
@@ -83,15 +92,15 @@ export const MODULE_PRESETS = [
   { id: "experience", label: "实习/工作经历", builtIn: true },
   { id: "education", label: "教育经历", builtIn: true },
   { id: "projects", label: "项目经历", builtIn: true },
+  { id: "research", label: "研究经历", builtIn: true },
   { id: "skills", label: "专业技能", builtIn: true },
   { id: "summary", label: "个人总结", builtIn: false },
   { id: "awards", label: "荣誉奖项", builtIn: false },
-  { id: "research", label: "研究经历", builtIn: false },
   { id: "portfolio", label: "作品集", builtIn: false },
 ] as const;
 
 /** Built-in section keys (have dedicated editors) */
-export const BUILTIN_SECTION_KEYS = new Set(["basics", "experience", "education", "projects", "skills"]);
+export const BUILTIN_SECTION_KEYS = new Set(["basics", "experience", "education", "projects", "research", "skills"]);
 
 // preprocess fires before defaults — required so a legacy row that has
 // `lineHeight: 1.8` but no bodyLineHeight can backfill the new field.
@@ -142,6 +151,7 @@ export const ResumeContent = z.object({
   education: z.array(Education).default([]),
   experience: z.array(Experience).default([]),
   projects: z.array(Project).default([]),
+  research: z.array(Research).default([]),
   skills: z.preprocess(migrateSkills, TipTapJSON).default(() => emptyDoc()),
   custom: z.array(CustomSection).default([]),
   sectionOrder: z.array(z.string()).default([...DEFAULT_SECTION_ORDER]),
@@ -169,6 +179,7 @@ export const emptyResumeContent = (): ResumeContent => ({
   education: [],
   experience: [],
   projects: [],
+  research: [],
   skills: emptyDoc(),
   custom: [],
   sectionOrder: [...DEFAULT_SECTION_ORDER],
