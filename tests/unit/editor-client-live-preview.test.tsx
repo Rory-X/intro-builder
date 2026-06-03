@@ -97,6 +97,37 @@ describe("EditorClient live preview", () => {
     vi.useRealTimers();
   });
 
+  it("keeps the server-resolved unified template for classic", () => {
+    const content = emptyResumeContent();
+    content.basics.name = "统一渲染";
+    const unifiedResolved: SerializableResolvedTemplate = {
+      source: "unified",
+      id: "classic",
+      templateId: "classic",
+      html: '<main class="unified-probe"><slot data-bind="basics.name"></slot></main>',
+      css: ".unified-probe { color: black; }",
+    };
+
+    const { container } = render(
+      <EditorClient
+        id="r1"
+        initialTitle="简历"
+        initialTemplate="classic"
+        initialContent={content}
+        initialIsPublic={false}
+        initialSlug={null}
+        initialUpdatedAtIso={new Date().toISOString()}
+        initialResolvedTemplate={unifiedResolved}
+        uploadedTemplates={[]}
+        allTemplates={BUILTIN_TEMPLATES_LIST}
+        from={null}
+      />,
+    );
+
+    expect(container.querySelector('[data-template-id="classic"] .unified-probe')).not.toBeNull();
+    expect(screen.getAllByText("统一渲染").length).toBeGreaterThan(0);
+  });
+
   it("updates preview and autosaves changed registered field values", async () => {
     const content = emptyResumeContent();
     content.basics.name = "旧姓名";

@@ -1,29 +1,46 @@
 /* ===== Modern Template (Dual Column) ===== */
+/* 对齐旧 React ModernLayout baseline: grid-cols-[240px_1fr] gap-6 */
 
 .modern-layout {
   display: grid;
-  grid-template-columns: 240px 1fr;
+  grid-template-columns: 180px 1fr;
+  gap: 1.5rem;
   min-height: 100%;
+  padding: 40px var(--page-padding);
+  font-family: var(--font-family);
+  font-size: var(--font-size);
+  line-height: var(--body-line-height);
+  color: #000;
+  background: #fff;
 }
 
 /* --- Sidebar --- */
 .modern-sidebar {
-  padding: 1.5em 1em;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
   border-right: 1px solid #e5e5e5;
-  font-size: var(--font-size);
-  font-family: var(--font-family);
-  line-height: var(--line-height);
+  text-align: center;
 }
 
-.tpl-header {
+.modern-profile {
+  display: flex;
+  width: calc(100% + var(--page-padding));
+  margin-left: calc(var(--page-padding) * -1);
+  flex-direction: column;
+  align-items: center;
   text-align: center;
-  margin-bottom: 1em;
+}
+
+.modern-header {
   break-inside: avoid;
+  margin-bottom: 1.5rem;
+  width: 100%;
 }
 
 .modern-photo {
   display: block;
-  margin: 0 auto 0.5em;
+  margin: 0 auto 0.75rem;
   width: calc(6rem * var(--photo-scale, 1));
   height: calc(6rem * var(--photo-scale, 1));
   border-radius: 50%;
@@ -31,20 +48,33 @@
 }
 
 .modern-name {
-  font-size: 1.3em;
+  margin: 0;
+  font-size: 1.25rem;
   font-weight: 700;
   color: #171717;
 }
 
-.modern-sidebar-contact {
-  margin-bottom: 1em;
-  font-size: 0.8em;
+.modern-subtitle {
+  margin-top: 0.25rem;
+  font-size: 0.875em;
   color: #525252;
 }
 
+.modern-subtitle:empty {
+  display: none;
+}
+
+.modern-contact {
+  width: 100%;
+  margin-top: 0.75rem;
+  font-size: 0.75em;
+  line-height: 1.4;
+}
+
 .modern-contact-item {
-  margin-bottom: 0.3em;
+  margin-bottom: 0.375em;
   word-break: break-all;
+  color: #404040;
 }
 
 .modern-contact-item:empty {
@@ -53,13 +83,10 @@
 
 /* --- Main --- */
 .modern-main {
-  padding: 1.5em;
-  font-size: var(--font-size);
-  font-family: var(--font-family);
-  line-height: var(--line-height);
+  min-width: 0;
 }
 
-/* --- 共用分区样式 --- */
+/* --- Section --- */
 .modern-section {
   margin-top: var(--section-gap);
   break-inside: avoid;
@@ -70,42 +97,176 @@
 }
 
 .modern-section-title h2 {
-  margin: 0;
-  padding-bottom: 0.2em;
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  margin: 0 0 var(--heading-gap);
+  padding-bottom: 0.2rem;
   border-bottom: 1px solid #d4d4d4;
-  font-size: 0.9em;
+  font-size: 1.05em;
   font-weight: 700;
-  margin-bottom: var(--heading-gap);
+  line-height: 1.4;
+  color: #171717;
 }
 
-/* --- 条目 --- */
+.modern-section-icon {
+  width: 1em;
+  height: 1em;
+  flex: 0 0 auto;
+}
+
+/* Section icon 语义色 — 对齐 SECTION_META (lib/section-meta.ts) */
+.modern-section[data-pagination-section="experience"] .modern-section-icon {
+  color: #3b82f6;
+}
+
+.modern-section[data-pagination-section="education"] .modern-section-icon {
+  color: #22c55e;
+}
+
+.modern-section[data-pagination-section="projects"] .modern-section-icon {
+  color: #a855f7;
+}
+
+.modern-section[data-pagination-section="skills"] .modern-section-icon {
+  color: #f97316;
+}
+
+.modern-section[data-pagination-section="research"] .modern-section-icon {
+  color: #14b8a6;
+}
+
+.modern-section[data-pagination-section="summary"] .modern-section-icon,
+.modern-section[data-pagination-section="basics"] .modern-section-icon {
+  color: #06b6d4;
+}
+
+.modern-section[data-pagination-section="awards"] .modern-section-icon {
+  color: #eab308;
+}
+
+.modern-section[data-pagination-section="portfolio"] .modern-section-icon {
+  color: #ec4899;
+}
+
+.modern-section:not([data-pagination-section="experience"]):not([data-pagination-section="education"]):not([data-pagination-section="projects"]):not([data-pagination-section="skills"]):not([data-pagination-section="research"]):not([data-pagination-section="summary"]):not([data-pagination-section="basics"]):not([data-pagination-section="awards"]):not([data-pagination-section="portfolio"]) .modern-section-icon {
+  color: #64748b;
+}
+
+/* --- Item --- */
 .modern-item {
   margin-bottom: var(--item-gap);
   break-inside: avoid;
+}
+
+.modern-item:last-child {
+  margin-bottom: 0;
 }
 
 .modern-item-header {
   display: flex;
   justify-content: space-between;
   align-items: baseline;
+  gap: 0.75rem;
+  margin-bottom: 0.25rem;
 }
 
-.modern-item-title {
+.modern-item-primary {
   font-weight: 600;
   color: #171717;
 }
 
-.modern-item-date {
-  font-size: 0.8em;
-  color: #737373;
+.modern-item-primary:empty {
+  display: none;
+}
+
+.modern-item-side {
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 0.125em;
+  font-size: 0.75em;
+  text-align: right;
+}
+
+.modern-item-side:has(.modern-item-date:empty):has(.modern-item-location:empty) {
+  display: none;
+}
+
+.modern-item-date,
+.modern-item-location {
+  font-variant-numeric: tabular-nums;
+  color: #525252;
   white-space: nowrap;
 }
 
-.modern-item-subtitle {
-  font-size: 0.85em;
+.modern-item-date:empty,
+.modern-item-location:empty {
+  display: none;
+}
+
+.modern-item-subtitle,
+.modern-item-meta {
+  font-size: 0.75em;
   color: #525252;
 }
 
-.modern-item-body {
-  margin-top: 0.2em;
+.modern-item-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25em 0.75em;
+}
+
+.modern-item-subtitle:empty,
+.modern-item-meta:empty {
+  display: none;
+}
+
+.modern-item-meta:has(> span:empty):has(> .modern-item-link:empty) {
+  display: none;
+}
+
+.modern-item-meta span:empty {
+  display: none;
+}
+
+/* --- Rich text body (item + section block) --- */
+.modern-item-body,
+.modern-section-body {
+  color: #262626;
+}
+
+.modern-item-body p,
+.modern-section-body p {
+  margin: 0.125rem 0;
+  line-height: 1.5;
+}
+
+.modern-item-body ul,
+.modern-item-body ol,
+.modern-section-body ul,
+.modern-section-body ol {
+  margin: 0.125rem 0;
+  padding-left: 1rem;
+}
+
+.modern-item-body ul {
+  list-style-type: disc;
+}
+
+.modern-item-body ol,
+.modern-section-body ol {
+  list-style-type: decimal;
+}
+
+.modern-item-body li,
+.modern-section-body li {
+  margin: 0;
+  line-height: 1.4;
+}
+
+.modern-item-body li::marker,
+.modern-section-body li::marker {
+  color: #525252;
 }

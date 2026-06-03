@@ -53,8 +53,9 @@ export function ProjectsEditor() {
                 <div className="grid grid-cols-2 gap-3">
                   <div className="flex flex-col gap-1.5"><Label>项目名</Label><Input {...register(`projects.${idx}.name` as const)} /></div>
                   <div className="flex flex-col gap-1.5"><Label>担任角色</Label><Input {...register(`projects.${idx}.role` as const)} /></div>
-                  <div className="flex flex-col gap-1.5"><Label>开始</Label><Input placeholder="2025-03" {...register(`projects.${idx}.start` as const)} /></div>
-                  <div className="flex flex-col gap-1.5"><Label>结束</Label><Input placeholder="2025-06" {...register(`projects.${idx}.end` as const)} /></div>
+                  <div className="flex flex-col gap-1.5"><Label>城市</Label><Input {...register(`projects.${idx}.location` as const)} /></div>
+                  <div className="flex flex-col gap-1.5"><Label>开始</Label><Input {...register(`projects.${idx}.start` as const)} /></div>
+                  <div className="flex flex-col gap-1.5"><Label>结束</Label><Input {...register(`projects.${idx}.end` as const)} /></div>
                 </div>
                 <div className="grid grid-cols-2 gap-3">
                   <div className="flex flex-col gap-1.5">
@@ -64,7 +65,7 @@ export function ProjectsEditor() {
                       onChange={(e) => setValue(`projects.${idx}.stack` as const, e.target.value.split(",").map(s => s.trim()).filter(Boolean), { shouldDirty: true })}
                     />
                   </div>
-                  <div className="flex flex-col gap-1.5"><Label>项目链接</Label><Input placeholder="https://github.com/..." {...register(`projects.${idx}.link` as const)} /></div>
+                  <div className="flex flex-col gap-1.5"><Label>项目链接</Label><Input {...register(`projects.${idx}.link` as const)} /></div>
                 </div>
                 <div>
                   <Label>项目亮点</Label>

@@ -73,9 +73,12 @@ function getDisplayMeta(resolved: SerializableResolvedTemplate): {
     };
   }
   if (resolved.source === "unified") {
+    const meta = TEMPLATES.find((t) => t.id === resolved.id);
     return {
-      name: resolved.id,
-      description: "",
+      name: meta?.name ?? resolved.id,
+      description: meta?.description ?? "",
+      isRecommended: meta?.isRecommended,
+      category: meta?.category,
     };
   }
   return {

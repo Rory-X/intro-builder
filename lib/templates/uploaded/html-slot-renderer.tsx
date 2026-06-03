@@ -13,17 +13,22 @@ import { FONT_MAP } from "@/lib/font-map";
 import { ResumeRichText } from "@/lib/templates/shared/resume-rich-text";
 import {
   BASICS_BINDINGS,
+  PROFILE_BINDINGS,
   IMAGE_BINDINGS,
   ITEM_BINDINGS,
+  CONTACT_BINDINGS,
   SECTION_BINDINGS,
   isImageBinding,
   isLoopBinding,
   isValidBinding,
   resolveSection,
   deriveItems,
+  deriveContacts,
   type IterationContext,
 } from "./slot-bindings";
 import { scopeCss, CssScopeError } from "./css-scope";
+import { lookupLucideIcon } from "@/lib/templates/shared/lucide-icon-lookup";
+import type { SectionIconDeclaration } from "./types";
 
 /**
  * Skill v2 自由排版的核心渲染器。把 Claude 写的 HTML+CSS 转成 React 节点：
@@ -47,12 +52,12 @@ export type SlotRendererProps = {
   content: ResumeContent;
   styleSettings: StyleSettings;
   templateId: string;
-  sidebarSections?: string[];
+  sectionIcons?: Record<string, SectionIconDeclaration>;
 };
 
 /** DOMPurify whitelist —— spec §4.6 SAFE_TAGS */
 const SAFE_TAGS = [
-  "article", "header", "main", "section", "div", "span", "p",
+  "article", "aside", "header", "main", "section", "div", "span", "p",
   "h1", "h2", "h3", "h4", "h5", "h6",
   "ul", "ol", "li",
   "strong", "em", "a", "img", "time",
@@ -75,7 +80,7 @@ export function SlotRenderer({
   content,
   styleSettings,
   templateId,
-  sidebarSections,
+  sectionIcons: sectionIconsProp,
 }: SlotRendererProps) {
   // 1. Sanitize HTML
   // Pre-step: HTML5 doesn't treat <slot /> as self-closing (it's not a void
@@ -129,19 +134,18 @@ export function SlotRenderer({
   };
 
   // 5. Sectioned LookupTable (memoized inside resolveSection per call) — pre-resolve
-  const sectionIcons: Record<string, string> = {}; // template-level overrides not in v2 yet
+  const sectionIcons: Record<string, SectionIconDeclaration> = sectionIconsProp ?? {};
   // Iteration context — empty at top level; populated as we descend into loops
   const rootCtx: IterationContext = {};
 
   // 6. Parse main HTML, walking nodes; replace <slot> elements
   const reactTree = parse(mainHtml, makeParserOptions({
-    content, templates, ctx: rootCtx, depth: 0, sectionIcons, sidebarSections,
+    content, templates, ctx: rootCtx, depth: 0, sectionIcons,
   }));
 
-  // Heading-to-content gap enforcement — see resume-page.tsx for rationale.
-  // v2 uploaded templates frequently set `h2 { margin: 0 }` in customCss,
-  // which after scopeCss gets specificity 0,0,2,2. We need !important to win.
-  const headingGapStyle = `[data-resume-page] h1, [data-resume-page] h2, [data-resume-page] h3, [data-resume-page] h4 { margin-bottom: var(--heading-gap) !important; }`;
+  // heading-gap 由各模板 CSS 自行控制（section-title 容器的 margin-bottom）。
+  // 不再全局注入 h1-h4 的 margin-bottom —— 那会把 section title 内部的 h2
+  // 也撑开（bar 背景变大的 bug 根源）。
 
   return (
     <div
@@ -149,7 +153,6 @@ export function SlotRenderer({
       data-resume-page=""
       style={cssVars as React.CSSProperties}
     >
-      <style dangerouslySetInnerHTML={{ __html: headingGapStyle }} />
       {scopedCss && <style dangerouslySetInnerHTML={{ __html: scopedCss }} />}
       {reactTree}
     </div>
@@ -163,8 +166,7 @@ type ParserCtx = {
   templates: Map<string, string>;
   ctx: IterationContext;
   depth: number;
-  sectionIcons: Record<string, string>;
-  sidebarSections?: string[];
+  sectionIcons: Record<string, SectionIconDeclaration>;
 };
 
 function makeParserOptions(p: ParserCtx): HTMLReactParserOptions {
@@ -208,11 +210,7 @@ function renderSlotElement(
     if (!tplId) {
       return placeholder(`loop slot 缺 data-template: ${binding}`);
     }
-    const tplHtml = p.templates.get(tplId);
-    if (!tplHtml) {
-      return placeholder(`模板未定义: ${tplId}`);
-    }
-    return <>{renderLoop(binding, tplHtml, p)}</>;
+    return <>{renderLoop(binding, tplId, p)}</>;
   }
 
   // Value slot — context-aware resolution
@@ -221,11 +219,25 @@ function renderSlotElement(
     return <>{fn(p.content)}</>;
   }
 
+  if (binding in PROFILE_BINDINGS) {
+    const fn = PROFILE_BINDINGS[binding as keyof typeof PROFILE_BINDINGS];
+    return <>{fn(p.content)}</>;
+  }
+
   if (binding in SECTION_BINDINGS) {
     if (!p.ctx.section) {
       return placeholder(`ctx 不可用: ${binding}（必须在 sectionOrder loop 内）`);
     }
-    const fn = SECTION_BINDINGS[binding as keyof typeof SECTION_BINDINGS];
+    if (binding === "section.icon") {
+      return renderIconSlot(node, p.ctx.section.icon, p.ctx.section.iconColor);
+    }
+    if (binding === "section.body") {
+      const body = SECTION_BINDINGS["section.body"](p.ctx, p.content) as TipTapJSON;
+      return <ResumeRichText content={body} />;
+    }
+    const fn = SECTION_BINDINGS[
+      binding as Exclude<keyof typeof SECTION_BINDINGS, "section.body">
+    ];
     return <>{fn(p.ctx)}</>;
   }
 
@@ -244,6 +256,17 @@ function renderSlotElement(
       return <>{tags.join(" · ")}</>;
     }
     const fn = ITEM_BINDINGS[binding as keyof typeof ITEM_BINDINGS];
+    return <>{fn(p.ctx)}</>;
+  }
+
+  if (binding in CONTACT_BINDINGS) {
+    if (!p.ctx.contact) {
+      return placeholder(`ctx 不可用: ${binding}（必须在 profile.contacts loop 内）`);
+    }
+    if (binding === "contact.icon") {
+      return renderIconSlot(node, p.ctx.contact.icon);
+    }
+    const fn = CONTACT_BINDINGS[binding as keyof typeof CONTACT_BINDINGS];
     return <>{fn(p.ctx)}</>;
   }
 
@@ -267,31 +290,38 @@ function renderImageBinding(node: Element, p: ParserCtx): ReactElement {
   const props = attributesToProps(node.attribs);
   delete (props as Record<string, unknown>)["data-bind"];
   // eslint-disable-next-line @next/next/no-img-element -- Puppeteer PDF uses plain img; alt 由模板作者在 data-bind img 上提供
-  return <img {...props} src={url} />;
+  return <img alt="" {...props} src={url} />;
 }
 
 function renderLoop(
   loopName: string,
-  tplHtml: string,
+  tplId: string,
   p: ParserCtx,
 ): React.ReactNode {
-  if (loopName === "sectionOrder" || loopName === "sidebarSections" || loopName === "mainSections") {
+  if (loopName === "profile.contacts") {
+    const tplHtml = p.templates.get(tplId);
+    if (!tplHtml) return placeholder(`模板未定义: ${tplId}`);
+    return deriveContacts(p.content).map((contact, i) => {
+      const childCtx: IterationContext = { ...p.ctx, contact };
+      return (
+        <SlotChunk
+          key={`contact-${i}-${contact.type}`}
+          html={tplHtml}
+          parserCtx={{ ...p, ctx: childCtx, depth: p.depth + 1 }}
+        />
+      );
+    });
+  }
+
+  if (loopName === "sectionOrder") {
     const order = p.content.sectionOrder ?? [];
-
-    // 对于 sidebarSections/mainSections，需要根据 templateLayout 过滤
-    let filteredOrder = order;
-    if (loopName === "sidebarSections" || loopName === "mainSections") {
-      const sidebarSet = new Set(p.sidebarSections ?? []);
-      filteredOrder = loopName === "sidebarSections"
-        ? order.filter((id) => sidebarSet.has(id))
-        : order.filter((id) => !sidebarSet.has(id));
-    }
-
-    const items = filteredOrder
+    const items = order
       .map((sectionId) => resolveSection(sectionId, p.content, p.sectionIcons))
       .filter((s): s is NonNullable<typeof s> => s !== null);
     return items.map((section, i) => {
       const childCtx: IterationContext = { ...p.ctx, section };
+      const tplHtml = selectTemplateForSection(p.templates, tplId, section);
+      if (!tplHtml) return placeholder(`模板未定义: ${tplId}`);
       const tplWithAttr = injectAttrIntoFirstTag(
         tplHtml,
         "data-pagination-section",
@@ -312,6 +342,8 @@ function renderLoop(
       return placeholder(`section.items 必须在 sectionOrder loop 内`);
     }
     const items = deriveItems(p.ctx, p.content);
+    const tplHtml = selectTemplateForSection(p.templates, tplId, p.ctx.section);
+    if (!tplHtml) return placeholder(`模板未定义: ${tplId}`);
     const tplWithAttr = injectAttrIntoFirstTag(tplHtml, "data-pagination-item");
     return items.map((item, i) => {
       const childCtx: IterationContext = { ...p.ctx, item };
@@ -326,6 +358,29 @@ function renderLoop(
   }
 
   return placeholder(`未知 loop: ${loopName}`);
+}
+
+function renderIconSlot(node: Element, iconName: string, iconColor?: string): ReactElement {
+  if (!iconName) return <></>;
+  const Icon = lookupLucideIcon(iconName);
+  if (!Icon) return <></>;
+  const props = attributesToProps(node.attribs) as Record<string, unknown>;
+  delete props["data-bind"];
+  const style = iconColor ? { color: iconColor } : undefined;
+  return <Icon aria-hidden="true" focusable="false" {...props} style={style} />;
+}
+
+function selectTemplateForSection(
+  templates: Map<string, string>,
+  baseId: string,
+  section: NonNullable<IterationContext["section"]>,
+): string | null {
+  return (
+    templates.get(`${baseId}-${section.id}`) ??
+    templates.get(`${baseId}-${section.kind}`) ??
+    templates.get(baseId) ??
+    null
+  );
 }
 
 /**

@@ -83,7 +83,7 @@ export const demoResume: ResumeContent = {
   },
   custom: [
     {
-      id: "custom_awards",
+      id: "awards",
       title: "荣誉奖项",
       content: bulletsToDoc([
         "2023 字节跳动年度新人奖（部门 Top 5%）",
@@ -98,6 +98,6 @@ export const demoResume: ResumeContent = {
     "education",
     "projects",
     "skills",
-    "custom_awards",
+    "awards",
   ],
 };

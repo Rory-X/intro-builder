@@ -43,38 +43,41 @@ export function useSmartLayout({ measureRef }: UseSmartLayoutOptions) {
           return;
         }
 
-        // Find the article element inside the container
-        const article = container.querySelector("article") as HTMLElement | null;
-        if (!article) {
+        // Find the resume root inside the container. v2 模板渲染出的根节点是
+        // <div data-resume-page>（见 html-slot-renderer），不再是旧的 <article>。
+        // 找错节点会走进下面的 fallback、不套用测试设置 → measure() 对任何
+        // settings 都返回同一个高度 → 二分搜索空转、算法退化成"不压或压到底"
+        // （zoo 反馈的"重度压缩 + 下方大片留白"根因）。article 作为旧模板兜底。
+        const measureEl =
+          (container.querySelector("[data-resume-page]") as HTMLElement | null) ??
+          (container.querySelector("article") as HTMLElement | null);
+        if (!measureEl) {
           resolve(container.scrollHeight);
           return;
         }
 
-        // Apply settings temporarily
+        // Apply settings temporarily. v2 模板所有排版参数都走 CSS 变量管道
+        // （--font-size / --body-line-height / --heading-gap / ...，见
+        // html-slot-renderer 的 cssVars），所以这里覆盖 CSS 变量即可让模板 CSS
+        // 通过 var() 读到测试值，不必直接写 fontSize/padding。CSS 自定义属性会
+        // 向下继承到 .xxx-template，字号/行距/间距随之变化。
         const ss = mergeStyleSettings(settings);
-        const originalStyle = article.getAttribute("style") ?? "";
-        article.style.fontSize = `${ss.fontSize}px`;
-        article.style.lineHeight = `${ss.bodyLineHeight}`;
-        article.style.paddingTop = "40px";
-        article.style.paddingBottom = "40px";
-        article.style.paddingLeft = `${ss.pagePadding}px`;
-        article.style.paddingRight = `${ss.pagePadding}px`;
-        article.style.fontFamily = FONT_MAP[ss.fontFamily].css;
-        // sectionGap/itemGap/headingGap 走 CSS 变量管道——内置模板的
-        // ResumeSection 和 v2 模板的用户 customCss 都通过
-        // var(--section-gap)/var(--item-gap)/var(--heading-gap) 消费。
-        // setProperty/setAttribute("style", original) 恢复机制天然覆盖
-        // CSS 自定义属性，不需要单独清理。
-        article.style.setProperty("--section-gap", `${ss.sectionGap}px`);
-        article.style.setProperty("--item-gap", `${ss.itemGap}px`);
-        article.style.setProperty("--heading-gap", `${ss.headingGap}px`);
+        const originalStyle = measureEl.getAttribute("style") ?? "";
+        measureEl.style.setProperty("--font-family", FONT_MAP[ss.fontFamily].css);
+        measureEl.style.setProperty("--font-size", `${ss.fontSize}px`);
+        measureEl.style.setProperty("--line-height", `${ss.bodyLineHeight}`);
+        measureEl.style.setProperty("--body-line-height", `${ss.bodyLineHeight}`);
+        measureEl.style.setProperty("--heading-gap", `${ss.headingGap}px`);
+        measureEl.style.setProperty("--page-padding", `${ss.pagePadding}px`);
+        measureEl.style.setProperty("--section-gap", `${ss.sectionGap}px`);
+        measureEl.style.setProperty("--item-gap", `${ss.itemGap}px`);
 
         // Wait for layout to settle, then measure
         if (rafRef.current) cancelAnimationFrame(rafRef.current);
         rafRef.current = requestAnimationFrame(() => {
           const totalHeight = container.scrollHeight;
           // Restore original style
-          article.setAttribute("style", originalStyle);
+          measureEl.setAttribute("style", originalStyle);
           resolve(totalHeight);
         });
       });

@@ -2,6 +2,7 @@ import type { ResumeContent } from "@/lib/resume-schema";
 import type { TipTapJSON } from "@/lib/tiptap-types";
 import { emptyDoc } from "@/lib/tiptap-types";
 import { getSectionMeta } from "@/lib/section-meta";
+import type { SectionIconDeclaration } from "./types";
 
 /**
  * Slot binding 解析层。SlotRenderer 看到 `<slot data-bind="...">` 时调
@@ -21,16 +22,28 @@ import { getSectionMeta } from "@/lib/section-meta";
  */
 
 export type IterationContext = {
+  /** profile.contacts loop 内可用——当前联系方式 */
+  contact?: ContactView;
   /** sectionOrder loop 内可用——当前迭代到的 section 的 metadata */
   section?: {
     id: string;
     title: string;
     icon: string;
-    /** 区分 basics summary / preset / custom 三种渲染分支 */
-    kind: "basics" | "preset" | "custom";
+    iconColor?: string;
+    /** 通用内容形态：block = 一段富文本，list = 多个条目 */
+    kind: "block" | "list";
+    /** 数据来源，用于 adapter 内部取值；模板通常不需要关心 */
+    source: "basics" | "preset" | "custom";
   };
   /** section.items loop 内可用——通用化后的 item */
   item?: ItemView;
+};
+
+export type ContactView = {
+  type: "email" | "phone" | "location" | "website";
+  icon: string;
+  label: string;
+  href: string;
 };
 
 /**
@@ -43,6 +56,8 @@ export type ItemView = {
   title: string;
   /** 副标题——experience.title / education.degree+major+gpa / projects.role / skills.items */
   subtitle: string;
+  /** 辅助信息行——location / tags / other compact metadata */
+  meta: string;
   /** 日期区间，例如 "2022.07 – 至今"。可空字符串 */
   dateRange: string;
   /** 地点 */
@@ -70,6 +85,21 @@ export const BASICS_BINDINGS = {
 
 export type BasicsBinding = keyof typeof BASICS_BINDINGS;
 
+// ─── Profile value slots ─────────────────────────────────────────
+
+export const PROFILE_BINDINGS = {
+  "profile.name": (c: ResumeContent) => c.basics.name,
+  "profile.title": (c: ResumeContent) => c.basics.title,
+  "profile.email": (c: ResumeContent) => c.basics.email,
+  "profile.phone": (c: ResumeContent) => c.basics.phone,
+  "profile.location": (c: ResumeContent) => c.basics.location,
+  "profile.website": (c: ResumeContent) => c.basics.website,
+  "profile.status": (c: ResumeContent) => c.basics.status,
+  "profile.summary": (c: ResumeContent) => c.basics.summary,
+} as const;
+
+export type ProfileBinding = keyof typeof PROFILE_BINDINGS;
+
 // ─── Image binding (<img data-bind="...">) ────────────────────────
 // 图片类 binding 走 SlotRenderer 的 <img> 路径而非 <slot>：引擎把 URL 注入
 // img 的 src，空值则整个 img 不渲染。photo 故意不放进 BASICS_BINDINGS（文本
@@ -77,6 +107,7 @@ export type BasicsBinding = keyof typeof BASICS_BINDINGS;
 // 来（footgun）。集合形式预留未来扩展（如 logo、二维码）。
 export const IMAGE_BINDINGS = {
   "basics.photo": (c: ResumeContent) => c.basics.photo,
+  "profile.photo": (c: ResumeContent) => c.basics.photo,
 } as const;
 
 export type ImageBinding = keyof typeof IMAGE_BINDINGS;
@@ -91,6 +122,9 @@ export const SECTION_BINDINGS = {
   "section.id": (ctx: IterationContext) => ctx.section?.id ?? "",
   "section.title": (ctx: IterationContext) => ctx.section?.title ?? "",
   "section.icon": (ctx: IterationContext) => ctx.section?.icon ?? "",
+  "section.kind": (ctx: IterationContext) => ctx.section?.kind ?? "",
+  "section.body": (ctx: IterationContext, content: ResumeContent) =>
+    ctx.section ? deriveSectionBody(ctx.section, content) : emptyDoc(),
 } as const;
 
 export type SectionBinding = keyof typeof SECTION_BINDINGS;
@@ -100,6 +134,7 @@ export type SectionBinding = keyof typeof SECTION_BINDINGS;
 export const ITEM_BINDINGS = {
   "item.title": (ctx: IterationContext) => ctx.item?.title ?? "",
   "item.subtitle": (ctx: IterationContext) => ctx.item?.subtitle ?? "",
+  "item.meta": (ctx: IterationContext) => ctx.item?.meta ?? "",
   "item.dateRange": (ctx: IterationContext) => ctx.item?.dateRange ?? "",
   "item.location": (ctx: IterationContext) => ctx.item?.location ?? "",
   "item.bullets": (ctx: IterationContext) => ctx.item?.bullets ?? emptyDoc(),
@@ -109,21 +144,41 @@ export const ITEM_BINDINGS = {
 
 export type ItemBinding = keyof typeof ITEM_BINDINGS;
 
+// ─── Contact value slot (inside profile.contacts loop) ───────────
+
+export const CONTACT_BINDINGS = {
+  "contact.type": (ctx: IterationContext) => ctx.contact?.type ?? "",
+  "contact.icon": (ctx: IterationContext) => ctx.contact?.icon ?? "",
+  "contact.label": (ctx: IterationContext) => ctx.contact?.label ?? "",
+  "contact.href": (ctx: IterationContext) => ctx.contact?.href ?? "",
+} as const;
+
+export type ContactBinding = keyof typeof CONTACT_BINDINGS;
+
 // ─── Loop slots ───────────────────────────────────────────────────
 
-export const LOOP_BINDINGS = ["sectionOrder", "sidebarSections", "mainSections", "section.items"] as const;
+export const LOOP_BINDINGS = ["profile.contacts", "sectionOrder", "section.items"] as const;
 export type LoopBinding = (typeof LOOP_BINDINGS)[number];
 
 // ─── All bindings union ───────────────────────────────────────────
 
-export type SlotBinding = BasicsBinding | ImageBinding | SectionBinding | ItemBinding | LoopBinding;
+export type SlotBinding =
+  | BasicsBinding
+  | ProfileBinding
+  | ImageBinding
+  | SectionBinding
+  | ItemBinding
+  | ContactBinding
+  | LoopBinding;
 
 export function isValidBinding(name: string): name is SlotBinding {
   return (
     name in BASICS_BINDINGS ||
+    name in PROFILE_BINDINGS ||
     name in IMAGE_BINDINGS ||
     name in SECTION_BINDINGS ||
     name in ITEM_BINDINGS ||
+    name in CONTACT_BINDINGS ||
     (LOOP_BINDINGS as readonly string[]).includes(name)
   );
 }
@@ -146,19 +201,19 @@ export function isLoopBinding(name: string): name is LoopBinding {
 export function resolveSection(
   sectionId: string,
   content: ResumeContent,
-  sectionIcons: Record<string, string>,
+  sectionIcons: Record<string, SectionIconDeclaration>,
 ): IterationContext["section"] | null {
+  const decl = sectionIcons[sectionId];
   // basics: summary may be empty
   if (sectionId === "basics") {
     if (!content.basics.summary) return null;
     return {
       id: "basics",
-      // 硬编码 "自我介绍" 对齐内置模板（render-sections.tsx / modern Layout）。
-      // SECTION_META 没有 basics key，getSectionMeta("basics") 会 fallback 到
-      // custom → label "自定义"，与内置不一致。
       title: "自我介绍",
-      icon: sectionIcons.basics ?? "User",
-      kind: "basics",
+      icon: decl?.icon ?? getSectionMeta("basics").iconName,
+      iconColor: decl?.color,
+      kind: "block",
+      source: "basics",
     };
   }
 
@@ -170,8 +225,10 @@ export function resolveSection(
     return {
       id: sectionId,
       title: meta.label,
-      icon: sectionIcons[sectionId] ?? PRESET_DEFAULT_ICONS[sectionId] ?? "Tag",
-      kind: "preset",
+      icon: decl?.icon ?? meta.iconName,
+      iconColor: decl?.color,
+      kind: sectionId === "skills" ? "block" : "list",
+      source: "preset",
     };
   }
 
@@ -183,8 +240,10 @@ export function resolveSection(
     return {
       id: custom.id,
       title: custom.title,
-      icon: sectionIcons[custom.id] ?? "Tag",
-      kind: "custom",
+      icon: decl?.icon ?? getSectionMeta(custom.id).iconName,
+      iconColor: decl?.color,
+      kind: "block",
+      source: "custom",
     };
   }
 
@@ -204,26 +263,10 @@ function isPresetSection(id: string): boolean {
     "experience",
     "education",
     "projects",
+    "research",
     "skills",
   ].includes(id);
 }
-
-/**
- * Default lucide icon names per preset section. Used as fallback when the
- * template's sectionIcons map doesn't override. Names must exist in the
- * lucide whitelist (see template-studio-skill/SKILL.md).
- */
-const PRESET_DEFAULT_ICONS: Record<string, string> = {
-  experience: "Briefcase",
-  education: "GraduationCap",
-  projects: "FolderKanban",
-  skills: "Sparkles",
-  awards: "Award",
-  research: "FlaskConical",
-  portfolio: "Image",
-  activities: "Users",
-  summary: "User",
-};
 
 // ─── Items derivation ─────────────────────────────────────────────
 
@@ -247,6 +290,7 @@ export function deriveItems(
       {
         title: "",
         subtitle: "",
+        meta: "",
         dateRange: "",
         location: "",
         bullets: textToTipTap(content.basics.summary),
@@ -256,7 +300,7 @@ export function deriveItems(
     ];
   }
 
-  if (ctx.section.kind === "custom") {
+  if (ctx.section.source === "custom") {
     const custom = content.custom?.find((cs) => cs.id === id);
     if (!custom) return [];
     return [
@@ -266,6 +310,7 @@ export function deriveItems(
         // 模板里 entry-title slot 渲染空字符串，CSS 自然不占空间。
         title: "",
         subtitle: "",
+        meta: "",
         dateRange: "",
         location: "",
         bullets: custom.content,
@@ -278,12 +323,49 @@ export function deriveItems(
   return derivePresetItems(id, content);
 }
 
+export function deriveContacts(content: ResumeContent): ContactView[] {
+  const { basics } = content;
+  const contacts: Array<ContactView | null> = [
+    basics.phone
+      ? { type: "phone", icon: "Phone", label: basics.phone, href: `tel:${basics.phone}` }
+      : null,
+    basics.email
+      ? { type: "email", icon: "Mail", label: basics.email, href: `mailto:${basics.email}` }
+      : null,
+    basics.website
+      ? {
+          type: "website",
+          icon: "Monitor",
+          label: basics.website,
+          href: /^https?:\/\//i.test(basics.website) ? basics.website : `https://${basics.website}`,
+        }
+      : null,
+    basics.location
+      ? { type: "location", icon: "MapPin", label: basics.location, href: "" }
+      : null,
+  ];
+  return contacts.filter((item): item is ContactView => item !== null);
+}
+
+function deriveSectionBody(
+  section: NonNullable<IterationContext["section"]>,
+  content: ResumeContent,
+): TipTapJSON {
+  if (section.id === "basics") return textToTipTap(content.basics.summary);
+  if (section.id === "skills") return content.skills ?? emptyDoc();
+  if (section.source === "custom") {
+    return content.custom?.find((cs) => cs.id === section.id)?.content ?? emptyDoc();
+  }
+  return emptyDoc();
+}
+
 function derivePresetItems(sectionId: string, content: ResumeContent): ItemView[] {
   switch (sectionId) {
     case "experience":
       return content.experience.map((e) => ({
         title: e.company,
         subtitle: e.title,
+        meta: "",
         dateRange: formatDateRange(e.start, e.end),
         location: e.location,
         bullets: e.content,
@@ -297,6 +379,7 @@ function derivePresetItems(sectionId: string, content: ResumeContent): ItemView[
         subtitle: [e.degree, e.major, e.gpa ? `GPA ${e.gpa}` : ""]
           .filter(Boolean)
           .join(" · "),
+        meta: "",
         dateRange: formatDateRange(e.start, e.end),
         location: e.location,
         bullets: e.highlights,
@@ -308,6 +391,7 @@ function derivePresetItems(sectionId: string, content: ResumeContent): ItemView[
       return content.projects.map((p) => ({
         title: p.name,
         subtitle: p.role,
+        meta: p.stack.length > 0 ? p.stack.join(" · ") : "",
         dateRange: formatDateRange(p.start, p.end),
         location: p.location,
         bullets: p.content,
@@ -315,11 +399,24 @@ function derivePresetItems(sectionId: string, content: ResumeContent): ItemView[
         link: p.link,
       }));
 
+    case "research":
+      return (content.research ?? []).map((r) => ({
+        title: r.name,
+        subtitle: r.role,
+        meta: "",
+        dateRange: formatDateRange(r.start, r.end),
+        location: "",
+        bullets: r.content,
+        tags: [],
+        link: r.link ?? "",
+      }));
+
     case "skills":
       if (!content.skills?.content?.length) return [];
       return [{
         title: "",
         subtitle: "",
+        meta: "",
         dateRange: "",
         location: "",
         bullets: content.skills,

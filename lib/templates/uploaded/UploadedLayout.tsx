@@ -32,6 +32,7 @@ export function UploadedLayout({
         content={content}
         styleSettings={styleSettings ?? DEFAULT_STYLE_SETTINGS}
         templateId={template.id}
+        sectionIcons={template.layout.sectionIcons}
       />
     );
   }
@@ -45,7 +46,16 @@ export function UploadedLayout({
       includeBasicsSummary: true,
       showEmptyPlaceholders,
       itemHeaderVariant: template.layout.itemHeaderVariant,
-      sectionIcons: template.layout.sectionIcons,
+      sectionIcons: Object.fromEntries(
+        Object.entries(template.layout.sectionIcons)
+          .filter(([, v]) => v.icon)
+          .map(([k, v]) => [k, v.icon]),
+      ),
+      sectionIconColors: Object.fromEntries(
+        Object.entries(template.layout.sectionIcons)
+          .filter(([, v]) => v.color)
+          .map(([k, v]) => [k, v.color!]),
+      ),
     },
   );
 

@@ -31,7 +31,28 @@ import type { UploadedTemplate } from "./uploaded/types";
 export type SerializableResolvedTemplate =
   | { source: "builtin"; id: BuiltinTemplateId }
   | { source: "uploaded"; id: string; template: UploadedTemplate }
-  | { source: "unified"; id: string; html: string; css: string | null; templateId: string; sidebarSections?: string[] };
+  | { source: "unified"; id: string; html: string; css: string | null; templateId: string; sectionIcons?: Record<string, { icon: string; color?: string }> };
+
+export function uploadedTemplateToSerializable(
+  id: string,
+  template: UploadedTemplate,
+): SerializableResolvedTemplate {
+  if (template.customHtml) {
+    return {
+      source: "unified",
+      id,
+      html: template.customHtml,
+      css: template.customCss,
+      templateId: template.id,
+      sectionIcons: template.layout.sectionIcons,
+    };
+  }
+  return {
+    source: "uploaded",
+    id,
+    template,
+  };
+}
 
 export function toSerializable(
   resolved: ResolvedTemplateMeta,
@@ -40,27 +61,7 @@ export function toSerializable(
     return { source: "builtin", id: resolved.id };
   }
   // uploaded 模板有 customHtml 时走 unified 路径（SlotRenderer）
-  const t = resolved.template;
-  if (t.customHtml) {
-    const tplLayout = (t as Record<string, unknown>).templateLayout as
-      | { type: string; sidebar?: { sections?: string[] } }
-      | null;
-    const sidebarSections =
-      tplLayout?.type === "horizontal" ? tplLayout.sidebar?.sections : undefined;
-    return {
-      source: "unified",
-      id: resolved.id,
-      html: t.customHtml,
-      css: t.customCss,
-      templateId: t.id,
-      sidebarSections,
-    };
-  }
-  return {
-    source: "uploaded",
-    id: resolved.id,
-    template: resolved.template,
-  };
+  return uploadedTemplateToSerializable(resolved.id, resolved.template);
 }
 
 /**
@@ -72,6 +73,11 @@ export function ClientTemplateRenderFromSerializable({
   resolved,
   ...layoutProps
 }: { resolved: SerializableResolvedTemplate } & TemplateLayoutProps) {
+  // Debug: 确认走的是哪条路径
+  if (typeof window !== "undefined") {
+    console.log("[render] source:", resolved.source, "id:", resolved.source === "unified" ? resolved.templateId : resolved.id);
+  }
+
   // v2 统一路径：html 字段存在，直接走 SlotRenderer
   if (resolved.source === "unified") {
     return (
@@ -81,7 +87,7 @@ export function ClientTemplateRenderFromSerializable({
         content={layoutProps.content}
         styleSettings={layoutProps.styleSettings ?? DEFAULT_STYLE_SETTINGS}
         templateId={resolved.templateId}
-        sidebarSections={resolved.sidebarSections}
+        sectionIcons={resolved.sectionIcons}
       />
     );
   }

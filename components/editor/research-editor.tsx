@@ -52,13 +52,13 @@ export function ResearchEditor() {
               <div className="space-y-3 rounded-lg border border-border/60 bg-background/50 p-4">
                 <div className="grid grid-cols-2 gap-3">
                   <div className="flex flex-col gap-1.5"><Label>课题名</Label><Input {...register(`research.${idx}.name` as const)} /></div>
-                  <div className="flex flex-col gap-1.5"><Label>角色</Label><Input placeholder="研究助理、第一作者…" {...register(`research.${idx}.role` as const)} /></div>
-                  <div className="flex flex-col gap-1.5"><Label>开始</Label><Input placeholder="2025-03" {...register(`research.${idx}.start` as const)} /></div>
-                  <div className="flex flex-col gap-1.5"><Label>结束</Label><Input placeholder="2025-06" {...register(`research.${idx}.end` as const)} /></div>
+                  <div className="flex flex-col gap-1.5"><Label>角色</Label><Input {...register(`research.${idx}.role` as const)} /></div>
+                  <div className="flex flex-col gap-1.5"><Label>开始</Label><Input {...register(`research.${idx}.start` as const)} /></div>
+                  <div className="flex flex-col gap-1.5"><Label>结束</Label><Input {...register(`research.${idx}.end` as const)} /></div>
                 </div>
                 <div className="flex flex-col gap-1.5">
                   <Label>论文链接</Label>
-                  <Input placeholder="DOI 或论文 URL（选填）" {...register(`research.${idx}.link` as const)} />
+                  <Input {...register(`research.${idx}.link` as const)} />
                 </div>
                 <div>
                   <Label>研究描述</Label>

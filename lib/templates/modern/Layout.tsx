@@ -27,6 +27,10 @@ export function ModernLayout({
   const order = getSectionOrder(content, sectionOrder);
   const shells = showEmptyPlaceholders ?? false;
   const ss = { ...DEFAULT_STYLE_SETTINGS, ...styleSettings };
+  const profileOffsetStyle = {
+    width: `calc(100% + ${ss.pagePadding}px)`,
+    marginLeft: `-${ss.pagePadding}px`,
+  };
 
   return (
     <ResumePage
@@ -35,7 +39,14 @@ export function ModernLayout({
       className="grid grid-cols-[240px_1fr] gap-6"
     >
       <aside className="space-y-4 border-r border-neutral-200 pr-4">
-        <ResumeHeader basics={b} variant="modern-sidebar" photoScale={ss.photoScale} />
+        <div className="flex flex-col items-center text-center" style={profileOffsetStyle}>
+          <ResumeHeader
+            basics={b}
+            variant="modern-sidebar"
+            photoScale={ss.photoScale}
+            className="w-full"
+          />
+        </div>
         {order
           .filter((k) => SIDEBAR_KEYS.has(k))
           .map((key) => {

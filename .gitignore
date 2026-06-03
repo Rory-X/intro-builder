@@ -46,6 +46,13 @@ next-env.d.ts
 .claude/skills/ui-ux-pro-max/
 .shared/ui-ux-pro-max/
 
+# Claude Code worktree checkouts (full repo copies + node_modules; never track)
+.claude/worktrees/
+
+# Local visual baseline captures (compared by hand, never shared)
+*-react-baseline.png
+modern-initial-template.png
+
 # Cursor local plugin / rule overrides (per-developer, never shared)
 .cursor/
 

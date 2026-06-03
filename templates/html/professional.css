@@ -1,9 +1,23 @@
 /* ===== Professional Template ===== */
 
-/* --- 固定区域：header --- */
-.tpl-header {
+/* --- 页面根容器 --- */
+.pro-page {
   position: relative;
-  margin-bottom: 0.5em;
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 100%;
+  padding: 40px var(--page-padding);
+  background: #fff;
+  color: #000;
+  font-family: var(--font-family);
+  font-size: var(--font-size);
+  line-height: var(--body-line-height);
+}
+
+/* --- Header --- */
+.pro-header {
+  position: relative;
+  margin-bottom: 0.75em;
   padding-bottom: 0.5em;
   break-inside: avoid;
 }
@@ -29,34 +43,53 @@
   color: #171717;
 }
 
-/* --- 可变区域 --- */
-.tpl-body {
-  font-size: var(--font-size);
-  font-family: var(--font-family);
-  line-height: var(--line-height);
-  padding: 0 var(--page-padding);
-}
-
-/* --- 联系信息 --- */
-.pro-contact {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 0.3em;
-  margin-bottom: 0.8em;
-}
-
-.pro-contact-row {
+/* --- 个人信息第一行（求职方向 · 状态 · 地区）--- */
+.pro-info-row {
   display: flex;
   justify-content: center;
-  gap: 2em;
+  gap: 0;
   font-size: 0.82em;
   line-height: 1.4;
   color: #404040;
 }
 
+.pro-info-item:empty {
+  display: none;
+}
+
+.pro-info-item + .pro-info-item:not(:empty)::before {
+  content: " · ";
+  color: #737373;
+}
+
+/* --- 联系信息第二行（phone · email · website 带 icon）--- */
+.pro-contact {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 0.3em 2em;
+  margin-top: 0.3em;
+  font-size: 0.82em;
+  line-height: 1.4;
+  color: #404040;
+}
+
+.pro-contact-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35em;
+  white-space: nowrap;
+}
+
 .pro-contact-item:empty {
   display: none;
+}
+
+.pro-contact-icon {
+  width: 1em;
+  height: 1em;
+  flex-shrink: 0;
+  color: #525252;
 }
 
 /* --- 分区 --- */
@@ -66,14 +99,17 @@
 }
 
 .pro-section-title {
+  width: 100%;
+  border-bottom: 1px solid #d4d4d4;
+  line-height: 1;
+  margin-bottom: var(--heading-gap);
+}
+
+.pro-title-wrap {
   position: relative;
   display: inline-flex;
   max-width: 100%;
   overflow: visible;
-  border-bottom: 1px solid #d4d4d4;
-  width: 100%;
-  line-height: 1;
-  margin-bottom: var(--heading-gap);
 }
 
 .pro-title-shadow {
@@ -82,7 +118,7 @@
   z-index: 0;
   background: rgba(115, 115, 115, 0.35);
   clip-path: polygon(0 0, calc(100% - 12px) 0, 100% 100%, 0 100%);
-  transform: translateX(18%) scale(0.88);
+  transform: translateX(18%) translateY(15%) scale(0.88);
   transform-origin: bottom left;
 }
 
@@ -91,15 +127,21 @@
   z-index: 1;
   display: inline-flex;
   align-items: center;
-  gap: 0.4em;
+  gap: 0.375em;
   margin: 0;
-  padding: 0.3em 0.75em 0.3em 0.6em;
+  padding: 0.25rem 1rem 0.25rem 0.625rem;
   font-size: 0.92em;
   font-weight: 700;
-  line-height: 1.4;
+  line-height: 1.375;
   color: #fff;
   background: var(--primary, #171717);
   clip-path: polygon(0 0, calc(100% - 12px) 0, 100% 100%, 0 100%);
+}
+
+.pro-section-icon {
+  width: 1em;
+  height: 1em;
+  flex-shrink: 0;
 }
 
 /* --- 条目 --- */
@@ -108,29 +150,105 @@
   break-inside: avoid;
 }
 
+.pro-item:last-child {
+  margin-bottom: 0;
+}
+
 .pro-item-header {
   display: flex;
-  justify-content: space-between;
   align-items: baseline;
+  justify-content: space-between;
+  gap: 1rem;
 }
 
 .pro-item-title {
-  font-weight: 600;
+  font-weight: 700;
+  line-height: 1.4;
   color: #171717;
 }
 
-.pro-item-meta {
-  font-size: 0.85em;
-  color: #525252;
-  white-space: nowrap;
-}
-
-.pro-item-subtitle {
+.pro-item-date {
+  flex-shrink: 0;
   font-size: 0.9em;
+  font-weight: 400;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
   color: #525252;
-  margin-top: 0.1em;
 }
 
-.pro-item-body {
+.pro-item-date:empty {
+  display: none;
+}
+
+.pro-item-secondary {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-top: 0.125em;
+  font-size: 0.92em;
+  color: #404040;
+}
+
+.pro-item-secondary:has(.pro-item-subtitle:empty):has(.pro-item-location:empty) {
+  display: none;
+}
+
+.pro-item-subtitle:empty {
+  display: none;
+}
+
+.pro-item-location {
+  flex-shrink: 0;
+  color: #525252;
+}
+
+.pro-item-location:empty {
+  display: none;
+}
+
+.pro-item-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35em 1em;
+  margin-top: 0.125em;
+  font-size: 0.92em;
+  color: #525252;
+}
+
+.pro-item-meta:empty {
+  display: none;
+}
+
+.pro-item-meta:has(> span:empty):has(> .pro-item-link:empty) {
+  display: none;
+}
+
+.pro-item-meta span:empty {
+  display: none;
+}
+
+/* --- 正文（列表/段落）--- */
+.pro-body {
   margin-top: 0.25em;
+  color: #404040;
+}
+
+.pro-body p {
+  margin: 0;
+}
+
+.pro-body ul,
+.pro-body ol {
+  margin: 0.25em 0 0;
+  padding-left: 1.125em;
+}
+
+.pro-body li {
+  margin: 0.15em 0;
+  padding-left: 0.25em;
+}
+
+.pro-body li::marker {
+  color: #525252;
 }

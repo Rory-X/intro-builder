@@ -57,7 +57,7 @@ const BUILTINS = [
     cssFile: "templates/html/modern.css",
     templateLayout: {
       type: "horizontal",
-      sidebar: { side: "left", width: "240px", sections: ["skills", "education"] },
+      sidebar: { side: "left", width: "240px", sections: ["basics"] },
     },
     defaultStyleSettings: {
       fontFamily: "sans",
@@ -68,6 +68,23 @@ const BUILTINS = [
       pagePadding: 32,
       sectionGap: 14,
       itemGap: 10,
+      photoScale: 1,
+    },
+  },
+  {
+    id: "red-tag",
+    htmlFile: "templates/html/red-tag.html",
+    cssFile: "templates/html/red-tag.css",
+    templateLayout: { type: "vertical" },
+    defaultStyleSettings: {
+      fontFamily: "sans",
+      fontSize: 13,
+      bodyLineHeight: 1.6,
+      lineHeight: 1.6,
+      headingGap: 8,
+      pagePadding: 40,
+      sectionGap: 16,
+      itemGap: 12,
       photoScale: 1,
     },
   },

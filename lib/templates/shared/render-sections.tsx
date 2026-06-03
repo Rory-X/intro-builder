@@ -40,11 +40,10 @@ export type BuildSectionsOptions = {
    */
   itemHeaderVariant?: ResumeItemHeaderVariant;
   /**
-   * 模板级 section icon 覆盖。Skill 产出的 LayoutConfig.sectionIcons 形如
-   * `{experience: "Briefcase", custom_award: "Trophy"}`，渲染时优先于
-   * section-meta 默认 icon。Whitelist 外的 name 自动 fallback 到默认。
+   * 模板级 section icon 声明（opt-in）。没声明则不显示图标。
    */
   sectionIcons?: Record<string, string>;
+  sectionIconColors?: Record<string, string>;
 };
 
 /**
@@ -71,7 +70,11 @@ export function buildResumeSections(
     options?.itemHeaderVariant ?? narrowToItemHeaderVariant(variant);
   const overrideIcon = (key: string): LucideIcon | undefined => {
     const name = options?.sectionIcons?.[key];
+    if (!name) return undefined;
     return lookupLucideIcon(name) ?? undefined;
+  };
+  const overrideIconColor = (key: string): string | undefined => {
+    return options?.sectionIconColors?.[key];
   };
 
   const experienceTitle = getSectionMeta("experience").label;
@@ -88,6 +91,7 @@ export function buildResumeSections(
           title="自我介绍"
           variant={variant}
           iconOverride={overrideIcon("basics")}
+          iconColor={overrideIconColor("basics")}
         >
           {wrapProfessionalEntry(
             variant,
@@ -103,6 +107,7 @@ export function buildResumeSections(
           title={experienceTitle}
           variant={variant}
           iconOverride={overrideIcon("experience")}
+          iconColor={overrideIconColor("experience")}
         >
           {content.experience.length > 0 ? (
             content.experience.map((e, i) => {
@@ -151,6 +156,7 @@ export function buildResumeSections(
           title={educationTitle}
           variant={variant}
           iconOverride={overrideIcon("education")}
+          iconColor={overrideIconColor("education")}
         >
           {content.education.length > 0 ? (
             content.education.map((e, i) =>
@@ -218,6 +224,7 @@ export function buildResumeSections(
           title={projectsTitle}
           variant={variant}
           iconOverride={overrideIcon("projects")}
+          iconColor={overrideIconColor("projects")}
         >
           {content.projects.length > 0 ? (
             content.projects.map((p, i) =>
@@ -292,6 +299,7 @@ export function buildResumeSections(
           title={skillsTitle}
           variant={variant}
           iconOverride={overrideIcon("skills")}
+          iconColor={overrideIconColor("skills")}
         >
           {(content.skills?.content?.length ?? 0) > 0
             ? renderResumeEntry(variant, "skills", <ResumeRichText content={content.skills} />)
@@ -310,6 +318,7 @@ export function buildResumeSections(
             title={cs.title}
             variant={variant}
             iconOverride={overrideIcon(cs.id)}
+            iconColor={overrideIconColor(cs.id)}
           >
             {hasContent
               ? renderResumeEntry(variant, cs.id, <ResumeRichText content={cs.content} />)

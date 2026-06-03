@@ -49,11 +49,12 @@ function getDisplayMeta(resolved: SerializableResolvedTemplate) {
     };
   }
   if (resolved.source === "unified") {
+    const meta = TEMPLATES.find((t) => t.id === resolved.id);
     return {
-      name: resolved.id,
-      description: "",
-      isRecommended: false as const,
-      features: undefined,
+      name: meta?.name ?? resolved.id,
+      description: meta?.description ?? "",
+      isRecommended: meta?.isRecommended ?? false,
+      features: meta?.features as readonly string[] | undefined,
     };
   }
   return {
@@ -100,6 +101,8 @@ export function TemplatePreviewDrawer({
       ? TEMPLATES.find((t) => t.id === resolved.id)?.category
       : resolved?.source === "uploaded"
         ? resolved.template.category ?? undefined
+        : resolved?.source === "unified"
+          ? TEMPLATES.find((t) => t.id === resolved.id)?.category
         : undefined;
   const sourceLabel = categoryRaw ? CATEGORY_LABELS_DRAWER[categoryRaw] : null;
 

@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import {
   BUILTIN_TEMPLATE_IDS,
   DEFAULT_TEMPLATE_ID,
@@ -11,6 +13,9 @@ import {
 import { fetchUploadedTemplate, listUploadedTemplates } from "./uploaded/fetch";
 import { DENSITY_PRESETS } from "@/lib/style-presets";
 import type { StyleSettings } from "@/lib/resume-schema";
+import type { UploadedTemplate } from "./uploaded/types";
+
+import type { SectionIconDeclaration } from "./uploaded/types";
 
 /**
  * Server-only template lookups. Lives in a separate file because it pulls
@@ -29,10 +34,21 @@ function isBuiltinId(id: string): id is BuiltinTemplateId {
   return (BUILTIN_TEMPLATE_IDS as readonly string[]).includes(id);
 }
 
+const UNIFIED_BUILTIN_IDS = ["classic", "modern", "professional"] as const satisfies readonly BuiltinTemplateId[];
+
+function isUnifiedBuiltinId(id: string): id is (typeof UNIFIED_BUILTIN_IDS)[number] {
+  return (UNIFIED_BUILTIN_IDS as readonly string[]).includes(id);
+}
+
+export function usesUnifiedBuiltinRenderer(id: string): boolean {
+  return isUnifiedBuiltinId(id);
+}
+
 /**
  * Resolution semantics:
  * - id is null/undefined/empty       → fallback to default built-in (no DB call)
- * - id is a built-in id              → return built-in meta (no DB call)
+ * - id is a unified built-in id      → local HTML first, then DB, then built-in meta
+ * - id is another built-in id        → return built-in meta (no DB call)
  * - id is non-empty, unknown, DB hit → return uploaded template
  * - id is non-empty, unknown, DB miss → fallback to default built-in
  * - DB throws (network/schema error) → propagate (callers handle)
@@ -40,18 +56,100 @@ function isBuiltinId(id: string): id is BuiltinTemplateId {
  * Fallback hides "not found" but NOT operational errors. If you need to
  * distinguish "missing" from "broken DB", catch in the caller.
  */
+/**
+ * Builtin 模板的本地 HTML+CSS fallback。当 DB 查询失败时，
+ * 从本地文件读取，确保新渲染路径不因网络抖动回退到旧 React 组件。
+ */
+function getBuiltinHtmlFallback(id: string): { html: string; css: string } | null {
+  try {
+    const dir = join(process.cwd(), "templates", "html");
+    const html = readFileSync(join(dir, `${id}.html`), "utf-8");
+    const css = readFileSync(join(dir, `${id}.css`), "utf-8");
+    return { html, css };
+  } catch {
+    return null;
+  }
+}
+
+const BUILTIN_SECTION_ICONS: Record<string, Record<string, SectionIconDeclaration>> = {
+  classic: {
+    basics: { icon: "LayoutList", color: "#64748b" },
+    experience: { icon: "Briefcase", color: "#3b82f6" },
+    education: { icon: "GraduationCap", color: "#22c55e" },
+    projects: { icon: "FolderGit2", color: "#a855f7" },
+    skills: { icon: "Wrench", color: "#f97316" },
+    research: { icon: "FlaskConical", color: "#14b8a6" },
+    summary: { icon: "LayoutList", color: "#06b6d4" },
+    awards: { icon: "Award", color: "#eab308" },
+    portfolio: { icon: "Palette", color: "#ec4899" },
+  },
+  professional: {},
+  modern: {},
+};
+
+function getBuiltinHtmlFallbackTemplate(id: BuiltinTemplateId): UploadedTemplate | null {
+  if (!isUnifiedBuiltinId(id)) return null;
+  const local = getBuiltinHtmlFallback(id);
+  if (!local) return null;
+  const meta = TEMPLATES.find((t) => t.id === id);
+  if (!meta) return null;
+  return {
+    id,
+    name: meta.name,
+    description: meta.description,
+    thumbnailUrl: null,
+    decoration: null,
+    layout: {
+      frame: { kind: "vertical" },
+      headerVariant: "professional",
+      sectionTitleVariant: "professional",
+      itemHeaderVariant: "professional",
+      theme: { primaryColor: "#171717" },
+      sectionIcons: BUILTIN_SECTION_ICONS[id] ?? {},
+    },
+    customHtml: local.html,
+    customCss: local.css,
+    category: meta.category,
+    features: meta.features,
+  };
+}
+
+export function listBuiltinHtmlFallbackTemplates(): UploadedTemplate[] {
+  return UNIFIED_BUILTIN_IDS.flatMap((id) => {
+    const template = getBuiltinHtmlFallbackTemplate(id);
+    return template ? [template] : [];
+  });
+}
+
 export async function getTemplateMetaAsync(
   id: string | null | undefined,
 ): Promise<ResolvedTemplateMeta> {
-  // 尝试从 DB 查（含 builtin — 它们现在也有 html 字段了）
+  if (id && isBuiltinId(id) && !isUnifiedBuiltinId(id)) {
+    const meta = TEMPLATES.find((t) => t.id === id)!;
+    return { source: "builtin", id, meta };
+  }
+
+  if (id && isUnifiedBuiltinId(id)) {
+    const localTemplate = getBuiltinHtmlFallbackTemplate(id);
+    if (localTemplate) {
+      return { source: "uploaded", id, template: localTemplate };
+    }
+  }
+
+  // 尝试从 DB 查
   if (id) {
     const dbTemplate = await fetchUploadedTemplate(id);
     if (dbTemplate) {
       return { source: "uploaded", id: dbTemplate.id, template: dbTemplate };
     }
   }
-  // DB 没找到时 fallback 到代码侧 builtin（兼容 DB 未 seed 的情况）
+  // DB 没查到——如果是 builtin 且有本地 HTML 文件，构造一个 fake uploaded template
   if (id && isBuiltinId(id)) {
+    const localTemplate = getBuiltinHtmlFallbackTemplate(id);
+    if (localTemplate) {
+      return { source: "uploaded", id, template: localTemplate };
+    }
+    // 本地文件也没有，走旧 React 组件
     const meta = TEMPLATES.find((t) => t.id === id)!;
     return { source: "builtin", id, meta };
   }
@@ -164,6 +262,10 @@ export function getTemplateDefaultStyleSettings(
 ): StyleSettings {
   if (resolved.source === "builtin") {
     return resolved.meta.defaultStyleSettings;
+  }
+  if (isBuiltinId(resolved.id)) {
+    const meta = TEMPLATES.find((t) => t.id === resolved.id);
+    if (meta) return meta.defaultStyleSettings;
   }
   return UPLOADED_DEFAULT_STYLE_SETTINGS;
 }
