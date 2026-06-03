@@ -53,14 +53,20 @@ async function withTransientRetry<T>(label: string, fn: () => Promise<T>, max = 
 
 export async function fetchUploadedTemplate(
   id: string,
+  opts: { includeDrafts?: boolean } = {},
 ): Promise<UploadedTemplateType | null> {
+  // 默认只返回 published —— 编辑器 / dashboard 不应看到 draft。dev-preview
+  // 路由通过 includeDrafts:true 旁路这条规则，让 skill 在入库前看到
+  // status='draft' 的待审模板。这是 dev-only 入口，没有外部触发面。
+  const statusFilter = opts.includeDrafts
+    ? undefined
+    : eq(templates.status, "published");
+  const where = statusFilter
+    ? and(eq(templates.id, id), statusFilter)
+    : eq(templates.id, id);
   try {
     const rows = await withTransientRetry("fetchUploadedTemplate", () =>
-      db
-        .select()
-        .from(templates)
-        .where(and(eq(templates.id, id), eq(templates.status, "published")))
-        .limit(1),
+      db.select().from(templates).where(where).limit(1),
     );
     if (rows.length === 0) return null;
     return parseTemplateRow(rows[0]);

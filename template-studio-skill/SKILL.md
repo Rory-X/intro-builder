@@ -1,279 +1,257 @@
 ---
 name: template-studio
-description: 把一张参考简历（图/PDF 截图）做成 intro-builder 的可用模板。当用户说"把这张简历做成模板"、"用这个 PDF 生成模板"、"参考这张图做一个模板"、"复刻这个简历的样式"，或在 intro-builder-zoo 项目里要新增模板时，调用此 skill。前置条件：cwd 必须是 intro-builder-zoo 项目根（脚本要读项目的 .env.local 拿 DATABASE_URL，并把装饰图写进项目 public/）。
+description: 把一张参考简历（图/PDF 截图）做成 intro-builder 的可用模板。当用户说"把这张做成模板"、"用这个 PDF 生成模板"、"参考这张图做一个模板"、"复刻这个简历的样式"，或要新增模板时调用。前置：cwd 在 intro-builder 仓库根；脚本读 .env.local 拿 DATABASE_URL / TEMPLATE_IMAGE_API_* / BLOB_READ_WRITE_TOKEN（图像 API 三件套未配置时自动跳过装饰提取，不阻塞主流程）。
 ---
 
-# template-studio — 把参考简历转成模板
+# template-studio — 把参考简历转成模板（schema-v2）
 
-把一张参考简历图复刻成 intro-builder 系统能识别的模板。**核心思路**：参考图 → 装饰底图（gpt-image-2 提取）+ 排版配置（Claude 看图推断）→ 写一行 templates 表 → 系统自动可用。
+把一张参考图复刻成 intro-builder 系统能识别的模板：**装饰图（GPT 生成 + Vercel Blob 托管）→ HTML/CSS（slot 协议 + CSS 变量合约）→ 一行 templates 表**。
 
-## 何时触发
-
-用户给你一张简历参考图（PDF 截图 / PNG），并希望系统里多一个跟它视觉相似的模板可选。典型说法："把这张做成模板"、"复刻这个样式"、"用这个 PDF 生成模板"。
+> 协议参考：`docs/schema-v2/`（templates-table / resume-content / style-settings / html-slot-protocol / example-template）。本 SKILL 是这套协议的产出工具。
 
 ## 你需要从用户拿到
 
-1. **参考图路径** —— 项目里某个 PNG/JPG。如果用户给的是 PDF，先 `pdftoppm -r 150 input.pdf out -png` 转图。
-2. **模板 id** —— 短 kebab-case，如 `red-banner`、`blue-fresh`、`science-classic`。会成为 DB 主键，必须唯一。
-   - **只用于内部识别**，**用户看不到**。可用英文，但避免 `abbey` / `crimson` 这种参考图原品牌代号 —— 改用描述性英文（color + style）。
-3. **模板名（display name）** —— **必须纯中文，2-6 字**。**禁止**：
-   - ❌ 英文产品代号：`Abbey`、`Crimson Banner`、`Foundation`
-   - ❌ 个人姓名：`陈媛媛 Abbey`、`张三同款`
-   - ❌ 内部技术词：`v2 PoC`、`Stub（验证用）`
-   - ✅ 视觉型：`红调封面`、`蓝调清新`、`蓝调侧栏`
-   - ✅ 场景型：`互联网职场`、`商务严选`
-   - 用户在模板库看到的就是这个名字，**他们不关心 abbey 是谁**。
-4. **模板描述（description）** —— 一句话面向**普通求职者**：写**适合什么人 + 视觉特点**，不要写技术名词。
-   - ❌ 「Skill v2 PoC：红色 banner + 粉底 section title，A4 单页约束」
-   - ✅ 「红色封面横幅 + 粉底分区标题，视觉感强，适合设计 / 创意 / 营销岗」
+1. **参考图路径**——项目里某个 PNG/JPG。PDF 先 `pdftoppm -r 150 input.pdf out -png` 转图。
+2. **id**——kebab-case，如 `red-banner`、`blue-fresh`。DB 主键，唯一。**只用于内部识别**（用户看不到）。避免参考图原品牌代号（`abbey` 这种），改用描述性英文（color + style）。
+3. **name**——**纯中文 2-6 字**。用户在模板库看到的就是这个。
+   - ❌ `Abbey`、`Crimson Banner`、`陈媛媛 Abbey`、`v2 PoC`
+   - ✅ 视觉型：`红调封面`、`蓝调清新`；场景型：`互联网职场`、`商务严选`
+4. **description**——一句话面向**普通求职者**：写**适合什么人 + 视觉特点**。不要技术名词。
+   - ❌ 「Skill v2 PoC：红色 banner + 粉底 section title」
+   - ✅ 「红色封面横幅 + 粉底分区标题，适合设计 / 创意 / 营销岗」
+5. **category**——`academic | tech | business | creative | general` 五选一。决定模板库 tab 归属。
+6. **features**——**3 条**模板特点文案，每条 ≤60 字，写"适合谁 + 视觉特点 + 实用提示"。
 
-## 流程（你按顺序做）
+## 流程 6 步
 
-### Step 1：观察参考图，决定装饰提取 prompt
+### Step 1：观察参考图，判断是否需要调生图
 
-用 `Read` 工具看参考图。识别**装饰元素**（不是内容）：
+用 `Read` 工具看参考图。**只有 CSS 画不出来的复杂装饰**才走生图复刻；CSS 能搞定的（纯色横条、实色边框、简单矩形色块、规则圆环）**直接在 Step 5 的 CSS 里写**，不调脚本。
 
-- 哪里有几何装饰？（圆环/线条/色块/水印？位置？颜色？）
-- 是不是只有微弱装饰、整体偏纯色？
+**典型需调生图的情况**（命中即跑，不互斥）：
 
-写一段 prompt 给 gpt-image-2，**收紧三件事**才能稳定输出：
-1. **指明位置**："place the decorations in the TOP-RIGHT corner only, exactly mirroring the input"。如果不指明，model 会镜像/挪位。
-2. **禁止编造**："Do NOT add any decorative elements that do not exist in the input — no extra triangles, dot patterns, halftone, etc.。" 否则 model 会自由发挥加东西。
-3. **明确移除**："Completely remove ALL text, photos, icons, bullet points, section titles, colored bars。"
+| # | 装饰类型 | 例子 |
+|---|---|---|
+| 1 | 不规则波浪线 / 曲线带 | 顶部蓝色海浪 banner、底部装饰曲线 |
+| 2 | 复杂条纹 / 斜纹 / 网格 / 点阵纹理 | 半透明斜纹背景、彩色条纹封面 |
+| 3 | 参考图独有的手绘 / 插画装饰 | 手绘叶子、抽象笔刷、几何拼贴 |
+| 4 | 多元素几何组合 | 圆环+三角+菱形混排的角落水印 |
+| 5 | 渐变 + 形状的复合装饰 | 带渐变的不规则色块、半透明形状叠加 |
 
-### Step 2：调 extract-decoration.py 生成装饰底图
+以上是最常见的 5 类，**不穷举**——参考图里出现"CSS 写不出来"的视觉元素就走生图。多种装饰共存（顶部波浪 + 角落几何 = 两种）→ **多次跑生图，每次一个 role**，Step 2 给了示例。
+
+不命中任何一类 → **跳过 Step 2**，Step 6 的 `--assets` 传 `[]`，模板背景靠 CSS 实现。
+
+### Step 2（条件步骤）：跑 extract-decoration.py 复刻装饰
+
+只在 Step 1 判断"需要调生图"时跑。每个装饰资产**单独跑一次**，role 区分用途：
 
 ```bash
+# 第 1 个装饰：顶部波浪 banner
 python3 template-studio-skill/scripts/extract-decoration.py \
   --reference <参考图路径> \
-  --prompt "<Step 1 写的 prompt>" \
-  --output public/templates/decorations/<模板id>.png
+  --prompt "<针对 banner 的 prompt>" \
+  --output /tmp/<id>-banner.png \
+  --upload-blob --id <id> --role banner
+
+# 第 2 个装饰：右上角几何水印（如有）
+python3 template-studio-skill/scripts/extract-decoration.py \
+  --reference <参考图路径> \
+  --prompt "<针对 corner 装饰的 prompt>" \
+  --output /tmp/<id>-corner.png \
+  --upload-blob --id <id> --role decoration
 ```
 
-完成后 `Read` 输出图确认效果。**位置/数量不对就调 prompt 再跑**——别凑合，丑装饰会污染整套模板。
+每个装饰的 prompt **收紧三件事**才能稳定输出：
 
-### Step 3：观察参考图，推断 layout config
+1. **指明位置**：`place the decoration in the TOP-RIGHT corner only, exactly mirroring the input`
+2. **禁止编造**：`Do NOT add any decorative elements that do not exist in the input — no extra triangles, dot patterns, halftone, etc.`
+3. **明确移除**：`Completely remove ALL text, photos, icons, bullet points, section titles, colored bars`
 
-再次看参考图，决定 `LayoutConfig`（schema 在 `lib/templates/uploaded/types.ts`，已是 Zod 校验，**少字段会被 fetch.ts 的 safeParse 拒绝整行**）。下面 5 个字段都要填：
+stdout 最后一行 JSON：
 
-#### 3.1 `frame`（必填）—— 整页骨架
+- 配置完整：`{"local_path":"...","blob_url":"https://..."}` —— **记下 blob_url**，每个装饰各一条，Step 5 的 HTML 和 Step 6 的 `--assets` 都要用
+- 图像 API 未配置（`.env.local` 缺 `TEMPLATE_IMAGE_API_BASE_URL` / `_API_KEY` / `_MODEL`）：`{"skipped":true,"reason":"..."}` + stderr WARNING + 退出码 0。**主流程不阻塞**，但你**必须告诉用户**「这个模板设计上需要 XX 装饰，本次环境未配置生图，已用 CSS 简化版替代，配置好后可重跑此 skill 升级」
 
-看参考图判断这是纵向还是横向：
+`role` 三选一：`banner`（顶部/底部横幅）/ `decoration`（角落、侧边、背景水印）/ `icon`（小尺寸装饰图标）。
 
-- **所有内容都在一栏从上到下** → `{ "kind": "vertical" }`
-- **一侧有窄条 sidebar（放头像/技能/教育这种次要内容）** → `{ "kind": "horizontal", "sidebar": { "side": "left"|"right", "width": "240px", "sections": [...], "bgColor": "...", "textColor": "..." } }`
-  - `sections` 字段写**这些 sectionId 进 sidebar**（其余进 main），常见 `["education", "skills"]` 或 `["education", "skills", "summary"]`
-  - `bgColor` 深色（如 `#1F2937`）+ `textColor` 浅色（如 `#F9FAFB`）= 深色 sidebar
-  - 都不写 = 透明 sidebar，跟主页一色
-- 不确定就 vertical（更常见、更安全）
+`Read` 每张输出 PNG 确认效果。位置/数量不对就调 prompt 再跑——丑装饰会污染整套模板。
 
-参考完整示例：`lib/templates/uploaded/examples.ts` 里的 `VERTICAL_EXAMPLE` / `HORIZONTAL_EXAMPLE`。
+### Step 3：决定 layout
 
-#### 3.2 三个 variant 字段（必填，都从对应枚举挑）
+参考图所有内容上下排 → `{"type":"vertical"}`。一侧有窄条 sidebar（放头像/技能/教育这种次要内容）→ `{"type":"horizontal","sidebar":{"side":"left|right","width":"240px","sections":["education","skills"]}}`。不确定就 vertical。
 
-**注意三个的可选值不完全一样**：
+> ⚠️ **引擎当前 SlotRenderer 暂未实现 `sidebarSections` / `mainSections` loop binding**。如果你写双栏模板想立刻渲染，把分栏放在 `<article>` 里用 CSS Grid 自己实现，不要依赖 sidebar/main 这两个 binding。等下一轮引擎升级后双栏 binding 才生效。
 
-- `headerVariant`: `"classic" | "professional" | "modern-sidebar"`
-- `sectionTitleVariant`: `"classic" | "professional" | "modern" | "card-wrapped"`
-- `itemHeaderVariant`: `"professional" | "classic" | "modern"`
+### Step 4：决定 defaultStyleSettings
 
-风格对号入座：
+模板首次应用时写入简历的初始排版。9 字段，类型见 `docs/schema-v2/style-settings.json`。三档起点按需微调：
 
-- `professional` —— 现代职场清晰排版（黑/彩色 tab 风格 section 标题，左公司右日期）
-- `classic` —— 传统衬线 / 学院风（细线下划线 section 标题，全大写）
-- `modern*` —— 深色 sidebar 设计岗（modern 内置那种）
-- `card-wrapped` —— **每个 section 用白色圆角卡片整体包裹**（参考图：每个 section 都有独立的白色卡片背景 + 圆角 + 阴影 → 选这个；典型代表：Abbey 风、Notion 风、设计岗高质感模板）
+| 档 | fontSize | bodyLineHeight | headingGap | pagePadding | sectionGap | itemGap |
+|---|---|---|---|---|---|---|
+| compact | 12 | 1.5 | 6 | 32 | 12 | 8 |
+| standard | 13 | 1.6 | 8 | 40 | 16 | 12 |
+| spacious | 14 | 1.7 | 12 | 48 | 20 | 16 |
 
-三个独立挑：abbey 全用 `professional`、modern 内置全用 `modern*` 系列、卡片型简历用 `card-wrapped` + `professional` 组合。
+`fontFamily` 默认 `sans`；`lineHeight` 设成同 `bodyLineHeight`（向后兼容）；`photoScale` 默认 1。
 
-#### 3.3 `theme.primaryColor`（必填）—— 主色，⚠️ 会穿透到 section title
+### Step 5：写 HTML + CSS
 
-**这个字段不只是"配色名义值"，它会真实染色 section title 的彩色 tab 背景**（`professional` variant 时是 tab；`card-wrapped` 是 icon 颜色；其他 variant 也会用作底色/边框）。从参考图里 section title 已经在用的那个色挑出来，否则模板视觉跟参考图会冲突。
+参考 `docs/schema-v2/example-template.html` + `example-template.css`。两条骨架：
 
-hex 格式，例如 `#3B8BCD`（abbey 蓝）、`#137880`（青绿）、`#1F2937`（炭黑）。
+**A. HTML 必须包含全部 8 个 basics binding**——缺一个 = 用户填的那字段在模板里永远不渲染。装饰图按 Step 1 判断结果插入：有 banner asset 就放 `<img src="<blob_url>">`，没有就用 CSS 画背景（如 `.tpl-header { background: linear-gradient(...) }`），不要保留无用的 `<img src="">`。
 
-#### 3.4 `theme` 其他可选字段（按需填，**全都真实生效**）
+```html
+<header class="tpl-header">
+  <!-- 有装饰资产时插入 banner img；无则删掉这行，用 CSS 画背景 -->
+  <img src="<Step 2 拿到的 banner blob_url>" class="banner-img" alt="" />
 
-下列字段不填用默认值，填了**会真实改变渲染**——不是装饰性占位。schema 里都是 `optional`，所以不确定就不填。
+  <img data-bind="basics.photo" class="avatar" />
+  <h1 data-bind="basics.name" class="name"></h1>
+</header>
+<div class="tpl-body">
+  <div class="meta">
+    <slot data-bind="basics.title"></slot> · <slot data-bind="basics.status"></slot>
+  </div>
+  <div class="contact">
+    <slot data-bind="basics.email"></slot> | <slot data-bind="basics.phone"></slot>
+    | <slot data-bind="basics.location"></slot> | <slot data-bind="basics.website"></slot>
+  </div>
 
-- `theme.accentColor` —— 强调色，会染 ResumeItemHeader 的 dateRange（公司/项目右侧的日期）。如果参考图里日期是用某个特定彩色字（不同于黑色），用这个。
-- `theme.fontFamily` —— **限定为 `"sans" | "serif" | "mono"`** 三选一（对应 `FONT_MAP` 的 key）。填了就强制覆盖用户级字体偏好（template-over-user）。学术 / 传统简历选 `serif`；其他通常不填，让用户自己选。**写错（如 "Inter"）会被忽略**，安全降级。
-- `theme.cardBg` / `theme.cardRadius` / `theme.cardShadow` —— **只在 `sectionTitleVariant: "card-wrapped"` 时生效**。
-  - `cardBg`: 卡片背景色，默认 `white`。例如 `#fafafa` 浅灰、`#1f2937` 深色卡片
-  - `cardRadius`: 圆角，CSS 长度。默认 `12px`。`16px` 更圆、`8px` 较锐利、`0` 直角
-  - `cardShadow`: CSS box-shadow 完整字符串。默认柔和浅阴影。例 `"0 2px 8px rgba(0,0,0,0.08)"`
-- `theme.cardBg/Radius/Shadow` 在非 card-wrapped 模板里写了也无害（被忽略），但建议不填——保持 schema 实例干净。
+  <slot data-bind="sectionOrder" data-template="section-tpl"></slot>
 
-#### 3.5 `sectionIcons`（必填）—— 见下方 lucide 白名单
+  <template id="section-tpl">
+    <section class="resume-section">
+      <h2 class="section-title"><slot data-bind="section.title"></slot></h2>
+      <slot data-bind="section.items" data-template="item-tpl"></slot>
+    </section>
+  </template>
 
-#### 3.6 `decoration.placement`（如果有装饰图）
-
-根据装饰图实际尺寸 + 参考图里装饰位置定。A4 800px 宽页面常见配置：
-
-```json
-{
-  "position": "absolute",
-  "top": "0",
-  "right": "0",
-  "width": "300px",
-  "height": "auto",
-  "zIndex": 0,
-  "opacity": 0.6
-}
+  <template id="item-tpl">
+    <div class="resume-item">
+      <div class="item-header">
+        <span class="item-title"><slot data-bind="item.title"></slot></span>
+        <span class="item-date"><slot data-bind="item.dateRange"></slot></span>
+      </div>
+      <div class="item-subtitle"><slot data-bind="item.subtitle"></slot></div>
+      <div class="item-body"><slot data-bind="item.bullets"></slot></div>
+    </div>
+  </template>
+</div>
 ```
 
----
+**B. CSS 变量合约**——用户可调维度必须用 `var(--*)`，否则用户在编辑器调字号/边距时模板物理失效：
 
-### Lucide 图标白名单（`sectionIcons` 字段必须从这里挑）
+| 必须 var() | 可硬编码 |
+|---|---|
+| `font-size: var(--font-size)` | 颜色、背景、阴影 |
+| `font-family: var(--font-family)` | 圆角 |
+| `line-height: var(--line-height)` | banner / 卡片 / 图标的内层 padding |
+| `padding: 0 var(--page-padding)`（page 级） | 装饰图绝对定位坐标 |
+| `margin-top: var(--section-gap)`（section 间距） | |
+| `margin-bottom: var(--item-gap)`（item 间距） | |
+| `margin-bottom: var(--heading-gap)`（标题与正文） | |
+| `transform: scale(var(--photo-scale))`（头像） | |
 
-下列 43 个名字都是 lucide-react v0.x 实际存在的导出名（用 `scripts/verify-lucide-whitelist.ts` 验证过）。**绝对不要写白名单外的名字**——凭脑子写容易挑到不存在的（比如 "Soccer"、"Wechat"），前端会渲染空白。
+section title 内部 padding 用 **em**（跟字号联动），禁 px。
 
-```
-个人总结 (summary):       User, Quote, Info, MessageSquare, FileText
-工作经历 (experience):    Briefcase, Building2, Building
-教育经历 (education):     GraduationCap, BookOpen, School
-项目经历 (projects):      FolderKanban, Folder, Layers, Code2
-专业技能 (skills):        Sparkles, Star, Wrench, Lightbulb, Zap, Target
-荣誉奖项 (awards):        Award, Trophy, Medal, Crown, Star
-社团/活动 (activities):   Users, UserCheck, Heart, Handshake
-研究经历 (research):      FlaskConical, Microscope, BookOpen, FileText
-作品集 (portfolio):       Image, Palette, LayoutGrid, Camera
-联系/链接相关:            Mail, Phone, MapPin, Globe
-其他通用 (other / fallback): Tag, Bookmark, Hash, ChevronRight
-```
+### Slot binding 速查
 
-> ⚠️ Github / Linkedin 等品牌 logo 不在 lucide 主包，不要写。要表达 GitHub 用 `Code2`，LinkedIn 用 `Globe` 或 `Mail`。
+- value：`basics.{name,title,status,email,phone,location,website,summary}` 用 `<slot>`；`basics.photo` **必须**用 `<img data-bind="basics.photo">`（不写 src，引擎注入 URL）
+- loop：`sectionOrder`（单栏）、`sidebarSections` / `mainSections`（双栏，引擎未实现）、`section.items`（条目循环）
+- section 内：`section.{id,title,icon}`
+- item 内：`item.{title,subtitle,dateRange,location,bullets,tags,link}`
 
-**挑选规则**：
-1. 看参考图里那个 section 的图标长什么样 → 从对应分组里挑最像的
-2. 找不到完美匹配就挑通用的（"其他"分组的 Tag / Bookmark）—— **绝对不要写白名单外的名字**
-3. 把名字字符串写进 `sectionIcons.<sectionId>: "<lucide name>"`，例如 `experience: "Briefcase"`
+item 字段从 section 派生：experience.company/title→item.title/subtitle；education.school/(degree+major+gpa)→item.title/subtitle；projects.name/role + tags=stack；skills→bullets 整块。
 
-### Step 4：调 insert-template.ts 入库
+### 安全规则
 
-**v1（enum-based）**——沿用：
+禁 `<script>` / `on*` 属性 / `<iframe>` / `position: fixed` / `*` 选择器 / 裸 element 选择器（`body{...}`）/ `@media` / `@keyframes`。
+
+### A4 单页约束
+
+800px 容器内 `<article>` 总高度 ≤ 1123px（A4 @96dpi）。section margin-top ≤ 22px、entry padding 别太奢侈。超出时 smart-layout 会压可调维度（var 那些），但**硬编码 padding 算法压不动**——所以可调维度全用 var()，模板默认状态塞下 demoResume，溢出部分让算法兜底。
+
+### Step 6：draft 入库 → 预览 → 用户确认 → publish
+
+**绝不可以一步到位直接 publish**。模板入库分三阶段，中间预留人工审查与迭代循环——直到用户口头确认「这个模板和参考图一致、可以发布」，才升级到 publish。
+
+#### 6a 默认 draft 入库
 
 ```bash
 pnpm exec tsx --env-file=.env.local \
   template-studio-skill/scripts/insert-template.ts \
-  --id <模板id> \
-  --name "<中文名>" \
-  --description "<一句话描述>" \
-  --decoration '<DecorationConfig JSON>' \
-  --layout '<LayoutConfig JSON>'
+  --id <id> \
+  --name "<中文 2-6 字>" \
+  --description "<一句话>" \
+  --category <enum> \
+  --features '["特点1","特点2","特点3"]' \
+  --html path/to/template.html \
+  --css  path/to/template.css \
+  --assets '[{"url":"<banner blob_url>","role":"banner"},{"url":"<corner blob_url>","role":"decoration"}]' \
+  --default-style-settings '{"fontFamily":"sans","fontSize":13,"lineHeight":1.6,"bodyLineHeight":1.6,"headingGap":8,"pagePadding":40,"sectionGap":16,"itemGap":12,"photoScale":1}' \
+  --layout '{"type":"vertical"}'
 ```
 
-**v2（HTML 自由排版，推荐用于骨架差异大的模板）**——加 `--custom-html` / `--custom-css`：
+不传 `--publish` 时默认写 `status='draft'`——**仅 dev-preview 路由可见**，dashboard / 编辑器模板库都看不到。脚本 stdout 会直接打印预览 URL：
+
+```
+upserted as DRAFT: <id> (<name>)
+  preview: http://localhost:3000/dev-preview/template/<id>
+  确认无误后用 --publish 重跑同一命令切换到 published
+```
+
+**单文件简写**：HTML 顶部内嵌 `<style>...</style>` 会被脚本自动抽出来作为 css，可以只传 `--html` 不传 `--css`。
+
+**`--assets` 按 Step 1 判断结果填**：跳过了 Step 2（CSS 能搞定的装饰）→ `--assets '[]'`；跑了 N 次 Step 2 → 数组里写 N 条，role 对应。`--assets '[]'` 时 HTML 里**不要**留 banner img / 装饰图 placeholder，CSS 直接画背景。
+
+#### 6b 预览 + 用户确认 + 迭代循环
+
+确保本地 `pnpm dev` 已起。把 6a stdout 的预览 URL **完整发给用户**，并明确告诉他：
+
+> 模板已以 draft 入库，请打开预览链接对照参考图检查：<br>
+> http://localhost:3000/dev-preview/template/&lt;id&gt;<br>
+> 顶部会有 ⚠️ DRAFT 标识。**确认后回复"通过"或"OK"**；如有问题请描述需要调整的地方（例如「banner 太厚」「字号需要小一点」「头像应该圆形不是方形」），我会迭代修改后重新入库 draft，再请你预览。
+
+**循环规则**：
+- 用户提反馈 → 改 HTML/CSS/assets/styleSettings → **重跑 6a 命令**（不传 `--publish`）—— ON CONFLICT UPDATE 会原地刷新这条 draft —— 让用户重新预览
+- **不要在用户没明确确认时擅自 publish**。即便你觉得"已经很像了"
+- 用户的修改诉求**先全部澄清完整**再动手改，避免改一轮触发新一轮反馈
+
+#### 6c 用户确认后切到 published
 
 ```bash
+# 把 6a 的命令原样重跑，仅在末尾加 --publish
 pnpm exec tsx --env-file=.env.local \
   template-studio-skill/scripts/insert-template.ts \
-  --id <模板id> \
-  --name "<中文名>" \
-  --description "<一句话描述>" \
-  --custom-html prototypes/<模板id>/template.html \
-  --custom-css prototypes/<模板id>/template.css \
-  --layout '<最小有效 LayoutConfig JSON 兜底>'
+  --id <id> \
+  ... 其它参数原样 ... \
+  --publish
 ```
 
-**单文件简写**：HTML 顶部的 `<style>...</style>` 块脚本会自动抽出来存进 customCss 字段（适合 PoC 单文件场景）。所以你也可以只传一个 .html、不传 `--custom-css`。
+stdout 应输出 `PUBLISHED: <id> (<name>)`。这时 dashboard / 编辑器模板库才能看到这个模板。
 
-> ⚠️ **不要把 CSS 留在 HTML 里不抽出**——SlotRenderer 的 DOMPurify whitelist 不含 `<style>` 标签（安全考虑：避免恶意模板通过 style 注入 escape），如果脚本不抽走，浏览器拿到的 HTML 没 CSS，模板会裸文字渲染。脚本的自动抽取就是防这个 silent fail。
+> ⚠️ 反向也成立：对一个已 published 的模板**不带 `--publish`** 重跑会把它打回 draft（用户立刻看不到）。需要继续修改时这是 feature；不是要打回时记得带 `--publish`。
 
-v2 模式下 `--layout` 仍要填——SlotRenderer 渲染失败时引擎降级到 layout enum 路径。最小有效值：
+**最终确认**：`pnpm exec tsx --env-file=.env.local scripts/verify-templates.ts` 看新 id 出现在 `listAllTemplatesAsync` 输出里（draft 不会出现，published 会）。
 
-```json
-{
-  "frame": {"kind": "vertical"},
-  "headerVariant": "professional",
-  "sectionTitleVariant": "professional",
-  "itemHeaderVariant": "professional",
-  "theme": {"primaryColor": "#000000"},
-  "sectionIcons": {}
-}
-```
+## 自查清单（publish 前过一遍）
 
-**v2 写 HTML/CSS 四条铁律**（违反会出问题，前 1-3 条由 insert-template.ts 自动校验 fail-fast，第 4 条要你主动检查）：
+- [ ] **draft 入库 + 用户口头确认**：6a 跑过，6b 把预览链接发给用户，等到用户明确说"通过/OK"才进入 6c。**绝不可以一步到位 publish**
+- [ ] **装饰判断**：参考图里 CSS 画不出来的装饰（波浪/复杂条纹/手绘/几何组合/渐变形状）都已通过 Step 2 复刻；CSS 能搞定的没多余调生图
+- [ ] HTML 含全部 8 个 basics binding（photo 用 `<img data-bind>`，其余 7 个用 `<slot data-bind>`）
+- [ ] CSS 里 `font-size` / `font-family` / `line-height` 全部走 `var(--*)`
+- [ ] section margin-top 用 `var(--section-gap)`、item margin-bottom 用 `var(--item-gap)`、page padding 用 `var(--page-padding)`
+- [ ] 装饰图 URL 全部来自 `--upload-blob` 拿到的 https，不引用本地 `public/` 路径；`--assets` 数组与 HTML 中实际引用的 role 一一对应
+- [ ] features 是 3 条，每条 ≤60 字，无英文产品代号
+- [ ] name 是 2-6 个汉字
+- [ ] dev-preview 路由渲染无占位符告警
+- [ ] 800px 容器内 article 不超 1123px
 
-1. **对偶约束（dual constraint）**——用户能调的 CSS 必须用 `var(--*)`：
-   - `font-size: var(--font-size)` ✅
-   - `font-size: 14px` ❌（用户改字号失效）
-   - `line-height: var(--line-height)` ✅
-   - **page-level padding 必须 `var(--page-padding)`** —— `<article>` 自身的 padding 必须读这个变量，否则 smart-layout 算法压缩 pagePadding 时对你的模板物理失效（用户内容多时压不下来 → status=cannot-fit → 溢出第二页）
-   - **section / item 间距必须 `var(--section-gap)` / `var(--item-gap)`** —— section 之间的 margin、entry 之间的 margin 必须读这两个变量。同样的原因：算法的可调维度对硬编码间距物理失效
-   - 装饰、颜色、圆角、阴影、component-level padding（banner 内边距 / 卡片内边距 / 图标 padding 等"和密度无关的内层留白"） → 可硬编码
-   - 判断哪些是 page/section/item gap、哪些是 component-level：**密度调节会想压缩它吗？** 想压 → var；不想压 → 硬编码。banner 高度感、卡片视觉边缘是品牌属性不该压；section/entry 之间的呼吸空间是密度的物理体现，必须压。
-2. **slot 协议**——内容插槽必须用 `<slot data-bind="..." ></slot>`（**显式闭合，不要 self-close**——HTML5 slot 不是 void 元素）：
-   - 顶层 `<article>` 包外壳，所有 `<template id="...">` 在 `<article>` 之外
-   - 合法 binding 名：见下表
-   - 嵌套 ≤ 3 层（sectionOrder → section.items → 内层不再 loop）
-   - 头像/图片：用 `<img data-bind="basics.photo" alt="头像" class="..." />`（**不要写 src**——引擎自动把 URL 注入 src；photo 为空时整个 `<img>` 不渲染，不会留裂图）。**形状/尺寸/裁剪全用 CSS 控制**（圆形头像 = `.avatar { border-radius:50%; object-fit:cover }`）。不要用 `<slot data-bind="basics.photo">`（会把 URL 当文字渲染），也不要写死 `<img src="" />`（React 19 报错）。
-   - **header 必须包含全部个人信息字段**——用户填了什么就渲染什么，缺一个字段 = 用户数据丢失。`<header>` 区域必须放齐以下 8 项（排列/分隔/样式你自由决定）：
-     ```html
-     <img data-bind="basics.photo" alt="头像" class="avatar" />
-     <slot data-bind="basics.name"></slot>
-     <slot data-bind="basics.title"></slot>
-     <slot data-bind="basics.status"></slot>
-     <slot data-bind="basics.email"></slot>
-     <slot data-bind="basics.phone"></slot>
-     <slot data-bind="basics.location"></slot>
-     <slot data-bind="basics.website"></slot>
-     ```
-     引擎对空值处理：photo 空 → img 不渲染；其余文本字段空 → 渲染空字符串（你的 CSS 用 `:empty` 隐藏或模板里 separator 不会裸露）。不要因为"参考图里没看到某字段"就省略——参考图是视觉参考不是数据契约。
-3. **安全**——禁止 `<script>` / `on*` 属性 / `<iframe>` / `position: fixed` / `*` 选择器 / 裸 element 选择器（`body { ... }`）/ `@media` / `@keyframes`
-4. **A4 单页约束（hard rule）**——**自由排版的"自由"是视觉自由，不是尺寸自由**。渲染 demoResume 规模内容（5 项工作 + 3 项目 + 自我介绍 + 教育）必须严格塞进 A4 一页：
-   - **gallery thumbnail 模式**（stage 595px 宽）：article 总高度 ≤ **841px** (A4 @72dpi)
-   - **dev-preview / 编辑器预览 / PDF 模式**（容器 800px 宽）：article 总高度 ≤ **1123px** (A4 @96dpi)
-   - 不遵守的后果：(a) gallery 缩略图宽度缩水产生左右白边、(b) PDF 第一页被截断、(c) 编辑器预览跟 PDF 不一致
-   - 写完后跑 dev-preview 路由（`/dev-preview/template/<id>`）目测：800px 容器里内容**必须不超过一屏 viewport** (~1123px)。超出说明 padding / margin / banner 太奢侈，回头压缩。**常见可压缩位置**：banner padding（一开始就 60+ 太多）、section margin-top（22+ 太奢侈，14 通常够）、entry padding/margin、section-title padding。
-   - **超出 1123px 时不要指望 smart-layout 兜底**：smart-layout 算法可以把 page padding / section gap / item gap / 字号 / 行高动态压缩，但仅压缩用 `var(--page-padding)` / `var(--section-gap)` / `var(--item-gap)` / `var(--font-size)` / `var(--line-height)` 写的部分。模板里硬编码的 `padding: 60px` 算法压不动。把可调的间距全用 var()，模板默认状态下塞下 demoResume，剩下的内容多出来的部分由 smart-layout 兜底压缩。
+## 故障排查
 
-**合法 binding 名表**：
-
-| 类别 | binding | 何时可用 |
-|---|---|---|
-| basics value | `basics.name` `basics.title` `basics.email` `basics.phone` `basics.location` `basics.website` `basics.status` `basics.summary` | 任何位置（用 `<slot>`） |
-| 图片 | `basics.photo` | 任何位置，**必须用 `<img data-bind="basics.photo">`**（不是 `<slot>`） |
-| sectionOrder loop | `sectionOrder` (loop slot, 配 `data-template`) | 任何位置 |
-| section value | `section.id` `section.title` `section.icon` | 仅 sectionOrder loop 内 |
-| section.items loop | `section.items` (loop slot, 配 `data-template`) | 仅 sectionOrder loop 内 |
-| item value | `item.title` `item.subtitle` `item.dateRange` `item.location` `item.bullets` `item.tags` `item.link` | 仅 section.items loop 内 |
-
-**item 字段从各 section 派生映射**（一份 item template 适用所有 section）：
-
-| section | item.title | item.subtitle | item.bullets |
-|---|---|---|---|
-| experience | company | title (职位) | content (TipTap) |
-| education | school | degree+major+gpa | highlights (TipTap) |
-| projects | name | role | content (TipTap) + tags=stack |
-| skills | category | items.join("、") | (空) |
-| basics | (空) | (空) | summary (wrapped) |
-
-**完整 v2 PoC 参考**（包含全部 8 个 header 字段的完整示例）：`prototypes/handcoded-crimson/index-with-slots.html`
-
----
-
-### Step 5：验证
-
-```bash
-pnpm exec tsx --env-file=.env.local scripts/verify-templates.ts
-```
-
-新模板的 id 应出现在 `listAllTemplatesAsync` 输出的 `source=uploaded` 行里。
-
-**v2 模板视觉验证**：开 `http://localhost:3000/dev-preview/template/<模板id>` 看实际渲染。如果你写的 HTML 引擎接不上，会显示 `[未知 slot: xxx]` / `[ctx 不可用]` / `[嵌套过深]` 等占位符——按提示修。
-
-## 输出给用户
-
-- 装饰图路径：`public/templates/decorations/<id>.png`
-- 模板 id 和名字（已入 DB）
-- 模式：v1-enum 还是 v2-html
-- 提示用户：刷新 dashboard / 编辑器的"模板与排版"picker 能看到新模板
-
-## 注意
-
-- **API key**：脚本从环境变量 `OPENAI_API_KEY` 读。如果未设，从 `~/.claude/reference/keys.md` 找当前可用的 BMC 中转 key 并 `export`。
-- **API 调用 30-60s**（gpt-image-2），耐心等待。HTTP 000 状态是网络抖动，重跑即可。
-- **token 消耗**：单次 edits 调用约 1500-1700 tokens。装饰提取尽量一次成功，反复试会浪费配额。
-- **prompt 反复改不出效果**：不是 prompt 问题，是 model 极限——比如它无法 1:1 复制装饰元素的精确数量/排列。接受"风格 + 位置"对齐即可，细节在产品层用 CSS placement 调。
-- **v1 vs v2 选择**：参考图视觉接近现有 variant（professional / classic / modern / card-wrapped / full-width-bar）就走 v1（更快）；视觉骨架明显不同（timeline 鳃骨 / banner 顶部色块 / 杂志双栏等）走 v2。
+- **图像 API 配置**：`.env.local` 必须配三件套——`TEMPLATE_IMAGE_API_BASE_URL`（例如 `https://bmc-llm-relay.bluemediagroup.cn/v1`）、`TEMPLATE_IMAGE_API_KEY`、`TEMPLATE_IMAGE_MODEL`（如 `gpt-image-2` / `doubao-seedream-3-0` / `wanx-v1` 等任一兼容 OpenAI `/images/edits` 协议的模型）。可选 `TEMPLATE_IMAGE_SIZE`（默认 `1024x1536`）。三件套缺任一 → Step 2 自动跳过，模板不带装饰背景但其它流程正常
+- **API 兼容性**：脚本走 OpenAI `/images/edits` multipart 协议（`image` + `prompt` + `size` + `n`），响应支持 `b64_json` 或 `url` 两种 payload。换模型只改 `TEMPLATE_IMAGE_MODEL` + 必要时换 `TEMPLATE_IMAGE_API_BASE_URL`，脚本无需修改
+- **生图 30-60s**：HTTP 000 是网络抖动，重跑即可。装饰提取尽量一次成功，反复试浪费配额
+- **prompt 怎么改都不对**：可能是 model 极限（精确数量/排列复刻不出来）。接受"风格 + 位置"对齐即可，细节用 CSS 调
+- **DB 列不存在报错**：当前 DB schema 还没完全升到目标态。skill 是协议先到位的产物，引擎/DB 跟上后无需改 prompt 自动可用。临时跑通可手动加列或等下一轮 plan

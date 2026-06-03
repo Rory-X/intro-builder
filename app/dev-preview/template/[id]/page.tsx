@@ -7,12 +7,19 @@
  *
  * Mounted at `app/dev-preview/...` to keep it visually segregated and easy
  * to delete. proxy.ts doesn't list this in PROTECTED so no login is enforced.
+ *
+ * draft fallback：listAllTemplatesAsync 默认只看 status='published'，会
+ * 屏蔽 skill 刚以 draft 入库的模板。dev-preview 是 dev 工具，需要看到 draft
+ * 才能在 publish 前做人工审查 → 单独 fetch 一次（带 includeDrafts:true）。
  */
 import { TemplateRender } from "@/lib/templates/render-server";
 import { listAllTemplatesAsync } from "@/lib/templates/registry-server";
+import { fetchUploadedTemplate } from "@/lib/templates/uploaded/fetch";
+import { DENSITY_PRESETS } from "@/lib/style-presets";
 import { demoResume } from "@/lib/demo-resume";
 import { notFound } from "next/navigation";
 import Link from "next/link";
+import type { AllTemplatesItem } from "@/lib/templates/registry";
 
 export default async function DevTemplatePreview({
   params,
@@ -21,14 +28,32 @@ export default async function DevTemplatePreview({
 }) {
   const { id } = await params;
   const all = await listAllTemplatesAsync();
-  const found = all.find((t) => t.id === id);
+  let found: AllTemplatesItem | undefined = all.find((t) => t.id === id);
+  let isDraft = false;
+  if (!found) {
+    const draft = await fetchUploadedTemplate(id, { includeDrafts: true });
+    if (draft) {
+      found = {
+        id: draft.id,
+        name: draft.name,
+        description: draft.description ?? "",
+        thumbnailUrl: draft.thumbnailUrl,
+        source: "uploaded",
+        defaultStyleSettings: { ...DENSITY_PRESETS.standard.settings },
+      };
+      isDraft = true;
+    }
+  }
   if (!found) notFound();
 
   return (
     <main className="min-h-screen bg-zinc-200 p-8">
       <header className="mx-auto mb-6 flex max-w-[800px] items-center justify-between rounded-lg bg-white px-4 py-3 shadow-sm">
         <div>
-          <p className="text-xs text-zinc-500">Dev preview · 不走鉴权</p>
+          <p className="text-xs text-zinc-500">
+            Dev preview · 不走鉴权
+            {isDraft ? " · ⚠️ DRAFT（未发布，仅 dev-preview 可见）" : null}
+          </p>
           <h1 className="text-lg font-semibold">
             {found.name}{" "}
             <span className="rounded bg-zinc-100 px-1.5 py-0.5 font-mono text-xs text-zinc-600">
