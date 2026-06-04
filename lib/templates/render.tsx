@@ -33,7 +33,7 @@ export function uploadedTemplateToSerializable(
   id: string,
   template: UploadedTemplate,
 ): SerializableResolvedTemplate {
-  if (!template.customHtml) {
+  if (!template.html) {
     throw new Error(
       `[render] Template "${id}" has no HTML content — cannot render. ` +
       `All templates must have HTML (v2 SlotRenderer path).`
@@ -42,8 +42,8 @@ export function uploadedTemplateToSerializable(
   return {
     source: "unified",
     id,
-    html: template.customHtml,
-    css: template.customCss,
+    html: template.html,
+    css: template.css,
     templateId: template.id,
     sectionIcons: template.layout.sectionIcons,
   };

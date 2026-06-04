@@ -21,7 +21,6 @@ const mockTemplate: UploadedTemplate = {
   name: "陈媛媛优雅风",
   description: null,
   thumbnailUrl: null,
-  decoration: null,
   layout: {
     frame: { kind: "vertical" },
     headerVariant: "professional",
@@ -30,8 +29,8 @@ const mockTemplate: UploadedTemplate = {
     theme: { primaryColor: "#137880" },
     sectionIcons: {},
   },
-  customHtml: null,
-  customCss: null,
+  html: null,
+  css: null,
   category: null,
   features: null,
 };
@@ -47,8 +46,8 @@ describe("getTemplateMetaAsync", () => {
       // All three builtins now have local HTML+CSS → resolved as "uploaded"
       expect(resolved.source).toBe("uploaded");
       if (resolved.source === "uploaded") {
-        expect(resolved.template.customHtml).toContain("<");
-        expect(resolved.template.customCss).toContain("{");
+        expect(resolved.template.html).toContain("<");
+        expect(resolved.template.css).toContain("{");
       }
     }
     expect(fetchUploadedTemplate).not.toHaveBeenCalled();
@@ -70,7 +69,7 @@ describe("getTemplateMetaAsync", () => {
     expect(resolved.source).toBe("uploaded");
     expect(resolved.id).toBe(DEFAULT_TEMPLATE_ID);
     if (resolved.source === "uploaded") {
-      expect(resolved.template.customHtml).toContain("<");
+      expect(resolved.template.html).toContain("<");
     }
   });
 

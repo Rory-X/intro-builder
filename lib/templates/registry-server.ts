@@ -98,7 +98,6 @@ function getBuiltinHtmlFallbackTemplate(id: BuiltinTemplateId): UploadedTemplate
     name: meta.name,
     description: meta.description,
     thumbnailUrl: null,
-    decoration: null,
     layout: {
       frame: { kind: "vertical" },
       headerVariant: "professional",
@@ -107,8 +106,8 @@ function getBuiltinHtmlFallbackTemplate(id: BuiltinTemplateId): UploadedTemplate
       theme: { primaryColor: "#171717" },
       sectionIcons: BUILTIN_SECTION_ICONS[id] ?? {},
     },
-    customHtml: local.html,
-    customCss: local.css,
+    html: local.html,
+    css: local.css,
     category: meta.category,
     features: meta.features,
   };
@@ -263,8 +262,7 @@ export async function listAllTemplatesAsync(): Promise<AllTemplatesItem[]> {
 
 /**
  * 给 setTemplate 用：拿到任意 templateId 对应的"应用此模板时该用的 styleSettings"。
- * builtin → meta.defaultStyleSettings；uploaded → 标准回退。Skill 之后如果给
- * uploaded 加了字段，只需改这里一个分支。
+ * builtin → meta.defaultStyleSettings；uploaded → DB 列优先，无则标准回退。
  */
 export function getTemplateDefaultStyleSettings(
   resolved: ResolvedTemplateMeta,
@@ -273,6 +271,8 @@ export function getTemplateDefaultStyleSettings(
     const meta = TEMPLATES.find((t) => t.id === resolved.id);
     if (meta) return meta.defaultStyleSettings;
   }
+  const dbSettings = (resolved.template as { defaultStyleSettings?: StyleSettings }).defaultStyleSettings;
+  if (dbSettings) return dbSettings;
   return UPLOADED_DEFAULT_STYLE_SETTINGS;
 }
 

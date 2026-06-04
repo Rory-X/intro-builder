@@ -12,7 +12,7 @@ async function main() {
   const uploaded = await listUploadedTemplates();
   console.log(`listUploadedTemplates: ${uploaded.length} row(s)`);
   for (const u of uploaded) {
-    console.log(`  • ${u.id}  ${u.name}  decoration=${u.decoration ? "yes" : "null"}`);
+    console.log(`  • ${u.id}  ${u.name}  html=${u.html ? "yes" : "null"}`);
   }
 
   const all = await listAllTemplatesAsync();
@@ -20,10 +20,6 @@ async function main() {
   for (const t of all) {
     console.log(`  • ${t.id}  source=${t.source}  ${t.name}`);
   }
-
-  const hasAbbey = all.some((t) => t.id === "abbey-stub");
-  console.log(`\nabbey-stub visible to merged list? ${hasAbbey ? "✓ YES" : "✗ NO"}`);
-  process.exit(hasAbbey ? 0 : 1);
 }
 
 main().catch((e) => {

@@ -30,7 +30,7 @@ export default async function Landing() {
       .filter((t): t is NonNullable<typeof t> => t != null)
       .map((t) => uploadedTemplateToSerializable(t.id, t)),
     ...uploaded
-      .filter((t) => !builtinIds.has(t.id) && t.customHtml)
+      .filter((t) => !builtinIds.has(t.id) && t.html)
       .map((t) => uploadedTemplateToSerializable(t.id, t)),
   ];
 

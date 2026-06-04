@@ -43,27 +43,6 @@ export type TemplateCategoryValue = z.infer<typeof TemplateCategorySchema>;
 // features 数组：抽屉里"这个模板的特点"显示。固定 3 条，每条 ≤ 60 字。
 const FeaturesSchema = z.array(z.string().min(1).max(60)).length(3);
 
-// === DecorationConfig ===
-/**
- * 装饰底图 + 摆放方式。从参考图 AI 抠出来的 PNG 由 `bgImageUrl` 指向，
- * placement 是绝对定位参数（top/right/width/height/zIndex/opacity）。
- * pageBgColor 用于浅底色页面（避免 decoration 跟纯白冲突）。
- */
-export const DecorationConfig = z.object({
-  bgImageUrl: z.string(),
-  placement: z.object({
-    position: z.literal("absolute"),
-    top: z.string(),
-    right: z.string(),
-    width: z.string(),
-    height: z.string(),
-    zIndex: z.number(),
-    opacity: z.number(),
-  }),
-  pageBgColor: z.string().optional(),
-});
-export type DecorationConfig = z.infer<typeof DecorationConfig>;
-
 /**
  * 简历分区 id。对应 `ResumeContent.sectionOrder` 里的字符串：
  * built-in: "experience" | "education" | "projects" | "skills"
@@ -167,22 +146,17 @@ export type LayoutConfig = z.infer<typeof LayoutConfig>;
 
 // === UploadedTemplate ===
 /**
- * 模板有两条渲染路径：
- * - **v1 enum 路径**：customHtml=null。引擎按 LayoutConfig 的 enum 字段
- *   （variant ×3 + theme + sectionIcons）渲染。abbey / abbey-stub 走这条。
- * - **v2 自由排版**：customHtml 非空。引擎调 SlotRenderer 解析 HTML，把
- *   `<slot data-bind="...">` 替换为内容。layout 字段仍然要填一个最小有效
- *   值作为 fallback（SlotRenderer 渲染失败时降级到 enum 路径）。
+ * v2 模板数据结构。所有模板走 SlotRenderer（HTML+CSS slot-driven）渲染。
+ * `html` 非空时可渲染，null 时跳过（不展示在模板库中）。
  */
 export const UploadedTemplate = z.object({
   id: z.string(),
   name: z.string(),
   description: z.string().nullable(),
   thumbnailUrl: z.string().nullable(),
-  decoration: DecorationConfig.nullable(),
   layout: LayoutConfig,
-  customHtml: z.string().nullable(),
-  customCss: z.string().nullable(),
+  html: z.string().nullable(),
+  css: z.string().nullable(),
   category: TemplateCategorySchema.nullable(),
   features: FeaturesSchema.nullable(),
 });

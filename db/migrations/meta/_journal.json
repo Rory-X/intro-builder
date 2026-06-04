@@ -43,6 +43,13 @@
       "when": 1780384456866,
       "tag": "0005_chunky_slipstream",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1780546642865,
+      "tag": "0006_perfect_robbie_robertson",
+      "breakpoints": true
     }
   ]
 }

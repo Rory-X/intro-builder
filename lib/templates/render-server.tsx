@@ -30,7 +30,7 @@ export async function TemplateRender({
   const resolved = preResolved ?? (await getTemplateMetaAsync(id));
   const template = resolved.template;
 
-  if (!template.customHtml) {
+  if (!template.html) {
     throw new Error(
       `[render-server] Template "${resolved.id}" has no HTML content. ` +
       `All templates must have HTML (v2 SlotRenderer path).`
@@ -39,8 +39,8 @@ export async function TemplateRender({
 
   return (
     <SlotRenderer
-      html={template.customHtml}
-      css={template.customCss}
+      html={template.html}
+      css={template.css}
       content={layoutProps.content}
       styleSettings={layoutProps.styleSettings ?? DEFAULT_STYLE_SETTINGS}
       templateId={template.id}

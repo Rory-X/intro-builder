@@ -1,17 +1,8 @@
 /**
  * Insert one row into the `templates` table. Used by the template-studio skill
- * after extract-decoration.py produces the background image and the agent
- * decides on a LayoutConfig + DecorationConfig (v1) or writes HTML+CSS (v2).
+ * after the agent writes HTML+CSS for a v2 SlotRenderer template.
  *
- * v1 enum-based path:
- *   pnpm exec tsx --env-file=.env.local template-studio-skill/scripts/insert-template.ts \
- *        --id <id> --name "<name>" \
- *        --description "<one-line description>" \
- *        --thumbnail-url "<optional URL>" \
- *        --decoration '<DecorationConfig JSON or null>' \
- *        --layout '<LayoutConfig JSON>'
- *
- * v2 HTML free-painting path (Skill v2 — see SKILL.md Step 3):
+ * Usage:
  *   pnpm exec tsx --env-file=.env.local template-studio-skill/scripts/insert-template.ts \
  *        --id <id> --name "<name>" \
  *        --custom-html path/to/template.html \
@@ -38,7 +29,7 @@ import { readFileSync } from "node:fs";
 // schema here would silently drift (e.g. `frame` was added to
 // LayoutConfig in 1f79532; the old hand-written type didn't notice and
 // would have happily inserted rows that fetch.ts then rejects).
-import { LayoutConfig, DecorationConfig } from "@/lib/templates/uploaded/types";
+import { LayoutConfig } from "@/lib/templates/uploaded/types";
 
 function fail(code: number, msg: string): never {
   console.error(`ERROR: ${msg}`);
@@ -128,7 +119,6 @@ async function main() {
       name: { type: "string" },
       description: { type: "string" },
       "thumbnail-url": { type: "string" },
-      decoration: { type: "string" },
       layout: { type: "string" },
       "custom-html": { type: "string" },
       "custom-css": { type: "string" },
@@ -178,11 +168,6 @@ async function main() {
   // start rejecting Skill output the moment the schema lands, instead of
   // silently writing rows that vanish from listAllTemplatesAsync.
   const layout = parseConfig("--layout", values.layout, LayoutConfig);
-
-  const decoration =
-    values.decoration && values.decoration !== "null"
-      ? parseConfig("--decoration", values.decoration, DecorationConfig)
-      : null;
 
   // v2 path: read HTML/CSS files. v1 path: both null.
   let customHtml: string | null = null;
@@ -282,7 +267,7 @@ async function main() {
     const rows = (await sql`
       INSERT INTO templates (
         id, name, description, "thumbnailUrl",
-        source, decoration, layout, "customHtml", "customCss",
+        layout, html, css,
         category, features,
         status, "createdBy"
       ) VALUES (
@@ -290,8 +275,6 @@ async function main() {
         ${values.name},
         ${values.description ?? null},
         ${values["thumbnail-url"] ?? null},
-        'uploaded',
-        ${decoration ? JSON.stringify(decoration) : null}::jsonb,
         ${JSON.stringify(layout)}::jsonb,
         ${customHtml},
         ${customCss},
@@ -304,21 +287,19 @@ async function main() {
         name = EXCLUDED.name,
         description = EXCLUDED.description,
         "thumbnailUrl" = EXCLUDED."thumbnailUrl",
-        decoration = EXCLUDED.decoration,
         layout = EXCLUDED.layout,
-        "customHtml" = EXCLUDED."customHtml",
-        "customCss" = EXCLUDED."customCss",
+        html = EXCLUDED.html,
+        css = EXCLUDED.css,
         category = EXCLUDED.category,
         features = EXCLUDED.features,
         status = EXCLUDED.status,
         "updatedAt" = now()
-      RETURNING id, name, source, status, "updatedAt"
-    `) as Array<{ id: string; name: string; source: string; status: string; updatedAt: string }>;
+      RETURNING id, name, status, "updatedAt"
+    `) as Array<{ id: string; name: string; status: string; updatedAt: string }>;
     if (rows.length === 0) fail(2, "no row returned from upsert");
     const r = rows[0];
-    const mode = customHtml ? "v2-html" : "v1-enum";
     console.log(
-      `upserted: ${r.id} (${r.name})  mode=${mode}  source=${r.source}  status=${r.status}`,
+      `upserted: ${r.id} (${r.name})  status=${r.status}`,
     );
   } catch (e) {
     fail(2, `DB error: ${(e as Error).message}`);

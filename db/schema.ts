@@ -100,12 +100,8 @@ export const templates = pgTable("templates", {
   assets: jsonb("assets").$type<TemplateAsset[]>(),
   templateLayout: jsonb("templateLayout").$type<TemplateLayout>(),
   defaultStyleSettings: jsonb("defaultStyleSettings"),
-  // ─── 旧字段（Phase 3 迁移完毕后删除） ───
-  source: text("source"),
-  decoration: jsonb("decoration"),
+  // ─── 旧字段（layout 保留：sectionIcons 仍在用） ───
   layout: jsonb("layout"),
-  customHtml: text("customHtml"),
-  customCss: text("customCss"),
   createdBy: text("createdBy"),
   // ─── 公共字段 ───
   status: text("status").notNull().default("draft"),

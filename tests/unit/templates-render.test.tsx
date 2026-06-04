@@ -44,7 +44,6 @@ describe("TemplateRender (server) preResolved short-circuit", () => {
       name: "Professional",
       description: null,
       thumbnailUrl: null,
-      decoration: null,
       layout: {
         frame: { kind: "vertical" },
         headerVariant: "professional",
@@ -53,8 +52,8 @@ describe("TemplateRender (server) preResolved short-circuit", () => {
         theme: { primaryColor: "#171717" },
         sectionIcons: {},
       },
-      customHtml: '<div><slot data-bind="basics.name"></slot></div>',
-      customCss: null,
+      html: '<div><slot data-bind="basics.name"></slot></div>',
+      css: null,
       category: null,
       features: null,
     };
@@ -73,7 +72,6 @@ describe("TemplateRender (server) preResolved short-circuit", () => {
       name: "NoHTML",
       description: null,
       thumbnailUrl: null,
-      decoration: null,
       layout: {
         frame: { kind: "vertical" },
         headerVariant: "professional",
@@ -82,8 +80,8 @@ describe("TemplateRender (server) preResolved short-circuit", () => {
         theme: { primaryColor: "#000" },
         sectionIcons: {},
       },
-      customHtml: null,
-      customCss: null,
+      html: null,
+      css: null,
       category: null,
       features: null,
     };
