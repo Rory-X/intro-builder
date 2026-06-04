@@ -48,6 +48,14 @@ function getDisplayMeta(resolved: SerializableResolvedTemplate) {
       features: meta.features as readonly string[] | undefined,
     };
   }
+  if (resolved.source === "unified") {
+    return {
+      name: resolved.name ?? resolved.id,
+      description: resolved.description ?? "",
+      isRecommended: false as const,
+      features: resolved.features as readonly string[] | undefined,
+    };
+  }
   return {
     name: resolved.id,
     description: "",
@@ -88,7 +96,8 @@ export function TemplatePreviewDrawer({
     general: "通用",
   };
   const categoryRaw = resolved
-    ? TEMPLATES.find((t) => t.id === resolved.id)?.category
+    ? (TEMPLATES.find((t) => t.id === resolved.id)?.category
+      ?? (resolved.source === "unified" ? resolved.category : undefined))
     : undefined;
   const sourceLabel = categoryRaw ? CATEGORY_LABELS_DRAWER[categoryRaw] : null;
 

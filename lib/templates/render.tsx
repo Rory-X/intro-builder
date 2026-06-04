@@ -27,7 +27,7 @@ import type { UploadedTemplate } from "./uploaded/types";
  */
 export type SerializableResolvedTemplate =
   | { source: "builtin"; id: BuiltinTemplateId }
-  | { source: "unified"; id: string; html: string; css: string | null; templateId: string; sectionIcons?: Record<string, { icon: string; color?: string }> };
+  | { source: "unified"; id: string; html: string; css: string | null; templateId: string; sectionIcons?: Record<string, { icon: string; color?: string }>; name?: string; description?: string; category?: string; features?: string[] };
 
 export function uploadedTemplateToSerializable(
   id: string,
@@ -46,6 +46,10 @@ export function uploadedTemplateToSerializable(
     css: template.css,
     templateId: template.id,
     sectionIcons: template.sectionIcons,
+    name: template.name,
+    description: template.description ?? undefined,
+    category: template.category ?? undefined,
+    features: template.features ?? undefined,
   };
 }
 
