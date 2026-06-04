@@ -108,7 +108,7 @@ export function parseTemplateRow(
     name: row.name,
     description: row.description,
     thumbnailUrl: row.thumbnailUrl,
-    layout: row.layout,
+    sectionIcons: row.sectionIcons ?? {},
     html: row.html,
     css: row.css,
     category: row.category,
@@ -122,9 +122,7 @@ export function parseTemplateRow(
     );
     return null;
   }
-  // Attach templateLayout for sidebar sections (v2 unified path)
-  const parsed = result.data as UploadedTemplateType & { templateLayout?: unknown; defaultStyleSettings?: unknown };
-  parsed.templateLayout = row.templateLayout;
+  const parsed = result.data as UploadedTemplateType & { defaultStyleSettings?: unknown };
   parsed.defaultStyleSettings = row.defaultStyleSettings;
   return parsed;
 }

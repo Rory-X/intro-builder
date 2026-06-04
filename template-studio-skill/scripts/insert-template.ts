@@ -7,11 +7,9 @@
  *        --id <id> --name "<name>" \
  *        --custom-html path/to/template.html \
  *        --custom-css  path/to/template.css \
- *        --layout '<minimal LayoutConfig JSON for fallback>'
+ *        --section-icons '<sectionIcons JSON, e.g. {"experience":{"icon":"Briefcase","color":"#3b82f6"}}>'
  *
- * --layout remains required even in v2 mode — UploadedLayout's bypass falls
- * back to it if SlotRenderer crashes. Pass a minimal valid value (professional
- * variant + black primary + empty sectionIcons).
+ * --section-icons is optional — defaults to {} (no icons).
  *
  * --env-file=.env.local must be passed so DATABASE_URL is in process.env
  * before this module runs (no in-file dotenv — ESM imports evaluate before
@@ -25,11 +23,8 @@
 import { neon } from "@neondatabase/serverless";
 import { parseArgs } from "node:util";
 import { readFileSync } from "node:fs";
-// Single source of truth for the row shape. Manually mirroring the Zod
-// schema here would silently drift (e.g. `frame` was added to
-// LayoutConfig in 1f79532; the old hand-written type didn't notice and
-// would have happily inserted rows that fetch.ts then rejects).
-import { LayoutConfig } from "@/lib/templates/uploaded/types";
+// Single source of truth for the row shape.
+import { SectionIconsSchema } from "@/lib/templates/uploaded/types";
 
 function fail(code: number, msg: string): never {
   console.error(`ERROR: ${msg}`);
@@ -119,7 +114,7 @@ async function main() {
       name: { type: "string" },
       description: { type: "string" },
       "thumbnail-url": { type: "string" },
-      layout: { type: "string" },
+      "section-icons": { type: "string" },
       "custom-html": { type: "string" },
       "custom-css": { type: "string" },
       "skip-css-check": { type: "boolean" },  // escape hatch for advanced cases
@@ -134,7 +129,6 @@ async function main() {
 
   if (!values.id) fail(1, "--id required");
   if (!values.name) fail(1, "--name required");
-  if (!values.layout) fail(1, "--layout required (LayoutConfig JSON)");
   if (!values.category) fail(1, "--category required (academic|tech|business|creative|general)");
   if (!values.features) fail(1, "--features required (JSON array of 3 strings)");
 
@@ -163,13 +157,12 @@ async function main() {
     fail(1, `--features invalid: ${(e as Error).message}. Expected JSON array of 3 strings, each ≤ 60 chars.`);
   }
 
-  // Validates against the same Zod schema fetch.ts uses to read — no drift
-  // possible. If LayoutConfig grows a new required field, this script will
-  // start rejecting Skill output the moment the schema lands, instead of
-  // silently writing rows that vanish from listAllTemplatesAsync.
-  const layout = parseConfig("--layout", values.layout, LayoutConfig);
+  // Validates sectionIcons against the same Zod schema fetch.ts uses to read.
+  const sectionIcons = values["section-icons"]
+    ? parseConfig("--section-icons", values["section-icons"], SectionIconsSchema)
+    : {};
 
-  // v2 path: read HTML/CSS files. v1 path: both null.
+  // v2 path: read HTML/CSS files.
   let customHtml: string | null = null;
   let customCss: string | null = null;
   if (values["custom-html"]) {
@@ -267,7 +260,7 @@ async function main() {
     const rows = (await sql`
       INSERT INTO templates (
         id, name, description, "thumbnailUrl",
-        layout, html, css,
+        "sectionIcons", html, css,
         category, features,
         status, "createdBy"
       ) VALUES (
@@ -275,7 +268,7 @@ async function main() {
         ${values.name},
         ${values.description ?? null},
         ${values["thumbnail-url"] ?? null},
-        ${JSON.stringify(layout)}::jsonb,
+        ${JSON.stringify(sectionIcons)}::jsonb,
         ${customHtml},
         ${customCss},
         ${values.category},
@@ -287,7 +280,7 @@ async function main() {
         name = EXCLUDED.name,
         description = EXCLUDED.description,
         "thumbnailUrl" = EXCLUDED."thumbnailUrl",
-        layout = EXCLUDED.layout,
+        "sectionIcons" = EXCLUDED."sectionIcons",
         html = EXCLUDED.html,
         css = EXCLUDED.css,
         category = EXCLUDED.category,

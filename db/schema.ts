@@ -80,11 +80,6 @@ export const collabSessions = pgTable("collab_session", {
 
 // ─── Templates (template-studio middle platform) ─────────────
 
-// v2 layout 结构类型
-export type TemplateLayout =
-  | { type: "vertical" }
-  | { type: "horizontal"; sidebar: { side: "left" | "right"; width: string; sections: string[] } };
-
 export type TemplateAsset = { url: string; role: "banner" | "decoration" | "icon" };
 
 export const templates = pgTable("templates", {
@@ -98,9 +93,10 @@ export const templates = pgTable("templates", {
   html: text("html"),
   css: text("css"),
   assets: jsonb("assets").$type<TemplateAsset[]>(),
-  templateLayout: jsonb("templateLayout").$type<TemplateLayout>(),
+  sectionIcons: jsonb("sectionIcons"),
+  templateLayout: jsonb("templateLayout"),
   defaultStyleSettings: jsonb("defaultStyleSettings"),
-  // ─── 旧字段（layout 保留：sectionIcons 仍在用） ───
+  // ─── 旧字段（Phase 2 确认新列稳定后删除） ───
   layout: jsonb("layout"),
   createdBy: text("createdBy"),
   // ─── 公共字段 ───

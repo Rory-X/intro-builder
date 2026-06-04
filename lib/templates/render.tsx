@@ -45,7 +45,7 @@ export function uploadedTemplateToSerializable(
     html: template.html,
     css: template.css,
     templateId: template.id,
-    sectionIcons: template.layout.sectionIcons,
+    sectionIcons: template.sectionIcons,
   };
 }
 
