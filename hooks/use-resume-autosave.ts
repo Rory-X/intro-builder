@@ -49,6 +49,8 @@ export function useResumeAutosave({
     titleRef.current = title;
   }, [title]);
 
+  const persistRef = useRef<(() => Promise<void>) | undefined>(undefined);
+
   // The serial save queue intentionally uses refs so in-flight saves never
   // overwrite newer edits when React re-renders during autosave.
   // eslint-disable-next-line react-hooks/preserve-manual-memoization
@@ -68,7 +70,7 @@ export function useResumeAutosave({
       if (isRetriableError(e) && retryCountRef.current < 1) {
         retryCountRef.current += 1;
         savingRef.current = false;
-        setTimeout(() => void persist(), 2000);
+        setTimeout(() => void persistRef.current?.(), 2000);
         return;
       }
       retryCountRef.current = 0;
@@ -78,10 +80,12 @@ export function useResumeAutosave({
       savingRef.current = false;
       if (saveAgainRef.current) {
         saveAgainRef.current = false;
-        await persist();
+        await persistRef.current?.();
       }
     }
   }, [form, onSave, onError]);
+
+  persistRef.current = persist;
 
   const schedule = useCallback(() => {
     hasPendingSaveRef.current = true;
