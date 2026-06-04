@@ -25,13 +25,17 @@ beforeEach(() => {
   vi.stubGlobal("ResizeObserver", MockObserver);
 });
 
-const builtinResolved: SerializableResolvedTemplate = {
+const dbResolved: SerializableResolvedTemplate = {
   source: "unified",
   id: "professional",
   html: '<div><slot data-bind="basics.name"></slot></div>',
   css: null,
   templateId: "professional",
   sectionIcons: {},
+  name: "专业",
+  description: "单栏清晰",
+  category: "tech",
+  features: ["清晰单栏", "适合互联网求职", "ATS 友好"],
 };
 
 describe("TemplatePreviewDrawer", () => {
@@ -40,7 +44,7 @@ describe("TemplatePreviewDrawer", () => {
       <TemplatePreviewDrawer
         open={false}
         onOpenChange={vi.fn()}
-        resolved={builtinResolved}
+        resolved={dbResolved}
         demoContent={demoResume}
         userContent={null}
         resumeId="r1"
@@ -55,7 +59,7 @@ describe("TemplatePreviewDrawer", () => {
       <TemplatePreviewDrawer
         open={true}
         onOpenChange={vi.fn()}
-        resolved={builtinResolved}
+        resolved={dbResolved}
         demoContent={demoResume}
         userContent={null}
         resumeId="r1"
@@ -72,7 +76,7 @@ describe("TemplatePreviewDrawer", () => {
       <TemplatePreviewDrawer
         open={true}
         onOpenChange={onOpenChange}
-        resolved={builtinResolved}
+        resolved={dbResolved}
         demoContent={demoResume}
         userContent={null}
         resumeId="r1"
@@ -89,7 +93,7 @@ describe("TemplatePreviewDrawer", () => {
       <TemplatePreviewDrawer
         open={true}
         onOpenChange={vi.fn()}
-        resolved={builtinResolved}
+        resolved={dbResolved}
         demoContent={demoResume}
         userContent={null}
         resumeId="r1"
@@ -105,7 +109,7 @@ describe("TemplatePreviewDrawer", () => {
       <TemplatePreviewDrawer
         open={true}
         onOpenChange={vi.fn()}
-        resolved={builtinResolved}
+        resolved={dbResolved}
         demoContent={demoResume}
         userContent={null}
         resumeId={null}
@@ -123,7 +127,7 @@ describe("TemplatePreviewDrawer", () => {
       <TemplatePreviewDrawer
         open={true}
         onOpenChange={vi.fn()}
-        resolved={builtinResolved}
+        resolved={dbResolved}
         demoContent={demoResume}
         userContent={null}
         resumeId="r1"
@@ -138,7 +142,7 @@ describe("TemplatePreviewDrawer", () => {
     expect(applyBtn.textContent).toMatch(/正在应用/);
   });
 
-  it("非 builtin 模板：显示模板名", () => {
+  it("显示 DB 模板名", () => {
     const unifiedResolved: SerializableResolvedTemplate = {
       source: "unified",
       id: "abbey-stub",
@@ -146,6 +150,7 @@ describe("TemplatePreviewDrawer", () => {
       css: null,
       templateId: "abbey-stub",
       sectionIcons: {},
+      name: "Abbey Stub",
     };
     render(
       <TemplatePreviewDrawer
@@ -159,7 +164,7 @@ describe("TemplatePreviewDrawer", () => {
       />,
     );
     // Sheet 走 Portal，要看全局 body
-    expect(document.body.textContent).toContain("abbey-stub");
+    expect(document.body.textContent).toContain("Abbey Stub");
     // screen import 用法验证（避免 unused import 警告）
     expect(screen.getByTestId("drawer-apply")).toBeInTheDocument();
   });
@@ -169,7 +174,7 @@ describe("TemplatePreviewDrawer", () => {
       <TemplatePreviewDrawer
         open={true}
         onOpenChange={vi.fn()}
-        resolved={builtinResolved}
+        resolved={dbResolved}
         demoContent={demoResume}
         userContent={null}
         resumeId="r1"
@@ -185,7 +190,7 @@ describe("TemplatePreviewDrawer", () => {
       <TemplatePreviewDrawer
         open={true}
         onOpenChange={vi.fn()}
-        resolved={builtinResolved}
+        resolved={dbResolved}
         demoContent={demoResume}
         userContent={null}
         resumeId="r1"
@@ -205,7 +210,7 @@ describe("TemplatePreviewDrawer", () => {
       <TemplatePreviewDrawer
         open={true}
         onOpenChange={vi.fn()}
-        resolved={builtinResolved}
+        resolved={dbResolved}
         demoContent={demoResume}
         userContent={null}
         resumeId="r1"

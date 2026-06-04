@@ -2,7 +2,6 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { TEMPLATES } from "@/lib/templates/registry";
 import type { AllTemplatesItem, TemplateCategory } from "@/lib/templates/registry";
 import type { SerializableResolvedTemplate } from "@/lib/templates/render";
 import { ClientTemplateRenderFromSerializable } from "@/lib/templates/render";

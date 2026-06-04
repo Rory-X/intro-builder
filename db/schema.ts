@@ -80,9 +80,10 @@ export const collabSessions = pgTable("collab_session", {
 
 // ─── Templates (template-studio middle platform) ─────────────
 
-// templates 表 = uploaded 模板的唯一存储（内置 professional/classic/modern
-// 硬编码在 registry.ts，不入此表）。本表是字段的唯一真源——每列的含义写在
-// 下方注释里，改列时顺手改注释，不要再另起一份文档去镜像它（会漂）。
+// templates 表 = 所有模板的唯一存储:classic/modern/professional 与用户上传的模板,
+// 都是本表里的普通行,一视同仁(不再有"内置硬编码、不入表"那套特殊处理)。
+// 本表是字段的唯一真源——每列含义写在下方注释里,改列时顺手改注释,
+// 不要再另起一份文档去镜像它(会漂)。
 export const templates = pgTable("templates", {
   /** 模板唯一标识。上传模板用 UUID / slug。 */
   id: text("id").primaryKey(),
@@ -111,6 +112,8 @@ export const templates = pgTable("templates", {
   defaultStyleSettings: jsonb("defaultStyleSettings"),
   /** 预留：作者上传的 banner 图 URL（存 Vercel Blob），模板 HTML 里引用。暂未启用。 */
   bannerImageUrl: text("bannerImageUrl"),
+  /** 默认模板标记。新建/导入/兜底模板解析只应有一行为 true。 */
+  isDefault: boolean("isDefault").notNull().default(false),
 
   // ─── 公共字段 ───
   /** 模板状态。fetch 只取 published；draft 用于 template-studio 草稿审查流程。 */
@@ -126,11 +129,9 @@ export type NewDbTemplate = typeof templates.$inferInsert;
 
 // ─── Template Favorites (user-level) ─────────────────────────
 
-// 用户级模板收藏夹。templateId 故意**不加外键指向 templates 表**：三个内置
-// 模板（professional / classic / modern）硬编码在 lib/templates/registry.ts，
-// 根本不存在于 DB templates 表（该表只装 uploaded 模板）。加 FK 会让"收藏内置
-// 模板"违反外键约束。故 templateId 用纯 text，收藏 builtin / uploaded 都通吃。
-// uploaded 模板被删后留下的孤儿行无害：渲染时模板不在列表里自然被过滤掉。
+// 用户级模板收藏夹。templateId 指向 templates 表里任意一行(所有模板——含
+// classic/modern/professional——现在都是表中的行)。故意**不加外键**:容忍孤儿
+// ——模板被删后残留的收藏行无害,渲染时该模板不在列表里自然被过滤掉。
 export const templateFavorites = pgTable("template_favorite", {
   id: text("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
   userId: text("userId").notNull().references(() => users.id, { onDelete: "cascade" }),

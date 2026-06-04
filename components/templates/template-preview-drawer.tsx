@@ -10,7 +10,6 @@ import {
   SheetDescription,
 } from "@/components/ui/sheet";
 import { Button } from "@/components/ui/button";
-import { TEMPLATES } from "@/lib/templates/registry";
 import { ClientTemplateRenderFromSerializable } from "@/lib/templates/render";
 import type { SerializableResolvedTemplate } from "@/lib/templates/render";
 import type { ResumeContent } from "@/lib/resume-schema";
@@ -39,28 +38,11 @@ type Props = {
 };
 
 function getDisplayMeta(resolved: SerializableResolvedTemplate) {
-  const meta = TEMPLATES.find((t) => t.id === resolved.id);
-  if (meta) {
-    return {
-      name: meta.name,
-      description: meta.description ?? "",
-      isRecommended: meta.isRecommended,
-      features: meta.features as readonly string[] | undefined,
-    };
-  }
-  if (resolved.source === "unified") {
-    return {
-      name: resolved.name ?? resolved.id,
-      description: resolved.description ?? "",
-      isRecommended: false as const,
-      features: resolved.features as readonly string[] | undefined,
-    };
-  }
   return {
-    name: resolved.id,
-    description: "",
+    name: resolved.name ?? resolved.id,
+    description: resolved.description ?? "",
     isRecommended: false as const,
-    features: undefined,
+    features: resolved.features as readonly string[] | undefined,
   };
 }
 
@@ -96,8 +78,7 @@ export function TemplatePreviewDrawer({
     general: "通用",
   };
   const categoryRaw = resolved
-    ? (TEMPLATES.find((t) => t.id === resolved.id)?.category
-      ?? (resolved.source === "unified" ? resolved.category : undefined))
+    ? resolved.category
     : undefined;
   const sourceLabel = categoryRaw ? CATEGORY_LABELS_DRAWER[categoryRaw] : null;
 

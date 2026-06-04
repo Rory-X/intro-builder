@@ -7,8 +7,7 @@ import { BentoFeatures } from "@/components/marketing/bento-features";
 import { TemplatesSection } from "@/components/marketing/templates-section";
 import { MarketingFooter } from "@/components/marketing/marketing-footer";
 import { ScrollReveal } from "@/components/marketing/scroll-reveal";
-import { listAllTemplatesAsync, listBuiltinHtmlFallbackTemplates } from "@/lib/templates/registry-server";
-import { TEMPLATES } from "@/lib/templates/registry";
+import { listAllTemplatesAsync } from "@/lib/templates/registry-server";
 import { listUploadedTemplates } from "@/lib/templates/uploaded/fetch";
 import { uploadedTemplateToSerializable } from "@/lib/templates/render";
 import { demoResume } from "@/lib/demo-resume";
@@ -20,19 +19,9 @@ export default async function Landing() {
   const allTemplates = await listAllTemplatesAsync();
   const uploaded = await listUploadedTemplates();
 
-  // Build serializable resolved templates for client rendering
-  const builtinHtmlTemplates = listBuiltinHtmlFallbackTemplates();
-  const builtinById = new Map(builtinHtmlTemplates.map((t) => [t.id, t]));
-  const builtinIds = new Set(TEMPLATES.map((t) => t.id));
-  const resolvedList: SerializableResolvedTemplate[] = [
-    ...TEMPLATES
-      .map((t) => builtinById.get(t.id))
-      .filter((t): t is NonNullable<typeof t> => t != null)
-      .map((t) => uploadedTemplateToSerializable(t.id, t)),
-    ...uploaded
-      .filter((t) => !builtinIds.has(t.id) && t.html)
-      .map((t) => uploadedTemplateToSerializable(t.id, t)),
-  ];
+  const resolvedList: SerializableResolvedTemplate[] = uploaded
+    .filter((t) => t.html)
+    .map((t) => uploadedTemplateToSerializable(t.id, t));
 
   return (
     <>

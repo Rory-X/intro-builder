@@ -71,6 +71,29 @@ export async function fetchUploadedTemplate(
   }
 }
 
+export async function fetchDefaultUploadedTemplate(): Promise<UploadedTemplateType | null> {
+  try {
+    const rows = await withTransientRetry("fetchDefaultUploadedTemplate", () =>
+      db
+        .select()
+        .from(templates)
+        .where(and(eq(templates.status, "published"), eq(templates.isDefault, true)))
+        .limit(2),
+    );
+    if (rows.length !== 1) {
+      console.warn(
+        `[templates] expected exactly one default template, got ${rows.length}`,
+      );
+      return null;
+    }
+    return parseTemplateRow(rows[0]);
+  } catch (err) {
+    if (isMissingTableError(err)) return null;
+    console.warn("[templates] fetchDefaultUploadedTemplate failed:", err);
+    return null;
+  }
+}
+
 export async function listUploadedTemplates(): Promise<UploadedTemplateType[]> {
   try {
     const rows = await withTransientRetry("listUploadedTemplates", () =>

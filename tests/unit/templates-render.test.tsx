@@ -7,17 +7,6 @@ import { demoResume } from "@/lib/demo-resume";
 import type { UploadedTemplate } from "@/lib/templates/uploaded/types";
 
 describe("ClientTemplateRenderFromSerializable", () => {
-  it("throws for source=builtin (no HTML available)", () => {
-    expect(() =>
-      render(
-        <ClientTemplateRenderFromSerializable
-          resolved={{ source: "builtin", id: "professional" }}
-          content={demoResume}
-        />,
-      ),
-    ).toThrow(/no HTML data available/);
-  });
-
   it("renders SlotRenderer when source=unified", () => {
     const { container } = render(
       <ClientTemplateRenderFromSerializable

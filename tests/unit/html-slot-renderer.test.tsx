@@ -3,8 +3,6 @@ import { render } from "@testing-library/react";
 import { SlotRenderer } from "@/lib/templates/uploaded/html-slot-renderer";
 import { emptyResumeContent, type ResumeContent, DEFAULT_STYLE_SETTINGS } from "@/lib/resume-schema";
 import { emptyDoc } from "@/lib/tiptap-types";
-import { readFileSync } from "node:fs";
-import { join } from "node:path";
 
 function richDoc(text: string): ReturnType<typeof emptyDoc> {
   return {
@@ -69,6 +67,65 @@ const render_ = (props: Partial<Parameters<typeof SlotRenderer>[0]> = {}) =>
       sectionIcons={props.sectionIcons}
     />,
   );
+
+const SECTION_FIXTURE_HTML = `
+  <article class="fixture-resume">
+    <header>
+      <h1><slot data-bind="basics.name" /></h1>
+      <div class="fixture-contact">
+        <slot data-bind="basics.email" />
+        <slot data-bind="basics.phone" />
+      </div>
+    </header>
+    <slot data-bind="sectionOrder" data-template="section" />
+  </article>
+  <template id="section-block">
+    <section class="fixture-section">
+      <h2><slot data-bind="section.title" /></h2>
+      <div class="fixture-body"><slot data-bind="section.body" /></div>
+    </section>
+  </template>
+  <template id="section-list">
+    <section class="fixture-section">
+      <h2><slot data-bind="section.title" /></h2>
+      <slot data-bind="section.items" data-template="item" />
+    </section>
+  </template>
+  <template id="item">
+    <div class="fixture-item">
+      <strong class="fixture-item-title"><slot data-bind="item.title" /></strong>
+      <span class="fixture-item-subtitle"><slot data-bind="item.subtitle" /></span>
+      <span class="fixture-item-meta"><slot data-bind="item.meta" /></span>
+      <span class="fixture-item-date"><slot data-bind="item.dateRange" /></span>
+      <span class="fixture-item-location"><slot data-bind="item.location" /></span>
+      <div class="fixture-item-bullets"><slot data-bind="item.bullets" /></div>
+      <span class="fixture-item-link"><slot data-bind="item.link" /></span>
+    </div>
+  </template>
+`;
+
+function itemFieldsFixtureHtml(locationClass: string, metaClass: string): string {
+  return `
+    <article>
+      <slot data-bind="sectionOrder" data-template="section" />
+    </article>
+    <template id="section-list">
+      <section><slot data-bind="section.items" data-template="item" /></section>
+    </template>
+    <template id="section-block">
+      <section><slot data-bind="section.body" /></section>
+    </template>
+    <template id="item">
+      <div class="fixture-item">
+        <span class="${locationClass}"><slot data-bind="item.location" /></span>
+        <span class="${metaClass}">
+          <slot data-bind="item.meta" />
+          <slot data-bind="item.link" />
+        </span>
+      </div>
+    </template>
+  `;
+}
 
 describe("SlotRenderer — value slots", () => {
   it("replaces basics.name slot with content.basics.name", () => {
@@ -484,11 +541,7 @@ describe("SlotRenderer — template extraction", () => {
   });
 });
 
-describe("SlotRenderer — professional template integration", () => {
-  const dir = join(process.cwd(), "templates", "html");
-  const proHtml = readFileSync(join(dir, "professional.html"), "utf-8");
-  const proCss = readFileSync(join(dir, "professional.css"), "utf-8");
-
+describe("SlotRenderer — section fixture integration", () => {
   const content = makeContent({
     basics: {
       name: "李四",
@@ -508,10 +561,10 @@ describe("SlotRenderer — professional template integration", () => {
 
   it("renders name and contact info", () => {
     const { container } = render_({
-      html: proHtml,
-      css: proCss,
+      html: SECTION_FIXTURE_HTML,
+      css: ".fixture-resume { color: black; }",
       content,
-      templateId: "professional",
+      templateId: "fixture",
     });
     expect(container.textContent).toContain("李四");
     expect(container.textContent).toContain("li@example.com");
@@ -520,10 +573,10 @@ describe("SlotRenderer — professional template integration", () => {
 
   it("renders all sections without unknown-slot errors", () => {
     const { container } = render_({
-      html: proHtml,
-      css: proCss,
+      html: SECTION_FIXTURE_HTML,
+      css: ".fixture-resume { color: black; }",
       content,
-      templateId: "professional",
+      templateId: "fixture",
     });
     const text = container.textContent ?? "";
     expect(text).not.toContain("[未知 slot]");
@@ -534,10 +587,10 @@ describe("SlotRenderer — professional template integration", () => {
 
   it("renders block sections (skills, custom) via section.body", () => {
     const { container } = render_({
-      html: proHtml,
-      css: proCss,
+      html: SECTION_FIXTURE_HTML,
+      css: ".fixture-resume { color: black; }",
       content,
-      templateId: "professional",
+      templateId: "fixture",
     });
     const text = container.textContent ?? "";
     expect(text).toContain("Python、Go、Rust");
@@ -546,10 +599,10 @@ describe("SlotRenderer — professional template integration", () => {
 
   it("renders list sections with item details", () => {
     const { container } = render_({
-      html: proHtml,
-      css: proCss,
+      html: SECTION_FIXTURE_HTML,
+      css: ".fixture-resume { color: black; }",
       content,
-      templateId: "professional",
+      templateId: "fixture",
     });
     const text = container.textContent ?? "";
     expect(text).toContain("主导编辑器重构");
@@ -557,8 +610,7 @@ describe("SlotRenderer — professional template integration", () => {
   });
 });
 
-describe("SlotRenderer — built-in HTML item fields", () => {
-  const dir = join(process.cwd(), "templates", "html");
+describe("SlotRenderer — item fields fixture", () => {
   const templates = [
     { id: "classic", locationSelector: ".classic-item-location", metaSelector: ".classic-item-meta" },
     { id: "professional", locationSelector: ".pro-item-location", metaSelector: ".pro-item-meta" },
@@ -605,8 +657,8 @@ describe("SlotRenderer — built-in HTML item fields", () => {
 
   it.each(templates)("renders city on the right side for $id", ({ id, locationSelector }) => {
     const { container } = render_({
-      html: readFileSync(join(dir, `${id}.html`), "utf-8"),
-      css: readFileSync(join(dir, `${id}.css`), "utf-8"),
+      html: itemFieldsFixtureHtml(locationSelector.slice(1), `${id}-item-meta`),
+      css: ".fixture-item { display: grid; }",
       content,
       templateId: id,
     });
@@ -619,8 +671,8 @@ describe("SlotRenderer — built-in HTML item fields", () => {
 
   it.each(templates)("renders project stack and link without mixing city into meta for $id", ({ id, metaSelector }) => {
     const { container } = render_({
-      html: readFileSync(join(dir, `${id}.html`), "utf-8"),
-      css: readFileSync(join(dir, `${id}.css`), "utf-8"),
+      html: itemFieldsFixtureHtml(`${id}-item-location`, metaSelector.slice(1)),
+      css: ".fixture-item { display: grid; }",
       content,
       templateId: id,
     });

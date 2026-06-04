@@ -6,16 +6,13 @@ import { db } from "@/db";
 import { resumes } from "@/db/schema";
 import { withDbRetry } from "@/lib/db-retry";
 import EditorClient from "./editor-client";
-import { resolveTemplateId } from "@/lib/templates/registry";
 import {
   getTemplateMetaAsync,
   listAllTemplatesAsync,
-  listBuiltinHtmlFallbackTemplates,
 } from "@/lib/templates/registry-server";
 import { listUploadedTemplates } from "@/lib/templates/uploaded/fetch";
 import { getFavoriteTemplateIds } from "@/app/(app)/templates/actions";
 import { toSerializable } from "@/lib/templates/render";
-import { BUILTIN_TEMPLATE_IDS } from "@/lib/templates/types";
 import type { Metadata } from "next";
 export const metadata: Metadata = { title: "编辑简历" };
 
@@ -41,28 +38,17 @@ export default async function EditPage({ params, searchParams }: { params: Promi
     listUploadedTemplates(),
     getFavoriteTemplateIds(userId),
   ]);
-  const uploadedById = new Map(
-    listBuiltinHtmlFallbackTemplates().map((template) => [template.id, template]),
-  );
-  const builtinIds = new Set<string>(BUILTIN_TEMPLATE_IDS);
-  for (const template of dbUploadedTemplates) {
-    if (builtinIds.has(template.id)) {
-      continue;
-    }
-    uploadedById.set(template.id, template);
-  }
-  const uploadedTemplates = Array.from(uploadedById.values());
   return (
     <EditorClient
       id={row.id}
       initialTitle={row.title}
-      initialTemplate={resolveTemplateId(row.templateId)}
+      initialTemplate={initialResolved.id}
       initialContent={migrateContent(row.content)}
       initialIsPublic={row.isPublic}
       initialSlug={row.slug ?? null}
       initialUpdatedAtIso={row.updatedAt.toISOString()}
       initialResolvedTemplate={toSerializable(initialResolved)}
-      uploadedTemplates={uploadedTemplates}
+      uploadedTemplates={dbUploadedTemplates}
       allTemplates={allTemplates}
       favoritedTemplateIds={favoritedTemplateIds}
       from={from ?? null}

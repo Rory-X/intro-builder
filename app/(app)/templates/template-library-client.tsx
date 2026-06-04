@@ -8,7 +8,6 @@ import {
 import { useRouter } from "next/navigation";
 import { Search, Star } from "lucide-react";
 import { toast } from "sonner";
-import { TEMPLATES } from "@/lib/templates/registry";
 import { ClientTemplateRenderFromSerializable } from "@/lib/templates/render";
 import type { SerializableResolvedTemplate } from "@/lib/templates/render";
 import type { ResumeContent } from "@/lib/resume-schema";
@@ -51,8 +50,8 @@ type Props = {
 };
 
 /**
- * 给一个 SerializableResolvedTemplate 抽出"展示用"的元数据（name + description + category）。
- * 所有模板的元数据统一从客户端 TEMPLATES 静态表查找（builtin）或 id 匹配。
+ * 给一个 SerializableResolvedTemplate 抽出"展示用"的元数据。
+ * 元数据由服务器从 DB 查询后序列化下发。
  */
 function getDisplayMeta(resolved: SerializableResolvedTemplate): {
   name: string;
@@ -60,25 +59,10 @@ function getDisplayMeta(resolved: SerializableResolvedTemplate): {
   isRecommended?: boolean;
   category?: TemplateCategory;
 } {
-  const meta = TEMPLATES.find((t) => t.id === resolved.id);
-  if (meta) {
-    return {
-      name: meta.name,
-      description: meta.description ?? "",
-      isRecommended: meta.isRecommended,
-      category: meta.category,
-    };
-  }
-  if (resolved.source === "unified") {
-    return {
-      name: resolved.name ?? resolved.id,
-      description: resolved.description ?? "",
-      category: resolved.category as TemplateCategory | undefined,
-    };
-  }
   return {
-    name: resolved.id,
-    description: "",
+    name: resolved.name ?? resolved.id,
+    description: resolved.description ?? "",
+    category: resolved.category as TemplateCategory | undefined,
   };
 }
 
@@ -169,7 +153,7 @@ export function TemplateLibraryClient({
 
   // apply 链路：setTemplate（server action）→ toast → 关抽屉 → 跳编辑器看效果。
   // setTemplate 内部已经过 getTemplateMetaAsync 校验，不存在的 templateId 会
-  // 被收敛为 default builtin，所以这里不会"应用一个不存在的模板"——失败仅来自
+  // 被收敛为 DB default，所以这里不会"应用一个不存在的模板"——失败仅来自
   // 鉴权 / 网络 / DB。
   //
   // 跳转策略：永远 push 到 /resume/[id]/edit。早期版本对 from=editor 跳编辑器、

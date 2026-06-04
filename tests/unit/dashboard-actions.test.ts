@@ -13,29 +13,28 @@ vi.mock("next/navigation", () => ({
   redirect: vi.fn((u: string) => { throw new Error("REDIRECT:" + u); }),
 }));
 vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }));
-// getTemplateMetaAsync is now used to validate templateId before INSERT.
+// Template registry calls are mocked because the real implementation pulls in
+// DB driver code. These tests focus on action insert/redirect behavior.
 // We mock it here because the real implementation pulls in DB driver code,
 // and the test focuses on the action's redirect/insert behavior, not the
 // registry resolution semantics (covered separately).
 vi.mock("@/lib/templates/registry-server", () => ({
+  getDefaultTemplateId: vi.fn(),
   getTemplateMetaAsync: vi.fn(),
 }));
 
 import { auth } from "@/lib/auth";
 import { db } from "@/db";
-import { getTemplateMetaAsync } from "@/lib/templates/registry-server";
+import {
+  getDefaultTemplateId,
+  getTemplateMetaAsync,
+} from "@/lib/templates/registry-server";
 import { createResume, duplicateResume } from "@/app/(app)/dashboard/actions";
 
 describe("createResume", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    // Default-resolve to the built-in "professional" — same id as the
-    // pre-validation behavior, so existing test expectations still hold.
-    (getTemplateMetaAsync as unknown as Mock).mockResolvedValue({
-      source: "builtin",
-      id: "professional",
-      meta: { id: "professional", name: "Professional", description: "", Layout: () => null },
-    });
+    (getDefaultTemplateId as unknown as Mock).mockResolvedValue("professional");
   });
 
   it("redirects to login when unauthenticated", async () => {
@@ -50,7 +49,7 @@ describe("createResume", () => {
     (db.insert as unknown as Mock).mockReturnValue({ values });
     await expect(createResume()).rejects.toThrow("REDIRECT:/resume/r1/edit");
     expect(values).toHaveBeenCalled();
-    // Validate that the inserted templateId is the resolved one (default).
+    expect(getDefaultTemplateId).toHaveBeenCalled();
     expect(values.mock.calls[0]?.[0].templateId).toBe("professional");
   });
 
@@ -62,9 +61,9 @@ describe("createResume", () => {
       content: { basics: { name: "A" } },
     });
     (getTemplateMetaAsync as unknown as Mock).mockResolvedValue({
-      source: "builtin",
+      source: "uploaded",
       id: "modern",
-      meta: { id: "modern", name: "Modern", description: "", Layout: () => null },
+      template: { id: "modern" },
     });
     const returning = vi.fn().mockResolvedValue([{ id: "r-copy" }]);
     const values = vi.fn().mockReturnValue({ returning });
@@ -93,9 +92,9 @@ describe("createResume", () => {
       content: { basics: { name: "B" } },
     });
     (getTemplateMetaAsync as unknown as Mock).mockResolvedValue({
-      source: "builtin",
+      source: "uploaded",
       id: "professional",
-      meta: { id: "professional", name: "Professional", description: "", Layout: () => null },
+      template: { id: "professional" },
     });
     const returning = vi.fn().mockResolvedValue([{ id: "r-copy" }]);
     const values = vi.fn().mockReturnValue({ returning });

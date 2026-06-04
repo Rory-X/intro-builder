@@ -26,12 +26,7 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { Loader2, Share2, PanelRightClose, PanelRightOpen, MessageSquare, LayoutTemplate, ChevronLeft } from "lucide-react";
-import { resolveTemplateId, type AllTemplatesItem, type TemplateId } from "@/lib/templates/registry";
-import {
-  BUILTIN_TEMPLATE_IDS,
-  DEFAULT_TEMPLATE_ID,
-  type BuiltinTemplateId,
-} from "@/lib/templates/types";
+import type { AllTemplatesItem, TemplateId } from "@/lib/templates/registry";
 import {
   uploadedTemplateToSerializable,
   type SerializableResolvedTemplate,
@@ -137,7 +132,7 @@ export default function EditorClient({ id, initialTitle, initialTemplate, initia
     mode: "onChange",
   });
   const [title, setTitleState] = useState(initialTitle);
-  const [template, setTemplateState] = useState<TemplateId>(resolveTemplateId(initialTemplate));
+  const [template, setTemplateState] = useState<TemplateId>(initialTemplate);
   const [isPublic, setIsPublic] = useState(initialIsPublic);
   const [publicSlug, setPublicSlug] = useState<string | null>(initialSlug);
   const [saveError, setSaveError] = useState<string | null>(null);
@@ -159,8 +154,7 @@ export default function EditorClient({ id, initialTitle, initialTemplate, initia
   );
 
   // Map of id → UploadedTemplate for instant client-side lookup when the
-  // user switches template. Builtin ids may be present here when DB/local
-  // HTML fallback provides v2 markup; those should stay on the unified path.
+  // user switches template.
   const uploadedById = useMemo(() => {
     const map = new Map<string, UploadedTemplate>();
     for (const t of uploadedTemplates) {
@@ -170,9 +164,9 @@ export default function EditorClient({ id, initialTitle, initialTemplate, initia
   }, [uploadedTemplates]);
 
   // Project the current `template` selection into a serializable form
-  // <LivePreview> can dispatch on. Order: use the server-pre-resolved
-  // value if it still matches → uploaded/local HTML fast-path → fall back to a
-  // built-in id (defaulting if `template` is no longer a known id).
+  // <LivePreview> can dispatch on. If the id is no longer in the preloaded DB
+  // list, keep rendering the server-resolved fallback instead of inventing a
+  // client-side template.
   const resolvedTemplate = useMemo<SerializableResolvedTemplate>(() => {
     if (initialResolvedTemplate.id === template) {
       return initialResolvedTemplate;
@@ -181,18 +175,12 @@ export default function EditorClient({ id, initialTitle, initialTemplate, initia
     if (uploaded) {
       return uploadedTemplateToSerializable(uploaded.id, uploaded);
     }
-    const builtinId: BuiltinTemplateId = (
-      BUILTIN_TEMPLATE_IDS as readonly string[]
-    ).includes(template)
-      ? (template as BuiltinTemplateId)
-      : DEFAULT_TEMPLATE_ID;
-    return { source: "builtin", id: builtinId };
+    return initialResolvedTemplate;
   }, [template, uploadedById, initialResolvedTemplate]);
 
   // 模板面板只展示「我收藏的模板」。从 allTemplates 解析出可渲染的 resolved，
-  // builtin 如有 DB/local HTML 则同样走统一 SlotRenderer 路径。
+  // 所有模板都来自 DB published 行并走统一 SlotRenderer 路径。
   const favoriteTemplateItems = useMemo<TemplatePanelItem[]>(() => {
-    const builtinIdSet = new Set(BUILTIN_TEMPLATE_IDS as readonly string[]);
     const favSet = new Set(favoritedTemplateIds);
     const seen = new Set<string>();
     const items: TemplatePanelItem[] = [];
@@ -202,12 +190,8 @@ export default function EditorClient({ id, initialTitle, initialTemplate, initia
       const up = uploadedById.get(t.id);
       if (up) {
         resolved = uploadedTemplateToSerializable(t.id, up);
-      } else if (t.source === "uploaded") {
-        continue; // 孤儿（DB 里没有了）
-      } else if (builtinIdSet.has(t.id)) {
-        resolved = { source: "builtin", id: t.id as BuiltinTemplateId };
       } else {
-        continue;
+        continue; // 孤儿（DB 里没有了）
       }
       seen.add(t.id);
       items.push({ id: t.id, name: t.name, resolved });

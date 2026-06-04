@@ -3,6 +3,7 @@ import { auth } from "@/lib/auth";
 import { db } from "@/db";
 import { resumes } from "@/db/schema";
 import { ResumeContent as ResumeContentSchema } from "@/lib/resume-schema";
+import { getDefaultTemplateId } from "@/lib/templates/registry-server";
 
 export async function POST(request: Request) {
   const session = await auth();
@@ -20,12 +21,13 @@ export async function POST(request: Request) {
     }
 
     const id = crypto.randomUUID();
+    const templateId = await getDefaultTemplateId();
     await db.insert(resumes).values({
       id,
       userId: session.user.id,
       title: title || "导入的简历",
       content: parsed.data,
-      templateId: "professional",
+      templateId,
     });
 
     return NextResponse.json({ id });

@@ -16,7 +16,6 @@ beforeAll(() => {
 
 vi.mock("@/lib/templates/registry-server", () => ({
   listAllTemplatesAsync: vi.fn().mockResolvedValue([]),
-  listBuiltinHtmlFallbackTemplates: vi.fn().mockReturnValue([]),
 }));
 
 vi.mock("@/lib/templates/uploaded/fetch", () => ({

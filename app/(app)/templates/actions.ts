@@ -27,10 +27,9 @@ async function actionUserId(): Promise<string> {
 /**
  * Add or remove a template from the current user's favorites.
  *
- * `templateId` is stored as a plain string — it can be either a builtin id
- * (professional / classic / modern, which live only in registry.ts, NOT the
- * templates table) or an uploaded template's uuid. The favorites table
- * deliberately has no FK to templates, so both work; see db/schema.ts.
+ * `templateId` is stored as a plain string. The favorites table deliberately
+ * has no FK to templates, so stale ids are harmless and simply disappear from
+ * rendered template lists later; see db/schema.ts.
  *
  * insert uses onConflictDoNothing against the (userId, templateId) unique
  * index so a double-click can't 500 on a duplicate-key error.

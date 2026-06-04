@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { and, eq } from "drizzle-orm";
-import { auth } from "@/lib/auth";
+import { currentUserId } from "@/lib/auth-helpers";
 import { db } from "@/db";
 import { resumes } from "@/db/schema";
 import puppeteer from "puppeteer-core";
@@ -25,11 +25,11 @@ const BROWSER_WS_ENDPOINT = process.env.BROWSER_WS_ENDPOINT;
 
 export async function POST(req: Request, ctx: { params: Promise<{ id: string }> }) {
   const { id } = await ctx.params;
-  const session = await auth();
-  if (!session?.user?.id) return new NextResponse("unauthorized", { status: 401 });
+  const userId = await currentUserId();
+  if (!userId) return new NextResponse("unauthorized", { status: 401 });
 
   const row = await db.query.resumes.findFirst({
-    where: and(eq(resumes.id, id), eq(resumes.userId, session.user.id)),
+    where: and(eq(resumes.id, id), eq(resumes.userId, userId)),
   });
   if (!row) return new NextResponse("not found", { status: 404 });
 
@@ -46,7 +46,7 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
 
   // Remote browser configured → use cloud service (production)
   if (BROWSER_WS_ENDPOINT) {
-    return generatePdfRemote(id, session.user.id, row.title, pageBreaks, totalHeight, debugScreenshot);
+    return generatePdfRemote(id, userId, row.title, pageBreaks, totalHeight, debugScreenshot);
   }
 
   // Fallback: local Puppeteer (dev environment)

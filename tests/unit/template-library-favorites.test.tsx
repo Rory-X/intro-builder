@@ -1,8 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import type { Mock } from "vitest";
-import { render, fireEvent, screen, within } from "@testing-library/react";
+import { render, fireEvent, screen } from "@testing-library/react";
 import { TemplateLibraryClient } from "@/app/(app)/templates/template-library-client";
-import { TEMPLATES } from "@/lib/templates/registry";
 import { demoResume } from "@/lib/demo-resume";
 import type { SerializableResolvedTemplate } from "@/lib/templates/render";
 
@@ -33,12 +32,32 @@ class MockObserver {
   }
 }
 
-const professionalName = TEMPLATES.find((t) => t.id === "professional")!.name;
-const modernName = TEMPLATES.find((t) => t.id === "modern")!.name;
+const professionalName = "专业";
+const modernName = "现代";
 
 const templates: SerializableResolvedTemplate[] = [
-  { source: "builtin", id: "professional" },
-  { source: "builtin", id: "modern" },
+  {
+    source: "unified",
+    id: "professional",
+    templateId: "professional",
+    html: '<main><slot data-bind="basics.name"></slot></main>',
+    css: null,
+    sectionIcons: {},
+    name: professionalName,
+    description: "单栏清晰",
+    category: "tech",
+  },
+  {
+    source: "unified",
+    id: "modern",
+    templateId: "modern",
+    html: '<main><slot data-bind="basics.name"></slot></main>',
+    css: null,
+    sectionIcons: {},
+    name: modernName,
+    description: "技术风双栏",
+    category: "tech",
+  },
 ];
 
 function renderLibrary(favoritedIds: string[]) {
