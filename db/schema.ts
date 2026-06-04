@@ -80,8 +80,6 @@ export const collabSessions = pgTable("collab_session", {
 
 // ─── Templates (template-studio middle platform) ─────────────
 
-export type TemplateAsset = { url: string; role: "banner" | "decoration" | "icon" };
-
 export const templates = pgTable("templates", {
   id: text("id").primaryKey(),
   name: text("name").notNull(),
@@ -92,10 +90,9 @@ export const templates = pgTable("templates", {
   // v2 统一渲染字段
   html: text("html"),
   css: text("css"),
-  assets: jsonb("assets").$type<TemplateAsset[]>(),
   sectionIcons: jsonb("sectionIcons"),
   defaultStyleSettings: jsonb("defaultStyleSettings"),
-  createdBy: text("createdBy"),
+  bannerImageUrl: text("bannerImageUrl"),
   // ─── 公共字段 ───
   status: text("status").notNull().default("draft"),
   createdAt: timestamp("createdAt").defaultNow().notNull(),

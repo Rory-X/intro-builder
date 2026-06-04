@@ -8,9 +8,11 @@
  * Usage:
  *   pnpm exec tsx --env-file=.env.local scripts/seed-builtin-templates.ts
  *
- * Idempotent — uses ON CONFLICT DO UPDATE (same pattern as insert-template.ts).
+ * Idempotent — uses ON CONFLICT DO UPDATE.
  */
 import { neon } from "@neondatabase/serverless";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 
 function fail(msg: string): never {
   console.error(`ERROR: ${msg}`);
@@ -23,7 +25,10 @@ type BuiltinSeed = {
   description: string;
   category: string;
   features: [string, string, string];
-  layout: object;
+  htmlFile: string;
+  cssFile: string;
+  sectionIcons: Record<string, { icon: string; color?: string }>;
+  defaultStyleSettings: object;
 };
 
 const BUILTIN_TEMPLATES: BuiltinSeed[] = [
@@ -37,13 +42,19 @@ const BUILTIN_TEMPLATES: BuiltinSeed[] = [
       "适合中文互联网求职（字节 / 阿里 / 美团 / 腾讯）",
       "字号字体可调，ATS 友好排版兼容投递系统",
     ],
-    layout: {
-      frame: { kind: "vertical" },
-      headerVariant: "professional",
-      sectionTitleVariant: "professional",
-      itemHeaderVariant: "professional",
-      theme: { primaryColor: "#171717" },
-      sectionIcons: {},
+    htmlFile: "templates/html/professional.html",
+    cssFile: "templates/html/professional.css",
+    sectionIcons: {},
+    defaultStyleSettings: {
+      fontFamily: "sans",
+      fontSize: 13,
+      bodyLineHeight: 1.6,
+      lineHeight: 1.6,
+      headingGap: 8,
+      pagePadding: 40,
+      sectionGap: 16,
+      itemGap: 12,
+      photoScale: 1,
     },
   },
   {
@@ -56,13 +67,29 @@ const BUILTIN_TEMPLATES: BuiltinSeed[] = [
       "适合金融 / 咨询 / 律所 / 银行 / 国企等保守行业",
       "衬线字体兼容打印与正式投递",
     ],
-    layout: {
-      frame: { kind: "vertical" },
-      headerVariant: "classic",
-      sectionTitleVariant: "classic",
-      itemHeaderVariant: "classic",
-      theme: { primaryColor: "#000000" },
-      sectionIcons: {},
+    htmlFile: "templates/html/classic.html",
+    cssFile: "templates/html/classic.css",
+    sectionIcons: {
+      basics: { icon: "LayoutList", color: "#64748b" },
+      experience: { icon: "Briefcase", color: "#3b82f6" },
+      education: { icon: "GraduationCap", color: "#22c55e" },
+      projects: { icon: "FolderGit2", color: "#a855f7" },
+      skills: { icon: "Wrench", color: "#f97316" },
+      research: { icon: "FlaskConical", color: "#14b8a6" },
+      summary: { icon: "LayoutList", color: "#06b6d4" },
+      awards: { icon: "Award", color: "#eab308" },
+      portfolio: { icon: "Palette", color: "#ec4899" },
+    },
+    defaultStyleSettings: {
+      fontFamily: "serif",
+      fontSize: 13,
+      bodyLineHeight: 1.6,
+      lineHeight: 1.6,
+      headingGap: 8,
+      pagePadding: 40,
+      sectionGap: 16,
+      itemGap: 12,
+      photoScale: 1,
     },
   },
   {
@@ -75,20 +102,19 @@ const BUILTIN_TEMPLATES: BuiltinSeed[] = [
       "适合技术岗、设计岗，信息密度大",
       "紧凑排版适合内容丰富的简历",
     ],
-    layout: {
-      frame: {
-        kind: "horizontal",
-        sidebar: {
-          side: "left",
-          width: "240px",
-          sections: ["skills", "education"],
-        },
-      },
-      headerVariant: "modern-sidebar",
-      sectionTitleVariant: "modern",
-      itemHeaderVariant: "modern",
-      theme: { primaryColor: "#1f2937" },
-      sectionIcons: {},
+    htmlFile: "templates/html/modern.html",
+    cssFile: "templates/html/modern.css",
+    sectionIcons: {},
+    defaultStyleSettings: {
+      fontFamily: "sans",
+      fontSize: 12,
+      bodyLineHeight: 1.5,
+      lineHeight: 1.5,
+      headingGap: 6,
+      pagePadding: 32,
+      sectionGap: 14,
+      itemGap: 10,
+      photoScale: 1,
     },
   },
 ];
@@ -100,43 +126,46 @@ async function main() {
   const sql = neon(dbUrl);
 
   for (const t of BUILTIN_TEMPLATES) {
+    const html = readFileSync(resolve(t.htmlFile), "utf-8");
+    const css = readFileSync(resolve(t.cssFile), "utf-8");
+
     try {
       const rows = (await sql`
         INSERT INTO templates (
-          id, name, description, "thumbnailUrl",
-          source, decoration, layout, "customHtml", "customCss",
+          id, name, description,
           category, features,
-          status, "createdBy"
+          html, css,
+          "sectionIcons", "defaultStyleSettings",
+          status
         ) VALUES (
           ${t.id},
           ${t.name},
           ${t.description},
-          ${null},
-          'builtin',
-          ${null}::jsonb,
-          ${JSON.stringify(t.layout)}::jsonb,
-          ${null},
-          ${null},
           ${t.category},
           ${JSON.stringify(t.features)}::jsonb,
-          'published',
-          'seed-builtin-templates'
+          ${html},
+          ${css},
+          ${JSON.stringify(t.sectionIcons)}::jsonb,
+          ${JSON.stringify(t.defaultStyleSettings)}::jsonb,
+          'published'
         )
         ON CONFLICT (id) DO UPDATE SET
           name = EXCLUDED.name,
           description = EXCLUDED.description,
-          source = EXCLUDED.source,
-          layout = EXCLUDED.layout,
           category = EXCLUDED.category,
           features = EXCLUDED.features,
+          html = EXCLUDED.html,
+          css = EXCLUDED.css,
+          "sectionIcons" = EXCLUDED."sectionIcons",
+          "defaultStyleSettings" = EXCLUDED."defaultStyleSettings",
           status = EXCLUDED.status,
           "updatedAt" = now()
-        RETURNING id, name, source, status
-      `) as Array<{ id: string; name: string; source: string; status: string }>;
+        RETURNING id, name, status
+      `) as Array<{ id: string; name: string; status: string }>;
 
       if (rows.length === 0) fail(`no row returned for ${t.id}`);
       const r = rows[0];
-      console.log(`✓ ${r.id} (${r.name})  source=${r.source}  status=${r.status}`);
+      console.log(`✓ ${r.id} (${r.name})  status=${r.status}`);
     } catch (e) {
       fail(`DB error for ${t.id}: ${(e as Error).message}`);
     }
