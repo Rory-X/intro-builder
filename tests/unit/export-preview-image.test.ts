@@ -20,18 +20,19 @@ describe("exportPreviewImage", () => {
     vi.restoreAllMocks();
   });
 
-  it("captures the resume article inside the preview root", async () => {
+  it("captures the resume [data-resume-page] element inside the preview root", async () => {
     const root = document.createElement("div");
     const wrapper = document.createElement("div");
-    const article = document.createElement("article");
-    wrapper.append(article);
+    const resumePage = document.createElement("div");
+    resumePage.setAttribute("data-resume-page", "");
+    wrapper.append(resumePage);
     root.append(wrapper);
     document.body.append(root);
 
     await exportPreviewImage({ root, filename: "我的简历" });
 
     expect(toPngMock).toHaveBeenCalledWith(
-      article,
+      resumePage,
       expect.objectContaining({
         backgroundColor: "#ffffff",
         cacheBust: true,
@@ -42,7 +43,7 @@ describe("exportPreviewImage", () => {
     );
   });
 
-  it("rejects when the preview root does not contain a resume article", async () => {
+  it("rejects when the preview root does not contain a [data-resume-page] element", async () => {
     const root = document.createElement("div");
 
     await expect(exportPreviewImage({ root, filename: "简历" })).rejects.toThrow(

@@ -34,14 +34,14 @@ function downloadDataUrl(dataUrl: string, filename: string) {
 }
 
 export async function exportPreviewImage({ root, filename }: ExportPreviewImageOptions) {
-  const article = root.querySelector("article");
-  if (!(article instanceof HTMLElement)) {
+  const resumeEl = root.querySelector("[data-resume-page]");
+  if (!(resumeEl instanceof HTMLElement)) {
     throw new Error("未找到可导出的简历内容");
   }
 
   await waitForFonts();
 
-  const dataUrl = await toPng(article, {
+  const dataUrl = await toPng(resumeEl, {
     backgroundColor: "#ffffff",
     cacheBust: true,
     imagePlaceholder: TRANSPARENT_IMAGE_PLACEHOLDER,
