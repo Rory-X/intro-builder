@@ -5,6 +5,9 @@ type ExportPreviewImageOptions = {
   filename: string;
 };
 
+const TRANSPARENT_IMAGE_PLACEHOLDER =
+  "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/p9sAAAAASUVORK5CYII=";
+
 export function sanitizeImageFilename(filename: string): string {
   const sanitized = filename
     .trim()
@@ -41,6 +44,8 @@ export async function exportPreviewImage({ root, filename }: ExportPreviewImageO
   const dataUrl = await toPng(article, {
     backgroundColor: "#ffffff",
     cacheBust: true,
+    imagePlaceholder: TRANSPARENT_IMAGE_PLACEHOLDER,
+    onImageErrorHandler: () => undefined,
     pixelRatio: 2,
   });
 

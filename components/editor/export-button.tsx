@@ -63,7 +63,10 @@ export function ExportButton({
       console.error("[pdf-download] failed", error);
       toast.error("PDF 生成失败，请稍后重试");
     } finally {
-      if (objectUrl) URL.revokeObjectURL(objectUrl);
+      if (objectUrl) {
+        const urlToRevoke = objectUrl;
+        window.setTimeout(() => URL.revokeObjectURL(urlToRevoke), 1000);
+      }
       setIsDownloadingPdf(false);
     }
   }

@@ -35,6 +35,8 @@ describe("exportPreviewImage", () => {
       expect.objectContaining({
         backgroundColor: "#ffffff",
         cacheBust: true,
+        imagePlaceholder: expect.stringMatching(/^data:image\/png;base64,/),
+        onImageErrorHandler: expect.any(Function),
         pixelRatio: 2,
       }),
     );
