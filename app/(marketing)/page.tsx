@@ -8,11 +8,10 @@ import { TemplatesSection } from "@/components/marketing/templates-section";
 import { MarketingFooter } from "@/components/marketing/marketing-footer";
 import { ScrollReveal } from "@/components/marketing/scroll-reveal";
 import { listAllTemplatesAsync } from "@/lib/templates/registry-server";
-import { TEMPLATES } from "@/lib/templates/registry";
 import { listUploadedTemplates } from "@/lib/templates/uploaded/fetch";
+import { uploadedTemplateToSerializable } from "@/lib/templates/render";
 import { demoResume } from "@/lib/demo-resume";
 import type { SerializableResolvedTemplate } from "@/lib/templates/render";
-import type { BuiltinTemplateId } from "@/lib/templates/types";
 
 const COMPANIES = ["字节跳动", "美团", "腾讯", "阿里巴巴", "小红书", "百度", "京东"];
 
@@ -20,22 +19,9 @@ export default async function Landing() {
   const allTemplates = await listAllTemplatesAsync();
   const uploaded = await listUploadedTemplates();
 
-  // Build serializable resolved templates for client rendering
-  const resolvedList: SerializableResolvedTemplate[] = [
-    ...TEMPLATES.map(
-      (t): SerializableResolvedTemplate => ({
-        source: "builtin",
-        id: t.id as BuiltinTemplateId,
-      }),
-    ),
-    ...uploaded.map(
-      (t): SerializableResolvedTemplate => ({
-        source: "uploaded",
-        id: t.id,
-        template: t,
-      }),
-    ),
-  ];
+  const resolvedList: SerializableResolvedTemplate[] = uploaded
+    .filter((t) => t.html)
+    .map((t) => uploadedTemplateToSerializable(t.id, t));
 
   return (
     <>

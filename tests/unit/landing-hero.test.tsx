@@ -22,18 +22,6 @@ vi.mock("@/lib/templates/uploaded/fetch", () => ({
   listUploadedTemplates: vi.fn().mockResolvedValue([]),
 }));
 
-vi.mock("@/lib/templates/classic/Layout", () => ({
-  ClassicLayout: () => <div>Classic preview</div>,
-}));
-
-vi.mock("@/lib/templates/modern/Layout", () => ({
-  ModernLayout: () => <div>Modern preview</div>,
-}));
-
-vi.mock("@/lib/templates/professional/Layout", () => ({
-  ProfessionalLayout: () => <div>Professional preview</div>,
-}));
-
 describe("Landing hero", () => {
   it("renders the main headline and feature chips", async () => {
     const Landing = (await import("@/app/(marketing)/page")).default;

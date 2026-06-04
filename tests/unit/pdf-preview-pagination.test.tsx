@@ -70,7 +70,13 @@ describe("PdfPreview pagination", () => {
     render(
       <PdfPreview
         content={emptyResumeContent()}
-        resolved={{ source: "builtin", id: "professional" }}
+        resolved={{
+          source: "unified",
+          id: "professional",
+          templateId: "professional",
+          html: "<article></article>",
+          css: null,
+        }}
       />,
     );
 
@@ -88,7 +94,13 @@ describe("PdfPreview pagination", () => {
     render(
       <PdfPreview
         content={emptyResumeContent()}
-        resolved={{ source: "builtin", id: "professional" }}
+        resolved={{
+          source: "unified",
+          id: "professional",
+          templateId: "professional",
+          html: "<article></article>",
+          css: null,
+        }}
       />,
     );
 

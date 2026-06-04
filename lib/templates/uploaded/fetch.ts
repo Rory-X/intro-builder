@@ -53,26 +53,43 @@ async function withTransientRetry<T>(label: string, fn: () => Promise<T>, max = 
 
 export async function fetchUploadedTemplate(
   id: string,
-  opts: { includeDrafts?: boolean } = {},
 ): Promise<UploadedTemplateType | null> {
-  // 默认只返回 published —— 编辑器 / dashboard 不应看到 draft。dev-preview
-  // 路由通过 includeDrafts:true 旁路这条规则，让 skill 在入库前看到
-  // status='draft' 的待审模板。这是 dev-only 入口，没有外部触发面。
-  const statusFilter = opts.includeDrafts
-    ? undefined
-    : eq(templates.status, "published");
-  const where = statusFilter
-    ? and(eq(templates.id, id), statusFilter)
-    : eq(templates.id, id);
   try {
     const rows = await withTransientRetry("fetchUploadedTemplate", () =>
-      db.select().from(templates).where(where).limit(1),
+      db
+        .select()
+        .from(templates)
+        .where(and(eq(templates.id, id), eq(templates.status, "published")))
+        .limit(1),
     );
     if (rows.length === 0) return null;
     return parseTemplateRow(rows[0]);
   } catch (err) {
     if (isMissingTableError(err)) return null;
     console.warn("[templates] fetchUploadedTemplate failed:", err);
+    return null;
+  }
+}
+
+export async function fetchDefaultUploadedTemplate(): Promise<UploadedTemplateType | null> {
+  try {
+    const rows = await withTransientRetry("fetchDefaultUploadedTemplate", () =>
+      db
+        .select()
+        .from(templates)
+        .where(and(eq(templates.status, "published"), eq(templates.isDefault, true)))
+        .limit(2),
+    );
+    if (rows.length !== 1) {
+      console.warn(
+        `[templates] expected exactly one default template, got ${rows.length}`,
+      );
+      return null;
+    }
+    return parseTemplateRow(rows[0]);
+  } catch (err) {
+    if (isMissingTableError(err)) return null;
+    console.warn("[templates] fetchDefaultUploadedTemplate failed:", err);
     return null;
   }
 }
@@ -114,11 +131,9 @@ export function parseTemplateRow(
     name: row.name,
     description: row.description,
     thumbnailUrl: row.thumbnailUrl,
-    decoration: row.decoration,
-    layout: row.layout,
-    // v2 统一路径：优先读新字段 html/css，fallback 旧字段 customHtml/customCss
-    customHtml: row.html ?? row.customHtml,
-    customCss: row.css ?? row.customCss,
+    sectionIcons: row.sectionIcons ?? {},
+    html: row.html,
+    css: row.css,
     category: row.category,
     features: row.features,
   };
@@ -130,8 +145,7 @@ export function parseTemplateRow(
     );
     return null;
   }
-  // Attach templateLayout for sidebar sections (v2 unified path)
-  const parsed = result.data as UploadedTemplateType & { templateLayout?: unknown };
-  parsed.templateLayout = row.templateLayout;
+  const parsed = result.data as UploadedTemplateType & { defaultStyleSettings?: unknown };
+  parsed.defaultStyleSettings = row.defaultStyleSettings;
   return parsed;
 }

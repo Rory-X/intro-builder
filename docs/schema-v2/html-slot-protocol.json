@@ -1,113 +1,73 @@
 {
-  "_description": "模板 HTML 的 slot 标记协议。引擎解析 data-bind 属性替换为简历内容；当前以 lib/templates/uploaded/slot-bindings.ts 为准。",
+  "_description": "模板 HTML 的 slot 标记协议。引擎解析 data-bind 属性替换为简历内容。",
 
-  "image_bindings": [
-    {
-      "tag": "img",
-      "data-bind": "basics.photo",
-      "description": "头像图片。只能用于 <img data-bind=\"basics.photo\">；空值时整张 img 不渲染。"
-    },
-    {
-      "tag": "img",
-      "data-bind": "profile.photo",
-      "description": "basics.photo 的语义别名，供 profile/header 区域使用。"
-    }
-  ],
-
-  "value_bindings": {
-    "basics": [
-      { "data-bind": "basics.name", "description": "姓名" },
-      { "data-bind": "basics.title", "description": "目标岗位" },
-      { "data-bind": "basics.email", "description": "邮箱" },
-      { "data-bind": "basics.phone", "description": "手机号" },
-      { "data-bind": "basics.location", "description": "城市" },
-      { "data-bind": "basics.website", "description": "个人网站" },
-      { "data-bind": "basics.status", "description": "求职状态" },
-      { "data-bind": "basics.summary", "description": "个人简介纯文本" }
-    ],
-    "profile_alias": [
-      { "data-bind": "profile.name", "description": "basics.name 的语义别名" },
-      { "data-bind": "profile.title", "description": "basics.title 的语义别名" },
-      { "data-bind": "profile.email", "description": "basics.email 的语义别名" },
-      { "data-bind": "profile.phone", "description": "basics.phone 的语义别名" },
-      { "data-bind": "profile.location", "description": "basics.location 的语义别名" },
-      { "data-bind": "profile.website", "description": "basics.website 的语义别名" },
-      { "data-bind": "profile.status", "description": "basics.status 的语义别名" },
-      { "data-bind": "profile.summary", "description": "basics.summary 的语义别名" }
+  "fixed_area": {
+    "_description": "智能排版不影响的区域：banner 装饰、头像（absolute 定位）、姓名",
+    "wrapper": "<header class=\"tpl-header\">",
+    "bindings": [
+      { "tag": "img", "data-bind": "basics.photo", "description": "头像，absolute 定位不影响文档流，通过 var(--photo-scale) 缩放" },
+      { "tag": "h1", "data-bind": "basics.name", "description": "姓名，位置固定" }
     ]
   },
 
-  "loop_bindings": [
-    {
-      "data-bind": "profile.contacts",
-      "data-template": "contact-tpl",
-      "description": "循环渲染非空联系方式。循环内可用 contact.*。"
-    },
-    {
-      "data-bind": "sectionOrder",
-      "data-template": "section-tpl",
-      "description": "按 ResumeContent.sectionOrder 顺序循环渲染有内容的分区。循环内可用 section.*。"
-    },
-    {
-      "data-bind": "section.items",
-      "data-template": "item-tpl",
-      "description": "在 sectionOrder loop 内循环渲染当前分区的条目。循环内可用 item.*。"
-    }
-  ],
+  "flexible_area": {
+    "_description": "智能排版影响的区域：目标岗位、求职状态、联系信息、所有正文分区",
+    "wrapper": "<div class=\"tpl-body\">",
 
-  "section_bindings": [
-    { "data-bind": "section.id", "description": "分区 ID，如 experience、education、用户自定义 id" },
-    { "data-bind": "section.title", "description": "分区标题，如「工作经历」「教育背景」" },
-    { "data-bind": "section.icon", "description": "分区图标。渲染为 lucide icon；必须在 sectionOrder loop 内使用。" },
-    { "data-bind": "section.kind", "description": "分区内容形态：block 或 list" },
-    { "data-bind": "section.body", "description": "block 分区正文，按 TipTap 富文本渲染" }
-  ],
-
-  "item_bindings": [
-    { "data-bind": "item.title", "description": "条目标题，如公司名、学校名、项目名" },
-    { "data-bind": "item.subtitle", "description": "条目副标题，如职位、学位/专业/GPA、项目角色" },
-    { "data-bind": "item.meta", "description": "辅助信息行，如技术栈等紧凑元信息" },
-    { "data-bind": "item.dateRange", "description": "时间范围，如 2025.06 - 2025.09" },
-    { "data-bind": "item.location", "description": "地点" },
-    { "data-bind": "item.bullets", "description": "条目正文内容，按 TipTap 富文本渲染" },
-    { "data-bind": "item.tags", "description": "标签数组，当前渲染为使用「 · 」拼接的文本" },
-    { "data-bind": "item.link", "description": "链接 URL" }
-  ],
-
-  "contact_bindings": [
-    { "data-bind": "contact.type", "description": "联系方式类型：email、phone、location、website" },
-    { "data-bind": "contact.icon", "description": "联系方式图标。渲染为 lucide icon。" },
-    { "data-bind": "contact.label", "description": "展示文案" },
-    { "data-bind": "contact.href", "description": "链接 href；location 为空字符串" }
-  ],
-
-  "template_selection": {
-    "_description": "sectionOrder / section.items loop 会按当前 section 自动选择更具体的 template。",
-    "priority": [
-      "<base>-<section.id>",
-      "<base>-<section.kind>",
-      "<base>"
+    "value_bindings": [
+      { "data-bind": "basics.title", "description": "目标岗位" },
+      { "data-bind": "basics.status", "description": "求职状态" },
+      { "data-bind": "basics.email", "description": "邮箱" },
+      { "data-bind": "basics.phone", "description": "手机号" },
+      { "data-bind": "basics.location", "description": "城市" },
+      { "data-bind": "basics.website", "description": "个人网站" }
     ],
-    "example": "data-template=\"section\" 在 experience 分区会优先找 #section-experience，再找 #section-list，最后找 #section。"
+
+    "loop_bindings": [
+      {
+        "data-bind": "sectionOrder",
+        "data-template": "section-tpl",
+        "description": "按 sectionOrder 顺序循环渲染所有分区（单栏和双栏的 main 区域都用这个）"
+      },
+      {
+        "data-bind": "section.items",
+        "data-template": "item-tpl",
+        "description": "循环渲染分区内的条目"
+      }
+    ],
+
+    "section_bindings": [
+      { "data-bind": "section.title", "description": "分区标题，如「工作经历」「教育背景」" },
+      { "data-bind": "section.id", "description": "分区 ID，如 experience、education" }
+    ],
+
+    "item_bindings": [
+      { "data-bind": "item.title", "description": "条目标题（experience→公司名，education→学校名，projects→项目名）" },
+      { "data-bind": "item.subtitle", "description": "条目副标题（experience→职位，education→学位+专业+GPA，projects→角色）" },
+      { "data-bind": "item.dateRange", "description": "时间范围，如 2025.06 - 2025.09" },
+      { "data-bind": "item.location", "description": "城市" },
+      { "data-bind": "item.bullets", "description": "条目正文内容（TipTap 富文本渲染）" },
+      { "data-bind": "item.tags", "description": "标签数组（如项目技术栈）" },
+      { "data-bind": "item.link", "description": "链接（如项目 URL）" }
+    ]
   },
 
   "css_variable_contract": {
-    "_description": "模板 CSS 必须通过这些变量读取用户排版设置；颜色、背景、阴影、圆角属于模板视觉，可自行固定。",
+    "_description": "模板 CSS 必须用这些变量，不能写死对应值",
     "rules": {
-      "font-family": "字体用 var(--font-family)",
-      "font-size": "正文字号用 var(--font-size)",
-      "line-height": "兼容变量，用 var(--line-height)",
-      "body-line-height": "正文行高用 var(--body-line-height)",
-      "page-padding": "页面左右留白用 var(--page-padding)",
-      "heading-gap": "section title 与内容之间的间距用 var(--heading-gap)",
-      "section-gap": "section 之间的间距用 var(--section-gap)",
-      "item-gap": "item 之间的间距用 var(--item-gap)",
-      "photo-scale": "头像缩放用 transform: scale(var(--photo-scale))"
+      "font-size": "正文用 var(--font-size)",
+      "font-family": "正文用 var(--font-family)",
+      "line-height": "正文用 var(--line-height)",
+      "page-padding": "页面左右用 var(--page-padding)",
+      "heading-gap": "section title 外部 margin-bottom 用 var(--heading-gap)",
+      "section-gap": "section 之间 margin-top 用 var(--section-gap)",
+      "item-gap": "item 之间 margin-bottom 用 var(--item-gap)",
+      "photo-scale": "头像用 transform: scale(var(--photo-scale))"
     },
     "additional_rules": {
-      "section_title_padding": "分区标题内部 padding 优先用 em 单位，跟随字号联动。",
-      "decoration_images": "装饰图片通过 templates.assets 里的 URL 在 HTML/CSS 中引用。",
-      "security": "HTML 会 sanitize，CSS 会 scope；不要依赖 script、on* 事件、iframe 或全局选择器副作用。"
+      "section_title_padding": "内部 padding 必须用 em 单位（跟字号联动），禁止用 px",
+      "colors_and_decorations": "颜色、背景、阴影、圆角可写死（模板锁定）",
+      "decoration_images": "在 HTML 中通过 assets 里的 URL 引用"
     }
   }
 }

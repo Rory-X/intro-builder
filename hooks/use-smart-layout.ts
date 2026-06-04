@@ -43,8 +43,11 @@ export function useSmartLayout({ measureRef }: UseSmartLayoutOptions) {
           return;
         }
 
-        // v2 SlotRenderer renders <div data-resume-page>; built-in templates
-        // render <article data-resume-page>. Keep article as a legacy fallback.
+        // Find the resume root inside the container. v2 模板渲染出的根节点是
+        // <div data-resume-page>（见 html-slot-renderer），不再是旧的 <article>。
+        // 找错节点会走进下面的 fallback、不套用测试设置 → measure() 对任何
+        // settings 都返回同一个高度 → 二分搜索空转、算法退化成"不压或压到底"
+        // （zoo 反馈的"重度压缩 + 下方大片留白"根因）。article 作为旧模板兜底。
         const measureEl =
           (container.querySelector("[data-resume-page]") as HTMLElement | null) ??
           (container.querySelector("article") as HTMLElement | null);
@@ -53,20 +56,14 @@ export function useSmartLayout({ measureRef }: UseSmartLayoutOptions) {
           return;
         }
 
-        // Built-ins consume inline font/padding styles; v2 templates consume
-        // the CSS variables. Override both paths so measurement matches render.
+        // Apply settings temporarily. v2 模板所有排版参数都走 CSS 变量管道
+        // （--font-size / --body-line-height / --heading-gap / ...，见
+        // html-slot-renderer 的 cssVars），所以这里覆盖 CSS 变量即可让模板 CSS
+        // 通过 var() 读到测试值，不必直接写 fontSize/padding。CSS 自定义属性会
+        // 向下继承到 .xxx-template，字号/行距/间距随之变化。
         const ss = mergeStyleSettings(settings);
         const originalStyle = measureEl.getAttribute("style") ?? "";
-        const fontFamily = FONT_MAP[ss.fontFamily].css;
-
-        measureEl.style.fontSize = `${ss.fontSize}px`;
-        measureEl.style.lineHeight = `${ss.bodyLineHeight}`;
-        measureEl.style.paddingTop = "40px";
-        measureEl.style.paddingBottom = "40px";
-        measureEl.style.paddingLeft = `${ss.pagePadding}px`;
-        measureEl.style.paddingRight = `${ss.pagePadding}px`;
-        measureEl.style.fontFamily = fontFamily;
-        measureEl.style.setProperty("--font-family", fontFamily);
+        measureEl.style.setProperty("--font-family", FONT_MAP[ss.fontFamily].css);
         measureEl.style.setProperty("--font-size", `${ss.fontSize}px`);
         measureEl.style.setProperty("--line-height", `${ss.bodyLineHeight}`);
         measureEl.style.setProperty("--body-line-height", `${ss.bodyLineHeight}`);
@@ -74,7 +71,6 @@ export function useSmartLayout({ measureRef }: UseSmartLayoutOptions) {
         measureEl.style.setProperty("--page-padding", `${ss.pagePadding}px`);
         measureEl.style.setProperty("--section-gap", `${ss.sectionGap}px`);
         measureEl.style.setProperty("--item-gap", `${ss.itemGap}px`);
-        measureEl.style.setProperty("--photo-scale", `${ss.photoScale ?? 1}`);
 
         // Wait for layout to settle, then measure
         if (rafRef.current) cancelAnimationFrame(rafRef.current);

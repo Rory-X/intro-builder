@@ -15,15 +15,13 @@ describe("PreviewPanel", () => {
     render(
       <PreviewPanel
         content={content}
-        resolvedTemplate={{ source: "builtin", id: "professional" }}
+        resolvedTemplate={{ source: "unified", id: "professional", html: '<article><slot data-bind="basics.name"></slot></article>', css: null, templateId: "professional", sectionIcons: {} }}
       />,
     );
 
     const exportRoot = screen.getByTestId("resume-export-preview");
-    const article = exportRoot.querySelector("article");
 
     expect(exportRoot).toBeInTheDocument();
-    expect(article).toBeInTheDocument();
-    expect(article).toHaveTextContent("钱嘉豪");
+    expect(exportRoot).toHaveTextContent("钱嘉豪");
   });
 });

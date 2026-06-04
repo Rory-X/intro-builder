@@ -46,7 +46,7 @@ import {
 /**
  * Lucide icon 字符串名 → React 组件的 lookup 表。
  *
- * Skill（template-studio）产出的 `LayoutConfig.sectionIcons` 是
+ * Skill（template-studio）产出的 `sectionIcons` 是
  * `Record<sectionKey, lucideName>`（如 `{experience: "Briefcase"}`），
  * 渲染端必须把字符串转成实际的 React 组件才能挂在 DOM。
  *

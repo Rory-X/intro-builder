@@ -28,11 +28,69 @@ import { db } from "@/db";
 import {
   getTemplateMetaAsync,
 } from "@/lib/templates/registry-server";
-import { TEMPLATES } from "@/lib/templates/registry";
 import { setTemplate } from "@/app/(app)/resume/[id]/edit/actions";
 
-const professionalMeta = TEMPLATES.find((t) => t.id === "professional")!;
-const modernMeta = TEMPLATES.find((t) => t.id === "modern")!;
+const professionalMeta = {
+  id: "professional",
+  name: "专业",
+  description: "单栏清晰，适合中文互联网求职",
+  category: "tech",
+  features: [
+    "单栏布局清晰，重点突出工作经历与项目",
+    "适合中文互联网求职",
+    "ATS 友好排版兼容投递系统",
+  ],
+  defaultStyleSettings: DEFAULT_STYLE_SETTINGS,
+} as const;
+
+const modernMeta = {
+  id: "modern",
+  name: "现代",
+  description: "技术风双栏",
+  category: "tech",
+  features: [
+    "双栏布局，深色 sidebar 突出技能与联系方式",
+    "适合技术岗、设计岗，信息密度大",
+    "紧凑排版适合内容丰富的简历",
+  ],
+  defaultStyleSettings: {
+    fontFamily: "sans",
+    fontSize: 12,
+    bodyLineHeight: 1.5,
+    lineHeight: 1.5,
+    headingGap: 6,
+    pagePadding: 32,
+    sectionGap: 14,
+    itemGap: 10,
+    photoScale: 1,
+  },
+} as const;
+
+function resolvedDbTemplate(meta: {
+  id: string;
+  name: string;
+  description: string;
+  category: string;
+  features: readonly string[];
+  defaultStyleSettings: object;
+}) {
+  return {
+    source: "uploaded",
+    id: meta.id,
+    template: {
+      id: meta.id,
+      name: meta.name,
+      description: meta.description,
+      thumbnailUrl: null,
+      sectionIcons: {},
+      html: "<main></main>",
+      css: ".resume{}",
+      category: meta.category,
+      features: meta.features,
+      defaultStyleSettings: meta.defaultStyleSettings,
+    },
+  };
+}
 
 function setupDbForResetPath(currentContent: object) {
   const limit = vi.fn().mockResolvedValue([{ content: currentContent }]);
@@ -59,11 +117,9 @@ describe("setTemplate", () => {
   });
 
   it("默认 resetStyleSettings=true：写 templateId + 用模板默认 styleSettings 覆盖", async () => {
-    (getTemplateMetaAsync as unknown as Mock).mockResolvedValue({
-      source: "builtin",
-      id: "modern",
-      meta: modernMeta,
-    });
+    (getTemplateMetaAsync as unknown as Mock).mockResolvedValue(
+      resolvedDbTemplate(modernMeta),
+    );
     const { set } = setupDbForResetPath({
       ...emptyResumeContent(),
       styleSettings: { fontFamily: "sans", fontSize: 18, lineHeight: 1.9, pagePadding: 50 },
@@ -81,11 +137,9 @@ describe("setTemplate", () => {
   });
 
   it("resetStyleSettings=false 时只写 templateId，不动 content", async () => {
-    (getTemplateMetaAsync as unknown as Mock).mockResolvedValue({
-      source: "builtin",
-      id: "modern",
-      meta: modernMeta,
-    });
+    (getTemplateMetaAsync as unknown as Mock).mockResolvedValue(
+      resolvedDbTemplate(modernMeta),
+    );
     const { set } = setupDbForNoResetPath();
 
     await setTemplate("r1", "modern", { resetStyleSettings: false });
@@ -98,13 +152,11 @@ describe("setTemplate", () => {
     expect((db.select as unknown as Mock)).not.toHaveBeenCalled();
   });
 
-  it("未知 templateId 走 getTemplateMetaAsync fallback（被收敛为 default builtin）", async () => {
-    // getTemplateMetaAsync 的合约：未知 id 回退到 default builtin
-    (getTemplateMetaAsync as unknown as Mock).mockResolvedValue({
-      source: "builtin",
-      id: "professional",
-      meta: professionalMeta,
-    });
+  it("未知 templateId 走 getTemplateMetaAsync fallback（被收敛为 DB default）", async () => {
+    // getTemplateMetaAsync 的合约：未知 id 回退到 DB default
+    (getTemplateMetaAsync as unknown as Mock).mockResolvedValue(
+      resolvedDbTemplate(professionalMeta),
+    );
     const { set } = setupDbForNoResetPath();
 
     await setTemplate("r1", "definitely-nonexistent", {
@@ -121,11 +173,9 @@ describe("setTemplate", () => {
   });
 
   it("默认值符合 plan：options 缺省时与 {resetStyleSettings:true} 行为一致", async () => {
-    (getTemplateMetaAsync as unknown as Mock).mockResolvedValue({
-      source: "builtin",
-      id: "professional",
-      meta: professionalMeta,
-    });
+    (getTemplateMetaAsync as unknown as Mock).mockResolvedValue(
+      resolvedDbTemplate(professionalMeta),
+    );
     const { set } = setupDbForResetPath({
       ...emptyResumeContent(),
       styleSettings: { ...DEFAULT_STYLE_SETTINGS },
@@ -148,15 +198,11 @@ describe("setTemplate", () => {
         name: "Abbey Stub",
         description: "",
         thumbnailUrl: null,
-        decoration: null,
-        layout: {
-          frame: { kind: "vertical" },
-          headerVariant: "professional",
-          sectionTitleVariant: "professional",
-          itemHeaderVariant: "professional",
-          theme: { primaryColor: "#000" },
-          sectionIcons: {},
-        },
+        sectionIcons: {},
+        html: "<main></main>",
+        css: ".resume{}",
+        category: null,
+        features: null,
       },
     });
     const { set } = setupDbForResetPath({

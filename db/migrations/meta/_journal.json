@@ -43,6 +43,34 @@
       "when": 1780384456866,
       "tag": "0005_chunky_slipstream",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1780546642865,
+      "tag": "0006_perfect_robbie_robertson",
+      "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1780546642866,
+      "tag": "0007_add_section_icons_drop_layout",
+      "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1780546642867,
+      "tag": "0008_assets_to_banner_image_url",
+      "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1780556932569,
+      "tag": "0009_add_template_is_default",
+      "breakpoints": true
     }
   ]
 }

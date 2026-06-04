@@ -1,31 +1,48 @@
 import { act, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import EditorClient from "@/app/(app)/resume/[id]/edit/editor-client";
-import { emptyResumeContent } from "@/lib/resume-schema";
-import { TEMPLATES, type AllTemplatesItem } from "@/lib/templates/registry";
+import { DEFAULT_STYLE_SETTINGS, emptyResumeContent } from "@/lib/resume-schema";
+import type { AllTemplatesItem } from "@/lib/templates/registry";
 import type { SerializableResolvedTemplate } from "@/lib/templates/render";
 
-// Built-in default for the now-required template props. Tests don't
-// exercise uploaded templates; the dispatcher's built-in branch is the
-// right baseline.
-const BUILTIN_RESOLVED: SerializableResolvedTemplate = {
-  source: "builtin",
+const DB_RESOLVED: SerializableResolvedTemplate = {
+  source: "unified",
   id: "professional",
+  html: '<article><h1><slot data-bind="basics.name"></slot></h1><slot data-bind="sectionOrder" data-template="section"></slot></article><template id="section-block"><section><slot data-bind="section.body"></slot></section></template><template id="section-list"><section><slot data-bind="section.items" data-template="item"></slot></section></template><template id="item"><div><slot data-bind="item.title"></slot></div></template>',
+  css: null,
+  templateId: "professional",
+  sectionIcons: {},
 };
 
-// Built-in projection of the merged template list — picker UI iterates this.
-// Uploaded entries are added per-test when needed.
-const BUILTIN_TEMPLATES_LIST: AllTemplatesItem[] = TEMPLATES.map((t) => ({
-  id: t.id,
-  name: t.name,
-  description: t.description,
-  thumbnailUrl: null,
-  source: "builtin",
-  isRecommended: t.isRecommended,
-  defaultStyleSettings: t.defaultStyleSettings,
-  category: t.category,
-  tags: t.tags,
-}));
+const DB_TEMPLATE_ROWS: AllTemplatesItem[] = [
+  {
+    id: "professional",
+    name: "专业",
+    description: "单栏清晰",
+    thumbnailUrl: null,
+    source: "uploaded",
+    defaultStyleSettings: DEFAULT_STYLE_SETTINGS,
+    category: "tech",
+  },
+  {
+    id: "classic",
+    name: "经典",
+    description: "黑白单栏",
+    thumbnailUrl: null,
+    source: "uploaded",
+    defaultStyleSettings: DEFAULT_STYLE_SETTINGS,
+    category: "business",
+  },
+  {
+    id: "modern",
+    name: "现代",
+    description: "技术风双栏",
+    thumbnailUrl: null,
+    source: "uploaded",
+    defaultStyleSettings: DEFAULT_STYLE_SETTINGS,
+    category: "tech",
+  },
+];
 
 const saveResumeMock = vi.fn();
 const exportPreviewImageMock = vi.fn();
@@ -119,7 +136,7 @@ describe("EditorClient live preview", () => {
         initialUpdatedAtIso={new Date().toISOString()}
         initialResolvedTemplate={unifiedResolved}
         uploadedTemplates={[]}
-        allTemplates={BUILTIN_TEMPLATES_LIST}
+        allTemplates={DB_TEMPLATE_ROWS}
         from={null}
       />,
     );
@@ -141,9 +158,9 @@ describe("EditorClient live preview", () => {
         initialIsPublic={false}
         initialSlug={null}
         initialUpdatedAtIso={new Date().toISOString()}
-        initialResolvedTemplate={BUILTIN_RESOLVED}
+        initialResolvedTemplate={DB_RESOLVED}
         uploadedTemplates={[]}
-        allTemplates={BUILTIN_TEMPLATES_LIST}
+        allTemplates={DB_TEMPLATE_ROWS}
         from={null}
       />,
     );
@@ -178,9 +195,9 @@ describe("EditorClient live preview", () => {
         initialIsPublic={false}
         initialSlug={null}
         initialUpdatedAtIso={new Date().toISOString()}
-        initialResolvedTemplate={BUILTIN_RESOLVED}
+        initialResolvedTemplate={DB_RESOLVED}
         uploadedTemplates={[]}
-        allTemplates={BUILTIN_TEMPLATES_LIST}
+        allTemplates={DB_TEMPLATE_ROWS}
         from={null}
       />,
     );
@@ -202,9 +219,9 @@ describe("EditorClient live preview", () => {
         initialIsPublic={false}
         initialSlug={null}
         initialUpdatedAtIso="2026-05-19T11:21:00.000Z"
-        initialResolvedTemplate={BUILTIN_RESOLVED}
+        initialResolvedTemplate={DB_RESOLVED}
         uploadedTemplates={[]}
-        allTemplates={BUILTIN_TEMPLATES_LIST}
+        allTemplates={DB_TEMPLATE_ROWS}
         from={null}
       />,
     );
@@ -225,9 +242,9 @@ describe("EditorClient live preview", () => {
         initialIsPublic={false}
         initialSlug={null}
         initialUpdatedAtIso={new Date().toISOString()}
-        initialResolvedTemplate={BUILTIN_RESOLVED}
+        initialResolvedTemplate={DB_RESOLVED}
         uploadedTemplates={[]}
-        allTemplates={BUILTIN_TEMPLATES_LIST}
+        allTemplates={DB_TEMPLATE_ROWS}
         from={null}
       />,
     );
@@ -264,9 +281,9 @@ describe("EditorClient live preview", () => {
           initialIsPublic={false}
           initialSlug={null}
           initialUpdatedAtIso={iso}
-          initialResolvedTemplate={BUILTIN_RESOLVED}
+          initialResolvedTemplate={DB_RESOLVED}
           uploadedTemplates={[]}
-          allTemplates={BUILTIN_TEMPLATES_LIST}
+          allTemplates={DB_TEMPLATE_ROWS}
         from={null}
         />,
       ),
@@ -286,9 +303,9 @@ describe("EditorClient live preview", () => {
         initialIsPublic={false}
         initialSlug={null}
         initialUpdatedAtIso={new Date().toISOString()}
-        initialResolvedTemplate={BUILTIN_RESOLVED}
+        initialResolvedTemplate={DB_RESOLVED}
         uploadedTemplates={[]}
-        allTemplates={BUILTIN_TEMPLATES_LIST}
+        allTemplates={DB_TEMPLATE_ROWS}
         from={null}
       />,
     );

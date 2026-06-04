@@ -54,12 +54,12 @@ describe("toggleTemplateFavorite", () => {
     expect(revalidatePath).toHaveBeenCalledWith("/templates");
   });
 
-  it("收藏内置模板 id 不依赖 templates 表（纯字符串写入，无外键路径）", async () => {
+  it("收藏模板 id 不依赖 templates 表（纯字符串写入，无外键路径）", async () => {
     const { values } = setupInsert();
 
     await toggleTemplateFavorite("classic", true);
 
-    // 直接把 builtin id 当字符串写入，证明 action 不对 templates 表做任何校验/JOIN
+    // 直接把 templateId 当字符串写入，证明 action 不对 templates 表做任何校验/JOIN
     expect(values).toHaveBeenCalledWith({ userId: "u1", templateId: "classic" });
   });
 

@@ -3,7 +3,6 @@ import type { Metadata } from "next";
 import { requireUserId } from "@/lib/auth-helpers";
 import { db } from "@/db";
 import { resumes } from "@/db/schema";
-import { TEMPLATES } from "@/lib/templates/registry";
 import { listUploadedTemplates } from "@/lib/templates/uploaded/fetch";
 import { migrateContent } from "@/lib/migrate-content";
 import { demoResume } from "@/lib/demo-resume";
@@ -12,10 +11,6 @@ import {
   uploadedTemplateToSerializable,
   type SerializableResolvedTemplate,
 } from "@/lib/templates/render";
-import type { BuiltinTemplateId } from "@/lib/templates/types";
-import {
-  listBuiltinHtmlFallbackTemplates,
-} from "@/lib/templates/registry-server";
 import { getFavoriteTemplateIds } from "./actions";
 import { TemplateLibraryClient } from "./template-library-client";
 
@@ -62,40 +57,11 @@ export default async function TemplatesPage({
     }
   }
 
-  // 合并 builtin + uploaded 成 SerializableResolvedTemplate[] —— 这是
-  // SC → CC 边界类型（剥掉了 ComponentType<Layout> 等不可序列化字段）。
-  // 客户端用 ClientTemplateRenderFromSerializable 重建 Layout（builtin
-  // 通过 id 在客户端的 TEMPLATES 静态表查找，uploaded 通过 template 字段
-  // 自带数据）。
   const uploaded = await listUploadedTemplates();
   const favoritedIds = await getFavoriteTemplateIds(userId);
-  const builtinIds = new Set(TEMPLATES.map((t) => t.id));
-  const uploadedById = new Map(
-    listBuiltinHtmlFallbackTemplates().map((template) => [template.id, template]),
-  );
-  for (const template of uploaded) {
-    if (builtinIds.has(template.id)) {
-      continue;
-    }
-    uploadedById.set(template.id, template);
-  }
-  const resolvedList: SerializableResolvedTemplate[] = [
-    ...TEMPLATES.map((t): SerializableResolvedTemplate => {
-      const uploadedTemplate = uploadedById.get(t.id);
-      return uploadedTemplate
-        ? uploadedTemplateToSerializable(t.id, uploadedTemplate)
-        : { source: "builtin", id: t.id as BuiltinTemplateId };
-    }),
-    ...uploaded
-      .filter((t) => !builtinIds.has(t.id))
-      .map(
-        (t): SerializableResolvedTemplate => ({
-          source: "uploaded",
-          id: t.id,
-          template: t,
-        }),
-      ),
-  ];
+  const resolvedList: SerializableResolvedTemplate[] = uploaded
+    .filter((t) => t.html)
+    .map((t): SerializableResolvedTemplate => uploadedTemplateToSerializable(t.id, t));
 
   return (
     <TemplateLibraryClient
