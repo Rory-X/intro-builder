@@ -6,7 +6,7 @@ import parse, {
   type DOMNode,
   type HTMLReactParserOptions,
 } from "html-react-parser";
-import type { ReactElement } from "react";
+import React, { type ReactElement } from "react";
 import type { ResumeContent, StyleSettings } from "@/lib/resume-schema";
 import type { TipTapJSON } from "@/lib/tiptap-types";
 import { FONT_MAP } from "@/lib/font-map";
@@ -64,11 +64,19 @@ const SAFE_TAGS = [
   "figure", "figcaption",
   // Skill v2 模板 schema 标签
   "template", "slot",
+  // Inline SVG icons (contact icons etc.)
+  "svg", "path", "circle", "rect", "line", "polyline", "g",
 ];
 const SAFE_ATTRS: Record<string, sanitizeHtml.AllowedAttribute[]> = {
   "*": ["class", "id", "title", "data-*"],
   a: ["href"],
   img: ["src", "alt"],
+  svg: ["xmlns", "width", "height", "viewBox", "fill", "stroke", "stroke-width", "stroke-linecap", "stroke-linejoin"],
+  path: ["d"],
+  circle: ["cx", "cy", "r"],
+  rect: ["width", "height", "x", "y", "rx"],
+  line: ["x1", "y1", "x2", "y2"],
+  polyline: ["points"],
 };
 
 /** 嵌套深度上限 —— spec §6.3 #5 */
@@ -178,6 +186,11 @@ function makeParserOptions(p: ParserCtx): HTMLReactParserOptions {
       // 不带 data-bind，原样保留。
       if (node.name === "img" && node.attribs?.["data-bind"] != null) {
         return renderImageBinding(node, p);
+      }
+      // 旧语法：任意元素上的 data-bind（如 <h1 data-bind="basics.name">）
+      // 兼容数据库中已存在的模板 HTML（professional / classic / modern）
+      if (node.attribs?.["data-bind"] != null) {
+        return renderLegacyDataBind(node, p);
       }
       return undefined;
     },
@@ -291,6 +304,26 @@ function renderImageBinding(node: Element, p: ParserCtx): ReactElement {
   delete (props as Record<string, unknown>)["data-bind"];
   // eslint-disable-next-line @next/next/no-img-element -- Puppeteer PDF uses plain img; alt 由模板作者在 data-bind img 上提供
   return <img alt="" {...props} src={url} />;
+}
+
+/**
+ * 旧语法兼容：`<h1 data-bind="basics.name"></h1>` 等。
+ * 数据库中已存在的 professional / classic / modern 模板使用此语法。
+ * 渲染逻辑与 <slot> 相同，但将内容注入到原元素中（保留 class / style 等）。
+ */
+function renderLegacyDataBind(node: Element, p: ParserCtx): ReactElement {
+  const binding = node.attribs?.["data-bind"];
+  if (!binding) return <></>;
+
+  // 复用 renderSlotElement 的解析逻辑，但包装在原始元素中
+  const slotContent = renderSlotElement(node, p);
+
+  // 保留原始元素的属性（除了 data-bind）
+  const props = attributesToProps(node.attribs);
+  delete (props as Record<string, unknown>)["data-bind"];
+
+  // 使用 createElement 动态创建元素
+  return React.createElement(node.name, props, slotContent);
 }
 
 function renderLoop(
