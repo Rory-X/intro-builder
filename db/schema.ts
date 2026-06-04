@@ -50,7 +50,10 @@ export const resumes = pgTable("resume", {
   id: text("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
   userId: text("userId").notNull().references(() => users.id, { onDelete: "cascade" }),
   title: text("title").notNull().default("我的简历"),
-  templateId: text("templateId").notNull().default("professional"),
+  // 故意不设默认值:templateId 必须由创建方显式解析(getDefaultTemplateId() 查
+  // isDefault 行)后传入。漏传直接撞 NOT NULL 报错,把 bug 暴露出来,而不是悄悄
+  // 兜底成某套写死的模板。
+  templateId: text("templateId").notNull(),
   content: jsonb("content").$type<ResumeContent>().notNull(),
   slug: text("slug"),
   isPublic: boolean("isPublic").notNull().default(false),

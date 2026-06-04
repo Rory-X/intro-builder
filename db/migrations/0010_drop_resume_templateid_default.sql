@@ -1,0 +1,1 @@
+ALTER TABLE "resume" ALTER COLUMN "templateId" DROP DEFAULT;
