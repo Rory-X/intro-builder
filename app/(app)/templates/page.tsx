@@ -3,6 +3,7 @@ import type { Metadata } from "next";
 import { requireUserId } from "@/lib/auth-helpers";
 import { db } from "@/db";
 import { resumes } from "@/db/schema";
+import { withDbRetry } from "@/lib/db-retry";
 import { listUploadedTemplates } from "@/lib/templates/uploaded/fetch";
 import { migrateContent } from "@/lib/migrate-content";
 import { demoResume } from "@/lib/demo-resume";
@@ -30,16 +31,20 @@ export default async function TemplatesPage({
   // 该用户的简历内容）。
   let userResumeRow: typeof resumes.$inferSelect | undefined = undefined;
   if (resumeIdParam) {
-    userResumeRow = await db.query.resumes.findFirst({
-      where: (r, { eq: eqq, and }) =>
-        and(eqq(r.id, resumeIdParam), eqq(r.userId, userId)),
-    });
+    userResumeRow = await withDbRetry("templates.resumeById", () =>
+      db.query.resumes.findFirst({
+        where: (r, { eq: eqq, and }) =>
+          and(eqq(r.id, resumeIdParam), eqq(r.userId, userId)),
+      }),
+    );
   }
   if (!userResumeRow) {
-    userResumeRow = await db.query.resumes.findFirst({
-      where: eq(resumes.userId, userId),
-      orderBy: [desc(resumes.updatedAt)],
-    });
+    userResumeRow = await withDbRetry("templates.resumeLatest", () =>
+      db.query.resumes.findFirst({
+        where: eq(resumes.userId, userId),
+        orderBy: [desc(resumes.updatedAt)],
+      }),
+    );
   }
 
   // 走 migrateContent 走老 schema 升级路径（和 dashboard 一致）。失败时

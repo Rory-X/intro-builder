@@ -19,6 +19,11 @@ type Options = {
 
 export type ResumeAutosaveStatus = "idle" | "pending" | "saving" | "error";
 
+function isRetriableError(e: unknown): boolean {
+  const msg = e instanceof Error ? e.message : String(e);
+  return /fetch failed|Failed to fetch|network|timeout|ECONNRESET|socket/i.test(msg);
+}
+
 /**
  * Debounced autosave with a serial queue so an older in-flight save
  * cannot overwrite newer edits (affects every form field, not only summary).
@@ -38,6 +43,7 @@ export function useResumeAutosave({
   const savingRef = useRef(false);
   const saveAgainRef = useRef(false);
   const hasPendingSaveRef = useRef(false);
+  const retryCountRef = useRef(0);
 
   useEffect(() => {
     titleRef.current = title;
@@ -56,8 +62,16 @@ export function useResumeAutosave({
     try {
       hasPendingSaveRef.current = false;
       await onSave(form.getValues(), titleRef.current);
+      retryCountRef.current = 0;
       setStatus("idle");
     } catch (e: unknown) {
+      if (isRetriableError(e) && retryCountRef.current < 1) {
+        retryCountRef.current += 1;
+        savingRef.current = false;
+        setTimeout(() => void persist(), 2000);
+        return;
+      }
+      retryCountRef.current = 0;
       setStatus("error");
       onError(e);
     } finally {

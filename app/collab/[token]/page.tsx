@@ -3,6 +3,7 @@ import { collabSessions, resumes } from "@/db/schema";
 import { eq } from "drizzle-orm";
 import { notFound } from "next/navigation";
 import { MentorJoinForm } from "./mentor-join-form";
+import { withDbRetry } from "@/lib/db-retry";
 import type { Metadata } from "next";
 
 export const metadata: Metadata = { title: "协作修改简历" };
@@ -10,17 +11,21 @@ export const metadata: Metadata = { title: "协作修改简历" };
 export default async function CollabEntryPage({ params }: { params: Promise<{ token: string }> }) {
   const { token } = await params;
 
-  const [session] = await db.select().from(collabSessions).where(
-    eq(collabSessions.inviteToken, token),
-  ).limit(1);
+  const [session] = await withDbRetry("collabEntry.session", () =>
+    db.select().from(collabSessions).where(
+      eq(collabSessions.inviteToken, token),
+    ).limit(1),
+  );
 
   if (!session) notFound();
 
   const expired = session.expiresAt < new Date();
 
-  const [resume] = await db.select({ title: resumes.title }).from(resumes).where(
-    eq(resumes.id, session.resumeId),
-  ).limit(1);
+  const [resume] = await withDbRetry("collabEntry.resume", () =>
+    db.select({ title: resumes.title }).from(resumes).where(
+      eq(resumes.id, session.resumeId),
+    ).limit(1),
+  );
 
   return (
     <div className="flex min-h-screen items-center justify-center bg-muted/30 p-4">

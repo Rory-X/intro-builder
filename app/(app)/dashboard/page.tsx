@@ -4,6 +4,7 @@ import { requireUserId } from "@/lib/auth-helpers";
 import { auth } from "@/lib/auth";
 import { db } from "@/db";
 import { resumes } from "@/db/schema";
+import { withDbRetry } from "@/lib/db-retry";
 import {
   DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem,
 } from "@/components/ui/dropdown-menu";
@@ -27,7 +28,9 @@ export default async function DashboardPage() {
   const session = await auth();
   const userName = session?.user?.name ?? session?.user?.email?.split("@")[0] ?? "你";
 
-  const list = await db.select().from(resumes).where(eq(resumes.userId, userId)).orderBy(desc(resumes.updatedAt));
+  const list = await withDbRetry("dashboard.list", () =>
+    db.select().from(resumes).where(eq(resumes.userId, userId)).orderBy(desc(resumes.updatedAt)),
+  );
 
   // Batch-resolve every resume's template once at the page level — collapses
   // what would be N awaits in the map loop into a single Promise.all. Built-in
