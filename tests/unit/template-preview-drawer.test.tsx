@@ -26,8 +26,12 @@ beforeEach(() => {
 });
 
 const builtinResolved: SerializableResolvedTemplate = {
-  source: "builtin",
+  source: "unified",
   id: "professional",
+  html: '<div><slot data-bind="basics.name"></slot></div>',
+  css: null,
+  templateId: "professional",
+  sectionIcons: {},
 };
 
 describe("TemplatePreviewDrawer", () => {
@@ -134,35 +138,20 @@ describe("TemplatePreviewDrawer", () => {
     expect(applyBtn.textContent).toMatch(/正在应用/);
   });
 
-  it("uploaded 模板：source label 显示「上传」", () => {
-    const uploadedResolved: SerializableResolvedTemplate = {
-      source: "uploaded",
+  it("非 builtin 模板：显示模板名", () => {
+    const unifiedResolved: SerializableResolvedTemplate = {
+      source: "unified",
       id: "abbey-stub",
-      template: {
-        id: "abbey-stub",
-        name: "Abbey Stub",
-        description: "测试用上传模板",
-        thumbnailUrl: null,
-        decoration: null,
-        layout: {
-          frame: { kind: "vertical" },
-          headerVariant: "professional",
-          sectionTitleVariant: "professional",
-          itemHeaderVariant: "professional",
-          theme: { primaryColor: "#000" },
-          sectionIcons: {},
-        },
-        customHtml: null,
-        customCss: null,
-  category: null,
-  features: null,
-      },
+      html: '<div><slot data-bind="basics.name"></slot></div>',
+      css: null,
+      templateId: "abbey-stub",
+      sectionIcons: {},
     };
     render(
       <TemplatePreviewDrawer
         open={true}
         onOpenChange={vi.fn()}
-        resolved={uploadedResolved}
+        resolved={unifiedResolved}
         demoContent={demoResume}
         userContent={null}
         resumeId="r1"
@@ -170,8 +159,7 @@ describe("TemplatePreviewDrawer", () => {
       />,
     );
     // Sheet 走 Portal，要看全局 body
-    expect(document.body.textContent).toContain("上传");
-    expect(document.body.textContent).toContain("Abbey Stub");
+    expect(document.body.textContent).toContain("abbey-stub");
     // screen import 用法验证（避免 unused import 警告）
     expect(screen.getByTestId("drawer-apply")).toBeInTheDocument();
   });

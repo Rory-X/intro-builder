@@ -21,8 +21,8 @@ class MockObserver {
 }
 
 const favorites: TemplatePanelItem[] = [
-  { id: "professional", name: "专业", resolved: { source: "builtin", id: "professional" } },
-  { id: "modern", name: "现代", resolved: { source: "builtin", id: "modern" } },
+  { id: "professional", name: "专业", resolved: { source: "unified", id: "professional", html: '<div><slot data-bind="basics.name"></slot></div>', css: null, templateId: "professional", sectionIcons: {} } },
+  { id: "modern", name: "现代", resolved: { source: "unified", id: "modern", html: '<div><slot data-bind="basics.name"></slot></div>', css: null, templateId: "modern", sectionIcons: {} } },
 ];
 
 function renderPanel(overrides: Partial<React.ComponentProps<typeof TemplateSwitchPanel>> = {}) {

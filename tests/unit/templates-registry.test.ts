@@ -20,9 +20,9 @@ describe("template registry", () => {
     expect(resolveTemplateId("classic")).toBe("classic");
   });
 
-  it("returns metadata with layout component", () => {
+  it("returns metadata for known templates", () => {
     const meta = getTemplateMeta("modern");
     expect(meta.name).toBe("现代");
-    expect(meta.Layout).toBeDefined();
+    expect(meta.defaultStyleSettings).toBeDefined();
   });
 });

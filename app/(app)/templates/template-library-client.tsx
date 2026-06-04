@@ -51,11 +51,8 @@ type Props = {
 };
 
 /**
- * 给一个 SerializableResolvedTemplate 抽出"展示用"的元数据（name + description + category）：
- * - builtin：从客户端静态 TEMPLATES 表（registry.ts）查
- * - uploaded：直接读 resolved.template 字段
- * 客户端做这个映射，因为 ComponentType<Layout> 不能跨 SC→CC 边界（builtin
- * 那边只过来了 id），但 TEMPLATES 是客户端静态导入，安全可用。
+ * 给一个 SerializableResolvedTemplate 抽出"展示用"的元数据（name + description + category）。
+ * 所有模板的元数据统一从客户端 TEMPLATES 静态表查找（builtin）或 id 匹配。
  */
 function getDisplayMeta(resolved: SerializableResolvedTemplate): {
   name: string;
@@ -63,28 +60,18 @@ function getDisplayMeta(resolved: SerializableResolvedTemplate): {
   isRecommended?: boolean;
   category?: TemplateCategory;
 } {
-  if (resolved.source === "builtin") {
-    const meta = TEMPLATES.find((t) => t.id === resolved.id);
+  const meta = TEMPLATES.find((t) => t.id === resolved.id);
+  if (meta) {
     return {
-      name: meta?.name ?? resolved.id,
-      description: meta?.description ?? "",
-      isRecommended: meta?.isRecommended,
-      category: meta?.category,
-    };
-  }
-  if (resolved.source === "unified") {
-    const meta = TEMPLATES.find((t) => t.id === resolved.id);
-    return {
-      name: meta?.name ?? resolved.id,
-      description: meta?.description ?? "",
-      isRecommended: meta?.isRecommended,
-      category: meta?.category,
+      name: meta.name,
+      description: meta.description ?? "",
+      isRecommended: meta.isRecommended,
+      category: meta.category,
     };
   }
   return {
-    name: resolved.template.name,
-    description: resolved.template.description ?? "",
-    category: resolved.template.category ?? undefined,
+    name: resolved.id,
+    description: "",
   };
 }
 

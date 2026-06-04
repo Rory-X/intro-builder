@@ -1,18 +1,17 @@
 import { z } from "zod";
-import type { ResumeHeaderVariant } from "@/lib/templates/shared/resume-header";
-import type { ResumeSectionVariant } from "@/lib/templates/shared/resume-section";
 
 /**
  * Zod-first：所有 type 由 schema `z.infer` 推导，杜绝 schema drift（手写 type
  * 和 schema 各写一份后慢慢不同步的反模式）。下游 import 仍用 `import type {...}`
  * 无须改动——z.infer 出来的形状和原手写 interface 完全一致。
- *
- * `satisfies z.ZodType<ExternalAlias>` 用于 variant 字段：当 resume-header /
- * resume-section 加了新 variant 但本文件 z.enum 没跟上时，TypeScript 会编译
- * 失败提醒，是显式的漂移检测。
  */
 
 // === Variant enums ===
+// v1 渲染引擎的变体枚举。v2 SlotRenderer 不再使用这些变体做渲染分派，
+// 但 DB 中已有行仍携带这些字段，Zod 解析需要接受它们。
+type ResumeHeaderVariant = "classic" | "professional" | "modern-sidebar";
+type ResumeSectionVariant = "classic" | "professional" | "modern" | "card-wrapped" | "full-width-bar";
+
 const HeaderVariantSchema = z.enum([
   "classic",
   "professional",

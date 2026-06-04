@@ -1,10 +1,6 @@
-import { ClassicLayout } from "./classic/Layout";
 import { classicMeta } from "./classic/meta";
-import { ModernLayout } from "./modern/Layout";
 import { modernMeta } from "./modern/meta";
-import { ProfessionalLayout } from "./professional/Layout";
 import { professionalMeta } from "./professional/meta";
-import type { ComponentType } from "react";
 import type { StyleSettings } from "@/lib/resume-schema";
 import {
   BUILTIN_TEMPLATE_IDS,
@@ -57,7 +53,6 @@ export type TemplateMeta = {
   name: string;
   description: string;
   isRecommended?: boolean;
-  Layout: ComponentType<TemplateLayoutProps>;
   /**
    * 应用此模板时使用的默认排版设置。setTemplate(resetStyleSettings:true) 会
    * 把这份写入简历的 styleSettings —— 让"切换模板=切换匹配的字号/行距/边距"
@@ -77,9 +72,9 @@ export type TemplateMeta = {
 };
 
 export const TEMPLATES: TemplateMeta[] = [
-  { ...professionalMeta, Layout: ProfessionalLayout },
-  { ...classicMeta, Layout: ClassicLayout },
-  { ...modernMeta, Layout: ModernLayout },
+  { ...professionalMeta },
+  { ...classicMeta },
+  { ...modernMeta },
 ];
 
 export function resolveTemplateId(id: string | null | undefined): TemplateId {
@@ -92,12 +87,7 @@ export function getTemplateMeta(id: string | null | undefined): TemplateMeta {
   return TEMPLATES.find((t) => t.id === resolved) ?? TEMPLATES[0];
 }
 
-export function getTemplateLayout(id: string | null | undefined) {
-  return getTemplateMeta(id).Layout;
-}
-
 export type ResolvedTemplateMeta =
-  | { source: "builtin"; id: BuiltinTemplateId; meta: TemplateMeta }
   | { source: "uploaded"; id: string; template: UploadedTemplate };
 
 /**

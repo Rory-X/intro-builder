@@ -5,12 +5,15 @@ import { emptyResumeContent } from "@/lib/resume-schema";
 import { TEMPLATES, type AllTemplatesItem } from "@/lib/templates/registry";
 import type { SerializableResolvedTemplate } from "@/lib/templates/render";
 
-// Built-in default for the now-required template props. Tests don't
-// exercise uploaded templates; the dispatcher's built-in branch is the
-// right baseline.
+// Built-in default for the now-required template props. All templates
+// are now v2 SlotRenderer — provide minimal HTML for rendering.
 const BUILTIN_RESOLVED: SerializableResolvedTemplate = {
-  source: "builtin",
+  source: "unified",
   id: "professional",
+  html: '<article><h1><slot data-bind="basics.name"></slot></h1><slot data-bind="sectionOrder" data-template="section"></slot></article><template id="section-block"><section><slot data-bind="section.body"></slot></section></template><template id="section-list"><section><slot data-bind="section.items" data-template="item"></slot></section></template><template id="item"><div><slot data-bind="item.title"></slot></div></template>',
+  css: null,
+  templateId: "professional",
+  sectionIcons: {},
 };
 
 // Built-in projection of the merged template list — picker UI iterates this.

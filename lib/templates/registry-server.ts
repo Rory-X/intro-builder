@@ -124,16 +124,28 @@ export function listBuiltinHtmlFallbackTemplates(): UploadedTemplate[] {
 export async function getTemplateMetaAsync(
   id: string | null | undefined,
 ): Promise<ResolvedTemplateMeta> {
-  if (id && isBuiltinId(id) && !isUnifiedBuiltinId(id)) {
-    const meta = TEMPLATES.find((t) => t.id === id)!;
-    return { source: "builtin", id, meta };
-  }
-
+  // Unified builtin: local HTML is the source of truth
   if (id && isUnifiedBuiltinId(id)) {
     const localTemplate = getBuiltinHtmlFallbackTemplate(id);
     if (localTemplate) {
       return { source: "uploaded", id, template: localTemplate };
     }
+    throw new Error(
+      `[registry-server] Builtin template "${id}" has no local HTML file ` +
+      `(expected templates/html/${id}.html). Cannot render.`
+    );
+  }
+
+  // Non-unified builtin (shouldn't exist after migration, but handle gracefully)
+  if (id && isBuiltinId(id)) {
+    const localTemplate = getBuiltinHtmlFallbackTemplate(id);
+    if (localTemplate) {
+      return { source: "uploaded", id, template: localTemplate };
+    }
+    throw new Error(
+      `[registry-server] Builtin template "${id}" has no local HTML file. ` +
+      `The v1 React rendering engine has been removed.`
+    );
   }
 
   // 尝试从 DB 查
@@ -143,18 +155,15 @@ export async function getTemplateMetaAsync(
       return { source: "uploaded", id: dbTemplate.id, template: dbTemplate };
     }
   }
-  // DB 没查到——如果是 builtin 且有本地 HTML 文件，构造一个 fake uploaded template
-  if (id && isBuiltinId(id)) {
-    const localTemplate = getBuiltinHtmlFallbackTemplate(id);
-    if (localTemplate) {
-      return { source: "uploaded", id, template: localTemplate };
-    }
-    // 本地文件也没有，走旧 React 组件
-    const meta = TEMPLATES.find((t) => t.id === id)!;
-    return { source: "builtin", id, meta };
+
+  // Fallback to default builtin
+  const defaultTemplate = getBuiltinHtmlFallbackTemplate(DEFAULT_TEMPLATE_ID);
+  if (defaultTemplate) {
+    return { source: "uploaded", id: DEFAULT_TEMPLATE_ID, template: defaultTemplate };
   }
-  const fallback = TEMPLATES.find((t) => t.id === DEFAULT_TEMPLATE_ID)!;
-  return { source: "builtin", id: DEFAULT_TEMPLATE_ID, meta: fallback };
+  throw new Error(
+    `[registry-server] Default template "${DEFAULT_TEMPLATE_ID}" has no local HTML file. Build is broken.`
+  );
 }
 
 export type { AllTemplatesItem };
@@ -260,9 +269,6 @@ export async function listAllTemplatesAsync(): Promise<AllTemplatesItem[]> {
 export function getTemplateDefaultStyleSettings(
   resolved: ResolvedTemplateMeta,
 ): StyleSettings {
-  if (resolved.source === "builtin") {
-    return resolved.meta.defaultStyleSettings;
-  }
   if (isBuiltinId(resolved.id)) {
     const meta = TEMPLATES.find((t) => t.id === resolved.id);
     if (meta) return meta.defaultStyleSettings;

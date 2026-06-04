@@ -64,17 +64,20 @@ describe("getTemplateMetaAsync", () => {
     }
   });
 
-  it("falls back to default built-in for unknown id with no DB hit", async () => {
+  it("falls back to default built-in HTML for unknown id with no DB hit", async () => {
     vi.mocked(fetchUploadedTemplate).mockResolvedValue(null);
     const resolved = await getTemplateMetaAsync("does-not-exist");
-    expect(resolved.source).toBe("builtin");
+    expect(resolved.source).toBe("uploaded");
     expect(resolved.id).toBe(DEFAULT_TEMPLATE_ID);
+    if (resolved.source === "uploaded") {
+      expect(resolved.template.customHtml).toContain("<");
+    }
   });
 
   it("falls back to default for null/undefined/empty without hitting DB", async () => {
     for (const v of [null, undefined, ""] as const) {
       const resolved = await getTemplateMetaAsync(v);
-      expect(resolved.source).toBe("builtin");
+      expect(resolved.source).toBe("uploaded");
       expect(resolved.id).toBe(DEFAULT_TEMPLATE_ID);
     }
     expect(fetchUploadedTemplate).not.toHaveBeenCalled();

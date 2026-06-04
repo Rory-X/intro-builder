@@ -7,12 +7,12 @@ import { BentoFeatures } from "@/components/marketing/bento-features";
 import { TemplatesSection } from "@/components/marketing/templates-section";
 import { MarketingFooter } from "@/components/marketing/marketing-footer";
 import { ScrollReveal } from "@/components/marketing/scroll-reveal";
-import { listAllTemplatesAsync } from "@/lib/templates/registry-server";
+import { listAllTemplatesAsync, listBuiltinHtmlFallbackTemplates } from "@/lib/templates/registry-server";
 import { TEMPLATES } from "@/lib/templates/registry";
 import { listUploadedTemplates } from "@/lib/templates/uploaded/fetch";
+import { uploadedTemplateToSerializable } from "@/lib/templates/render";
 import { demoResume } from "@/lib/demo-resume";
 import type { SerializableResolvedTemplate } from "@/lib/templates/render";
-import type { BuiltinTemplateId } from "@/lib/templates/types";
 
 const COMPANIES = ["字节跳动", "美团", "腾讯", "阿里巴巴", "小红书", "百度", "京东"];
 
@@ -21,20 +21,17 @@ export default async function Landing() {
   const uploaded = await listUploadedTemplates();
 
   // Build serializable resolved templates for client rendering
+  const builtinHtmlTemplates = listBuiltinHtmlFallbackTemplates();
+  const builtinById = new Map(builtinHtmlTemplates.map((t) => [t.id, t]));
+  const builtinIds = new Set(TEMPLATES.map((t) => t.id));
   const resolvedList: SerializableResolvedTemplate[] = [
-    ...TEMPLATES.map(
-      (t): SerializableResolvedTemplate => ({
-        source: "builtin",
-        id: t.id as BuiltinTemplateId,
-      }),
-    ),
-    ...uploaded.map(
-      (t): SerializableResolvedTemplate => ({
-        source: "uploaded",
-        id: t.id,
-        template: t,
-      }),
-    ),
+    ...TEMPLATES
+      .map((t) => builtinById.get(t.id))
+      .filter((t): t is NonNullable<typeof t> => t != null)
+      .map((t) => uploadedTemplateToSerializable(t.id, t)),
+    ...uploaded
+      .filter((t) => !builtinIds.has(t.id) && t.customHtml)
+      .map((t) => uploadedTemplateToSerializable(t.id, t)),
   ];
 
   return (

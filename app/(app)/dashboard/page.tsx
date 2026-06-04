@@ -163,9 +163,7 @@ export default async function DashboardPage() {
             {list.map((r) => {
               const content = migrateContent(r.content);
               const resolved = resolvedByResumeId.get(r.id)!;
-              const templateName = resolved.source === "builtin"
-                ? resolved.meta.name
-                : resolved.template.name;
+              const templateName = resolved.template.name;
               const score = computeCompletenessScore(content).overall;
               const isShared = !!(r.isPublic && r.slug);
               return (

@@ -88,13 +88,8 @@ export default async function TemplatesPage({
     }),
     ...uploaded
       .filter((t) => !builtinIds.has(t.id))
-      .map(
-        (t): SerializableResolvedTemplate => ({
-          source: "uploaded",
-          id: t.id,
-          template: t,
-        }),
-      ),
+      .filter((t) => t.customHtml)
+      .map((t): SerializableResolvedTemplate => uploadedTemplateToSerializable(t.id, t)),
   ];
 
   return (

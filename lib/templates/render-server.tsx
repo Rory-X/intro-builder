@@ -1,11 +1,12 @@
-import { UploadedLayout } from "./uploaded/UploadedLayout";
+import { SlotRenderer } from "./uploaded/html-slot-renderer";
 import { getTemplateMetaAsync } from "./registry-server";
 import type { ResolvedTemplateMeta } from "./registry";
 import type { TemplateLayoutProps } from "./types";
+import { DEFAULT_STYLE_SETTINGS } from "@/lib/resume-schema";
 
 /**
- * Server-side: resolve `id` (built-in or DB-stored) to the right Layout
- * component and render it. Use this in **server components** (preview /
+ * Server-side: resolve `id` (built-in or DB-stored) to the HTML+CSS template
+ * and render via SlotRenderer. Use this in **server components** (preview /
  * share pages, dashboard, PDF route — any place that already had access
  * to `await`).
  *
@@ -16,11 +17,7 @@ import type { TemplateLayoutProps } from "./types";
  *
  * `preResolved` short-circuits the async lookup — pass it when the
  * caller already has the resolved meta in hand (e.g. dashboard
- * pre-fetches all uploaded templates once and renders many cards). This
- * collapses what would otherwise be N+1 DB roundtrips into a single
- * batch query at the page level. When omitted, falls back to the
- * original async path so single-render callers don't have to know about
- * the optimization.
+ * pre-fetches all uploaded templates once and renders many cards).
  */
 export async function TemplateRender({
   id,
@@ -31,9 +28,23 @@ export async function TemplateRender({
   preResolved?: ResolvedTemplateMeta;
 } & TemplateLayoutProps) {
   const resolved = preResolved ?? (await getTemplateMetaAsync(id));
-  if (resolved.source === "builtin") {
-    const Layout = resolved.meta.Layout;
-    return <Layout {...layoutProps} />;
+  const template = resolved.template;
+
+  if (!template.customHtml) {
+    throw new Error(
+      `[render-server] Template "${resolved.id}" has no HTML content. ` +
+      `All templates must have HTML (v2 SlotRenderer path).`
+    );
   }
-  return <UploadedLayout {...layoutProps} template={resolved.template} />;
+
+  return (
+    <SlotRenderer
+      html={template.customHtml}
+      css={template.customCss}
+      content={layoutProps.content}
+      styleSettings={layoutProps.styleSettings ?? DEFAULT_STYLE_SETTINGS}
+      templateId={template.id}
+      sectionIcons={template.layout.sectionIcons}
+    />
+  );
 }

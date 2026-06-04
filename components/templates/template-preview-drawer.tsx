@@ -39,29 +39,20 @@ type Props = {
 };
 
 function getDisplayMeta(resolved: SerializableResolvedTemplate) {
-  if (resolved.source === "builtin") {
-    const meta = TEMPLATES.find((t) => t.id === resolved.id);
+  const meta = TEMPLATES.find((t) => t.id === resolved.id);
+  if (meta) {
     return {
-      name: meta?.name ?? resolved.id,
-      description: meta?.description ?? "",
-      isRecommended: meta?.isRecommended,
-      features: meta?.features as readonly string[] | undefined,
-    };
-  }
-  if (resolved.source === "unified") {
-    const meta = TEMPLATES.find((t) => t.id === resolved.id);
-    return {
-      name: meta?.name ?? resolved.id,
-      description: meta?.description ?? "",
-      isRecommended: meta?.isRecommended ?? false,
-      features: meta?.features as readonly string[] | undefined,
+      name: meta.name,
+      description: meta.description ?? "",
+      isRecommended: meta.isRecommended,
+      features: meta.features as readonly string[] | undefined,
     };
   }
   return {
-    name: resolved.template.name,
-    description: resolved.template.description ?? "",
+    name: resolved.id,
+    description: "",
     isRecommended: false as const,
-    features: resolved.template.features ?? undefined,
+    features: undefined,
   };
 }
 
@@ -96,14 +87,9 @@ export function TemplatePreviewDrawer({
     creative: "创意",
     general: "通用",
   };
-  const categoryRaw =
-    resolved?.source === "builtin"
-      ? TEMPLATES.find((t) => t.id === resolved.id)?.category
-      : resolved?.source === "uploaded"
-        ? resolved.template.category ?? undefined
-        : resolved?.source === "unified"
-          ? TEMPLATES.find((t) => t.id === resolved.id)?.category
-        : undefined;
+  const categoryRaw = resolved
+    ? TEMPLATES.find((t) => t.id === resolved.id)?.category
+    : undefined;
   const sourceLabel = categoryRaw ? CATEGORY_LABELS_DRAWER[categoryRaw] : null;
 
   return (
