@@ -3,8 +3,18 @@ import { verificationTokens } from "@/db/schema";
 import { eq, and } from "drizzle-orm";
 import { Resend } from "resend";
 
-const resend = new Resend(process.env.AUTH_RESEND_KEY);
 const EMAIL_FROM = process.env.AUTH_EMAIL_FROM ?? "noreply@example.com";
+let resendClient: Resend | null = null;
+
+function getResendClient(): Resend {
+  const apiKey = process.env.AUTH_RESEND_KEY;
+  if (!apiKey) {
+    throw new Error("AUTH_RESEND_KEY is required to send verification code email");
+  }
+
+  resendClient ??= new Resend(apiKey);
+  return resendClient;
+}
 
 /** Generate a 6-digit numeric verification code */
 export function generateCode(): string {
@@ -55,6 +65,7 @@ export async function verifyCode(email: string, code: string): Promise<boolean> 
 export async function sendVerificationCode(email: string): Promise<void> {
   const code = generateCode();
   await saveVerificationCode(email, code);
+  const resend = getResendClient();
 
   await resend.emails.send({
     from: EMAIL_FROM,

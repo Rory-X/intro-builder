@@ -36,6 +36,12 @@ const BREAK_SAFETY_MARGIN = 2;
  */
 const BOTTOM_SAFETY_PX = 40;
 
+/**
+ * If the last page only contains a tiny tail, treat it as measurement noise
+ * or bottom spacing and merge it back into the previous page.
+ */
+const MIN_LAST_PAGE_CONTENT = 80;
+
 const BLOCK_TAGS = new Set(["P", "LI", "DIV", "H1", "H2", "H3", "H4", "H5", "H6", "UL", "OL", "BLOCKQUOTE"]);
 
 function findBreakPoints(container: HTMLElement): { bottom: number }[] {
@@ -81,7 +87,7 @@ function addChildBreakPoints(parent: HTMLElement, container: HTMLElement, bottom
 }
 
 function calculatePageBreaks(breakPoints: { bottom: number }[], totalHeight: number): number[] {
-  if (totalHeight <= A4_HEIGHT_PX - BOTTOM_SAFETY_PX) return [];
+  if (totalHeight <= A4_HEIGHT_PX) return [];
 
   const breaks: number[] = [];
   let pageStart = 0;
@@ -111,6 +117,14 @@ function calculatePageBreaks(breakPoints: { bottom: number }[], totalHeight: num
       pageStart = pageEnd;
     }
     isFirstPage = false;
+  }
+
+  if (breaks.length > 0) {
+    const lastBreak = breaks[breaks.length - 1];
+    const lastPageContent = totalHeight - lastBreak;
+    if (lastPageContent < MIN_LAST_PAGE_CONTENT) {
+      breaks.pop();
+    }
   }
 
   return breaks;
