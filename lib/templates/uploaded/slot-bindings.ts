@@ -340,9 +340,6 @@ export function deriveContacts(content: ResumeContent): ContactView[] {
           href: /^https?:\/\//i.test(basics.website) ? basics.website : `https://${basics.website}`,
         }
       : null,
-    basics.location
-      ? { type: "location", icon: "MapPin", label: basics.location, href: "" }
-      : null,
   ];
   return contacts.filter((item): item is ContactView => item !== null);
 }
