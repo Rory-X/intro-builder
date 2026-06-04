@@ -35,10 +35,12 @@ export function SectionEditorHeader({ sectionKey, itemCount, isOpen, onToggle, o
           </span>
         )}
       </button>
-      <Button type="button" size="sm" variant="outline" onClick={onAdd} className="gap-1 text-xs">
-        <Plus className="h-3 w-3" />
-        {addLabel}
-      </Button>
+      {addLabel && (
+        <Button type="button" size="sm" variant="outline" onClick={onAdd} className="gap-1 text-xs">
+          <Plus className="h-3 w-3" />
+          {addLabel}
+        </Button>
+      )}
     </div>
   );
 }

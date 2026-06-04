@@ -8,8 +8,14 @@ import { listUploadedTemplates } from "@/lib/templates/uploaded/fetch";
 import { migrateContent } from "@/lib/migrate-content";
 import { demoResume } from "@/lib/demo-resume";
 import type { ResumeContent } from "@/lib/resume-schema";
-import type { SerializableResolvedTemplate } from "@/lib/templates/render";
+import {
+  uploadedTemplateToSerializable,
+  type SerializableResolvedTemplate,
+} from "@/lib/templates/render";
 import type { BuiltinTemplateId } from "@/lib/templates/types";
+import {
+  listBuiltinHtmlFallbackTemplates,
+} from "@/lib/templates/registry-server";
 import { getFavoriteTemplateIds } from "./actions";
 import { TemplateLibraryClient } from "./template-library-client";
 
@@ -64,13 +70,22 @@ export default async function TemplatesPage({
   const uploaded = await listUploadedTemplates();
   const favoritedIds = await getFavoriteTemplateIds(userId);
   const builtinIds = new Set(TEMPLATES.map((t) => t.id));
+  const uploadedById = new Map(
+    listBuiltinHtmlFallbackTemplates().map((template) => [template.id, template]),
+  );
+  for (const template of uploaded) {
+    if (builtinIds.has(template.id)) {
+      continue;
+    }
+    uploadedById.set(template.id, template);
+  }
   const resolvedList: SerializableResolvedTemplate[] = [
-    ...TEMPLATES.map(
-      (t): SerializableResolvedTemplate => ({
-        source: "builtin",
-        id: t.id as BuiltinTemplateId,
-      }),
-    ),
+    ...TEMPLATES.map((t): SerializableResolvedTemplate => {
+      const uploadedTemplate = uploadedById.get(t.id);
+      return uploadedTemplate
+        ? uploadedTemplateToSerializable(t.id, uploadedTemplate)
+        : { source: "builtin", id: t.id as BuiltinTemplateId };
+    }),
     ...uploaded
       .filter((t) => !builtinIds.has(t.id))
       .map(

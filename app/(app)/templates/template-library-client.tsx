@@ -72,6 +72,15 @@ function getDisplayMeta(resolved: SerializableResolvedTemplate): {
       category: meta?.category,
     };
   }
+  if (resolved.source === "unified") {
+    const meta = TEMPLATES.find((t) => t.id === resolved.id);
+    return {
+      name: meta?.name ?? resolved.id,
+      description: meta?.description ?? "",
+      isRecommended: meta?.isRecommended,
+      category: meta?.category,
+    };
+  }
   return {
     name: resolved.template.name,
     description: resolved.template.description ?? "",

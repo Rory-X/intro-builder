@@ -39,13 +39,16 @@ const mockTemplate: UploadedTemplate = {
 describe("getTemplateMetaAsync", () => {
   beforeEach(() => vi.clearAllMocks());
 
-  it("returns built-in meta without hitting DB for built-in ids", async () => {
+  it("routes unified builtins through local HTML fallback when DB misses", async () => {
+    vi.mocked(fetchUploadedTemplate).mockResolvedValue(null);
     for (const id of BUILTIN_TEMPLATE_IDS) {
       const resolved = await getTemplateMetaAsync(id);
-      expect(resolved.source).toBe("builtin");
       expect(resolved.id).toBe(id);
-      if (resolved.source === "builtin") {
-        expect(resolved.meta.id).toBe(id);
+      // All three builtins now have local HTML+CSS → resolved as "uploaded"
+      expect(resolved.source).toBe("uploaded");
+      if (resolved.source === "uploaded") {
+        expect(resolved.template.customHtml).toContain("<");
+        expect(resolved.template.customCss).toContain("{");
       }
     }
     expect(fetchUploadedTemplate).not.toHaveBeenCalled();

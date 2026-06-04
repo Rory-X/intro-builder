@@ -22,20 +22,20 @@
   },
   "features": {
     "type": "JSONB",
-    "description": "模板特点文案，固定 3 条，每条 ≤ 60 字，模板抽屉里展示",
+    "description": "模板特点文案，固定 3 条，每条不超过 60 字，模板抽屉里展示",
     "example": ["蓝色波浪 banner + 圆形头像框", "居中分区标题，适合内容较少的应届生", "清新配色，适合互联网/教育/传媒行业"]
   },
   "html": {
-    "type": "TEXT NOT NULL",
-    "description": "模板 HTML，含 slot 标记（data-bind）。引擎解析 slot 替换为简历内容。"
+    "type": "TEXT",
+    "description": "v2 统一渲染模板 HTML，含 <slot data-bind=\"...\"> 或 <img data-bind=\"...\">。为空时走 legacy customHtml/customCss 或 v1 enum fallback。"
   },
   "css": {
     "type": "TEXT",
-    "description": "模板 CSS，必须遵守 CSS 变量合约。引擎自动加 scope 前缀防污染。"
+    "description": "v2 统一渲染模板 CSS，必须遵守 CSS 变量合约；引擎会自动加 scope 前缀。"
   },
   "assets": {
     "type": "JSONB",
-    "description": "GPT 生成的装饰图片列表，HTML 里通过 URL 引用这些图",
+    "description": "模板装饰图片列表，HTML/CSS 通过 URL 引用这些图",
     "item_schema": {
       "url": { "type": "string", "description": "图片 CDN 地址（Vercel Blob）" },
       "role": { "type": "string", "description": "用途标识", "enum": ["banner", "decoration", "icon"] }
@@ -45,9 +45,30 @@
       { "url": "https://xxx.vercel-storage.com/abbey-blue-corner.png", "role": "decoration" }
     ]
   },
+  "templateLayout": {
+    "type": "JSONB",
+    "description": "v2 页面结构配置。当前用于记录单栏/双栏、sidebar 位置、宽度和 sidebar section 列表；渲染协议仍以 HTML slot 为准。",
+    "schema": {
+      "type": { "type": "string", "enum": ["vertical", "horizontal"], "description": "vertical = 单栏从上到下；horizontal = 左右双栏" },
+      "sidebar": {
+        "type": "object | null",
+        "description": "仅 horizontal 时存在",
+        "fields": {
+          "side": { "type": "string", "enum": ["left", "right"], "description": "sidebar 在哪一侧" },
+          "width": { "type": "string", "description": "sidebar 宽度，CSS 值如 240px 或 30%" },
+          "sections": { "type": "string[]", "description": "放入 sidebar 的 section id 列表，如 basics、skills、education 或自定义 section id" }
+        }
+      }
+    },
+    "examples": [
+      { "type": "vertical" },
+      { "type": "horizontal", "sidebar": { "side": "left", "width": "240px", "sections": ["basics", "skills"] } },
+      { "type": "horizontal", "sidebar": { "side": "right", "width": "220px", "sections": ["basics"] } }
+    ]
+  },
   "defaultStyleSettings": {
     "type": "JSONB",
-    "description": "模板推荐的初始排版设置。用户首次选用该模板时写入简历的 styleSettings。结构同 styleSettings。",
+    "description": "模板推荐的初始排版设置。用户首次选用该模板时写入简历的 styleSettings。结构同 lib/resume-schema.ts 的 StyleSettings。",
     "example": {
       "fontFamily": "sans",
       "fontSize": 13,
@@ -60,26 +81,29 @@
       "photoScale": 1
     }
   },
+  "source": {
+    "type": "TEXT",
+    "description": "legacy 字段。Phase 3 迁移完毕后删除。"
+  },
+  "decoration": {
+    "type": "JSONB",
+    "description": "legacy v1 enum 模板装饰配置。v2 新模板优先使用 assets/html/css。"
+  },
   "layout": {
-    "type": "JSONB NOT NULL",
-    "description": "排版结构配置。决定单栏/双栏、sidebar 位置和宽度、哪些 section 归 sidebar。",
-    "schema": {
-      "type": { "type": "string", "enum": ["vertical", "horizontal"], "description": "vertical = 单栏从上到下；horizontal = 左右双栏" },
-      "sidebar": {
-        "type": "object | null",
-        "description": "仅 horizontal 时存在",
-        "fields": {
-          "side": { "type": "string", "enum": ["left", "right"], "description": "sidebar 在哪一侧" },
-          "width": { "type": "string", "description": "sidebar 宽度，CSS 值如 240px 或 30%" },
-          "sections": { "type": "string[]", "description": "放入 sidebar 的 section id 列表，支持任意 section（basics/skills/education/自定义等）。不在此列表中的 section 全部去 main。" }
-        }
-      }
-    },
-    "examples": [
-      { "type": "vertical" },
-      { "type": "horizontal", "sidebar": { "side": "left", "width": "240px", "sections": ["basics", "skills"] } },
-      { "type": "horizontal", "sidebar": { "side": "right", "width": "220px", "sections": ["basics"] } }
-    ]
+    "type": "JSONB",
+    "description": "legacy v1 enum 模板布局配置（LayoutConfig）。v2 页面结构使用 templateLayout。"
+  },
+  "customHtml": {
+    "type": "TEXT",
+    "description": "legacy v2 HTML 字段。读取时 row.html 优先，缺失时 fallback 到 customHtml。"
+  },
+  "customCss": {
+    "type": "TEXT",
+    "description": "legacy v2 CSS 字段。读取时 row.css 优先，缺失时 fallback 到 customCss。"
+  },
+  "createdBy": {
+    "type": "TEXT",
+    "description": "legacy 作者字段。"
   },
   "status": {
     "type": "TEXT NOT NULL DEFAULT 'draft'",

@@ -10,14 +10,27 @@ import { A4_HEIGHT_PX } from "@/lib/pagination";
 
 export { A4_HEIGHT_PX };
 
-// Minimum values for each adjustable setting.
-// pagePadding 不在算法可调维度内 —— 用户设的页边距是品牌/视觉决策，不是
-// 密度调节，算法压缩时必须保留 (zoo 反馈：智能排版不能影响页边距)。
-const MIN_FONT = 8;
-const MIN_LINE_HEIGHT = 1.05;
-const MIN_SECTION_GAP = 4;
-const MIN_ITEM_GAP = 2;
-const MIN_HEADING_GAP = 0;
+// 美观下限：智能排版压到这里就停，不再为塞进一页牺牲可读性（zoo 确认的 floor）。
+// 这些不是"能塞下就行"的生存下限，而是"压到这里仍好看"的审美下限——之前的
+// 1.05 行距 / 0 标题间距是挤成一团的丑态，抬高后压缩永远落在好看的区间里。
+// pagePadding 不参与压缩——页边距是品牌/视觉决策（zoo 反馈：智能排版不能影响
+// 页边距）。fontSize 默认也不压，只在间距/行距压到底仍溢出时，作为最后兜底
+// 分级下降到 MIN_FONT（见 interpolateSettings 的 FONT_KNEE）。
+const MIN_FONT = 11;
+const MIN_LINE_HEIGHT = 1.25;
+const MIN_SECTION_GAP = 8;
+const MIN_ITEM_GAP = 4;
+const MIN_HEADING_GAP = 4;
+
+// scale 低于此阈值才开始压字号；阈值以上只压间距/行距。
+// 把 scale[0,1] 分成两段：[FONT_KNEE,1] 压间距/行距（字号保持 current），
+// [0,FONT_KNEE] 间距已触底、改为分级压字号到 floor。这样字号是最后一道杠杆，
+// 二分搜索找"还能塞下的最大 scale"时只要间距压缩够用就永远不会动到字号。
+const FONT_KNEE = 0.5;
+
+function clamp01(n: number): number {
+  return Math.max(0, Math.min(1, n));
+}
 
 export type SmartLayoutResult =
   | { status: "already-fits" }
@@ -25,43 +38,43 @@ export type SmartLayoutResult =
   | { status: "cannot-fit"; settings: StyleSettings };
 
 /**
- * Linear interpolation between minimum and current settings based on scale [0,1].
+ * 把 scale[0,1] 映射成一套压缩后的排版设置。scale=1 → current（不压）；
+ * scale=0 → 全部触底（间距/行距到 floor + 字号到 floor）。
  *
- * scale=0 → all minimums; scale=1 → current (unchanged) settings.
- * fontFamily is always preserved from current.
+ * 分两段（FONT_KNEE）：
+ * - scale ∈ [FONT_KNEE, 1]：只压间距/行距（gapScale 0→1），字号保持 current。
+ * - scale ∈ [0, FONT_KNEE]：间距/行距已触底，改为分级压字号（fontScale 0→1）。
+ *
+ * floor 一律取 min(MIN_*, current)：用户若已把某项设得比 floor 还低，压缩绝不
+ * 反向把它放大回 floor。fontFamily / pagePadding / photoScale 始终保持 current。
  */
 export function interpolateSettings(
   current: StyleSettings,
   scale: number,
 ): StyleSettings {
+  const gapScale = clamp01((scale - FONT_KNEE) / (1 - FONT_KNEE));
+  const fontScale = clamp01(scale / FONT_KNEE);
+
+  const fontFloor = Math.min(MIN_FONT, current.fontSize);
+  const lhFloor = Math.min(MIN_LINE_HEIGHT, current.bodyLineHeight);
+  const sgFloor = Math.min(MIN_SECTION_GAP, current.sectionGap);
+  const igFloor = Math.min(MIN_ITEM_GAP, current.itemGap);
+  const hgFloor = Math.min(MIN_HEADING_GAP, current.headingGap);
+
+  const bodyLh =
+    Math.round((lhFloor + (current.bodyLineHeight - lhFloor) * gapScale) * 100) / 100;
+
   return {
     fontFamily: current.fontFamily,
-    fontSize:
-      Math.round((MIN_FONT + (current.fontSize - MIN_FONT) * scale) * 10) / 10,
-    lineHeight:
-      Math.round(
-        (MIN_LINE_HEIGHT + (current.lineHeight - MIN_LINE_HEIGHT) * scale) *
-          100,
-      ) / 100,
-    headingGap: Math.round(
-      MIN_HEADING_GAP + (current.headingGap - MIN_HEADING_GAP) * scale,
-    ),
-    bodyLineHeight:
-      Math.round(
-        (MIN_LINE_HEIGHT + (current.bodyLineHeight - MIN_LINE_HEIGHT) * scale) *
-          100,
-      ) / 100,
-    // pagePadding 不参与算法压缩 —— 始终保留用户设定值。理由见 MIN_FONT
-    // 上方注释：页边距是品牌/视觉决策（用户调整 slider 是想让纸边一圈留白
-    // 改变），算法把它压到 MIN 时用户感知"页边距被自动改了"= bug。
+    // 0.5px 一档；fontScale=1（scale≥FONT_KNEE）时保持 current 整数字号。
+    fontSize: Math.round((fontFloor + (current.fontSize - fontFloor) * fontScale) * 2) / 2,
+    // lineHeight 已废弃，仅为旧渲染路径保留，这里镜像 bodyLineHeight 防止漂移。
+    lineHeight: bodyLh,
+    headingGap: Math.round(hgFloor + (current.headingGap - hgFloor) * gapScale),
+    bodyLineHeight: bodyLh,
     pagePadding: current.pagePadding,
-    sectionGap: Math.round(
-      MIN_SECTION_GAP + (current.sectionGap - MIN_SECTION_GAP) * scale,
-    ),
-    itemGap: Math.round(
-      MIN_ITEM_GAP + (current.itemGap - MIN_ITEM_GAP) * scale,
-    ),
-    // photoScale 不参与算法压缩 — 用户主动设置的头像尺寸不应被自动改变
+    sectionGap: Math.round(sgFloor + (current.sectionGap - sgFloor) * gapScale),
+    itemGap: Math.round(igFloor + (current.itemGap - igFloor) * gapScale),
     photoScale: current.photoScale,
   };
 }

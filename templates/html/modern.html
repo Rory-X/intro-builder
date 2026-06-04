@@ -1,0 +1,62 @@
+<div class="modern-layout">
+  <aside class="modern-sidebar">
+    <div class="modern-profile">
+      <header class="modern-header" data-pagination-header>
+        <img data-bind="basics.photo" class="modern-photo" />
+        <h1 class="modern-name"><slot data-bind="basics.name"></slot></h1>
+        <div class="modern-subtitle"><slot data-bind="basics.status"></slot></div>
+      </header>
+
+      <div class="modern-contact">
+        <div class="modern-contact-item"><slot data-bind="basics.phone"></slot></div>
+        <div class="modern-contact-item"><slot data-bind="basics.email"></slot></div>
+        <div class="modern-contact-item"><slot data-bind="basics.location"></slot></div>
+        <div class="modern-contact-item"><slot data-bind="basics.website"></slot></div>
+      </div>
+    </div>
+  </aside>
+
+  <main class="modern-main">
+    <slot data-bind="sectionOrder" data-template="section"></slot>
+  </main>
+</div>
+
+<template id="section-block">
+  <section class="modern-section">
+    <div class="modern-section-title" data-pagination-section-header>
+      <h2><slot data-bind="section.icon" class="modern-section-icon"></slot><slot data-bind="section.title"></slot></h2>
+    </div>
+    <div class="modern-section-body">
+      <slot data-bind="section.body"></slot>
+    </div>
+  </section>
+</template>
+
+<template id="section-list">
+  <section class="modern-section">
+    <div class="modern-section-title" data-pagination-section-header>
+      <h2><slot data-bind="section.icon" class="modern-section-icon"></slot><slot data-bind="section.title"></slot></h2>
+    </div>
+    <div class="modern-section-body">
+      <slot data-bind="section.items" data-template="item"></slot>
+    </div>
+  </section>
+</template>
+
+<template id="item">
+  <div class="modern-item">
+    <div class="modern-item-header">
+      <span class="modern-item-primary"><slot data-bind="item.title"></slot></span>
+      <span class="modern-item-side">
+        <span class="modern-item-date"><slot data-bind="item.dateRange"></slot></span>
+        <span class="modern-item-location"><slot data-bind="item.location"></slot></span>
+      </span>
+    </div>
+    <div class="modern-item-subtitle"><slot data-bind="item.subtitle"></slot></div>
+    <div class="modern-item-meta">
+      <span><slot data-bind="item.meta"></slot></span>
+      <span class="modern-item-link"><slot data-bind="item.link"></slot></span>
+    </div>
+    <div class="modern-item-body"><slot data-bind="item.bullets"></slot></div>
+  </div>
+</template>

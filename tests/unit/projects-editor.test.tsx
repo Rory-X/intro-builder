@@ -42,8 +42,9 @@ describe("ProjectsEditor", () => {
     render(<Harness />);
 
     expect(screen.getByText("担任角色")).toBeInTheDocument();
-    expect(screen.getByText("城市")).toBeInTheDocument();
     expect(screen.getByText("开始")).toBeInTheDocument();
     expect(screen.getByText("结束")).toBeInTheDocument();
+    expect(screen.getByText("项目链接")).toBeInTheDocument();
+    expect(screen.getByText("技术栈 (逗号分隔)")).toBeInTheDocument();
   });
 });

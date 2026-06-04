@@ -20,6 +20,7 @@ import { BasicsEditor } from "@/components/editor/basics-editor";
 import { ExperienceEditor } from "@/components/editor/experience-editor";
 import { EducationEditor } from "@/components/editor/education-editor";
 import { ProjectsEditor } from "@/components/editor/projects-editor";
+import { ResearchEditor } from "@/components/editor/research-editor";
 import { SkillsEditor } from "@/components/editor/skills-editor";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -31,7 +32,10 @@ import {
   DEFAULT_TEMPLATE_ID,
   type BuiltinTemplateId,
 } from "@/lib/templates/types";
-import type { SerializableResolvedTemplate } from "@/lib/templates/render";
+import {
+  uploadedTemplateToSerializable,
+  type SerializableResolvedTemplate,
+} from "@/lib/templates/render";
 import type { UploadedTemplate } from "@/lib/templates/uploaded/types";
 import { monitorForElements } from "@atlaskit/pragmatic-drag-and-drop/element/adapter";
 import { autoScrollForElements } from "@atlaskit/pragmatic-drag-and-drop-auto-scroll/element";
@@ -155,32 +159,27 @@ export default function EditorClient({ id, initialTitle, initialTemplate, initia
   );
 
   // Map of id → UploadedTemplate for instant client-side lookup when the
-  // user switches template. Excludes builtin ids that may exist in DB after
-  // seed — those must go through the React Layout path, not UploadedLayout.
+  // user switches template. Builtin ids may be present here when DB/local
+  // HTML fallback provides v2 markup; those should stay on the unified path.
   const uploadedById = useMemo(() => {
     const map = new Map<string, UploadedTemplate>();
     for (const t of uploadedTemplates) {
-      if (!(BUILTIN_TEMPLATE_IDS as readonly string[]).includes(t.id)) {
-        map.set(t.id, t);
-      }
+      map.set(t.id, t);
     }
     return map;
   }, [uploadedTemplates]);
 
   // Project the current `template` selection into a serializable form
-  // <LivePreview> can dispatch on. Order: uploaded fast-path → use the
-  // server-pre-resolved value if it still matches → fall back to a
+  // <LivePreview> can dispatch on. Order: use the server-pre-resolved
+  // value if it still matches → uploaded/local HTML fast-path → fall back to a
   // built-in id (defaulting if `template` is no longer a known id).
   const resolvedTemplate = useMemo<SerializableResolvedTemplate>(() => {
+    if (initialResolvedTemplate.id === template) {
+      return initialResolvedTemplate;
+    }
     const uploaded = uploadedById.get(template);
     if (uploaded) {
-      return { source: "uploaded", id: uploaded.id, template: uploaded };
-    }
-    if (
-      initialResolvedTemplate.source === "uploaded" &&
-      initialResolvedTemplate.id === template
-    ) {
-      return initialResolvedTemplate;
+      return uploadedTemplateToSerializable(uploaded.id, uploaded);
     }
     const builtinId: BuiltinTemplateId = (
       BUILTIN_TEMPLATE_IDS as readonly string[]
@@ -190,9 +189,8 @@ export default function EditorClient({ id, initialTitle, initialTemplate, initia
     return { source: "builtin", id: builtinId };
   }, [template, uploadedById, initialResolvedTemplate]);
 
-  // 模板面板只展示「我收藏的模板」。从 allTemplates 解析出可渲染的 resolved
-  // （builtin id 的 uploaded 重复项剔除——内置模板 schema 化后也 seed 进 DB，但要
-  // 走 React Layout 而非 UploadedLayout），再筛出收藏子集。
+  // 模板面板只展示「我收藏的模板」。从 allTemplates 解析出可渲染的 resolved，
+  // builtin 如有 DB/local HTML 则同样走统一 SlotRenderer 路径。
   const favoriteTemplateItems = useMemo<TemplatePanelItem[]>(() => {
     const builtinIdSet = new Set(BUILTIN_TEMPLATE_IDS as readonly string[]);
     const favSet = new Set(favoritedTemplateIds);
@@ -201,13 +199,15 @@ export default function EditorClient({ id, initialTitle, initialTemplate, initia
     for (const t of allTemplates) {
       if (seen.has(t.id) || !favSet.has(t.id)) continue;
       let resolved: SerializableResolvedTemplate;
-      if (t.source === "uploaded") {
-        if (builtinIdSet.has(t.id)) continue; // seeded builtin 重复项，跳过
-        const up = uploadedById.get(t.id);
-        if (!up) continue; // 孤儿（DB 里没有了）
-        resolved = { source: "uploaded", id: t.id, template: up };
-      } else {
+      const up = uploadedById.get(t.id);
+      if (up) {
+        resolved = uploadedTemplateToSerializable(t.id, up);
+      } else if (t.source === "uploaded") {
+        continue; // 孤儿（DB 里没有了）
+      } else if (builtinIdSet.has(t.id)) {
         resolved = { source: "builtin", id: t.id as BuiltinTemplateId };
+      } else {
+        continue;
       }
       seen.add(t.id);
       items.push({ id: t.id, name: t.name, resolved });
@@ -632,6 +632,7 @@ export default function EditorClient({ id, initialTitle, initialTemplate, initia
                     {key === "experience" && <ExperienceEditor />}
                     {key === "education" && <EducationEditor />}
                     {key === "projects" && <ProjectsEditor />}
+                    {key === "research" && <ResearchEditor />}
                     {key === "skills" && <SkillsEditor />}
                     {isCustomSection(key) && <CustomSectionEditor sectionId={key} />}
                   </SectionWrapper>

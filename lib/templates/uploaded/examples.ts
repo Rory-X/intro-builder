@@ -23,14 +23,14 @@ export const VERTICAL_EXAMPLE: LayoutConfig = {
     primaryColor: "#3B8BCD",
   },
   sectionIcons: {
-    summary: "User",
-    experience: "Briefcase",
-    projects: "FolderKanban",
-    education: "GraduationCap",
-    skills: "Sparkles",
-    awards: "Award",
-    activities: "Users",
-    other: "Tag",
+    summary: { icon: "User" },
+    experience: { icon: "Briefcase" },
+    projects: { icon: "FolderKanban" },
+    education: { icon: "GraduationCap" },
+    skills: { icon: "Sparkles" },
+    awards: { icon: "Award" },
+    activities: { icon: "Users" },
+    other: { icon: "Tag" },
   },
 };
 
@@ -58,9 +58,9 @@ export const HORIZONTAL_EXAMPLE: LayoutConfig = {
     primaryColor: "#10B981",
   },
   sectionIcons: {
-    education: "GraduationCap",
-    skills: "Sparkles",
-    experience: "Briefcase",
-    projects: "FolderKanban",
+    education: { icon: "GraduationCap" },
+    skills: { icon: "Sparkles" },
+    experience: { icon: "Briefcase" },
+    projects: { icon: "FolderKanban" },
   },
 };

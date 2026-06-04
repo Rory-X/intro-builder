@@ -1,0 +1,66 @@
+<div class="classic-template">
+  <header class="classic-header" data-pagination-header>
+    <img data-bind="profile.photo" class="classic-photo" alt="" />
+    <div class="classic-heading">
+      <h1 class="classic-name"><slot data-bind="profile.name"></slot></h1>
+      <div class="classic-title"><slot data-bind="profile.title"></slot></div>
+    </div>
+    <div class="classic-contact">
+      <slot data-bind="profile.contacts" data-template="contact-item"></slot>
+    </div>
+  </header>
+
+  <slot data-bind="sectionOrder" data-template="section"></slot>
+</div>
+
+<template id="contact-item">
+  <span class="classic-contact-item">
+    <slot data-bind="contact.icon" class="classic-contact-icon"></slot>
+    <slot data-bind="contact.label"></slot>
+  </span>
+</template>
+
+<template id="section-block">
+  <section class="classic-section">
+    <h2 class="classic-section-title" data-pagination-section-header>
+      <slot data-bind="section.icon" class="classic-section-icon"></slot>
+      <slot data-bind="section.title"></slot>
+    </h2>
+    <div class="classic-body">
+      <slot data-bind="section.body"></slot>
+    </div>
+  </section>
+</template>
+
+<template id="section-list">
+  <section class="classic-section">
+    <h2 class="classic-section-title" data-pagination-section-header>
+      <slot data-bind="section.icon" class="classic-section-icon"></slot>
+      <slot data-bind="section.title"></slot>
+    </h2>
+    <slot data-bind="section.items" data-template="item"></slot>
+  </section>
+</template>
+
+<template id="item">
+  <div class="classic-item">
+    <div class="classic-item-header">
+      <div class="classic-item-primary">
+        <span class="classic-item-title"><slot data-bind="item.title"></slot></span>
+        <span class="classic-item-sep"> — </span>
+        <span class="classic-item-subtitle"><slot data-bind="item.subtitle"></slot></span>
+      </div>
+      <div class="classic-item-side">
+        <div class="classic-item-date"><slot data-bind="item.dateRange"></slot></div>
+        <div class="classic-item-location"><slot data-bind="item.location"></slot></div>
+      </div>
+    </div>
+    <div class="classic-item-meta">
+      <span><slot data-bind="item.meta"></slot></span>
+      <span class="classic-item-link"><slot data-bind="item.link"></slot></span>
+    </div>
+    <div class="classic-body">
+      <slot data-bind="item.bullets"></slot>
+    </div>
+  </div>
+</template>

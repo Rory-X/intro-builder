@@ -36,6 +36,13 @@
       "when": 1780106222038,
       "tag": "0004_bouncy_northstar",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1780384456866,
+      "tag": "0005_chunky_slipstream",
+      "breakpoints": true
     }
   ]
 }

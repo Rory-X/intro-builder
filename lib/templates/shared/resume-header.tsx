@@ -18,7 +18,7 @@ export function ResumeHeader({ basics, variant, className, photoScale = 1 }: Pro
 
   if (variant === "modern-sidebar") {
     return (
-      <header data-pagination-header className={cn("space-y-3", className)}>
+      <header data-pagination-header className={cn("space-y-3 text-center", className)}>
         {basics.photo && (
           // eslint-disable-next-line @next/next/no-img-element -- Puppeteer PDF uses plain img
           <img
@@ -28,15 +28,15 @@ export function ResumeHeader({ basics, variant, className, photoScale = 1 }: Pro
             style={{ width: `${6 * photoScale}rem`, height: `${6 * photoScale}rem` }}
           />
         )}
-        <div>
+        <div className="text-center">
           <h1 className="text-xl font-bold">{basics.name}</h1>
           {basics.title && <p className="text-sm text-neutral-600">{basics.title}</p>}
         </div>
-        <div className="space-y-1 text-xs">
+        <div className="mx-auto flex max-w-full flex-col items-center gap-1 text-xs text-neutral-700">
           {contactItems.map((item, i) => (
-            <div key={i} className="flex items-center gap-1.5">
+            <div key={i} className="flex max-w-full items-center justify-center gap-1.5">
               <item.icon className="h-[0.9em] w-[0.9em] shrink-0 text-neutral-500" />
-              <span className="break-all">{item.text}</span>
+              <span className="break-all text-center">{item.text}</span>
             </div>
           ))}
         </div>

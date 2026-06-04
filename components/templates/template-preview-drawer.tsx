@@ -48,6 +48,15 @@ function getDisplayMeta(resolved: SerializableResolvedTemplate) {
       features: meta?.features as readonly string[] | undefined,
     };
   }
+  if (resolved.source === "unified") {
+    const meta = TEMPLATES.find((t) => t.id === resolved.id);
+    return {
+      name: meta?.name ?? resolved.id,
+      description: meta?.description ?? "",
+      isRecommended: meta?.isRecommended ?? false,
+      features: meta?.features as readonly string[] | undefined,
+    };
+  }
   return {
     name: resolved.template.name,
     description: resolved.template.description ?? "",
@@ -92,6 +101,8 @@ export function TemplatePreviewDrawer({
       ? TEMPLATES.find((t) => t.id === resolved.id)?.category
       : resolved?.source === "uploaded"
         ? resolved.template.category ?? undefined
+        : resolved?.source === "unified"
+          ? TEMPLATES.find((t) => t.id === resolved.id)?.category
         : undefined;
   const sourceLabel = categoryRaw ? CATEGORY_LABELS_DRAWER[categoryRaw] : null;
 
@@ -172,7 +183,7 @@ export function TemplatePreviewDrawer({
                       "不动你的简历内容，只换排版",
                       "切换后随时再换，可逆",
                     ]
-                ).map((feature, i) => (
+                ).map((feature: string, i: number) => (
                   <li key={i} className="flex items-start gap-2">
                     <Check className="mt-0.5 size-4 shrink-0 text-primary" />
                     <span>{feature}</span>

@@ -7,10 +7,15 @@ import { resumes } from "@/db/schema";
 import { withDbRetry } from "@/lib/db-retry";
 import EditorClient from "./editor-client";
 import { resolveTemplateId } from "@/lib/templates/registry";
-import { getTemplateMetaAsync, listAllTemplatesAsync } from "@/lib/templates/registry-server";
+import {
+  getTemplateMetaAsync,
+  listAllTemplatesAsync,
+  listBuiltinHtmlFallbackTemplates,
+} from "@/lib/templates/registry-server";
 import { listUploadedTemplates } from "@/lib/templates/uploaded/fetch";
 import { getFavoriteTemplateIds } from "@/app/(app)/templates/actions";
 import { toSerializable } from "@/lib/templates/render";
+import { BUILTIN_TEMPLATE_IDS } from "@/lib/templates/types";
 import type { Metadata } from "next";
 export const metadata: Metadata = { title: "编辑简历" };
 
@@ -30,12 +35,23 @@ export default async function EditPage({ params, searchParams }: { params: Promi
   // templateId change. Bundle size scales with uploaded-template count
   // (Option C from the foundation plan); revisit if that count grows past
   // a few hundred.
-  const [initialResolved, allTemplates, uploadedTemplates, favoritedTemplateIds] = await Promise.all([
+  const [initialResolved, allTemplates, dbUploadedTemplates, favoritedTemplateIds] = await Promise.all([
     getTemplateMetaAsync(row.templateId),
     listAllTemplatesAsync(),
     listUploadedTemplates(),
     getFavoriteTemplateIds(userId),
   ]);
+  const uploadedById = new Map(
+    listBuiltinHtmlFallbackTemplates().map((template) => [template.id, template]),
+  );
+  const builtinIds = new Set<string>(BUILTIN_TEMPLATE_IDS);
+  for (const template of dbUploadedTemplates) {
+    if (builtinIds.has(template.id)) {
+      continue;
+    }
+    uploadedById.set(template.id, template);
+  }
+  const uploadedTemplates = Array.from(uploadedById.values());
   return (
     <EditorClient
       id={row.id}

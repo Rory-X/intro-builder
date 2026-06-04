@@ -3,6 +3,8 @@ import { render } from "@testing-library/react";
 import { SlotRenderer } from "@/lib/templates/uploaded/html-slot-renderer";
 import { emptyResumeContent, type ResumeContent, DEFAULT_STYLE_SETTINGS } from "@/lib/resume-schema";
 import { emptyDoc } from "@/lib/tiptap-types";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 
 function richDoc(text: string): ReturnType<typeof emptyDoc> {
   return {
@@ -18,17 +20,19 @@ type ContentOverride = Partial<Omit<ResumeContent, "basics">> & {
 };
 function makeContent(over: ContentOverride = {}): ResumeContent {
   const base = emptyResumeContent();
+  const { basics: overBasics, experience: overExp, education: overEdu, sectionOrder: overOrder, ...rest } = over;
   return {
     ...base,
+    ...rest,
     basics: {
       ...base.basics,
       name: "张三",
       title: "前端工程师",
       email: "z@example.com",
       summary: "三年前端经验",
-      ...over.basics,
+      ...overBasics,
     },
-    experience: over.experience ?? [
+    experience: overExp ?? [
       {
         company: "字节跳动",
         title: "前端工程师",
@@ -38,7 +42,7 @@ function makeContent(over: ContentOverride = {}): ResumeContent {
         content: richDoc("主导编辑器重构"),
       },
     ],
-    education: over.education ?? [
+    education: overEdu ?? [
       {
         school: "北京邮电大学",
         degree: "本科",
@@ -50,7 +54,7 @@ function makeContent(over: ContentOverride = {}): ResumeContent {
         highlights: emptyDoc(),
       },
     ],
-    sectionOrder: over.sectionOrder ?? ["experience", "education"],
+    sectionOrder: overOrder ?? ["experience", "education"],
   };
 }
 
@@ -62,6 +66,7 @@ const render_ = (props: Partial<Parameters<typeof SlotRenderer>[0]> = {}) =>
       content={props.content ?? makeContent()}
       styleSettings={props.styleSettings ?? DEFAULT_STYLE_SETTINGS}
       templateId={props.templateId ?? "test-tpl"}
+      sectionIcons={props.sectionIcons}
     />,
   );
 
@@ -108,6 +113,76 @@ describe("SlotRenderer — value slots", () => {
 });
 
 describe("SlotRenderer — sectionOrder loop", () => {
+  it("uses section kind templates for block and list sections", () => {
+    const { container } = render_({
+      content: makeContent({ sectionOrder: ["basics", "experience"] }),
+      html: `<article>
+        <slot data-bind="sectionOrder" data-template="section" />
+      </article>
+      <template id="section-block">
+        <section class="block-section">
+          <h2><slot data-bind="section.title" /></h2>
+          <slot data-bind="section.body" />
+        </section>
+      </template>
+      <template id="section-list">
+        <section class="list-section">
+          <h2><slot data-bind="section.title" /></h2>
+          <slot data-bind="section.items" data-template="item" />
+        </section>
+      </template>
+      <template id="item">
+        <div class="item-title"><slot data-bind="item.title" /></div>
+      </template>`,
+    });
+    expect(container.querySelector(".block-section")?.textContent).toContain("三年前端经验");
+    expect(container.querySelector(".list-section .item-title")?.textContent).toBe("字节跳动");
+  });
+
+  it("renders section.icon as a lucide svg when declared via sectionIcons", () => {
+    const { container } = render_({
+      html: `<article>
+        <slot data-bind="sectionOrder" data-template="sec" />
+      </article>
+      <template id="sec">
+        <h2><slot data-bind="section.icon" class="section-icon" /><slot data-bind="section.title" /></h2>
+      </template>`,
+      sectionIcons: { experience: { icon: "Briefcase" } },
+    });
+    const icon = container.querySelector("svg.section-icon");
+    expect(icon).not.toBeNull();
+    expect(icon).toHaveAttribute("aria-hidden", "true");
+  });
+
+  it("renders section.icon from SECTION_META fallback when no sectionIcons declared", () => {
+    const { container } = render_({
+      html: `<article>
+        <slot data-bind="sectionOrder" data-template="sec" />
+      </article>
+      <template id="sec">
+        <h2><slot data-bind="section.icon" class="section-icon" /><slot data-bind="section.title" /></h2>
+      </template>`,
+    });
+    const icon = container.querySelector("svg.section-icon");
+    expect(icon).not.toBeNull();
+    expect(icon).toHaveAttribute("aria-hidden", "true");
+  });
+
+  it("renders icon with declared color via inline style", () => {
+    const { container } = render_({
+      html: `<article>
+        <slot data-bind="sectionOrder" data-template="sec" />
+      </article>
+      <template id="sec">
+        <h2><slot data-bind="section.icon" class="section-icon" /><slot data-bind="section.title" /></h2>
+      </template>`,
+      sectionIcons: { experience: { icon: "Briefcase", color: "#3b82f6" } },
+    });
+    const icon = container.querySelector("svg.section-icon");
+    expect(icon).not.toBeNull();
+    expect(icon).toHaveStyle({ color: "rgb(59, 130, 246)" });
+  });
+
   it("iterates sectionOrder and substitutes section.title in each", () => {
     const { container } = render_({
       html: `<article>
@@ -188,6 +263,36 @@ describe("SlotRenderer — sectionOrder loop", () => {
       </template>`,
     });
     expect(container.querySelectorAll("h2")).toHaveLength(0);
+  });
+});
+
+describe("SlotRenderer — profile contacts loop", () => {
+  it("derives profile contacts and renders contact icons", () => {
+    const { container } = render_({
+      content: makeContent({
+        basics: {
+          email: "z@example.com",
+          phone: "138",
+          location: "北京",
+          website: "github.com/z",
+          title: "",
+          status: "",
+        },
+      }),
+      html: `<article>
+        <h1><slot data-bind="profile.name" /></h1>
+        <div class="contacts">
+          <slot data-bind="profile.contacts" data-template="contact" />
+        </div>
+      </article>
+      <template id="contact">
+        <span class="contact"><slot data-bind="contact.icon" class="contact-icon" /><slot data-bind="contact.label" /></span>
+      </template>`,
+    });
+    expect(container.querySelector("h1")?.textContent).toBe("张三");
+    const contacts = Array.from(container.querySelectorAll(".contact")).map((el) => el.textContent);
+    expect(contacts).toEqual(["138", "z@example.com", "github.com/z", "北京"]);
+    expect(container.querySelectorAll("svg.contact-icon")).toHaveLength(4);
   });
 });
 
@@ -299,12 +404,10 @@ describe("SlotRenderer — CSS scope + style injection", () => {
     expect(root.style.getPropertyValue("--page-padding")).toBe("40px");
     expect(root.style.getPropertyValue("--section-gap")).toBe("16px");
     expect(root.style.getPropertyValue("--item-gap")).toBe("12px");
-    // Two <style> children: [0] is the heading-gap enforcement rule (always
-    // emitted), [1] is the scoped customCss. Index against position so the
-    // assertion stays robust to inline-style additions.
+    // One <style> child: scoped customCss only (heading-gap enforcement removed).
     const styleEls = root.querySelectorAll("style");
-    expect(styleEls.length).toBe(2);
-    expect(styleEls[1].textContent).toContain('[data-template-id="test-tpl"] .my-name');
+    expect(styleEls.length).toBe(1);
+    expect(styleEls[0].textContent).toContain('[data-template-id="test-tpl"] .my-name');
   });
 
   it("silently bails on forbidden CSS at-rules without crashing", () => {
@@ -312,12 +415,11 @@ describe("SlotRenderer — CSS scope + style injection", () => {
       html: '<article><h1><slot data-bind="basics.name" /></h1></article>',
       css: "@media (min-width: 600px) { .x { color: red } }",
     });
-    // Should still render the h1; only the heading-gap enforcement <style>
-    // is emitted (scopedCss skipped because scopeCss threw).
+    // Should still render the h1; no <style> emitted because scopeCss threw
+    // and there's no heading-gap enforcement anymore.
     expect(container.querySelector("h1")?.textContent).toBe("张三");
     const styleEls = container.querySelectorAll("style");
-    expect(styleEls.length).toBe(1);
-    expect(styleEls[0].textContent).toContain("--heading-gap");
+    expect(styleEls.length).toBe(0);
   });
 });
 
@@ -379,5 +481,156 @@ describe("SlotRenderer — template extraction", () => {
     });
     expect(container.textContent).not.toContain("SHOULD NOT APPEAR");
     expect(container.querySelector("template")).toBeNull();
+  });
+});
+
+describe("SlotRenderer — professional template integration", () => {
+  const dir = join(process.cwd(), "templates", "html");
+  const proHtml = readFileSync(join(dir, "professional.html"), "utf-8");
+  const proCss = readFileSync(join(dir, "professional.css"), "utf-8");
+
+  const content = makeContent({
+    basics: {
+      name: "李四",
+      title: "后端工程师",
+      email: "li@example.com",
+      phone: "13800138000",
+      location: "上海",
+      website: "https://li.dev",
+      status: "求职中",
+      summary: "五年后端经验",
+      photo: "",
+    },
+    skills: richDoc("Python、Go、Rust"),
+    custom: [{ id: "summary", title: "个人总结", content: richDoc("热爱技术") }],
+    sectionOrder: ["experience", "education", "skills", "summary"],
+  });
+
+  it("renders name and contact info", () => {
+    const { container } = render_({
+      html: proHtml,
+      css: proCss,
+      content,
+      templateId: "professional",
+    });
+    expect(container.textContent).toContain("李四");
+    expect(container.textContent).toContain("li@example.com");
+    expect(container.textContent).toContain("13800138000");
+  });
+
+  it("renders all sections without unknown-slot errors", () => {
+    const { container } = render_({
+      html: proHtml,
+      css: proCss,
+      content,
+      templateId: "professional",
+    });
+    const text = container.textContent ?? "";
+    expect(text).not.toContain("[未知 slot]");
+    expect(text).not.toContain("[ctx 不可用");
+    expect(text).toContain("字节跳动");
+    expect(text).toContain("北京邮电大学");
+  });
+
+  it("renders block sections (skills, custom) via section.body", () => {
+    const { container } = render_({
+      html: proHtml,
+      css: proCss,
+      content,
+      templateId: "professional",
+    });
+    const text = container.textContent ?? "";
+    expect(text).toContain("Python、Go、Rust");
+    expect(text).toContain("热爱技术");
+  });
+
+  it("renders list sections with item details", () => {
+    const { container } = render_({
+      html: proHtml,
+      css: proCss,
+      content,
+      templateId: "professional",
+    });
+    const text = container.textContent ?? "";
+    expect(text).toContain("主导编辑器重构");
+    expect(text).toContain("2022.07");
+  });
+});
+
+describe("SlotRenderer — built-in HTML item fields", () => {
+  const dir = join(process.cwd(), "templates", "html");
+  const templates = [
+    { id: "classic", locationSelector: ".classic-item-location", metaSelector: ".classic-item-meta" },
+    { id: "professional", locationSelector: ".pro-item-location", metaSelector: ".pro-item-meta" },
+    { id: "modern", locationSelector: ".modern-item-location", metaSelector: ".modern-item-meta" },
+  ] as const;
+
+  const content = makeContent({
+    experience: [
+      {
+        company: "字节跳动",
+        title: "前端工程师",
+        start: "2022.07",
+        end: "至今",
+        location: "北京",
+        content: richDoc("主导编辑器重构"),
+      },
+    ],
+    education: [
+      {
+        school: "北京邮电大学",
+        degree: "本科",
+        major: "计算机科学",
+        location: "广州",
+        start: "2018.09",
+        end: "2022.06",
+        gpa: "3.7",
+        highlights: emptyDoc(),
+      },
+    ],
+    projects: [
+      {
+        name: "intro-builder",
+        role: "核心开发",
+        location: "深圳",
+        start: "2024.04",
+        end: "2024.06",
+        stack: ["React", "Next.js"],
+        link: "https://intro.dev",
+        content: richDoc("支持多模板"),
+      },
+    ],
+    sectionOrder: ["experience", "education", "projects"],
+  });
+
+  it.each(templates)("renders city on the right side for $id", ({ id, locationSelector }) => {
+    const { container } = render_({
+      html: readFileSync(join(dir, `${id}.html`), "utf-8"),
+      css: readFileSync(join(dir, `${id}.css`), "utf-8"),
+      content,
+      templateId: id,
+    });
+
+    const locations = Array.from(container.querySelectorAll(locationSelector)).map((el) =>
+      el.textContent?.trim(),
+    );
+    expect(locations).toEqual(["北京", "广州", "深圳"]);
+  });
+
+  it.each(templates)("renders project stack and link without mixing city into meta for $id", ({ id, metaSelector }) => {
+    const { container } = render_({
+      html: readFileSync(join(dir, `${id}.html`), "utf-8"),
+      css: readFileSync(join(dir, `${id}.css`), "utf-8"),
+      content,
+      templateId: id,
+    });
+
+    const metaText = Array.from(container.querySelectorAll(metaSelector))
+      .map((el) => el.textContent ?? "")
+      .join(" ");
+    expect(metaText).toContain("React · Next.js");
+    expect(metaText).toContain("https://intro.dev");
+    expect(metaText).not.toContain("深圳");
+    expect(metaText).not.toContain("广州");
   });
 });

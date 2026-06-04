@@ -1,0 +1,48 @@
+<header class="tpl-header" data-pagination-header>
+  <img data-bind="basics.photo" class="redtag-photo" />
+  <div class="redtag-header-text">
+    <h1 data-bind="basics.name" class="redtag-name"></h1>
+    <div class="redtag-title"><slot data-bind="basics.title"></slot></div>
+  </div>
+</header>
+
+<div class="tpl-body">
+  <div class="redtag-contact">
+    <span class="redtag-contact-item"><slot data-bind="basics.phone"></slot></span>
+    <span class="redtag-contact-sep">|</span>
+    <span class="redtag-contact-item"><slot data-bind="basics.email"></slot></span>
+    <span class="redtag-contact-sep">|</span>
+    <span class="redtag-contact-item"><slot data-bind="basics.location"></slot></span>
+    <span class="redtag-contact-sep">|</span>
+    <span class="redtag-contact-item"><slot data-bind="basics.website"></slot></span>
+    <span class="redtag-contact-sep">|</span>
+    <span class="redtag-contact-item"><slot data-bind="basics.status"></slot></span>
+  </div>
+
+  <slot data-bind="sectionOrder" data-template="section-tpl"></slot>
+
+  <template id="section-tpl">
+    <section class="redtag-section" data-pagination-section>
+      <div class="redtag-section-title" data-pagination-section-header>
+        <h2><slot data-bind="section.title"></slot></h2>
+      </div>
+      <div class="redtag-section-content">
+        <slot data-bind="section.items" data-template="item-tpl"></slot>
+      </div>
+    </section>
+  </template>
+
+  <template id="item-tpl">
+    <div class="redtag-item" data-pagination-item>
+      <div class="redtag-item-header">
+        <span class="redtag-item-title"><slot data-bind="item.title"></slot></span>
+        <span class="redtag-item-meta">
+          <slot data-bind="item.dateRange"></slot>
+          <slot data-bind="item.location"></slot>
+        </span>
+      </div>
+      <div class="redtag-item-subtitle"><slot data-bind="item.subtitle"></slot></div>
+      <div class="redtag-item-body"><slot data-bind="item.bullets"></slot></div>
+    </div>
+  </template>
+</div>

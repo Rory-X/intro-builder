@@ -107,7 +107,37 @@ export const FrameConfig = z.discriminatedUnion("kind", [
 ]);
 export type FrameConfig = z.infer<typeof FrameConfig>;
 
-// === LayoutConfig ===
+// === SectionIconDeclaration ===
+/**
+ * Section 图标声明。opt-in：模板不声明则不显示图标。
+ * 兼容旧格式：读入时 string 值转为 { icon: oldValue }。
+ */
+export const SectionIconDeclaration = z.object({
+  icon: z.string(),
+  color: z.string().optional(),
+});
+export type SectionIconDeclaration = z.infer<typeof SectionIconDeclaration>;
+
+/**
+ * sectionIcons 字段的 schema：
+ * - 新格式 `{ icon: string; color?: string }`
+ * - 旧格式 `string`（只有 icon name）—— preprocess 自动升级
+ */
+const SectionIconsSchema = z.preprocess(
+  (raw) => {
+    if (typeof raw !== "object" || raw === null) return raw;
+    const result: Record<string, unknown> = {};
+    for (const [key, value] of Object.entries(raw as Record<string, unknown>)) {
+      if (typeof value === "string") {
+        result[key] = { icon: value };
+      } else {
+        result[key] = value;
+      }
+    }
+    return result;
+  },
+  z.record(z.string(), SectionIconDeclaration),
+);
 /**
  * 模板的渲染配置。Skill 看参考图产出，引擎读这个 + ResumeContent 渲染最终页面。
  *
@@ -132,7 +162,7 @@ export const LayoutConfig = z.object({
     /** 隐藏 ResumeHeader（用于 banner-PNG 自带头像/姓名/联系方式的模板） */
     hideHeader: z.boolean().optional(),
   }),
-  sectionIcons: z.record(z.string(), z.string()),
+  sectionIcons: SectionIconsSchema,
 });
 export type LayoutConfig = z.infer<typeof LayoutConfig>;
 

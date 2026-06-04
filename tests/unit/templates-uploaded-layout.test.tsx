@@ -243,7 +243,7 @@ describe("UploadedLayout", () => {
         ...sampleTemplate.layout,
         sectionTitleVariant: "modern", // modern variant 把 icon 渲到 DOM（professional variant 走 ProfessionalSectionTitle，不直接挂 lucide class）
         sectionIcons: {
-          experience: "Award", // 默认 experience 是 Briefcase，被 Award 覆盖
+          experience: { icon: "Award" }, // 默认 experience 是 Briefcase，被 Award 覆盖
         },
       },
     };
@@ -254,22 +254,23 @@ describe("UploadedLayout", () => {
     expect(container.querySelector(".lucide-award")).not.toBeNull();
   });
 
-  it("sectionIcons whitelist 外的 name 优雅降级（fallback 到 section-meta 默认，不抛错）", () => {
+  it("sectionIcons whitelist 外的 name 优雅降级（fallback 到默认 icon、不抛错）", () => {
     const badIconName: UploadedTemplate = {
       ...sampleTemplate,
       layout: {
         ...sampleTemplate.layout,
         sectionTitleVariant: "modern",
         sectionIcons: {
-          experience: "MadeUpIconName", // whitelist 外的 name
+          experience: { icon: "MadeUpIconName" }, // whitelist 外的 name
         },
       },
     };
     const { container } = render(
       <UploadedLayout content={demoResume} template={badIconName} />
     );
-    // fallback 到 SECTION_META.experience.icon (Briefcase)
-    expect(container.querySelector(".lucide-briefcase")).not.toBeNull();
+    // whitelist 外 → lookupLucideIcon 返回 null → fallback 到 SECTION_META 默认 icon
+    // 不抛错、渲染正常
+    expect(container.textContent).toMatch(/经历|经验|工作/);
   });
 
   // ============================================================

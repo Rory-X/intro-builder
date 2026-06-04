@@ -1,0 +1,75 @@
+<div class="pro-page">
+  <header class="pro-header" data-pagination-header>
+    <img data-bind="basics.photo" class="pro-photo" alt="" />
+    <h1 class="pro-name"><slot data-bind="basics.name"></slot></h1>
+    <div class="pro-info-row">
+      <span class="pro-info-item"><slot data-bind="basics.title"></slot></span>
+      <span class="pro-info-item"><slot data-bind="basics.status"></slot></span>
+      <span class="pro-info-item"><slot data-bind="basics.location"></slot></span>
+    </div>
+    <div class="pro-contact">
+      <slot data-bind="profile.contacts" data-template="contact-tpl"></slot>
+    </div>
+  </header>
+
+  <slot data-bind="sectionOrder" data-template="section-tpl"></slot>
+</div>
+
+<template id="contact-tpl">
+  <span class="pro-contact-item">
+    <slot data-bind="contact.icon" class="pro-contact-icon"></slot>
+    <slot data-bind="contact.label"></slot>
+  </span>
+</template>
+
+<template id="section-tpl-list">
+  <section class="pro-section" data-pagination-section>
+    <div class="pro-section-title" data-pagination-section-header>
+      <div class="pro-title-wrap">
+        <div class="pro-title-shadow"></div>
+        <h2 class="pro-title-tab">
+          <slot data-bind="section.icon" class="pro-section-icon"></slot>
+          <slot data-bind="section.title"></slot>
+        </h2>
+      </div>
+    </div>
+    <div class="pro-section-content">
+      <slot data-bind="section.items" data-template="item-tpl"></slot>
+    </div>
+  </section>
+</template>
+
+<template id="section-tpl-block">
+  <section class="pro-section" data-pagination-section>
+    <div class="pro-section-title" data-pagination-section-header>
+      <div class="pro-title-wrap">
+        <div class="pro-title-shadow"></div>
+        <h2 class="pro-title-tab">
+          <slot data-bind="section.icon" class="pro-section-icon"></slot>
+          <slot data-bind="section.title"></slot>
+        </h2>
+      </div>
+    </div>
+    <div class="pro-section-content pro-body">
+      <slot data-bind="section.body"></slot>
+    </div>
+  </section>
+</template>
+
+<template id="item-tpl">
+  <div class="pro-item" data-pagination-item>
+    <div class="pro-item-header">
+      <span class="pro-item-title"><slot data-bind="item.title"></slot></span>
+      <span class="pro-item-date"><slot data-bind="item.dateRange"></slot></span>
+    </div>
+    <div class="pro-item-secondary">
+      <span class="pro-item-subtitle"><slot data-bind="item.subtitle"></slot></span>
+      <span class="pro-item-location"><slot data-bind="item.location"></slot></span>
+    </div>
+    <div class="pro-item-meta">
+      <span><slot data-bind="item.meta"></slot></span>
+      <span class="pro-item-link"><slot data-bind="item.link"></slot></span>
+    </div>
+    <div class="pro-body"><slot data-bind="item.bullets"></slot></div>
+  </div>
+</template>

@@ -80,27 +80,35 @@ export const collabSessions = pgTable("collab_session", {
 
 // ─── Templates (template-studio middle platform) ─────────────
 
+// v2 layout 结构类型
+export type TemplateLayout =
+  | { type: "vertical" }
+  | { type: "horizontal"; sidebar: { side: "left" | "right"; width: string; sections: string[] } };
+
+export type TemplateAsset = { url: string; role: "banner" | "decoration" | "icon" };
+
 export const templates = pgTable("templates", {
   id: text("id").primaryKey(),
   name: text("name").notNull(),
   description: text("description"),
   thumbnailUrl: text("thumbnailUrl"),
-  source: text("source").notNull(),
+  category: text("category"),
+  features: jsonb("features").$type<string[]>(),
+  // v2 统一渲染字段
+  html: text("html"),
+  css: text("css"),
+  assets: jsonb("assets").$type<TemplateAsset[]>(),
+  templateLayout: jsonb("templateLayout").$type<TemplateLayout>(),
+  defaultStyleSettings: jsonb("defaultStyleSettings"),
+  // ─── 旧字段（Phase 3 迁移完毕后删除） ───
+  source: text("source"),
   decoration: jsonb("decoration"),
-  layout: jsonb("layout").notNull(),
-  // Skill v2 自由排版：customHtml / customCss 存在时引擎走 SlotRenderer，否则
-  // 走老的 layout JSON enum 路径。两条路径共存以保护存量模板（abbey 等）。
+  layout: jsonb("layout"),
   customHtml: text("customHtml"),
   customCss: text("customCss"),
-  // 用户视角分类，决定模板库 tab 归属。值同 TemplateCategory enum：
-  // academic / tech / business / creative / general。
-  // text 而非 pgEnum：方便后续加新分类不需要 ALTER TYPE。
-  category: text("category"),
-  // 抽屉里"这个模板的特点"显示的 3 条 per-template 文案（string[]，长度 3）。
-  // jsonb 而非 array：drizzle 对 array 的 zod codegen 不稳，jsonb 走 z.array 校验更直接。
-  features: jsonb("features").$type<string[]>(),
-  status: text("status").notNull().default("draft"),
   createdBy: text("createdBy"),
+  // ─── 公共字段 ───
+  status: text("status").notNull().default("draft"),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().notNull(),
 });

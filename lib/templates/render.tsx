@@ -7,6 +7,8 @@ import type {
   TemplateLayoutProps,
 } from "./types";
 import { UploadedLayout } from "./uploaded/UploadedLayout";
+import { SlotRenderer } from "./uploaded/html-slot-renderer";
+import { DEFAULT_STYLE_SETTINGS } from "@/lib/resume-schema";
 import type { UploadedTemplate } from "./uploaded/types";
 
 /**
@@ -21,57 +23,83 @@ import type { UploadedTemplate } from "./uploaded/types";
  */
 
 /**
- * Discriminated union without the non-serializable `Layout` ComponentType
- * that lives on `ResolvedTemplateMeta`. Cross the SC → CC boundary as
- * this shape and rebuild the renderer on the client side via
- * {@link ClientTemplateRenderFromSerializable}.
+ * Serializable template shape for crossing the SC → CC boundary.
  *
- * Why a separate type: `ResolvedTemplateMeta.meta.Layout` is a React
- * component reference. Next.js's RSC serializer cannot stream component
- * references through a server-component → client-component boundary, so
- * passing the raw resolved value crashes at render time.
+ * v2 统一路径：优先看 html 字段。有 html 则走 SlotRenderer，
+ * 没有 html 走旧路径（builtin React 组件或 v1 enum）作为 fallback。
  */
 export type SerializableResolvedTemplate =
   | { source: "builtin"; id: BuiltinTemplateId }
-  | { source: "uploaded"; id: string; template: UploadedTemplate };
+  | { source: "uploaded"; id: string; template: UploadedTemplate }
+  | { source: "unified"; id: string; html: string; css: string | null; templateId: string; sectionIcons?: Record<string, { icon: string; color?: string }> };
 
-/**
- * Project a registry resolution into something safe to pass through the
- * SC → CC boundary as a prop. Pure data transform — no DB / IO — so it's
- * safe to import from either server or client code.
- */
+export function uploadedTemplateToSerializable(
+  id: string,
+  template: UploadedTemplate,
+): SerializableResolvedTemplate {
+  if (template.customHtml) {
+    return {
+      source: "unified",
+      id,
+      html: template.customHtml,
+      css: template.customCss,
+      templateId: template.id,
+      sectionIcons: template.layout.sectionIcons,
+    };
+  }
+  return {
+    source: "uploaded",
+    id,
+    template,
+  };
+}
+
 export function toSerializable(
   resolved: ResolvedTemplateMeta,
 ): SerializableResolvedTemplate {
   if (resolved.source === "builtin") {
     return { source: "builtin", id: resolved.id };
   }
-  return {
-    source: "uploaded",
-    id: resolved.id,
-    template: resolved.template,
-  };
+  // uploaded 模板有 customHtml 时走 unified 路径（SlotRenderer）
+  return uploadedTemplateToSerializable(resolved.id, resolved.template);
 }
 
 /**
- * Client-side: caller already has the resolved template (passed in from
- * a server component, or selected from a client-side template list). The
- * built-in `Layout` is rebuilt by id lookup against the static
- * `TEMPLATES` array; uploaded templates carry their full data.
+ * Client-side render dispatcher.
  *
- * Falls back to the first built-in if a built-in id no longer exists —
- * keeps the editor from crashing when stale state references a removed
- * template.
+ * 优先级：unified (html 字段) > uploaded (customHtml/v1) > builtin (React 组件)
  */
 export function ClientTemplateRenderFromSerializable({
   resolved,
   ...layoutProps
 }: { resolved: SerializableResolvedTemplate } & TemplateLayoutProps) {
+  // Debug: 确认走的是哪条路径
+  if (typeof window !== "undefined") {
+    console.log("[render] source:", resolved.source, "id:", resolved.source === "unified" ? resolved.templateId : resolved.id);
+  }
+
+  // v2 统一路径：html 字段存在，直接走 SlotRenderer
+  if (resolved.source === "unified") {
+    return (
+      <SlotRenderer
+        html={resolved.html}
+        css={resolved.css}
+        content={layoutProps.content}
+        styleSettings={layoutProps.styleSettings ?? DEFAULT_STYLE_SETTINGS}
+        templateId={resolved.templateId}
+        sectionIcons={resolved.sectionIcons}
+      />
+    );
+  }
+
+  // Fallback: builtin React 组件
   if (resolved.source === "builtin") {
     const meta = TEMPLATES.find((t) => t.id === resolved.id) ?? TEMPLATES[0];
     const Layout = meta.Layout;
     return <Layout {...layoutProps} />;
   }
+
+  // Fallback: uploaded (customHtml 或 v1 enum)
   return <UploadedLayout {...layoutProps} template={resolved.template} />;
 }
 
