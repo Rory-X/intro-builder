@@ -130,7 +130,7 @@ export function SlotRenderer({
     "--page-padding": `${styleSettings.pagePadding}px`,
     "--section-gap": `${styleSettings.sectionGap}px`,
     "--item-gap": `${styleSettings.itemGap}px`,
-    "--photo-scale": String(styleSettings.photoScale ?? 1),
+    "--photo-scale": "1",
   };
 
   // 5. Sectioned LookupTable (memoized inside resolveSection per call) — pre-resolve
@@ -289,8 +289,13 @@ function renderImageBinding(node: Element, p: ParserCtx): ReactElement {
   if (!url) return <></>;
   const props = attributesToProps(node.attribs);
   delete (props as Record<string, unknown>)["data-bind"];
+  const photoScale = p.content.styleSettings?.photoScale ?? 1;
+  const scaleStyle: React.CSSProperties = photoScale !== 1
+    ? { transform: `scale(${photoScale})`, transformOrigin: "center" }
+    : {};
+  const existingStyle = (props as Record<string, unknown>).style as React.CSSProperties | undefined;
   // eslint-disable-next-line @next/next/no-img-element -- Puppeteer PDF uses plain img; alt 由模板作者在 data-bind img 上提供
-  return <img alt="" {...props} src={url} />;
+  return <img alt="" {...props} src={url} style={{ ...existingStyle, ...scaleStyle }} />;
 }
 
 function renderLoop(

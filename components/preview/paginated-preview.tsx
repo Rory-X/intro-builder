@@ -130,6 +130,14 @@ function getAbsoluteBottom(element: HTMLElement, container: HTMLElement): number
 /** Padding applied to top/bottom of continuation pages (page 2+) */
 const CONTINUATION_PADDING = 32; // px — breathing room on continuation pages
 
+/**
+ * Bottom padding reserved on the FIRST page to create symmetric whitespace
+ * matching the template's built-in top padding (~40px). Without this, content
+ * fills all the way to the bottom edge of page 1 while the top has breathing
+ * room — visually unbalanced.
+ */
+const FIRST_PAGE_BOTTOM_PADDING = 40; // px — matches template top padding
+
 /** Small safety buffer to prevent sub-pixel rendering cuts at page boundaries */
 const BREAK_SAFETY_MARGIN = 2; // px
 
@@ -168,7 +176,7 @@ function calculatePageBreaks(
   while (pageStart < totalHeight) {
     // Continuation pages have less usable space (top + bottom padding reserved)
     const usableHeight = isFirstPage
-      ? A4_HEIGHT_PX
+      ? A4_HEIGHT_PX - FIRST_PAGE_BOTTOM_PADDING
       : A4_HEIGHT_PX - CONTINUATION_PADDING * 2;
     const pageEnd = pageStart + usableHeight;
 
