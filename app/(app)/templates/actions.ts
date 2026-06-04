@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { auth } from "@/lib/auth";
 import { db } from "@/db";
 import { templateFavorites } from "@/db/schema";
+import { withDbRetry } from "@/lib/db-retry";
 
 /**
  * Dev bypass mirror of `requireUserId` for server actions. Real session takes
@@ -41,19 +42,23 @@ export async function toggleTemplateFavorite(
   try {
     const userId = await actionUserId();
     if (favorite) {
-      await db
-        .insert(templateFavorites)
-        .values({ userId, templateId })
-        .onConflictDoNothing();
+      await withDbRetry("toggleFavorite.add", () =>
+        db
+          .insert(templateFavorites)
+          .values({ userId, templateId })
+          .onConflictDoNothing(),
+      );
     } else {
-      await db
-        .delete(templateFavorites)
-        .where(
-          and(
-            eq(templateFavorites.userId, userId),
-            eq(templateFavorites.templateId, templateId),
+      await withDbRetry("toggleFavorite.remove", () =>
+        db
+          .delete(templateFavorites)
+          .where(
+            and(
+              eq(templateFavorites.userId, userId),
+              eq(templateFavorites.templateId, templateId),
+            ),
           ),
-        );
+      );
     }
     revalidatePath("/templates");
     return { success: true };
@@ -69,9 +74,11 @@ export async function toggleTemplateFavorite(
  * page (server component) to seed the client's initial favorite state.
  */
 export async function getFavoriteTemplateIds(userId: string): Promise<string[]> {
-  const rows = await db
-    .select({ templateId: templateFavorites.templateId })
-    .from(templateFavorites)
-    .where(eq(templateFavorites.userId, userId));
+  const rows = await withDbRetry("getFavoriteTemplateIds", () =>
+    db
+      .select({ templateId: templateFavorites.templateId })
+      .from(templateFavorites)
+      .where(eq(templateFavorites.userId, userId)),
+  );
   return rows.map((r) => r.templateId);
 }
