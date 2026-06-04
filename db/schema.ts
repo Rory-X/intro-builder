@@ -94,10 +94,7 @@ export const templates = pgTable("templates", {
   css: text("css"),
   assets: jsonb("assets").$type<TemplateAsset[]>(),
   sectionIcons: jsonb("sectionIcons"),
-  templateLayout: jsonb("templateLayout"),
   defaultStyleSettings: jsonb("defaultStyleSettings"),
-  // ─── 旧字段（Phase 2 确认新列稳定后删除） ───
-  layout: jsonb("layout"),
   createdBy: text("createdBy"),
   // ─── 公共字段 ───
   status: text("status").notNull().default("draft"),
