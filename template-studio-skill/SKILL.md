@@ -26,7 +26,29 @@ description: 把一张参考简历（图/PDF 截图）做成 intro-builder 的�
 
 ### Step 1：观察参考图，判断是否需要调生图
 
-用 `Read` 工具看参考图。**只有 CSS 画不出来的复杂装饰**才走生图复刻；CSS 能搞定的（纯色横条、实色边框、简单矩形色块、规则圆环）**直接在 Step 5 的 CSS 里写**，不调脚本。
+**首选**：用 `Read` 工具直接看参考图。
+
+**如果 `Read` 返回 `[Unsupported Image]`（当前模型无 vision 能力）**→ 立即调用 image-analyzer skill 做程序化分析：
+
+```bash
+# 快速概览（一行总结）
+python3 .claude/skills/image-analyzer/scripts/analyze.py <参考图路径> -r 4 --summary-only
+
+# 完整结构化数据（写入文件供后续步骤引用）
+python3 .claude/skills/image-analyzer/scripts/analyze.py <参考图路径> -r 2 -o /tmp/template-ref-analysis.json
+```
+
+从分析结果中提取模板设计所需的关键信息：
+- `colors.palette[0]` → header 背景色
+- `colors.mode == "grayscale"` → 无彩色，纯黑白灰设计
+- `layout.header_region` → header 高度和位置
+- `layout.layout_type` → 单栏还是双栏
+- `decorations.solid_bars` → 是否有装饰横条/分割线
+- `text.text_clusters[].estimated_font_size_px` → 标题 vs 正文字号
+- `text.text_clusters[].alignment` → 文字对齐方式
+- `spacing.typical_section_gap_px` → section 间距参考值
+
+**只有 CSS 画不出来的复杂装饰**才走生图复刻；CSS 能搞定的（纯色横条、实色边框、简单矩形色块、规则圆环）**直接在 Step 5 的 CSS 里写**，不调脚本。
 
 **典型需调生图的情况**（命中即跑，不互斥）：
 
@@ -107,7 +129,7 @@ stdout 最后一行 JSON：
   <img src="<Step 2 拿到的 banner blob_url>" class="banner-img" alt="" />
 
   <img data-bind="basics.photo" class="avatar" />
-  <h1 data-bind="basics.name" class="name"></h1>
+  <h1 class="name"><slot data-bind="basics.name"></slot></h1>
 </header>
 <div class="tpl-body">
   <div class="meta">
