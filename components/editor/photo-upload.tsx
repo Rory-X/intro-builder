@@ -48,10 +48,10 @@ export function PhotoUpload() {
   }
 
   return (
-    <div className="flex flex-col items-center gap-2">
+    <div className="flex flex-col items-start gap-2">
       <button
         type="button"
-        className="relative flex h-20 w-20 shrink-0 items-center justify-center overflow-hidden rounded-2xl border-2 border-dashed border-muted-foreground/20 bg-muted/50 transition-all duration-200 hover:border-primary hover:bg-primary/5"
+        className="relative flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-2xl border-2 border-dashed border-muted-foreground/20 bg-muted/50 transition-all duration-200 hover:border-primary hover:bg-primary/5"
         onClick={() => inputRef.current?.click()}
         title="点击上传头像"
       >

@@ -25,10 +25,9 @@ import { SkillsEditor } from "@/components/editor/skills-editor";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
-import { Loader2, Share2, PanelRightClose, PanelRightOpen, MessageSquare, LayoutTemplate, ChevronLeft, Pencil, Check, Copy, CircleAlert } from "lucide-react";
+import { Loader2, Share2, PanelRightClose, PanelRightOpen, MessageSquare, LayoutTemplate, ChevronLeft, Pencil, CloudCheck, Copy, CircleAlert } from "lucide-react";
 import { Popover, PopoverContent, PopoverDescription, PopoverHeader, PopoverTitle, PopoverTrigger } from "@/components/ui/popover";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
-import { ThemeToggle } from "@/components/theme-toggle";
 import type { AllTemplatesItem, TemplateId } from "@/lib/templates/registry";
 import {
   uploadedTemplateToSerializable,
@@ -540,18 +539,13 @@ export default function EditorClient({ id, initialTitle, initialTemplate, initia
                   type="button"
                   onClick={() => setIsEditingTitle(true)}
                   aria-label="重命名"
-                  className="rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+                  className="rounded p-1 text-muted-foreground/70 transition-colors hover:bg-accent hover:text-muted-foreground"
                 >
-                  <Pencil className="h-3.5 w-3.5" />
+                  <Pencil className="h-3 w-3" />
                 </button>
-                <button
-                  type="button"
-                  onClick={() => setIsEditingTitle(true)}
-                  title="点击重命名"
-                  className="max-w-[200px] truncate rounded-md px-1 py-1 text-sm font-medium text-foreground transition-colors hover:bg-accent"
-                >
+                <span className="max-w-[200px] truncate text-sm font-medium text-foreground">
                   {title || "未命名简历"}
-                </button>
+                </span>
               </>
             )}
             <Tooltip>
@@ -580,7 +574,7 @@ export default function EditorClient({ id, initialTitle, initialTemplate, initia
                 ) : autosave.status === "pending" ? (
                   <Loader2 className="h-4 w-4" />
                 ) : (
-                  <Check className="h-4 w-4" />
+                  <CloudCheck className="h-4 w-4" />
                 )}
                 <span className="sr-only">{saveStatusLabel}</span>
               </TooltipTrigger>
@@ -673,8 +667,6 @@ export default function EditorClient({ id, initialTitle, initialTemplate, initia
             isExportingImage={isExportingImage}
             paginationData={paginationData}
           />
-          <Separator orientation="vertical" className="h-5" />
-          <ThemeToggle />
         </div>
         </TooltipProvider>
       </div>

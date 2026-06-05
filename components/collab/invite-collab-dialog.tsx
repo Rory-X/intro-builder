@@ -65,9 +65,8 @@ export function InviteCollabDialog({ resumeId, onSessionCreated }: Props) {
 
   return (
     <>
-      <Button variant="outline" size="sm" className="gap-1.5" onClick={handleOpen}>
+      <Button variant="ghost" size="icon" className="h-8 w-8" onClick={handleOpen} title="邀请协作" aria-label="邀请协作">
         <Users className="h-4 w-4" />
-        邀请协作
       </Button>
 
       <Dialog open={open} onOpenChange={setOpen}>
