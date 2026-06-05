@@ -19,8 +19,7 @@ const CATEGORY_LABELS: Record<TemplateCategory, string> = {
   general: "通用",
 };
 
-const CATEGORIES: { id: "all" | TemplateCategory; label: string }[] = [
-  { id: "all", label: "全部" },
+const CATEGORIES: { id: TemplateCategory; label: string }[] = [
   { id: "tech", label: "互联网" },
   { id: "business", label: "商务" },
   { id: "creative", label: "创意" },
@@ -35,11 +34,9 @@ interface TemplatesSectionProps {
 }
 
 export function TemplatesSection({ allTemplates, resolvedTemplates, demoContent }: TemplatesSectionProps) {
-  const [activeTab, setActiveTab] = useState<"all" | TemplateCategory>("all");
+  const [activeTab, setActiveTab] = useState<TemplateCategory>("tech");
 
-  const filteredTemplates = activeTab === "all"
-    ? allTemplates
-    : allTemplates.filter((t) => t.category === activeTab);
+  const filteredTemplates = allTemplates.filter((t) => t.category === activeTab);
 
   // Find the matching resolved template for rendering
   function getResolved(id: string): SerializableResolvedTemplate | undefined {
