@@ -64,7 +64,9 @@ function renderLibrary(favoritedIds: string[]) {
   return render(
     <TemplateLibraryClient
       templates={templates}
-      userResume={null}
+      userResumes={[]}
+      resumeTemplates={{}}
+      defaultResumeId={null}
       demoResume={demoResume}
       favoritedIds={favoritedIds}
     />,

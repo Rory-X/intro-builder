@@ -15,6 +15,10 @@ import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Input } from "@/components/ui/input";
 import { TemplateThumbnail } from "@/components/templates/template-thumbnail";
 import { TemplatePreviewDrawer } from "@/components/templates/template-preview-drawer";
+import {
+  ResumePickerDialog,
+  type PickerResume,
+} from "@/components/templates/resume-picker-dialog";
 import { setTemplate } from "@/app/(app)/resume/[id]/edit/actions";
 import { toggleTemplateFavorite } from "./actions";
 import type { TemplateCategory } from "@/lib/templates/registry";
@@ -42,8 +46,13 @@ const CATEGORY_ORDER: TemplateCategory[] = [
 
 type Props = {
   templates: SerializableResolvedTemplate[];
-  /** 用户最近一份简历；null 表示没有简历，drawer 里的 toggle 会被禁用。 */
-  userResume: { id: string; content: ResumeContent } | null;
+  /** 当前用户全部简历（已按 updatedAt desc 排序）；空数组表示没有简历，
+      drawer 的 apply CTA 会被禁用、toggle 也禁用。 */
+  userResumes: PickerResume[];
+  /** templateId → 序列化模板，供选择弹窗按各简历「当前模板」渲染缩略图。 */
+  resumeTemplates: Record<string, SerializableResolvedTemplate>;
+  /** 默认目标简历 id（?resumeId= 命中项或最近修改那份）；null 表示无简历。 */
+  defaultResumeId: string | null;
   demoResume: ResumeContent;
   /** 当前用户已收藏的 templateId 列表，作为客户端收藏状态的初始值。 */
   favoritedIds: string[];
@@ -68,10 +77,15 @@ function getDisplayMeta(resolved: SerializableResolvedTemplate): {
 
 export function TemplateLibraryClient({
   templates,
-  userResume,
+  userResumes,
+  resumeTemplates,
+  defaultResumeId,
   demoResume,
   favoritedIds,
 }: Props) {
+  // 默认那份简历（最近修改 / ?resumeId=）—— 喂给 drawer 的 toggle 预览 + 禁用判断。
+  const defaultResume =
+    userResumes.find((r) => r.id === defaultResumeId) ?? null;
   // 网格里的所有缩略图永远用 demoResume —— /templates 是全局浏览入口，
   // "用我的内容预览"已经下沉到 TemplatePreviewDrawer（点击卡片打开后才决定）。
   const [tab, setTab] = useState<TabValue>("all");
@@ -80,6 +94,8 @@ export function TemplateLibraryClient({
   const [selected, setSelected] =
     useState<SerializableResolvedTemplate | null>(null);
   const [isApplying, startApplying] = useTransition();
+  // 目标简历选择弹窗（多份简历时由 apply CTA 打开）。
+  const [pickerOpen, setPickerOpen] = useState(false);
   // 收藏状态用本地 Set 做乐观更新：点击立即变黄，server action 失败再回滚。
   // 初始值来自 server 预取的 favoritedIds（page.tsx）。
   const [favorites, setFavorites] = useState<Set<string>>(
@@ -161,15 +177,15 @@ export function TemplateLibraryClient({
   // 视觉指示，刷完跟没刷一样，用户会以为"完全没生效"。统一跳编辑器让用户能
   // 立刻看到模板套上自己内容的真实效果，闭环更强。from=editor 时 push 同一份
   // 编辑器路由也是回到原页面，行为不变。
-  const handleApply = () => {
-    if (!selected || !userResume) return;
+  const handleApply = (targetResumeId: string) => {
+    if (!selected) return;
     const targetTemplateId = selected.id;
-    const targetResumeId = userResume.id;
     const targetName = getDisplayMeta(selected).name;
     startApplying(async () => {
       try {
         await setTemplate(targetResumeId, targetTemplateId);
         toast.success(`已应用模板：${targetName}`);
+        setPickerOpen(false);
         setSelected(null);
         router.push(`/resume/${targetResumeId}/edit?from=templates`);
       } catch (error) {
@@ -178,6 +194,17 @@ export function TemplateLibraryClient({
         toast.error(`应用失败：${message}`);
       }
     });
+  };
+
+  // drawer 的「应用」CTA：0 份不动（按钮本就禁用）；1 份直接套到那份；
+  // 多份打开选择弹窗让用户挑目标 + 看每份当前模板缩略图。
+  const handleApplyCta = () => {
+    if (userResumes.length === 0) return;
+    if (userResumes.length === 1) {
+      handleApply(userResumes[0].id);
+    } else {
+      setPickerOpen(true);
+    }
   };
 
   return (
@@ -249,14 +276,26 @@ export function TemplateLibraryClient({
         }}
         resolved={selected}
         demoContent={demoResume}
-        userContent={userResume?.content ?? null}
-        resumeId={userResume?.id ?? null}
+        userContent={defaultResume?.content ?? null}
+        resumeId={defaultResume?.id ?? null}
+        resumeCount={userResumes.length}
         isApplying={isApplying}
-        onApply={handleApply}
+        onApply={handleApplyCta}
         isFavorited={selected ? favorites.has(selected.id) : false}
         onToggleFavorite={
           selected ? () => toggleFavorite(selected.id) : undefined
         }
+      />
+
+      <ResumePickerDialog
+        open={pickerOpen}
+        onOpenChange={setPickerOpen}
+        resumes={userResumes}
+        resumeTemplates={resumeTemplates}
+        templateName={selected ? getDisplayMeta(selected).name : ""}
+        defaultSelectedId={defaultResumeId}
+        onConfirm={handleApply}
+        isApplying={isApplying}
       />
     </div>
   );

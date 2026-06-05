@@ -29,8 +29,10 @@ type Props = {
   resumeId: string | null;
   /** apply 是否进行中（父组件控制 setTemplate 的 pending 态） */
   isApplying?: boolean;
-  /** apply 回调 —— 父组件接管 setTemplate / toast / redirect 链路 */
+  /** apply 回调 —— 父组件接管：>1 份开选择弹窗，1 份直接套用 */
   onApply: () => void | Promise<void>;
+  /** 用户简历数量，决定 apply 按钮文案（>1 时「应用到简历…」，否则「应用到当前简历」）。 */
+  resumeCount?: number;
   /** 当前模板是否已被收藏（父组件的 favorites Set 派生）。 */
   isFavorited?: boolean;
   /** 收藏切换回调 —— 父组件接管乐观更新 + action。缺省时不渲染收藏控件。 */
@@ -55,6 +57,7 @@ export function TemplatePreviewDrawer({
   resumeId,
   isApplying = false,
   onApply,
+  resumeCount = 1,
   isFavorited = false,
   onToggleFavorite,
 }: Props) {
@@ -247,6 +250,8 @@ export function TemplatePreviewDrawer({
                     <Loader2 className="size-4 animate-spin" />
                     正在应用…
                   </>
+                ) : resumeCount > 1 ? (
+                  "应用到简历…"
                 ) : (
                   "应用到当前简历"
                 )}

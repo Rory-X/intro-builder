@@ -169,6 +169,22 @@ describe("TemplatePreviewDrawer", () => {
     expect(screen.getByTestId("drawer-apply")).toBeInTheDocument();
   });
 
+  it("resumeCount>1 时 apply 按钮文案为「应用到简历…」", () => {
+    const { getByTestId } = render(
+      <TemplatePreviewDrawer
+        open={true}
+        onOpenChange={vi.fn()}
+        resolved={dbResolved}
+        demoContent={demoResume}
+        userContent={null}
+        resumeId="r1"
+        resumeCount={3}
+        onApply={vi.fn()}
+      />,
+    );
+    expect(getByTestId("drawer-apply").textContent).toMatch(/应用到简历/);
+  });
+
   it("不传 onToggleFavorite 时不渲染收藏控件（向后兼容）", () => {
     const { queryByTestId } = render(
       <TemplatePreviewDrawer
