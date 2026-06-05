@@ -14,6 +14,7 @@ import { ResumeRichText } from "@/lib/templates/shared/resume-rich-text";
 import {
   BASICS_BINDINGS,
   PROFILE_BINDINGS,
+  ICON_BINDINGS,
   IMAGE_BINDINGS,
   ITEM_BINDINGS,
   CONTACT_BINDINGS,
@@ -106,6 +107,16 @@ export function SlotRenderer({
   //    hydration warnings.
   const { mainHtml, templates } = extractTemplates(cleanHtml);
 
+  // 引擎层给 basics 头部自动补 data-pagination-header（和 injectAttrIntoFirstTag
+  // 注入 section/item 属性同一套思路）。两个下游强依赖这个标记：
+  //   1. PDF 导出注入 `header:not([data-pagination-header]){display:none}` 隐藏
+  //      app 外壳 header —— 模板 basics 用裸 <header> 时会被一起隐藏，整块个人
+  //      信息消失（zoo 反馈"导出头部缺失"的根因）。
+  //   2. 智能排版用 [data-pagination-header] 锁定 --profile-font-size。
+  // 只有 professional 手写了该属性，classic/abbey/crimson 及协议示例都漏标。
+  // 引擎层补一次所有模板都受益，AI 写 HTML 不必记这个工程细节；已手写的幂等跳过。
+  const mainHtmlWithHeader = ensurePaginationHeader(mainHtml);
+
   // 3. CSS auto-scope (defensive: bail to no CSS if Skill wrote forbidden constructs)
   let scopedCss = "";
   if (css) {
@@ -145,7 +156,7 @@ export function SlotRenderer({
   const rootCtx: IterationContext = {};
 
   // 6. Parse main HTML, walking nodes; replace <slot> elements
-  const reactTree = parse(mainHtml, makeParserOptions({
+  const reactTree = parse(mainHtmlWithHeader, makeParserOptions({
     content, templates, ctx: rootCtx, depth: 0, sectionIcons,
   }));
 
@@ -232,6 +243,11 @@ function renderSlotElement(
   if (binding in PROFILE_BINDINGS) {
     const fn = PROFILE_BINDINGS[binding as keyof typeof PROFILE_BINDINGS];
     return <>{fn(p.content)}</>;
+  }
+
+  if (binding in ICON_BINDINGS) {
+    const iconName = ICON_BINDINGS[binding];
+    return renderIconSlot(node, iconName);
   }
 
   if (binding in SECTION_BINDINGS) {
@@ -424,6 +440,22 @@ function injectAttrIntoFirstTag(
   const insertAt = match[0].length;
   const valueStr = value !== undefined ? `="${value}"` : "";
   return html.slice(0, insertAt) + ` ${attr}${valueStr}` + html.slice(insertAt);
+}
+
+/**
+ * 给主 HTML 里第一个 <header>（= basics 个人信息块）补 data-pagination-header。
+ *
+ * v2 模板的 basics 头部约定用 <header>，但只有 professional 手写了
+ * data-pagination-header；classic/abbey/crimson 及协议示例都漏标。缺这个标记时
+ * PDF 导出的 `header:not([data-pagination-header]){display:none}` 会把整块头部
+ * 一起隐藏。这里在引擎层补一次（regex 只替首个 <header>，basics 必是第一个），
+ * 已带该属性的幂等跳过；模板用 <div> 当 basics（无 <header>）时无副作用。
+ */
+function ensurePaginationHeader(html: string): string {
+  return html.replace(/<header\b([^>]*)>/i, (full, attrs: string) => {
+    if (/\bdata-pagination-header\b/i.test(attrs)) return full;
+    return `<header${attrs} data-pagination-header>`;
+  });
 }
 
 /**

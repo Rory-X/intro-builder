@@ -85,6 +85,17 @@ export const BASICS_BINDINGS = {
 
 export type BasicsBinding = keyof typeof BASICS_BINDINGS;
 
+// ─── Icon slots (basics.icon.*) ──────────────────────────────────
+// 为联系信息提供 icon 支持，例如 <slot data-bind="basics.icon.Mail">
+// 渲染为对应的 lucide 图标。兼容批量生成模板的写法。
+export const ICON_BINDINGS: Record<string, string> = {
+  "basics.icon.Mail": "Mail",
+  "basics.icon.Phone": "Phone",
+  "basics.icon.MapPin": "MapPin",
+  "basics.icon.Globe": "Globe",
+  "basics.icon.Clock": "Clock",
+} as const;
+
 // ─── Profile value slots ─────────────────────────────────────────
 
 export const PROFILE_BINDINGS = {
@@ -175,6 +186,7 @@ export function isValidBinding(name: string): name is SlotBinding {
   return (
     name in BASICS_BINDINGS ||
     name in PROFILE_BINDINGS ||
+    name in ICON_BINDINGS ||
     name in IMAGE_BINDINGS ||
     name in SECTION_BINDINGS ||
     name in ITEM_BINDINGS ||
