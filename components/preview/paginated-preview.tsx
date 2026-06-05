@@ -219,31 +219,29 @@ function calculatePageBreaks(
 /**
  * PaginatedPreview renders the resume template into multiple A4-sized pages.
  *
- * Strategy:
- * 1. Render content into an invisible measurement container
- * 2. Find all breakable element positions using offsetTop
- * 3. Calculate page breaks based on A4 height boundaries
- * 4. Render N visible page containers, each showing its portion via translateY
- * 5. White overlay hides content beyond each page's break point
+ * Zoom: pinch-to-zoom (ctrlKey wheel) applies CSS zoom — layout flow preserved
+ * so native scroll continues to work for multi-page navigation.
+ * Pan: native scroll by the parent overflow-y-auto container.
  */
 export const PaginatedPreview = forwardRef<HTMLDivElement, Props>(function PaginatedPreview(
   { content, resolvedTemplate, styleSettings, showEmptyPlaceholders, onPaginationChange },
   ref,
 ) {
   const containerRef = useRef<HTMLDivElement>(null);
-  const [scale, setScale] = useState<number | null>(null);
+  const [baseScale, setBaseScale] = useState(1);
   const measureRef = useRef<HTMLDivElement>(null);
   const [pageBreaks, setPageBreaks] = useState<number[]>([]);
   const [totalHeight, setTotalHeight] = useState(0);
   const [measured, setMeasured] = useState(false);
   const debounceTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [userZoom, setUserZoom] = useState(1);
 
   const recalculate = useCallback(() => {
     const container = measureRef.current;
     if (!container) return;
 
     const height = container.scrollHeight;
-    if (height === 0) return; // Not rendered yet
+    if (height === 0) return;
 
     const breakPoints = findBreakPoints(container);
     const breaks = calculatePageBreaks(breakPoints, height);
@@ -254,22 +252,18 @@ export const PaginatedPreview = forwardRef<HTMLDivElement, Props>(function Pagin
     onPaginationChange?.({ pageBreaks: breaks, totalHeight: height });
   }, [onPaginationChange]);
 
-  /** Debounced recalculate — prevents rapid-fire updates during smart layout measurement */
   const debouncedRecalculate = useCallback(() => {
     if (debounceTimer.current) clearTimeout(debounceTimer.current);
     debounceTimer.current = setTimeout(recalculate, 150);
   }, [recalculate]);
 
-  // Initial measurement after layout
   useLayoutEffect(() => {
     recalculate();
   }, [recalculate, content, resolvedTemplate, styleSettings]);
 
-  // Re-measure on resize (font loading, window resize) — debounced to avoid flicker
   useEffect(() => {
     const container = measureRef.current;
     if (!container) return;
-
     if (typeof ResizeObserver === "undefined") return;
 
     const observer = new ResizeObserver(() => {
@@ -287,17 +281,16 @@ export const PaginatedPreview = forwardRef<HTMLDivElement, Props>(function Pagin
     };
   }, [recalculate, debouncedRecalculate]);
 
-  // Responsive scaling: when container is narrower than A4 width, scale down
+  // Responsive base scale
   useEffect(() => {
     const el = containerRef.current;
     if (!el || typeof ResizeObserver === "undefined") return;
 
     const updateScale = () => {
       const availableWidth = el.clientWidth;
-      // Add some padding allowance (16px each side)
       const targetWidth = A4_WIDTH_PX + 32;
-      const newScale = availableWidth >= targetWidth ? 1 : availableWidth / targetWidth;
-      setScale(Math.min(1, Math.max(0.4, newScale)));
+      const s = availableWidth >= targetWidth ? 1 : availableWidth / targetWidth;
+      setBaseScale(Math.min(1, Math.max(0.3, s)));
     };
 
     updateScale();
@@ -306,13 +299,35 @@ export const PaginatedPreview = forwardRef<HTMLDivElement, Props>(function Pagin
     return () => observer.disconnect();
   }, []);
 
-  // Calculate pages from breaks
+  // Pinch-to-zoom only: ctrlKey+wheel = trackpad pinch gesture on macOS
+  // Everything else (scroll, pan) stays native
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+
+    const handleWheel = (e: WheelEvent) => {
+      if (!e.ctrlKey && !e.metaKey) return;
+      e.preventDefault();
+      const delta = -e.deltaY * 0.008;
+      setUserZoom((prev) => Math.min(4, Math.max(1, prev + delta)));
+    };
+
+    el.addEventListener("wheel", handleWheel, { passive: false });
+    return () => el.removeEventListener("wheel", handleWheel);
+  }, []);
+
+  const handleDoubleClick = useCallback(() => {
+    setUserZoom(1);
+  }, []);
+
+  const effectiveZoom = baseScale * userZoom;
+
   const pageOffsets = [0, ...pageBreaks];
   const numPages = pageOffsets.length;
 
   return (
-    <div ref={containerRef} className="w-full">
-      {/* Invisible measurement container — OUTSIDE the scaled area to ensure accurate A4 measurements */}
+    <div ref={containerRef} className="relative w-full" onDoubleClick={handleDoubleClick}>
+      {/* Invisible measurement container */}
       <div
         ref={measureRef}
         aria-hidden="true"
@@ -328,94 +343,99 @@ export const PaginatedPreview = forwardRef<HTMLDivElement, Props>(function Pagin
         />
       </div>
 
-      {/* Scaled visual output — zoom changes both visual and layout dimensions */}
+      {/* Pages — CSS zoom keeps layout flow so parent scroll works naturally */}
       <div
         ref={ref}
         data-testid="resume-export-preview"
         className="flex flex-col items-center gap-8"
         style={{
-          zoom: scale !== null && scale < 1 ? scale : undefined,
-          visibility: scale === null ? "hidden" : undefined,
+          zoom: effectiveZoom,
+          transition: userZoom === 1 ? "zoom 0.2s ease-out" : undefined,
         }}
       >
+        {measured && Array.from({ length: numPages }, (_, i) => {
+          const offset = pageOffsets[i];
+          const nextOffset = i < numPages - 1 ? pageOffsets[i + 1] : totalHeight;
+          const isFirstPage = i === 0;
+          const contentHeight = nextOffset - offset;
+          const contentEndOnPage = (isFirstPage ? 0 : CONTINUATION_PADDING) + contentHeight;
+          const bottomOverlay = Math.max(0, A4_HEIGHT_PX - contentEndOnPage);
 
-      {/* Visible pages */}
-      {measured && Array.from({ length: numPages }, (_, i) => {
-        const offset = pageOffsets[i];
-        const nextOffset = i < numPages - 1 ? pageOffsets[i + 1] : totalHeight;
-        const isFirstPage = i === 0;
-        const contentHeight = nextOffset - offset;
-        // Bottom overlay: cover empty space below content + hide next-page content.
-        // Calculate where content ends ON THE PAGE (accounting for top padding shift).
-        const contentEndOnPage = (isFirstPage ? 0 : CONTINUATION_PADDING) + contentHeight;
-        const bottomOverlay = Math.max(0, A4_HEIGHT_PX - contentEndOnPage);
-
-        return (
-          <div
-            key={i}
-            className="relative overflow-hidden rounded-sm shadow-md ring-1 ring-black/5"
-            style={{
-              width: `${A4_WIDTH_PX}px`,
-              height: `${A4_HEIGHT_PX}px`,
-              backgroundColor: "#ffffff",
-            }}
-          >
-            {/* Top white overlay for continuation page breathing room */}
-            {!isFirstPage && (
-              <div
-                className="absolute inset-x-0 top-0 z-[1]"
-                style={{ backgroundColor: "#ffffff", height: `${CONTINUATION_PADDING}px` }}
-              />
-            )}
-            {/* Content shifted to show this page's portion */}
+          return (
             <div
-              className="absolute inset-x-0 top-0"
-              style={{ transform: `translateY(${(isFirstPage ? 0 : CONTINUATION_PADDING) - offset}px)` }}
+              key={i}
+              className="relative overflow-hidden rounded-sm shadow-md ring-1 ring-black/5"
+              style={{
+                width: `${A4_WIDTH_PX}px`,
+                height: `${A4_HEIGHT_PX}px`,
+                backgroundColor: "#ffffff",
+              }}
             >
-              <ClientTemplateRenderFromSerializable
-                resolved={resolvedTemplate}
-                content={content}
-                sectionOrder={content.sectionOrder}
-                styleSettings={styleSettings}
-                showEmptyPlaceholders={showEmptyPlaceholders}
-              />
-            </div>
-            {/* Bottom white overlay to hide content beyond break point */}
-            {bottomOverlay > 0 && (
+              {!isFirstPage && (
+                <div
+                  className="absolute inset-x-0 top-0 z-[1]"
+                  style={{ backgroundColor: "#ffffff", height: `${CONTINUATION_PADDING}px` }}
+                />
+              )}
               <div
-                className="absolute inset-x-0 bottom-0 z-[1]"
-                style={{ backgroundColor: "#ffffff", height: `${bottomOverlay}px` }}
-              />
-            )}
-            {/* Page number indicator */}
-            {numPages > 1 && (
-              <div className={cn(
-                "absolute bottom-2 right-3 z-10 rounded-full px-2 py-0.5 text-[10px] tabular-nums",
-                "bg-black/5 text-neutral-400 dark:bg-white/10",
-              )}>
-                {i + 1}/{numPages}
+                className="absolute inset-x-0 top-0"
+                style={{ transform: `translateY(${(isFirstPage ? 0 : CONTINUATION_PADDING) - offset}px)` }}
+              >
+                <ClientTemplateRenderFromSerializable
+                  resolved={resolvedTemplate}
+                  content={content}
+                  sectionOrder={content.sectionOrder}
+                  styleSettings={styleSettings}
+                  showEmptyPlaceholders={showEmptyPlaceholders}
+                />
               </div>
-            )}
-          </div>
-        );
-      })}
+              {bottomOverlay > 0 && (
+                <div
+                  className="absolute inset-x-0 bottom-0 z-[1]"
+                  style={{ backgroundColor: "#ffffff", height: `${bottomOverlay}px` }}
+                />
+              )}
+              {numPages > 1 && (
+                <div className={cn(
+                  "absolute bottom-2 right-3 z-10 rounded-full px-2 py-0.5 text-[10px] tabular-nums",
+                  "bg-black/5 text-neutral-400 dark:bg-white/10",
+                )}>
+                  {i + 1}/{numPages}
+                </div>
+              )}
+            </div>
+          );
+        })}
 
-      {/* Fallback: show single page while measuring */}
-      {!measured && (
+        {!measured && (
+          <div
+            className="overflow-hidden rounded-sm shadow-md ring-1 ring-black/5"
+            style={{ width: `${A4_WIDTH_PX}px`, minHeight: `${A4_HEIGHT_PX}px`, backgroundColor: "#ffffff" }}
+          >
+            <ClientTemplateRenderFromSerializable
+              resolved={resolvedTemplate}
+              content={content}
+              sectionOrder={content.sectionOrder}
+              styleSettings={styleSettings}
+              showEmptyPlaceholders={showEmptyPlaceholders}
+            />
+          </div>
+        )}
+      </div>
+
+      {/* Zoom indicator */}
+      {userZoom > 1.05 && (
         <div
-          className="overflow-hidden rounded-sm shadow-md ring-1 ring-black/5"
-          style={{ width: `${A4_WIDTH_PX}px`, minHeight: `${A4_HEIGHT_PX}px`, backgroundColor: "#ffffff" }}
+          className={cn(
+            "absolute bottom-3 left-3 z-20 rounded-full px-2.5 py-1 text-xs tabular-nums cursor-pointer select-none",
+            "bg-black/70 text-white backdrop-blur-sm dark:bg-white/20",
+          )}
+          onClick={handleDoubleClick}
+          title="双击重置"
         >
-          <ClientTemplateRenderFromSerializable
-            resolved={resolvedTemplate}
-            content={content}
-            sectionOrder={content.sectionOrder}
-            styleSettings={styleSettings}
-            showEmptyPlaceholders={showEmptyPlaceholders}
-          />
+          {Math.round(userZoom * 100)}%
         </div>
       )}
-    </div>
     </div>
   );
 });
