@@ -408,13 +408,21 @@ function renderIconSlot(node: Element, iconName: string, iconColor?: string): Re
   delete props["data-bind"];
   const style = iconColor ? { color: iconColor } : undefined;
 
-  // 包裹一层 span，确保 CSS 类应用到容器而不是直接到 SVG
-  // 这样 vertical-align 和其他布局属性会更可靠
+  // className 必须传给 Icon（即 SVG 元素），否则 CSS 的 width/height 规则
+  // 不会约束 SVG 的默认 24x24 尺寸，导致图标巨大。
+  // span 仅作为布局容器帮助 vertical-align；不用相同 class 避免
+  // opacity 等属性在 span+svg 双层叠加。
   const className = props.className as string | undefined;
-  const iconElement = <Icon aria-hidden="true" focusable="false" style={style} />;
+  const iconElement = (
+    <Icon aria-hidden="true" focusable="false" className={className} style={style} />
+  );
 
   if (className) {
-    return <span className={className}>{iconElement}</span>;
+    return (
+      <span style={{ display: "inline-flex", verticalAlign: "middle" }}>
+        {iconElement}
+      </span>
+    );
   }
 
   return iconElement;
