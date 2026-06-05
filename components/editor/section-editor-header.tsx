@@ -38,15 +38,15 @@ export function SectionEditorHeader({ sectionKey, itemCount, isOpen, onToggle, o
     <div
       ref={handleRef ?? undefined}
       onClick={onToggle}
-      className="flex cursor-grab select-none items-center gap-2.5 px-3.5 py-3 transition-colors hover:bg-muted/40 active:cursor-grabbing"
+      className="flex cursor-grab select-none items-center gap-[7px] px-2.5 py-[9px] transition-colors hover:bg-muted/40 active:cursor-grabbing"
     >
-      <span className={cn("h-5 w-[3px] shrink-0 rounded-full", c.accent)} />
-      <span className={cn("flex h-7 w-7 shrink-0 items-center justify-center rounded-lg", c.iconBg)}>
-        <Icon className={cn("h-4 w-4", c.icon)} />
+      <span className={cn("h-[18px] w-[3px] shrink-0 rounded-full", c.accent)} />
+      <span className={cn("flex h-[22px] w-[22px] shrink-0 items-center justify-center rounded-[5px]", c.iconBg)}>
+        <Icon className={cn("h-3.5 w-3.5", c.icon)} />
       </span>
-      <span className="text-[14.5px] font-semibold text-foreground">{meta.label}</span>
+      <span className="text-[13px] font-medium text-foreground">{meta.label}</span>
       {itemCount > 0 && (
-        <span className="rounded-full bg-muted px-1.5 py-0.5 text-[11px] font-medium text-muted-foreground">{itemCount}</span>
+        <span className="rounded-full bg-muted px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground">{itemCount}</span>
       )}
       <span className="ml-auto flex items-center gap-0.5">
         {addLabel && (

@@ -22,34 +22,34 @@ export function BasicsEditor() {
   const { register, formState } = useFormContext<ResumeContent>();
   const err = formState.errors.basics;
   return (
-    <section className="rounded-xl border bg-card p-3.5">
-      <h2 className="mb-3 flex items-center gap-2.5 text-[14.5px] font-semibold">
-        <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-primary/10">
-          <span className="text-xs font-bold text-primary">i</span>
+    <section className="rounded-lg border bg-card p-2.5">
+      <h2 className="mb-2 flex items-center gap-2 text-[13px] font-medium">
+        <div className="flex h-[22px] w-[22px] items-center justify-center rounded-[5px] bg-primary/10">
+          <span className="text-[10px] font-bold text-primary">i</span>
         </div>
         基础信息
       </h2>
-      <div className="flex items-start gap-4">
+      <div className="flex items-start gap-2.5">
         <PhotoUpload />
-        <div className="flex min-w-0 flex-1 flex-col gap-1 pt-0.5">
+        <div className="flex min-w-0 flex-1 flex-col gap-0.5 pt-1">
           <Input
             id="basics-name"
             {...register("basics.name")}
             placeholder="你的姓名"
             aria-label="姓名"
-            className="h-auto rounded-none border-x-0 border-t-0 border-b border-transparent bg-transparent px-0 py-0.5 text-[19px] font-semibold shadow-none focus-visible:border-b-border focus-visible:ring-0"
+            className="h-auto rounded-none border-x-0 border-t-0 border-b border-transparent bg-transparent px-0 py-0.5 text-[15px] font-medium shadow-none focus-visible:border-b-border focus-visible:ring-0"
           />
           {err?.name?.message && (
             <p className="text-xs text-destructive">{String(err.name?.message)}</p>
           )}
-          <span className="text-[11px] text-muted-foreground/60">点击左侧上传头像（可选，4MB 内）</span>
+          <span className="text-[10px] text-muted-foreground/60">点击左侧上传头像（可选，4MB 内）</span>
         </div>
       </div>
-      <div className="mt-3 grid grid-cols-2 gap-3">
+      <div className="mt-2 grid grid-cols-2 gap-x-2 gap-y-[5px]">
         {FIELDS.map(({ k, label, type = "text", colSpan = 1 }) => (
           <div
             key={k}
-            className={cn("flex flex-col gap-[5px]", colSpan === 2 && "col-span-2")}
+            className={cn("flex flex-col gap-0.5", colSpan === 2 && "col-span-2")}
           >
             <Label htmlFor={`basics-${k}`}>{label}</Label>
             <Input id={`basics-${k}`} type={type} {...register(`basics.${k}` as const)} />
@@ -59,9 +59,9 @@ export function BasicsEditor() {
           </div>
         ))}
       </div>
-      <div className="mt-3 flex flex-col gap-[5px]">
+      <div className="mt-2 flex flex-col gap-0.5">
         <Label htmlFor="basics-summary">自我介绍</Label>
-        <Textarea id="basics-summary" rows={3} {...register("basics.summary")} className="resize-none" />
+        <Textarea id="basics-summary" rows={2} {...register("basics.summary")} className="resize-vertical" />
       </div>
     </section>
   );

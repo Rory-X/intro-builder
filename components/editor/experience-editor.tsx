@@ -60,7 +60,7 @@ export function ExperienceEditor() {
               summary={<ItemSummary title={company} parts={[position, range]} />}
             >
               <div className="space-y-3">
-                <div className="grid grid-cols-2 gap-3">
+                <div className="grid grid-cols-2 gap-x-2 gap-y-[5px]">
                   <div className="flex flex-col gap-1.5"><Label>公司</Label><Input {...register(`experience.${idx}.company` as const)} /></div>
                   <div className="flex flex-col gap-1.5"><Label>职位</Label><Input {...register(`experience.${idx}.title` as const)} /></div>
                   <div className="flex flex-col gap-1.5"><Label>城市</Label><Input {...register(`experience.${idx}.location` as const)} /></div>

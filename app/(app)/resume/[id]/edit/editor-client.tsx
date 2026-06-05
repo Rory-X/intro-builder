@@ -697,7 +697,7 @@ export default function EditorClient({ id, initialTitle, initialTemplate, initia
           <div className="relative min-w-0 border-r" style={{ flex: `0 0 ${splitPercent}%` }}>
             <div
               ref={editorPanelRef}
-              className="thin-scrollbar editor-panel h-full space-y-2.5 overflow-y-auto bg-card p-3.5"
+              className="thin-scrollbar editor-panel h-full space-y-1.5 overflow-y-auto bg-card p-2.5"
             >
               <div className={cn(
                 "rounded-lg transition-all duration-500",

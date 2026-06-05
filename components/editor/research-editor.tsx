@@ -59,7 +59,7 @@ export function ResearchEditor() {
               summary={<ItemSummary title={name} parts={[role]} />}
             >
               <div className="space-y-3">
-                <div className="grid grid-cols-2 gap-3">
+                <div className="grid grid-cols-2 gap-x-2 gap-y-[5px]">
                   <div className="flex flex-col gap-1.5"><Label>课题名</Label><Input {...register(`research.${idx}.name` as const)} /></div>
                   <div className="flex flex-col gap-1.5"><Label>角色</Label><Input {...register(`research.${idx}.role` as const)} /></div>
                   <div className="flex flex-col gap-1.5"><Label>开始</Label><Input {...register(`research.${idx}.start` as const)} /></div>

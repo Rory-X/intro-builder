@@ -59,7 +59,7 @@ export function EducationEditor() {
               summary={<ItemSummary title={school} parts={[sub]} />}
             >
               <div className="space-y-3">
-                <div className="grid grid-cols-2 gap-3">
+                <div className="grid grid-cols-2 gap-x-2 gap-y-[5px]">
                   <div data-testid="education-school-field" className="col-span-2 flex flex-col gap-1.5"><Label>学校</Label><Input {...register(`education.${idx}.school` as const)} /></div>
                   <div className="flex flex-col gap-1.5"><Label>学历</Label><Input {...register(`education.${idx}.degree` as const)} /></div>
                   <div className="flex flex-col gap-1.5"><Label>专业</Label><Input {...register(`education.${idx}.major` as const)} /></div>

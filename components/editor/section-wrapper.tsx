@@ -53,7 +53,7 @@ export function SectionWrapper({ id, children }: Props) {
       <div
         ref={ref}
         className={cn(
-          "overflow-hidden rounded-xl border bg-card transition-all duration-200",
+          "overflow-hidden rounded-lg border bg-card transition-all duration-200",
           isDragging && "scale-[0.99] opacity-50",
           isDragOver && "ring-2 ring-primary/40 shadow-md shadow-primary/10",
         )}
