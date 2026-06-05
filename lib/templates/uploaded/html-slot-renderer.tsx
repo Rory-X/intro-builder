@@ -121,9 +121,15 @@ export function SlotRenderer({
   }
 
   // 4. Build CSS variables for styleSettings (dual-constraint §4.2)
+  // --profile-font-size: 个人信息栏字号，不受智能排版压缩影响。
+  // 智能排版 apply 后 styleSettings.fontSize 是压缩值，原始值保存在
+  // content.smartLayout.originalSettings.fontSize。未启用智能排版时两者一致。
+  const smartOriginal = content.smartLayout?.originalSettings;
+  const profileFontSize = smartOriginal?.fontSize ?? styleSettings.fontSize;
   const cssVars: Record<string, string> = {
     "--font-family": fontFamilyValue(styleSettings.fontFamily),
     "--font-size": `${styleSettings.fontSize}px`,
+    "--profile-font-size": `${profileFontSize}px`,
     "--line-height": String(styleSettings.bodyLineHeight),
     "--body-line-height": String(styleSettings.bodyLineHeight),
     "--heading-gap": `${styleSettings.headingGap}px`,
@@ -147,6 +153,9 @@ export function SlotRenderer({
   // 不再全局注入 h1-h4 的 margin-bottom —— 那会把 section title 内部的 h2
   // 也撑开（bar 背景变大的 bug 根源）。
 
+  const headerFontFix = `[data-template-id="${templateId}"] [data-pagination-header] { font-size: var(--profile-font-size); }`;
+  const markerFix = `[data-template-id="${templateId}"] li::marker { color: inherit; }`;
+
   return (
     <div
       data-template-id={templateId}
@@ -154,6 +163,7 @@ export function SlotRenderer({
       style={cssVars as React.CSSProperties}
     >
       {scopedCss && <style dangerouslySetInnerHTML={{ __html: scopedCss }} />}
+      <style dangerouslySetInnerHTML={{ __html: `${headerFontFix}\n${markerFix}` }} />
       {reactTree}
     </div>
   );

@@ -14,18 +14,17 @@ export { A4_HEIGHT_PX };
 // 这些不是"能塞下就行"的生存下限，而是"压到这里仍好看"的审美下限——之前的
 // 1.05 行距 / 0 标题间距是挤成一团的丑态，抬高后压缩永远落在好看的区间里。
 // pagePadding 不参与压缩——页边距是品牌/视觉决策（zoo 反馈：智能排版不能影响
-// 页边距）。fontSize 默认也不压，只在间距/行距压到底仍溢出时，作为最后兜底
-// 分级下降到 MIN_FONT（见 interpolateSettings 的 FONT_KNEE）。
+// 页边距）。fontSize 作为最后兜底分级下降到 MIN_FONT，但只影响正文；个人信息
+// 栏字号独立保护（通过 --profile-font-size CSS 变量，在 measure 时锁定原值）。
 const MIN_FONT = 11;
 const MIN_LINE_HEIGHT = 1.25;
 const MIN_SECTION_GAP = 8;
 const MIN_ITEM_GAP = 4;
 const MIN_HEADING_GAP = 4;
 
-// scale 低于此阈值才开始压字号；阈值以上只压间距/行距。
-// 把 scale[0,1] 分成两段：[FONT_KNEE,1] 压间距/行距（字号保持 current），
-// [0,FONT_KNEE] 间距已触底、改为分级压字号到 floor。这样字号是最后一道杠杆，
-// 二分搜索找"还能塞下的最大 scale"时只要间距压缩够用就永远不会动到字号。
+// fontSize 压缩策略：scale 低于 FONT_KNEE 才开始压字号。阈值以上只压间距/行距。
+// 个人信息栏字号独立保护：渲染器注入 --profile-font-size 锁定原值，header 区域
+// 通过 [data-pagination-header] 选择器强制使用该变量，不受 --font-size 压缩影响。
 const FONT_KNEE = 0.5;
 
 function clamp01(n: number): number {
@@ -66,9 +65,7 @@ export function interpolateSettings(
 
   return {
     fontFamily: current.fontFamily,
-    // 0.5px 一档；fontScale=1（scale≥FONT_KNEE）时保持 current 整数字号。
     fontSize: Math.round((fontFloor + (current.fontSize - fontFloor) * fontScale) * 2) / 2,
-    // lineHeight 已废弃，仅为旧渲染路径保留，这里镜像 bodyLineHeight 防止漂移。
     lineHeight: bodyLh,
     headingGap: Math.round(hgFloor + (current.headingGap - hgFloor) * gapScale),
     bodyLineHeight: bodyLh,

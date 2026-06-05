@@ -24,9 +24,10 @@ export function useSmartLayout({ measureRef }: UseSmartLayoutOptions) {
   /**
    * Measure content height by temporarily applying style settings
    * to the measurement container and reading its scrollHeight.
+   * profileFontSize is locked to the user's original value so header stays fixed.
    */
-  const measure = useCallback(
-    (settings: StyleSettings): Promise<number> => {
+  const makeMeasure = useCallback(
+    (currentProfileFontSize: number) => (settings: StyleSettings): Promise<number> => {
       return new Promise((resolve) => {
         const root = measureRef.current;
         if (!root) {
@@ -65,6 +66,7 @@ export function useSmartLayout({ measureRef }: UseSmartLayoutOptions) {
         const originalStyle = measureEl.getAttribute("style") ?? "";
         measureEl.style.setProperty("--font-family", FONT_MAP[ss.fontFamily].css);
         measureEl.style.setProperty("--font-size", `${ss.fontSize}px`);
+        measureEl.style.setProperty("--profile-font-size", `${currentProfileFontSize}px`);
         measureEl.style.setProperty("--line-height", `${ss.bodyLineHeight}`);
         measureEl.style.setProperty("--body-line-height", `${ss.bodyLineHeight}`);
         measureEl.style.setProperty("--heading-gap", `${ss.headingGap}px`);
@@ -87,6 +89,7 @@ export function useSmartLayout({ measureRef }: UseSmartLayoutOptions) {
 
   const calculate = useCallback(async (): Promise<SmartLayoutResult> => {
     const currentSettings = mergeStyleSettings(form.getValues("styleSettings"));
+    const measure = makeMeasure(currentSettings.fontSize);
     setIsCalculating(true);
     try {
       const result = await findOptimalSettings(currentSettings, measure);
@@ -94,7 +97,7 @@ export function useSmartLayout({ measureRef }: UseSmartLayoutOptions) {
     } finally {
       setIsCalculating(false);
     }
-  }, [form, measure]);
+  }, [form, makeMeasure]);
 
   const apply = useCallback(
     (settings: StyleSettings) => {

@@ -461,9 +461,9 @@ describe("SlotRenderer — CSS scope + style injection", () => {
     expect(root.style.getPropertyValue("--page-padding")).toBe("40px");
     expect(root.style.getPropertyValue("--section-gap")).toBe("16px");
     expect(root.style.getPropertyValue("--item-gap")).toBe("12px");
-    // One <style> child: scoped customCss only (heading-gap enforcement removed).
+    // Two <style> children: scoped customCss + renderer fixes (header font + marker color).
     const styleEls = root.querySelectorAll("style");
-    expect(styleEls.length).toBe(1);
+    expect(styleEls.length).toBe(2);
     expect(styleEls[0].textContent).toContain('[data-template-id="test-tpl"] .my-name');
   });
 
@@ -472,11 +472,11 @@ describe("SlotRenderer — CSS scope + style injection", () => {
       html: '<article><h1><slot data-bind="basics.name" /></h1></article>',
       css: "@media (min-width: 600px) { .x { color: red } }",
     });
-    // Should still render the h1; no <style> emitted because scopeCss threw
-    // and there's no heading-gap enforcement anymore.
+    // Should still render the h1; only the renderer fixes <style> emitted
+    // (header font + marker color) since scopeCss threw.
     expect(container.querySelector("h1")?.textContent).toBe("张三");
     const styleEls = container.querySelectorAll("style");
-    expect(styleEls.length).toBe(0);
+    expect(styleEls.length).toBe(1); // only renderer fixes, no scoped CSS
   });
 });
 
