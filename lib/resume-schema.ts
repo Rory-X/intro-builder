@@ -166,15 +166,15 @@ export type ResumeContent = z.infer<typeof ResumeContent>;
 
 export const emptyResumeContent = (): ResumeContent => ({
   basics: {
-    name: "你的姓名",
-    status: "",
-    title: "目标岗位",
-    email: "you@example.com",
-    phone: "",
-    location: "",
-    website: "",
+    name: "张三",
+    status: "在职",
+    title: "前端工程师",
+    email: "zhang@example.com",
+    phone: "138 0000 0000",
+    location: "北京",
+    website: "github.com/zhangsan",
     summary: "",
-    photo: "",
+    photo: "/templates/placeholder-avatar.png",
   },
   education: [],
   experience: [],
