@@ -41,12 +41,19 @@ export function PhotoUpload() {
     setValue("styleSettings", { ...ss, photoScale: scale }, { shouldDirty: true });
   }
 
+  const curIdx = Math.max(0, PHOTO_SCALE_OPTIONS.findIndex((o) => o.value === ss.photoScale));
+  function stepScale(dir: number) {
+    const next = Math.max(0, Math.min(PHOTO_SCALE_OPTIONS.length - 1, curIdx + dir));
+    setPhotoScale(PHOTO_SCALE_OPTIONS[next].value);
+  }
+
   return (
-    <div className="flex items-center gap-4">
+    <div className="flex flex-col items-center gap-2">
       <button
         type="button"
         className="relative flex h-20 w-20 shrink-0 items-center justify-center overflow-hidden rounded-2xl border-2 border-dashed border-muted-foreground/20 bg-muted/50 transition-all duration-200 hover:border-primary hover:bg-primary/5"
         onClick={() => inputRef.current?.click()}
+        title="点击上传头像"
       >
         {uploading ? (
           <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
@@ -67,25 +74,15 @@ export function PhotoUpload() {
         className="hidden"
         onChange={handleFile}
       />
-      <div className="flex flex-col gap-1.5">
-        <span className="text-xs text-muted-foreground">点击上传头像（可选，4MB 以内）</span>
-        {photo && (
-          <div className="flex items-center gap-1.5">
-            <span className="text-xs text-muted-foreground">尺寸</span>
-            <select
-              className="h-7 rounded-md border border-input bg-background px-2 text-xs"
-              value={ss.photoScale}
-              onChange={(e) => setPhotoScale(Number(e.target.value))}
-            >
-              {PHOTO_SCALE_OPTIONS.map((opt) => (
-                <option key={opt.value} value={opt.value}>
-                  {opt.label}
-                </option>
-              ))}
-            </select>
-          </div>
-        )}
-      </div>
+      {photo ? (
+        <div className="flex items-center gap-0.5 rounded-lg bg-card-2 p-0.5">
+          <button type="button" onClick={() => stepScale(-1)} aria-label="缩小头像" className="flex h-6 w-6 items-center justify-center rounded text-muted-foreground transition-colors hover:bg-muted hover:text-foreground">−</button>
+          <span className="min-w-[34px] text-center text-xs tabular-nums text-foreground">{PHOTO_SCALE_OPTIONS[curIdx].label}</span>
+          <button type="button" onClick={() => stepScale(1)} aria-label="放大头像" className="flex h-6 w-6 items-center justify-center rounded text-muted-foreground transition-colors hover:bg-muted hover:text-foreground">+</button>
+        </div>
+      ) : (
+        <span className="text-[11px] text-muted-foreground">上传头像</span>
+      )}
     </div>
   );
 }

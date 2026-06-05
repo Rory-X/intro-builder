@@ -3,12 +3,11 @@ import { useEffect, useState } from "react";
 import { useFieldArray, useFormContext } from "react-hook-form";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Button } from "@/components/ui/button";
 import { RichTextEditor } from "./rich-text-editor";
 import { emptyDoc } from "@/lib/tiptap-types";
 import type { ResumeContent } from "@/lib/resume-schema";
 import { monitorForElements } from "@atlaskit/pragmatic-drag-and-drop/element/adapter";
-import { ItemWrapper } from "./item-wrapper";
+import { ItemWrapper, ItemSummary } from "./item-wrapper";
 import { SectionEditorHeader } from "./section-editor-header";
 
 export function EducationEditor() {
@@ -46,10 +45,20 @@ export function EducationEditor() {
         />
       </div>
       {isOpen && (
-        <div className="space-y-3 px-4 pb-4">
-          {fields.map((f, idx) => (
-            <ItemWrapper key={f.id} id={f.id} sectionKey="education">
-              <div className="space-y-3 rounded-lg border border-border/60 bg-background/50 p-4">
+        <div className="space-y-2.5 px-4 pb-4">
+          {fields.map((f, idx) => {
+            const school = watch(`education.${idx}.school` as const);
+            const sub = [watch(`education.${idx}.degree` as const), watch(`education.${idx}.major` as const)].filter(Boolean).join(" · ");
+            return (
+            <ItemWrapper
+              key={f.id}
+              id={f.id}
+              sectionKey="education"
+              collapsible
+              onDelete={() => remove(idx)}
+              summary={<ItemSummary title={school} parts={[sub]} />}
+            >
+              <div className="space-y-3">
                 <div className="grid grid-cols-2 gap-3">
                   <div data-testid="education-school-field" className="col-span-2 flex flex-col gap-1.5"><Label>学校</Label><Input {...register(`education.${idx}.school` as const)} /></div>
                   <div className="flex flex-col gap-1.5"><Label>学历</Label><Input {...register(`education.${idx}.degree` as const)} /></div>
@@ -68,10 +77,10 @@ export function EducationEditor() {
                     placeholder="描述你的在校经历、荣誉奖项或相关成果…"
                   />
                 </div>
-                <Button type="button" variant="ghost" size="sm" className="text-xs text-muted-foreground hover:text-destructive" onClick={() => remove(idx)}>删除此条</Button>
               </div>
             </ItemWrapper>
-          ))}
+            );
+          })}
         </div>
       )}
     </section>

@@ -3,12 +3,11 @@ import { useEffect, useState } from "react";
 import { useFieldArray, useFormContext } from "react-hook-form";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Button } from "@/components/ui/button";
 import { RichTextEditor } from "./rich-text-editor";
 import { emptyDoc } from "@/lib/tiptap-types";
 import type { ResumeContent } from "@/lib/resume-schema";
 import { monitorForElements } from "@atlaskit/pragmatic-drag-and-drop/element/adapter";
-import { ItemWrapper } from "./item-wrapper";
+import { ItemWrapper, ItemSummary } from "./item-wrapper";
 import { SectionEditorHeader } from "./section-editor-header";
 
 export function ExperienceEditor() {
@@ -46,10 +45,21 @@ export function ExperienceEditor() {
         />
       </div>
       {isOpen && (
-        <div className="space-y-3 px-4 pb-4">
-          {fields.map((f, idx) => (
-            <ItemWrapper key={f.id} id={f.id} sectionKey="experience">
-              <div className="space-y-3 rounded-lg border border-border/60 bg-background/50 p-4">
+        <div className="space-y-2.5 px-4 pb-4">
+          {fields.map((f, idx) => {
+            const company = watch(`experience.${idx}.company` as const);
+            const position = watch(`experience.${idx}.title` as const);
+            const range = [watch(`experience.${idx}.start` as const), watch(`experience.${idx}.end` as const)].filter(Boolean).join(" – ");
+            return (
+            <ItemWrapper
+              key={f.id}
+              id={f.id}
+              sectionKey="experience"
+              collapsible
+              onDelete={() => remove(idx)}
+              summary={<ItemSummary title={company} parts={[position, range]} />}
+            >
+              <div className="space-y-3">
                 <div className="grid grid-cols-2 gap-3">
                   <div className="flex flex-col gap-1.5"><Label>公司</Label><Input {...register(`experience.${idx}.company` as const)} /></div>
                   <div className="flex flex-col gap-1.5"><Label>职位</Label><Input {...register(`experience.${idx}.title` as const)} /></div>
@@ -66,10 +76,10 @@ export function ExperienceEditor() {
                     placeholder="描述你的工作成果…"
                   />
                 </div>
-                <Button type="button" variant="ghost" size="sm" className="text-xs text-muted-foreground hover:text-destructive" onClick={() => remove(idx)}>删除此条</Button>
               </div>
             </ItemWrapper>
-          ))}
+            );
+          })}
         </div>
       )}
     </section>

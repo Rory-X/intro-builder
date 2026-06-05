@@ -10,7 +10,6 @@ import { PhotoUpload } from "./photo-upload";
 type BasicsKey = keyof ResumeContent["basics"];
 
 const FIELDS: Array<{ k: BasicsKey; label: string; type?: string; colSpan?: 1 | 2 }> = [
-  { k: "name", label: "姓名", colSpan: 2 },
   { k: "phone", label: "电话" },
   { k: "email", label: "邮箱", type: "email" },
   { k: "website", label: "个人知识库 / 主页" },
@@ -30,8 +29,18 @@ export function BasicsEditor() {
         </div>
         基础信息
       </h2>
-      <PhotoUpload />
-      <div className="mt-5 grid grid-cols-2 gap-4">
+      <div className="mt-4 flex items-start gap-4">
+        <PhotoUpload />
+        <div className="flex flex-1 flex-col gap-1.5 pt-1">
+          <Label htmlFor="basics-name">姓名</Label>
+          <Input id="basics-name" {...register("basics.name")} className="h-11 text-lg font-semibold" />
+          {err?.name?.message && (
+            <p className="text-xs text-destructive">{String(err.name?.message)}</p>
+          )}
+          <span className="text-[11px] text-muted-foreground">点击左侧上传头像（可选，4MB 以内）</span>
+        </div>
+      </div>
+      <div className="mt-4 grid grid-cols-2 gap-4">
         {FIELDS.map(({ k, label, type = "text", colSpan = 1 }) => (
           <div
             key={k}
