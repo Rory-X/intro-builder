@@ -29,14 +29,20 @@ export function BasicsEditor() {
         </div>
         基础信息
       </h2>
-      <div className="mt-4 flex flex-col gap-4">
+      <div className="mt-4 flex items-start gap-4">
         <PhotoUpload />
-        <div className="flex flex-col gap-1.5">
-          <Label htmlFor="basics-name">姓名</Label>
-          <Input id="basics-name" {...register("basics.name")} />
+        <div className="flex min-w-0 flex-1 flex-col gap-1 pt-0.5">
+          <Input
+            id="basics-name"
+            {...register("basics.name")}
+            placeholder="你的姓名"
+            aria-label="姓名"
+            className="h-auto rounded-none border-x-0 border-t-0 border-b border-transparent bg-transparent px-0 py-0.5 text-2xl font-semibold shadow-none focus-visible:border-b-border focus-visible:ring-0"
+          />
           {err?.name?.message && (
             <p className="text-xs text-destructive">{String(err.name?.message)}</p>
           )}
+          <span className="text-[11px] text-muted-foreground/60">点击左侧上传头像（可选，4MB 内）</span>
         </div>
       </div>
       <div className="mt-4 grid grid-cols-2 gap-4">

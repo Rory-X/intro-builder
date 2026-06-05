@@ -25,7 +25,7 @@ import { SkillsEditor } from "@/components/editor/skills-editor";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
-import { Loader2, Share2, PanelRightClose, PanelRightOpen, MessageSquare, LayoutTemplate, ChevronLeft, Pencil, CloudCheck, Copy, CircleAlert } from "lucide-react";
+import { Loader2, Share2, PanelRightClose, PanelRightOpen, MessageSquare, LayoutTemplate, ChevronLeft, PencilLine, CloudCheck, Copy, CircleAlert } from "lucide-react";
 import { Popover, PopoverContent, PopoverDescription, PopoverHeader, PopoverTitle, PopoverTrigger } from "@/components/ui/popover";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import type { AllTemplatesItem, TemplateId } from "@/lib/templates/registry";
@@ -477,7 +477,7 @@ export default function EditorClient({ id, initialTitle, initialTemplate, initia
         <TooltipProvider>
         <div
           data-testid="editor-toolbar"
-          className="flex items-center gap-2 px-6 py-2.5"
+          className="flex items-center gap-1.5 px-4 py-2"
         >
           {/* ── 左组：导航 + 工具 ── */}
           <a
@@ -541,7 +541,7 @@ export default function EditorClient({ id, initialTitle, initialTemplate, initia
                   aria-label="重命名"
                   className="rounded p-1 text-muted-foreground/70 transition-colors hover:bg-accent hover:text-muted-foreground"
                 >
-                  <Pencil className="h-3 w-3" />
+                  <PencilLine className="h-3 w-3" />
                 </button>
                 <span className="max-w-[200px] truncate text-sm font-medium text-foreground">
                   {title || "未命名简历"}
