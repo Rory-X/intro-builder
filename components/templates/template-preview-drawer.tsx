@@ -94,11 +94,11 @@ export function TemplatePreviewDrawer({
         // 单边约束。
         className="flex h-full w-full flex-col gap-0 p-0 data-[side=right]:sm:max-w-[960px]"
       >
-        <SheetHeader className="border-b border-border px-6 py-4">
-          <SheetTitle className="text-lg">
+        <SheetHeader className="border-b border-border/60 px-6 py-5">
+          <SheetTitle className="text-lg font-semibold tracking-tight">
             {meta ? meta.name : "模板预览"}
           </SheetTitle>
-          <SheetDescription>
+          <SheetDescription className="text-sm text-muted-foreground/80">
             {meta?.description ?? "选一个模板看看效果，确认后再应用到简历"}
           </SheetDescription>
         </SheetHeader>
@@ -125,44 +125,38 @@ export function TemplatePreviewDrawer({
           </div>
 
           {/* Right: meta + features + CTA */}
-          <aside className="flex flex-col gap-5 overflow-y-auto border-t border-border p-6 md:border-t-0 md:border-l">
+          <aside className="flex flex-col gap-5 overflow-y-auto border-t border-border/60 p-6 md:border-t-0 md:border-l md:border-border/60">
             {meta && (
-              <div className="space-y-2">
+              <div className="space-y-2.5">
                 <div className="flex items-center gap-2">
                   {sourceLabel && (
-                    <span className="rounded-full bg-muted px-2 py-0.5 text-[10px] font-medium text-muted-foreground">
+                    <span className="rounded-full bg-muted/80 px-2.5 py-0.5 text-[11px] font-medium text-muted-foreground/90">
                       {sourceLabel}
                     </span>
                   )}
                   {meta.isRecommended && (
-                    <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-medium text-primary">
+                    <span className="rounded-full bg-primary/10 px-2.5 py-0.5 text-[11px] font-medium text-primary">
                       推荐
                     </span>
                   )}
                 </div>
-                {meta.description && (
-                  <p className="text-sm text-muted-foreground">
-                    {meta.description}
-                  </p>
-                )}
               </div>
             )}
 
             <div className="space-y-3">
-              <h3 className="text-sm font-semibold">这个模板的特点</h3>
-              <ul className="space-y-2 text-sm">
+              <h3 className="text-[13px] font-semibold tracking-tight text-foreground/90">这个模板的特点</h3>
+              <ul className="space-y-2.5 text-sm">
                 {(meta?.features && meta.features.length > 0
                   ? meta.features
                   : [
-                      // Fallback：模板还没填 features 时退回通用三条，避免空白。
                       "预览即所见 —— 应用后样式跟这里 100% 一致",
                       "不动你的简历内容，只换排版",
                       "切换后随时再换，可逆",
                     ]
                 ).map((feature: string, i: number) => (
-                  <li key={i} className="flex items-start gap-2">
-                    <Check className="mt-0.5 size-4 shrink-0 text-primary" />
-                    <span>{feature}</span>
+                  <li key={i} className="flex items-start gap-2.5">
+                    <Check className="mt-0.5 size-4 shrink-0 text-primary/80" />
+                    <span className="leading-relaxed text-muted-foreground">{feature}</span>
                   </li>
                 ))}
               </ul>
@@ -213,7 +207,7 @@ export function TemplatePreviewDrawer({
                 aria-label={
                   isFavorited ? `取消收藏 ${meta?.name ?? ""}` : `收藏 ${meta?.name ?? ""}`
                 }
-                className="justify-center gap-2 text-muted-foreground hover:text-foreground"
+                className="justify-center gap-2 border-border/60 text-muted-foreground/80 transition-colors duration-200 hover:text-foreground"
                 data-testid="drawer-favorite"
               >
                 <Star

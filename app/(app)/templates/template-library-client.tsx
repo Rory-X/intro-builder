@@ -183,8 +183,8 @@ export function TemplateLibraryClient({
   return (
     <div className="mx-auto w-full max-w-6xl px-4 py-8 md:py-12">
       <div className="mb-8">
-        <h1 className="text-2xl font-bold md:text-3xl">模板库</h1>
-        <p className="mt-1 text-sm text-muted-foreground">
+        <h1 className="text-2xl font-bold tracking-tight md:text-3xl">模板库</h1>
+        <p className="mt-2 text-sm text-muted-foreground/80">
           选个喜欢的模板套到你的简历上 ✨
         </p>
       </div>
@@ -280,7 +280,7 @@ function TemplateCard({
 
   return (
     <article
-      className="group relative flex flex-col overflow-hidden rounded-xl border border-border bg-card shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:border-primary/30 hover:shadow-lg hover:shadow-primary/5"
+      className="group relative flex flex-col overflow-hidden rounded-xl border border-border/60 bg-card shadow-sm transition-all duration-300 ease-out hover:-translate-y-1 hover:border-primary/40 hover:shadow-xl hover:shadow-primary/5"
     >
       <button
         type="button"
@@ -297,27 +297,25 @@ function TemplateCard({
           />
         </TemplateThumbnail>
       </button>
-      <div className="flex flex-col gap-1.5 p-4">
+      <div className="flex flex-col gap-2 p-4">
         <div className="flex items-baseline justify-between gap-2">
-          <h3 className="text-base font-semibold">{name}</h3>
-          <div className="flex shrink-0 items-center gap-1">
+          <h3 className="text-[15px] font-semibold tracking-tight">{name}</h3>
+          <div className="flex shrink-0 items-center gap-1.5">
             {isRecommended && (
               <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-medium text-primary">
                 推荐
               </span>
             )}
             {categoryLabel && (
-              <span className="rounded-full bg-muted px-2 py-0.5 text-[10px] font-medium text-muted-foreground">
+              <span className="rounded-full bg-muted/80 px-2 py-0.5 text-[10px] font-medium text-muted-foreground/90">
                 {categoryLabel}
               </span>
             )}
           </div>
         </div>
-        {/* 信息区底行：描述（左）+ 收藏五角星（右下角，与描述同行居中对齐）。
-            星放在 meta footer 内而非缩略图上方，绝不遮挡简历预览。收藏后填充黄色。 */}
         <div className="flex min-h-8 items-center gap-2">
           {description && (
-            <p className="line-clamp-2 text-xs text-muted-foreground">
+            <p className="line-clamp-2 text-xs leading-relaxed text-muted-foreground/70">
               {description}
             </p>
           )}
@@ -329,7 +327,7 @@ function TemplateCard({
             }}
             aria-label={isFavorited ? `取消收藏 ${name}` : `收藏 ${name}`}
             aria-pressed={isFavorited}
-            className="ml-auto grid size-8 shrink-0 place-items-center rounded-full text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+            className="ml-auto grid size-8 shrink-0 place-items-center rounded-full text-muted-foreground/60 transition-colors duration-200 hover:bg-muted hover:text-foreground"
           >
             <Star
               className={
