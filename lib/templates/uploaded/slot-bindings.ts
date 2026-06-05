@@ -85,6 +85,20 @@ export const BASICS_BINDINGS = {
 
 export type BasicsBinding = keyof typeof BASICS_BINDINGS;
 
+// ─── Basics icon slots (for contact info) ────────────────────────
+// 为联系信息提供 icon 支持，例如 <slot data-bind="basics.icon.Mail">
+// 渲染器会调用 lookupLucideIcon 将其转换为 Lucide React 组件
+
+export const BASICS_ICON_BINDINGS = {
+  "basics.icon.Mail": "Mail",
+  "basics.icon.Phone": "Phone",
+  "basics.icon.MapPin": "MapPin",
+  "basics.icon.Globe": "Globe",
+  "basics.icon.Clock": "Clock",
+} as const;
+
+export type BasicsIconBinding = keyof typeof BASICS_ICON_BINDINGS;
+
 // ─── Profile value slots ─────────────────────────────────────────
 
 export const PROFILE_BINDINGS = {
@@ -164,6 +178,7 @@ export type LoopBinding = (typeof LOOP_BINDINGS)[number];
 
 export type SlotBinding =
   | BasicsBinding
+  | BasicsIconBinding
   | ProfileBinding
   | ImageBinding
   | SectionBinding
@@ -174,6 +189,7 @@ export type SlotBinding =
 export function isValidBinding(name: string): name is SlotBinding {
   return (
     name in BASICS_BINDINGS ||
+    name in BASICS_ICON_BINDINGS ||
     name in PROFILE_BINDINGS ||
     name in IMAGE_BINDINGS ||
     name in SECTION_BINDINGS ||

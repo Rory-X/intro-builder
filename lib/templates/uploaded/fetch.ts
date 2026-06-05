@@ -71,6 +71,31 @@ export async function fetchUploadedTemplate(
   }
 }
 
+/**
+ * Fetch a template by id WITHOUT filtering by status.
+ * Used exclusively by the dev-preview route for draft template inspection.
+ * Never used in production code paths (dashboard / editor).
+ */
+export async function fetchUploadedTemplateAnyStatus(
+  id: string,
+): Promise<UploadedTemplateType | null> {
+  try {
+    const rows = await withTransientRetry("fetchUploadedTemplateAnyStatus", () =>
+      db
+        .select()
+        .from(templates)
+        .where(eq(templates.id, id))
+        .limit(1),
+    );
+    if (rows.length === 0) return null;
+    return parseTemplateRow(rows[0]);
+  } catch (err) {
+    if (isMissingTableError(err)) return null;
+    console.warn("[templates] fetchUploadedTemplateAnyStatus failed:", err);
+    return null;
+  }
+}
+
 export async function fetchDefaultUploadedTemplate(): Promise<UploadedTemplateType | null> {
   try {
     const rows = await withTransientRetry("fetchDefaultUploadedTemplate", () =>
@@ -91,6 +116,28 @@ export async function fetchDefaultUploadedTemplate(): Promise<UploadedTemplateTy
     if (isMissingTableError(err)) return null;
     console.warn("[templates] fetchDefaultUploadedTemplate failed:", err);
     return null;
+  }
+}
+
+export async function listUploadedTemplatesWithAnyStatus(): Promise<UploadedTemplateType[]> {
+  try {
+    const rows = await withTransientRetry("listUploadedTemplatesWithAnyStatus", () =>
+      db
+        .select()
+        .from(templates)
+        .orderBy(templates.createdAt),
+    );
+    return rows
+      .map(parseTemplateRow)
+      .filter((t): t is UploadedTemplateType => t !== null)
+      .map((t) => ({
+        ...t,
+        status: rows.find((r) => r.id === t.id)?.status,
+      }));
+  } catch (err) {
+    if (isMissingTableError(err)) return [];
+    console.warn("[templates] listUploadedTemplatesWithAnyStatus failed:", err);
+    return [];
   }
 }
 

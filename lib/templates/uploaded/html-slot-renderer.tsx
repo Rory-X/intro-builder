@@ -13,6 +13,7 @@ import { FONT_MAP } from "@/lib/font-map";
 import { ResumeRichText } from "@/lib/templates/shared/resume-rich-text";
 import {
   BASICS_BINDINGS,
+  BASICS_ICON_BINDINGS,
   PROFILE_BINDINGS,
   IMAGE_BINDINGS,
   ITEM_BINDINGS,
@@ -232,6 +233,12 @@ function renderSlotElement(
     return <>{fn(p.content)}</>;
   }
 
+  // Basics icon slots (for contact info icons)
+  if (binding in BASICS_ICON_BINDINGS) {
+    const iconName = BASICS_ICON_BINDINGS[binding as keyof typeof BASICS_ICON_BINDINGS];
+    return renderIconSlot(node, iconName);
+  }
+
   if (binding in PROFILE_BINDINGS) {
     const fn = PROFILE_BINDINGS[binding as keyof typeof PROFILE_BINDINGS];
     return <>{fn(p.content)}</>;
@@ -400,7 +407,17 @@ function renderIconSlot(node: Element, iconName: string, iconColor?: string): Re
   const props = attributesToProps(node.attribs) as Record<string, unknown>;
   delete props["data-bind"];
   const style = iconColor ? { color: iconColor } : undefined;
-  return <Icon aria-hidden="true" focusable="false" {...props} style={style} />;
+
+  // 包裹一层 span，确保 CSS 类应用到容器而不是直接到 SVG
+  // 这样 vertical-align 和其他布局属性会更可靠
+  const className = props.className as string | undefined;
+  const iconElement = <Icon aria-hidden="true" focusable="false" style={style} />;
+
+  if (className) {
+    return <span className={className}>{iconElement}</span>;
+  }
+
+  return iconElement;
 }
 
 function selectTemplateForSection(
