@@ -35,7 +35,7 @@ export function ResearchEditor() {
 
   return (
     <section>
-      <div className="px-4 pt-2">
+      <div>
         <SectionEditorHeader
           sectionKey="research"
           itemCount={fields.length}

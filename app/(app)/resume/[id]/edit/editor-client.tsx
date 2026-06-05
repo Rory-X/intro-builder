@@ -697,7 +697,7 @@ export default function EditorClient({ id, initialTitle, initialTemplate, initia
           <div className="relative min-w-0 border-r" style={{ flex: `0 0 ${splitPercent}%` }}>
             <div
               ref={editorPanelRef}
-              className="thin-scrollbar h-full space-y-6 overflow-y-auto p-6"
+              className="thin-scrollbar h-full space-y-3 overflow-y-auto bg-card p-4"
             >
               <div className={cn(
                 "rounded-lg transition-all duration-500",
@@ -737,13 +737,13 @@ export default function EditorClient({ id, initialTitle, initialTemplate, initia
           </div>
           {/* Resize handle */}
           <div
-            className="flex w-1.5 shrink-0 cursor-col-resize items-center justify-center hover:bg-accent active:bg-accent"
+            className="group flex w-2 shrink-0 cursor-col-resize items-center justify-center"
             onMouseDown={handleMouseDown}
           >
-            <div className="h-8 w-0.5 rounded-full bg-border" />
+            <div className="h-8 w-1 rounded-full bg-border transition-all duration-200 group-hover:h-12 group-hover:bg-muted-foreground/50 group-active:bg-primary/60" />
           </div>
           <div
-            className="thin-scrollbar min-w-0 overflow-y-auto bg-muted p-6"
+            className="thin-scrollbar min-w-0 overflow-auto overscroll-contain bg-muted p-6"
             style={{ flex: `1 1 ${100 - splitPercent}%` }}
           >
             <LivePreview ref={previewRootRef} resolvedTemplate={resolvedTemplate} />

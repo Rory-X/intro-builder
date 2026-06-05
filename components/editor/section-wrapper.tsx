@@ -1,7 +1,16 @@
 "use client";
-import { useRef, useEffect, useState } from "react";
+import { createContext, useContext, useRef, useEffect, useState } from "react";
 import { draggable, dropTargetForElements } from "@atlaskit/pragmatic-drag-and-drop/element/adapter";
-import { GripHorizontal } from "lucide-react";
+import { cn } from "@/lib/utils";
+
+/**
+ * 把拖拽手柄 ref 通过 context 下发给 section 头部行 —— 这样整条 section 头
+ * 既是拖拽手柄、又是折叠开关(点击折叠、拖动排序),不再需要单独的"拖拽排序"条。
+ */
+const SectionDragHandleContext = createContext<React.RefObject<HTMLDivElement | null> | null>(null);
+export function useSectionDragHandle() {
+  return useContext(SectionDragHandleContext);
+}
 
 type Props = {
   id: string;
@@ -40,18 +49,17 @@ export function SectionWrapper({ id, children }: Props) {
   }, [id]);
 
   return (
-    <div
-      ref={ref}
-      className={`rounded-xl border bg-card transition-all duration-200 ${isDragging ? "opacity-40 scale-[0.98]" : ""} ${isDragOver ? "ring-2 ring-primary/40 shadow-md shadow-primary/10" : ""}`}
-    >
+    <SectionDragHandleContext.Provider value={handleRef}>
       <div
-        ref={handleRef}
-        className="flex cursor-grab items-center gap-1.5 border-b border-dashed border-border/60 px-4 py-1.5 text-muted-foreground transition-colors duration-200 hover:bg-muted/60 active:cursor-grabbing"
+        ref={ref}
+        className={cn(
+          "overflow-hidden rounded-xl border bg-card transition-all duration-200",
+          isDragging && "scale-[0.99] opacity-50",
+          isDragOver && "ring-2 ring-primary/40 shadow-md shadow-primary/10",
+        )}
       >
-        <GripHorizontal className="h-3.5 w-3.5" />
-        <span className="text-xs font-medium">拖拽排序</span>
+        {children}
       </div>
-      {children}
-    </div>
+    </SectionDragHandleContext.Provider>
   );
 }

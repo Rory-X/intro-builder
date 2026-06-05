@@ -35,7 +35,7 @@ export function ExperienceEditor() {
 
   return (
     <section>
-      <div className="px-4 pt-2">
+      <div>
         <SectionEditorHeader
           sectionKey="experience"
           itemCount={fields.length}

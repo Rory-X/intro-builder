@@ -35,7 +35,7 @@ export function ProjectsEditor() {
 
   return (
     <section>
-      <div className="px-4 pt-2">
+      <div>
         <SectionEditorHeader
           sectionKey="projects"
           itemCount={fields.length}

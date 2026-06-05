@@ -23,7 +23,7 @@ export function CustomSectionEditor({ sectionId }: Props) {
 
   return (
     <section>
-      <div className="px-4 pt-2">
+      <div>
         <SectionEditorHeader
           sectionKey={sectionId}
           itemCount={0}

@@ -11,7 +11,7 @@ export function SkillsEditor() {
 
   return (
     <section>
-      <div className="px-4 pt-2">
+      <div>
         <SectionEditorHeader
           sectionKey="skills"
           itemCount={0}
