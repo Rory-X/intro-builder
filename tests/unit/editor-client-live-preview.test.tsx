@@ -229,7 +229,8 @@ describe("EditorClient live preview", () => {
     const badge = screen.getByTestId("autosave-status");
     expect(badge).toHaveTextContent("5分钟前保存");
     expect(badge).toHaveAttribute("title", "当前自动保存状态：5分钟前保存");
-    expect(screen.getByText("当前自动保存状态：5分钟前保存")).toBeInTheDocument();
+    // 重设计后保存状态收成图标:可见文案走 sr-only(textContent 已覆盖),
+    // 完整描述通过 title 属性 + hover tooltip 呈现(不常驻 DOM)。
   });
 
   it("exports the current live preview as a PNG image", async () => {

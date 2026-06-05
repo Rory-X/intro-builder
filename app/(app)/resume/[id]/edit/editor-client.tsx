@@ -25,7 +25,10 @@ import { SkillsEditor } from "@/components/editor/skills-editor";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
-import { Loader2, Share2, PanelRightClose, PanelRightOpen, MessageSquare, LayoutTemplate, ChevronLeft } from "lucide-react";
+import { Loader2, Share2, PanelRightClose, PanelRightOpen, MessageSquare, LayoutTemplate, ChevronLeft, Pencil, Check, Copy, CircleAlert } from "lucide-react";
+import { Popover, PopoverContent, PopoverDescription, PopoverHeader, PopoverTitle, PopoverTrigger } from "@/components/ui/popover";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import { ThemeToggle } from "@/components/theme-toggle";
 import type { AllTemplatesItem, TemplateId } from "@/lib/templates/registry";
 import {
   uploadedTemplateToSerializable,
@@ -431,6 +434,29 @@ export default function EditorClient({ id, initialTitle, initialTemplate, initia
     document.addEventListener("mouseup", handleMouseUp);
   }, []);
 
+  const [isEditingTitle, setIsEditingTitle] = useState(false);
+  const titleInputRef = useRef<HTMLInputElement>(null);
+  useEffect(() => {
+    if (isEditingTitle) {
+      titleInputRef.current?.focus();
+      titleInputRef.current?.select();
+    }
+  }, [isEditingTitle]);
+
+  const shareUrl =
+    publicSlug && typeof window !== "undefined"
+      ? `${window.location.origin}/r/${publicSlug}`
+      : publicSlug
+        ? `/r/${publicSlug}`
+        : "";
+  const onCopyShareLink = useCallback(() => {
+    if (!shareUrl) return;
+    navigator.clipboard
+      ?.writeText(shareUrl)
+      .then(() => toast.success("链接已复制"))
+      .catch(() => toast.error("复制失败"));
+  }, [shareUrl]);
+
   const savedLabel = formatRelativeSaveTime(lastSavedAt, now);
   const isSaving = autosave.status === "saving" || isPending;
   const saveStatusLabel = saveError
@@ -449,128 +475,208 @@ export default function EditorClient({ id, initialTitle, initialTemplate, initia
       {/* Toolbar — only visible on desktop */}
       {isDesktop && (
       <div className="sticky top-14 z-30 border-b border-border/60 bg-background/80 backdrop-blur-xl backdrop-saturate-150">
-        <div className="flex items-center py-2.5">
-          <div
-            data-testid="editor-toolbar"
-            className="flex min-w-0 flex-1 flex-nowrap items-center gap-2 overflow-x-auto px-6"
+        <TooltipProvider>
+        <div
+          data-testid="editor-toolbar"
+          className="flex items-center gap-2 px-6 py-2.5"
+        >
+          {/* ── 左组：导航 + 工具 ── */}
+          <a
+            href={backHref}
+            className="inline-flex shrink-0 items-center gap-0.5 rounded-md px-2 py-1.5 text-sm text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
           >
-            <a
-              href={backHref}
-              className="inline-flex shrink-0 items-center gap-0.5 rounded-md px-2 py-1.5 text-sm text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
-            >
-              <ChevronLeft className="h-4 w-4" />
-              {backLabel}
-            </a>
-            <Separator orientation="vertical" className="h-5" />
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={() => setShowTemplatePanel((v) => !v)}
-              aria-pressed={showTemplatePanel}
-              className={cn(
-                "gap-1.5",
-                showTemplatePanel && "border-primary bg-primary/5 text-primary",
-              )}
-            >
-              <LayoutTemplate className="h-3.5 w-3.5" />
-              模板
-            </Button>
-            <SmartLayoutButton templateId={template} measureRef={previewRootRef} />
-            <StyleEditor />
-            <ModuleManager sectionOrder={sectionOrder} onOrderChange={handleOrderChange} />
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={onToggleShare}
-              disabled={isTogglingShare}
-              aria-busy={isTogglingShare}
-              className="gap-1.5"
-            >
-              {isTogglingShare ? (
-                <Loader2 className="h-3.5 w-3.5 animate-spin" />
-              ) : (
-                <Share2 className="h-3.5 w-3.5" />
-              )}
-              {isTogglingShare
-                ? isPublic
-                  ? "关闭中"
-                  : "开启中"
-                : isPublic
-                  ? "关闭分享"
-                  : "开启分享"}
-            </Button>
-            {isPublic && publicSlug && (
-              <a
-                className="self-center rounded-full bg-primary/10 px-2.5 py-0.5 text-xs font-medium text-primary transition-colors hover:bg-primary/20"
-                href={`/r/${publicSlug}`}
-                target="_blank"
-                rel="noreferrer"
-              >
-                /r/{publicSlug}
-              </a>
+            <ChevronLeft className="h-4 w-4" />
+            {backLabel}
+          </a>
+          <Separator orientation="vertical" className="h-5" />
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => setShowTemplatePanel((v) => !v)}
+            aria-pressed={showTemplatePanel}
+            className={cn(
+              "gap-1.5",
+              showTemplatePanel && "border-primary bg-primary/5 text-primary",
             )}
-            <ExportButton
-              resumeId={id}
-              filename={title}
-              onExportImage={onExportImage}
-              isExportingImage={isExportingImage}
-              paginationData={paginationData}
-            />
-            <InviteCollabDialog resumeId={id} onSessionCreated={(sid) => setCollabSessionId(sid)} />
-            {collabState?.isConnected && (
+          >
+            <LayoutTemplate className="h-3.5 w-3.5" />
+            模板
+          </Button>
+          <StyleEditor />
+          <SmartLayoutButton templateId={template} measureRef={previewRootRef} />
+          <ModuleManager sectionOrder={sectionOrder} onOrderChange={handleOrderChange} />
+
+          {collabState?.isConnected && (
+            <>
+              <Separator orientation="vertical" className="h-6" />
+              <VoiceChatControls
+                provider={collabState.provider}
+                enabled={collabState.presenceUsers.length >= 2}
+              />
+              <PresenceBar users={collabState.presenceUsers} isConnected={collabState.isConnected} />
+            </>
+          )}
+
+          {/* ── 弹簧 ── */}
+          <div className="flex-1" />
+
+          {/* ── 右组：简历名(铅笔编辑) + 保存图标 ── */}
+          <div className="flex shrink-0 items-center gap-1">
+            {isEditingTitle ? (
+              <Input
+                ref={titleInputRef}
+                value={title}
+                onChange={(e) => setTitleState(e.target.value)}
+                onBlur={() => setIsEditingTitle(false)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" || e.key === "Escape") setIsEditingTitle(false);
+                }}
+                aria-label="简历名称"
+                className="h-8 w-48 text-sm font-medium"
+              />
+            ) : (
               <>
-                <Separator orientation="vertical" className="h-6" />
-                <VoiceChatControls
-                  provider={collabState.provider}
-                  enabled={collabState.presenceUsers.length >= 2}
-                />
-                <Separator orientation="vertical" className="h-6" />
-                <PresenceBar users={collabState.presenceUsers} isConnected={collabState.isConnected} />
+                <button
+                  type="button"
+                  onClick={() => setIsEditingTitle(true)}
+                  aria-label="重命名"
+                  className="rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+                >
+                  <Pencil className="h-3.5 w-3.5" />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setIsEditingTitle(true)}
+                  title="点击重命名"
+                  className="max-w-[200px] truncate rounded-md px-1 py-1 text-sm font-medium text-foreground transition-colors hover:bg-accent"
+                >
+                  {title || "未命名简历"}
+                </button>
               </>
             )}
-          </div>
-          <div
-            className="flex shrink-0 items-center justify-end gap-3 px-6"
-          >
-            <Input
-              value={title}
-              onChange={(e) => setTitleState(e.target.value)}
-              className="w-48 text-base font-medium"
-            />
-            <span
-              data-testid="autosave-status"
-              title={saveStatusDescription}
-              className={cn(
-                "group relative inline-flex cursor-default items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-medium",
-                saveError
-                  ? "bg-destructive/10 text-destructive"
-                  : isSaving
-                    ? "bg-orange-500/10 text-orange-600 dark:text-orange-400"
-                    : autosave.status === "pending"
-                      ? "bg-sky-500/10 text-sky-600 dark:text-sky-400"
-                    : "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400",
-              )}
-            >
-              <span
-                className={cn(
-                  "h-1.5 w-1.5 rounded-full",
-                  saveError
-                    ? "bg-destructive"
-                    : isSaving
-                      ? "animate-pulse bg-orange-500"
-                      : autosave.status === "pending"
-                        ? "bg-sky-500"
-                      : "bg-emerald-500",
+            <Tooltip>
+              <TooltipTrigger
+                render={
+                  <span
+                    data-testid="autosave-status"
+                    title={saveStatusDescription}
+                    className={cn(
+                      "ml-0.5 inline-flex h-6 w-6 cursor-default items-center justify-center rounded-full",
+                      saveError
+                        ? "text-destructive"
+                        : isSaving
+                          ? "text-orange-500"
+                          : autosave.status === "pending"
+                            ? "text-sky-500"
+                            : "text-emerald-500",
+                    )}
+                  />
+                }
+              >
+                {saveError ? (
+                  <CircleAlert className="h-4 w-4" />
+                ) : isSaving ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : autosave.status === "pending" ? (
+                  <Loader2 className="h-4 w-4" />
+                ) : (
+                  <Check className="h-4 w-4" />
                 )}
-              />
-              {saveStatusLabel}
-              <span className="pointer-events-none absolute left-1/2 top-[calc(100%+0.4rem)] z-50 hidden w-max max-w-72 -translate-x-1/2 rounded-md bg-popover px-2.5 py-1.5 text-xs font-normal text-popover-foreground shadow-md ring-1 ring-foreground/10 group-hover:block">
-                {saveStatusDescription}
-              </span>
-            </span>
-            <CompletenessScore />
+                <span className="sr-only">{saveStatusLabel}</span>
+              </TooltipTrigger>
+              <TooltipContent>{saveStatusDescription}</TooltipContent>
+            </Tooltip>
           </div>
+
+          <Separator orientation="vertical" className="h-5" />
+          <CompletenessScore />
+          <Separator orientation="vertical" className="h-5" />
+
+          {/* ── 分享：icon + popover(链接可复制) ── */}
+          <Popover>
+            <PopoverTrigger
+              render={
+                <Button
+                  size="icon"
+                  variant="ghost"
+                  aria-label="公开分享"
+                  title="公开分享"
+                  className={cn(
+                    "h-8 w-8",
+                    isPublic && "bg-primary/10 text-primary hover:bg-primary/15",
+                  )}
+                />
+              }
+            >
+              {isTogglingShare ? <Loader2 className="h-4 w-4 animate-spin" /> : <Share2 className="h-4 w-4" />}
+            </PopoverTrigger>
+            <PopoverContent align="end" className="w-80">
+              {isPublic && publicSlug ? (
+                <>
+                  <PopoverHeader>
+                    <PopoverTitle className="flex items-center gap-2">
+                      <span className="h-2 w-2 rounded-full bg-emerald-500" />
+                      公开分享已开启
+                    </PopoverTitle>
+                    <PopoverDescription>任何人凭此链接可查看只读简历（不可编辑）。</PopoverDescription>
+                  </PopoverHeader>
+                  <div className="flex items-center overflow-hidden rounded-md border border-border bg-muted/40">
+                    <input
+                      readOnly
+                      value={shareUrl}
+                      className="min-w-0 flex-1 truncate bg-transparent px-2.5 py-2 text-xs text-muted-foreground outline-none"
+                    />
+                    <button
+                      type="button"
+                      onClick={onCopyShareLink}
+                      className="flex h-9 shrink-0 items-center gap-1 border-l border-border px-3 text-xs font-medium text-primary transition-colors hover:bg-accent"
+                    >
+                      <Copy className="h-3.5 w-3.5" />
+                      复制
+                    </button>
+                  </div>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={onToggleShare}
+                    disabled={isTogglingShare}
+                    className="w-full text-destructive hover:text-destructive"
+                  >
+                    {isTogglingShare ? "处理中…" : "关闭分享"}
+                  </Button>
+                </>
+              ) : (
+                <>
+                  <PopoverHeader>
+                    <PopoverTitle>公开分享</PopoverTitle>
+                    <PopoverDescription>开启后生成只读链接，任何人可凭链接查看你的简历。</PopoverDescription>
+                  </PopoverHeader>
+                  <Button
+                    size="sm"
+                    onClick={onToggleShare}
+                    disabled={isTogglingShare}
+                    className="w-full gap-1.5"
+                  >
+                    {isTogglingShare ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Share2 className="h-3.5 w-3.5" />}
+                    开启分享
+                  </Button>
+                </>
+              )}
+            </PopoverContent>
+          </Popover>
+
+          <InviteCollabDialog resumeId={id} onSessionCreated={(sid) => setCollabSessionId(sid)} />
+          <ExportButton
+            resumeId={id}
+            filename={title}
+            onExportImage={onExportImage}
+            isExportingImage={isExportingImage}
+            paginationData={paginationData}
+          />
+          <Separator orientation="vertical" className="h-5" />
+          <ThemeToggle />
         </div>
+        </TooltipProvider>
       </div>
       )}
 
