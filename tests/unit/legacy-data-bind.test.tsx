@@ -1,6 +1,7 @@
 /**
  * 测试旧语法 data-bind 是否正常工作
  */
+import { describe, it, expect } from 'vitest';
 import { SlotRenderer } from '@/lib/templates/uploaded/html-slot-renderer';
 import { render } from '@testing-library/react';
 import type { ResumeContent } from '@/lib/resume-schema';
@@ -15,6 +16,7 @@ const mockContent: ResumeContent = {
     photo: '',
     website: '',
     status: '在职',
+    summary: '',
   },
   sectionOrder: [],
 };
