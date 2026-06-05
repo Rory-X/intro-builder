@@ -20,6 +20,7 @@ import {
   type PickerResume,
 } from "@/components/templates/resume-picker-dialog";
 import { setTemplate } from "@/app/(app)/resume/[id]/edit/actions";
+import { createResumeWithTemplate } from "@/app/(app)/dashboard/actions";
 import { toggleTemplateFavorite } from "./actions";
 import type { TemplateCategory } from "@/lib/templates/registry";
 
@@ -196,12 +197,33 @@ export function TemplateLibraryClient({
     });
   };
 
-  // drawer 的「应用」CTA：0 份不动（按钮本就禁用）；1 份直接套到那份；
-  // 多份打开选择弹窗让用户挑目标 + 看每份当前模板缩略图。
+  // ＋新建简历并套用当前模板。createResumeWithTemplate 只写库 + 返回新简历 id，
+  // 跳转交给这里 router.push（与 handleApply 同款）——绝不在 server action 里
+  // redirect()，否则 NEXT_REDIRECT 会被下面的 try/catch 吞成"假失败提示"。
+  const handleCreateAndApply = () => {
+    if (!selected) return;
+    const targetTemplateId = selected.id;
+    const targetName = getDisplayMeta(selected).name;
+    startApplying(async () => {
+      try {
+        const { id } = await createResumeWithTemplate(targetTemplateId);
+        toast.success(`已新建简历并应用模板：${targetName}`);
+        setPickerOpen(false);
+        setSelected(null);
+        router.push(`/resume/${id}/edit?from=templates`);
+      } catch (error) {
+        console.error("[templates] create+apply failed:", error);
+        const message = error instanceof Error ? error.message : "未知错误";
+        toast.error(`新建失败：${message}`);
+      }
+    });
+  };
+
+  // drawer 的「应用」CTA：0 份直接新建并套用（无已有可选）；≥1 份打开选择弹窗，
+  // 弹窗里既能选已有简历套用，也能点「＋新建简历」开一份新的。
   const handleApplyCta = () => {
-    if (userResumes.length === 0) return;
-    if (userResumes.length === 1) {
-      handleApply(userResumes[0].id);
+    if (userResumes.length === 0) {
+      handleCreateAndApply();
     } else {
       setPickerOpen(true);
     }
@@ -295,6 +317,7 @@ export function TemplateLibraryClient({
         templateName={selected ? getDisplayMeta(selected).name : ""}
         defaultSelectedId={defaultResumeId}
         onConfirm={handleApply}
+        onCreateNew={handleCreateAndApply}
         isApplying={isApplying}
       />
     </div>

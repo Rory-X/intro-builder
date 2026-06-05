@@ -13,6 +13,9 @@ vi.mock("@/app/(app)/templates/actions", () => ({
 vi.mock("@/app/(app)/resume/[id]/edit/actions", () => ({
   setTemplate: vi.fn().mockResolvedValue(undefined),
 }));
+vi.mock("@/app/(app)/dashboard/actions", () => ({
+  createResumeWithTemplate: vi.fn().mockResolvedValue({ id: "new-resume" }),
+}));
 vi.mock("next/navigation", () => ({ useRouter: () => ({ push: vi.fn() }) }));
 vi.mock("sonner", () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
 

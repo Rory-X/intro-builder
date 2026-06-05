@@ -104,7 +104,7 @@ describe("TemplatePreviewDrawer", () => {
     expect(onApply).toHaveBeenCalled();
   });
 
-  it("resumeId=null 时 apply 按钮 disabled + 显示提示", () => {
+  it("resumeCount=0 时 apply 按钮可点且文案为「用此模板新建简历」", () => {
     const { getByTestId } = render(
       <TemplatePreviewDrawer
         open={true}
@@ -113,13 +113,13 @@ describe("TemplatePreviewDrawer", () => {
         demoContent={demoResume}
         userContent={null}
         resumeId={null}
+        resumeCount={0}
         onApply={vi.fn()}
       />,
     );
     const applyBtn = getByTestId("drawer-apply") as HTMLButtonElement;
-    expect(applyBtn.disabled).toBe(true);
-    // 抽屉内容走 Portal，textContent 要看 document.body —— 用 screen 查全局
-    expect(document.body.textContent).toMatch(/还没创建简历|建一份/);
+    expect(applyBtn.disabled).toBe(false);
+    expect(applyBtn.textContent).toMatch(/用此模板新建简历/);
   });
 
   it("isApplying=true 时按钮全部 disabled + apply 按钮显示加载文案", () => {

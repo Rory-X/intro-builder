@@ -43,6 +43,8 @@ type Props = {
   defaultSelectedId: string | null;
   /** 确认应用 → 把当前模板套到该简历。 */
   onConfirm: (resumeId: string) => void;
+  /** ＋新建简历 → 新建一份空简历并套用当前模板。 */
+  onCreateNew: () => void;
   isApplying?: boolean;
 };
 
@@ -61,6 +63,7 @@ export function ResumePickerDialog({
   templateName,
   defaultSelectedId,
   onConfirm,
+  onCreateNew,
   isApplying = false,
 }: Props) {
   const [selectedId, setSelectedId] = useState<string | null>(defaultSelectedId);
@@ -102,6 +105,24 @@ export function ResumePickerDialog({
             className="flex gap-3.5 overflow-x-auto overflow-y-hidden px-6 py-5 [scroll-padding-left:1.5rem]"
             style={{ scrollSnapType: "x proximity" }}
           >
+            {/* ＋新建简历：横滚最前，用此模板新建一份（0 份简历的入口也在这） */}
+            <button
+              type="button"
+              data-testid="resume-picker-new"
+              disabled={isApplying}
+              onClick={onCreateNew}
+              className="group flex w-[232px] shrink-0 flex-col items-center justify-center gap-2.5 rounded-xl border-2 border-dashed border-border bg-muted/30 text-center text-muted-foreground transition-all hover:-translate-y-0.5 hover:border-primary/50 hover:bg-primary/[0.04] hover:text-primary disabled:pointer-events-none disabled:opacity-60"
+              style={{ scrollSnapAlign: "start" }}
+            >
+              <span className="grid size-12 place-items-center rounded-full bg-muted text-2xl font-light transition-colors group-hover:bg-primary group-hover:text-primary-foreground">
+                ＋
+              </span>
+              <span className="text-sm font-semibold">新建简历</span>
+              <span className="text-[11px] text-muted-foreground/80">
+                用此模板新建一份
+              </span>
+            </button>
+
             {resumes.map((r) => {
               const tpl = resumeTemplates[r.templateId];
               const isSel = r.id === selectedId;

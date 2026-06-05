@@ -25,13 +25,14 @@ type Props = {
   demoContent: ResumeContent;
   /** 用户最近一份简历的 content；null 表示还没建简历，toggle 会被禁用。 */
   userContent: ResumeContent | null;
-  /** 用户最近一份简历 id；null 时禁用 apply CTA + 提示先建简历 */
-  resumeId: string | null;
+  /** @deprecated 已不参与 apply 禁用逻辑（apply 始终可点：0 份走新建，≥1 份开弹窗）。
+      保留仅为向后兼容现有调用方，可在后续清理中移除。 */
+  resumeId?: string | null;
   /** apply 是否进行中（父组件控制 setTemplate 的 pending 态） */
   isApplying?: boolean;
-  /** apply 回调 —— 父组件接管：>1 份开选择弹窗，1 份直接套用 */
+  /** apply 回调 —— 父组件接管：0 份直接新建套用，≥1 份打开选择弹窗 */
   onApply: () => void | Promise<void>;
-  /** 用户简历数量，决定 apply 按钮文案（>1 时「应用到简历…」，否则「应用到当前简历」）。 */
+  /** 用户简历数量，决定 apply 按钮文案（0 份「用此模板新建简历」，否则「应用到简历…」）。 */
   resumeCount?: number;
   /** 当前模板是否已被收藏（父组件的 favorites Set 派生）。 */
   isFavorited?: boolean;
@@ -54,7 +55,6 @@ export function TemplatePreviewDrawer({
   resolved,
   demoContent,
   userContent,
-  resumeId,
   isApplying = false,
   onApply,
   resumeCount = 1,
@@ -224,22 +224,10 @@ export function TemplatePreviewDrawer({
             )}
 
             <div className="mt-auto flex flex-col gap-2 pt-4">
-              {resumeId === null ? (
-                <p className="rounded-md border border-dashed border-border/80 bg-muted/40 p-3 text-xs text-muted-foreground">
-                  你还没创建简历。先到{" "}
-                  <a
-                    href="/dashboard"
-                    className="font-medium text-primary hover:underline"
-                  >
-                    我的简历
-                  </a>{" "}
-                  建一份再来选模板 ✨
-                </p>
-              ) : null}
               <Button
                 type="button"
                 size="lg"
-                disabled={!resumeId || isApplying}
+                disabled={isApplying}
                 onClick={() => {
                   void onApply();
                 }}
@@ -250,10 +238,10 @@ export function TemplatePreviewDrawer({
                     <Loader2 className="size-4 animate-spin" />
                     正在应用…
                   </>
-                ) : resumeCount > 1 ? (
-                  "应用到简历…"
+                ) : resumeCount === 0 ? (
+                  "用此模板新建简历"
                 ) : (
-                  "应用到当前简历"
+                  "应用到简历…"
                 )}
               </Button>
               <Button

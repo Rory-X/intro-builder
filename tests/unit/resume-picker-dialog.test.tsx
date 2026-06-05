@@ -47,6 +47,7 @@ const resumeTemplates = { professional: tpl };
 function renderPicker(extra?: Partial<React.ComponentProps<typeof ResumePickerDialog>>) {
   const onConfirm = vi.fn();
   const onOpenChange = vi.fn();
+  const onCreateNew = vi.fn();
   render(
     <ResumePickerDialog
       open
@@ -56,10 +57,11 @@ function renderPicker(extra?: Partial<React.ComponentProps<typeof ResumePickerDi
       templateName="Abbey 蓝调"
       defaultSelectedId="r1"
       onConfirm={onConfirm}
+      onCreateNew={onCreateNew}
       {...extra}
     />,
   );
-  return { onConfirm, onOpenChange };
+  return { onConfirm, onOpenChange, onCreateNew };
 }
 
 describe("ResumePickerDialog", () => {
@@ -73,6 +75,7 @@ describe("ResumePickerDialog", () => {
         templateName="Abbey 蓝调"
         defaultSelectedId="r1"
         onConfirm={vi.fn()}
+        onCreateNew={vi.fn()}
       />,
     );
     expect(screen.queryByTestId("resume-picker")).toBeNull();
@@ -104,5 +107,13 @@ describe("ResumePickerDialog", () => {
     const { onConfirm } = renderPicker();
     fireEvent.doubleClick(screen.getAllByTestId("resume-picker-card")[1]);
     expect(onConfirm).toHaveBeenCalledWith("r2");
+  });
+
+  it("点「＋新建简历」卡触发 onCreateNew", () => {
+    const { onCreateNew, onConfirm } = renderPicker();
+    expect(screen.getByTestId("resume-picker-new")).toBeInTheDocument();
+    fireEvent.click(screen.getByTestId("resume-picker-new"));
+    expect(onCreateNew).toHaveBeenCalledTimes(1);
+    expect(onConfirm).not.toHaveBeenCalled();
   });
 });
