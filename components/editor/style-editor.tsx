@@ -34,7 +34,7 @@ export function StyleEditor() {
     <Popover>
       <PopoverTrigger
         render={
-          <Button type="button" size="sm" variant="outline" className="gap-1.5" />
+          <Button type="button" size="sm" variant="ghost" className="gap-1.5" />
         }
       >
         <SlidersHorizontal className="h-3.5 w-3.5" />

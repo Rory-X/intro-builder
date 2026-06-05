@@ -44,7 +44,7 @@ export function SectionEditorHeader({ sectionKey, itemCount, isOpen, onToggle, o
       <span className={cn("flex h-7 w-7 shrink-0 items-center justify-center rounded-lg", c.iconBg)}>
         <Icon className={cn("h-4 w-4", c.icon)} />
       </span>
-      <span className="text-sm font-semibold text-foreground">{meta.label}</span>
+      <span className="text-[14.5px] font-semibold text-foreground">{meta.label}</span>
       {itemCount > 0 && (
         <span className="rounded-full bg-muted px-1.5 py-0.5 text-[11px] font-medium text-muted-foreground">{itemCount}</span>
       )}

@@ -132,7 +132,7 @@ export function ModuleManager({ sectionOrder, onOrderChange }: Props) {
   return (
     <Popover>
       <PopoverTrigger
-        render={<Button type="button" variant="outline" size="sm" className="gap-1.5" />}
+        render={<Button type="button" variant="ghost" size="sm" className="gap-1.5" />}
       >
         <Layers className="h-3.5 w-3.5" />
         模块管理

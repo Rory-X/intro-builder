@@ -66,7 +66,7 @@ export function RichTextEditor({ content, onChange }: Props) {
     editorProps: {
       attributes: {
         class: cn(
-          "min-h-[80px] bg-background px-3 py-2 text-sm focus:outline-none",
+          "min-h-[56px] resize-y overflow-auto bg-white px-3 py-2 text-[13.5px] focus:outline-none dark:bg-card",
           RICH_TEXT_EDITOR_PROSE_CLASS,
         ),
       },
@@ -88,8 +88,8 @@ export function RichTextEditor({ content, onChange }: Props) {
   if (!editor) return null;
 
   return (
-    <div className="overflow-hidden rounded-lg border transition-colors duration-200 focus-within:ring-2 focus-within:ring-ring/30">
-      <div className="flex flex-wrap items-center gap-0.5 border-b bg-muted/40 px-1.5 py-1.5">
+    <div className="overflow-hidden rounded-lg border bg-white transition-colors duration-200 focus-within:ring-2 focus-within:ring-ring/30 dark:bg-card">
+      <div className="flex flex-wrap items-center gap-0.5 border-b bg-muted/30 px-1.5 py-1">
         {/* Basic formatting */}
         <ToolBtn active={editor.isActive("bold")} onClick={() => editor.chain().focus().toggleBold().run()} icon={Bold} title="粗体" />
         <ToolBtn active={editor.isActive("italic")} onClick={() => editor.chain().focus().toggleItalic().run()} icon={Italic} title="斜体" />
@@ -128,9 +128,9 @@ export function RichTextEditor({ content, onChange }: Props) {
         {/* Color */}
         <Popover>
           <PopoverTrigger
-            render={<Button type="button" variant="ghost" size="icon" className="h-7 w-7" title="颜色" />}
+            render={<Button type="button" variant="ghost" size="icon" className="h-6 w-6" title="颜色" />}
           >
-            <Palette className="h-3.5 w-3.5" />
+            <Palette className="h-3 w-3" />
           </PopoverTrigger>
           <PopoverContent className="w-auto p-2" align="start">
             <div className="grid grid-cols-5 gap-1">
@@ -198,7 +198,7 @@ function FontSizeToolbar({
             type="button"
             title={isDefault ? "默认字号" : `${label}px`}
             className={cn(
-              "h-6 min-w-7 rounded px-1 text-xs tabular-nums transition-colors",
+              "h-5 min-w-6 rounded px-1 text-[11px] tabular-nums transition-colors",
               active
                 ? "bg-muted font-medium text-foreground"
                 : "text-muted-foreground hover:bg-muted/70",
@@ -222,11 +222,11 @@ function ToolBtn({ active, onClick, icon: Icon, title }: { active: boolean; onCl
       type="button"
       variant={active ? "secondary" : "ghost"}
       size="icon"
-      className="h-7 w-7"
+      className="h-6 w-6"
       onClick={onClick}
       title={title}
     >
-      <Icon className="h-3.5 w-3.5" />
+      <Icon className="h-3 w-3" />
     </Button>
   );
 }

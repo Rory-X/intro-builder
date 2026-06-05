@@ -477,25 +477,25 @@ export default function EditorClient({ id, initialTitle, initialTemplate, initia
         <TooltipProvider>
         <div
           data-testid="editor-toolbar"
-          className="flex items-center gap-1.5 px-4 py-2"
+          className="flex items-center gap-1.5 px-4 pb-1.5 pt-0.5"
         >
           {/* ── 左组：导航 + 工具 ── */}
           <a
             href={backHref}
-            className="inline-flex shrink-0 items-center gap-0.5 rounded-md px-2 py-1.5 text-sm text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+            className="inline-flex shrink-0 items-center gap-0.5 rounded-md px-2 py-1.5 text-[0.8rem] text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
           >
             <ChevronLeft className="h-4 w-4" />
             {backLabel}
           </a>
-          <Separator orientation="vertical" className="h-5" />
+          <div className="h-4 w-[2px] self-center rounded-full bg-border" />
           <Button
             size="sm"
-            variant="outline"
+            variant="ghost"
             onClick={() => setShowTemplatePanel((v) => !v)}
             aria-pressed={showTemplatePanel}
             className={cn(
               "gap-1.5",
-              showTemplatePanel && "border-primary bg-primary/5 text-primary",
+              showTemplatePanel && "bg-primary/5 text-primary",
             )}
           >
             <LayoutTemplate className="h-3.5 w-3.5" />
@@ -507,7 +507,7 @@ export default function EditorClient({ id, initialTitle, initialTemplate, initia
 
           {collabState?.isConnected && (
             <>
-              <Separator orientation="vertical" className="h-6" />
+              <div className="h-4 w-[2px] self-center rounded-full bg-border" />
               <VoiceChatControls
                 provider={collabState.provider}
                 enabled={collabState.presenceUsers.length >= 2}
@@ -520,7 +520,7 @@ export default function EditorClient({ id, initialTitle, initialTemplate, initia
           <div className="flex-1" />
 
           {/* ── 右组：简历名(铅笔编辑) + 保存图标 ── */}
-          <div className="flex shrink-0 items-center gap-1">
+          <div className="flex shrink-0 items-center gap-2.5">
             {isEditingTitle ? (
               <Input
                 ref={titleInputRef}
@@ -543,7 +543,7 @@ export default function EditorClient({ id, initialTitle, initialTemplate, initia
                 >
                   <PencilLine className="h-3 w-3" />
                 </button>
-                <span className="max-w-[200px] truncate text-sm font-medium text-foreground">
+                <span className="max-w-[200px] truncate text-[0.8rem] font-medium text-foreground">
                   {title || "未命名简历"}
                 </span>
               </>
@@ -582,9 +582,9 @@ export default function EditorClient({ id, initialTitle, initialTemplate, initia
             </Tooltip>
           </div>
 
-          <Separator orientation="vertical" className="h-5" />
+          <div className="h-4 w-[2px] self-center rounded-full bg-border" />
           <CompletenessScore />
-          <Separator orientation="vertical" className="h-5" />
+          <div className="h-4 w-[2px] self-center rounded-full bg-border" />
 
           {/* ── 分享：icon + popover(链接可复制) ── */}
           <Popover>
@@ -604,26 +604,26 @@ export default function EditorClient({ id, initialTitle, initialTemplate, initia
             >
               {isTogglingShare ? <Loader2 className="h-4 w-4 animate-spin" /> : <Share2 className="h-4 w-4" />}
             </PopoverTrigger>
-            <PopoverContent align="end" className="w-80">
+            <PopoverContent align="end" className="w-56">
               {isPublic && publicSlug ? (
                 <>
                   <PopoverHeader>
-                    <PopoverTitle className="flex items-center gap-2">
+                    <PopoverTitle className="flex items-center gap-2 text-sm">
                       <span className="h-2 w-2 rounded-full bg-emerald-500" />
                       公开分享已开启
                     </PopoverTitle>
-                    <PopoverDescription>任何人凭此链接可查看只读简历（不可编辑）。</PopoverDescription>
+                    <PopoverDescription className="text-xs">任何人凭此链接可查看只读简历（不可编辑）。</PopoverDescription>
                   </PopoverHeader>
-                  <div className="flex items-center overflow-hidden rounded-md border border-border bg-muted/40">
+                  <div className="flex items-center overflow-hidden rounded-lg border border-border bg-muted/40">
                     <input
                       readOnly
                       value={shareUrl}
-                      className="min-w-0 flex-1 truncate bg-transparent px-2.5 py-2 text-xs text-muted-foreground outline-none"
+                      className="min-w-0 flex-1 truncate bg-transparent px-2.5 py-1.5 text-xs text-muted-foreground outline-none"
                     />
                     <button
                       type="button"
                       onClick={onCopyShareLink}
-                      className="flex h-9 shrink-0 items-center gap-1 border-l border-border px-3 text-xs font-medium text-primary transition-colors hover:bg-accent"
+                      className="flex h-8 shrink-0 items-center gap-1 border-l border-border px-2.5 text-xs font-medium text-primary transition-colors hover:bg-accent"
                     >
                       <Copy className="h-3.5 w-3.5" />
                       复制
@@ -634,7 +634,7 @@ export default function EditorClient({ id, initialTitle, initialTemplate, initia
                     size="sm"
                     onClick={onToggleShare}
                     disabled={isTogglingShare}
-                    className="w-full text-destructive hover:text-destructive"
+                    className="w-full text-xs text-destructive hover:text-destructive"
                   >
                     {isTogglingShare ? "处理中…" : "关闭分享"}
                   </Button>
@@ -642,14 +642,14 @@ export default function EditorClient({ id, initialTitle, initialTemplate, initia
               ) : (
                 <>
                   <PopoverHeader>
-                    <PopoverTitle>公开分享</PopoverTitle>
-                    <PopoverDescription>开启后生成只读链接，任何人可凭链接查看你的简历。</PopoverDescription>
+                    <PopoverTitle className="text-sm">公开分享</PopoverTitle>
+                    <PopoverDescription className="text-xs">开启后生成只读链接，任何人可凭链接查看你的简历。</PopoverDescription>
                   </PopoverHeader>
                   <Button
                     size="sm"
                     onClick={onToggleShare}
                     disabled={isTogglingShare}
-                    className="w-full gap-1.5"
+                    className="w-full gap-1.5 text-xs"
                   >
                     {isTogglingShare ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Share2 className="h-3.5 w-3.5" />}
                     开启分享
@@ -697,7 +697,7 @@ export default function EditorClient({ id, initialTitle, initialTemplate, initia
           <div className="relative min-w-0 border-r" style={{ flex: `0 0 ${splitPercent}%` }}>
             <div
               ref={editorPanelRef}
-              className="thin-scrollbar h-full space-y-3 overflow-y-auto bg-card p-4"
+              className="thin-scrollbar editor-panel h-full space-y-2.5 overflow-y-auto bg-card p-3.5"
             >
               <div className={cn(
                 "rounded-lg transition-all duration-500",
@@ -743,6 +743,7 @@ export default function EditorClient({ id, initialTitle, initialTemplate, initia
             <div className="h-8 w-1 rounded-full bg-border transition-all duration-200 group-hover:h-12 group-hover:bg-muted-foreground/50 group-active:bg-primary/60" />
           </div>
           <div
+            data-preview-scroll-pane=""
             className="thin-scrollbar min-w-0 overflow-auto overscroll-contain bg-muted p-6"
             style={{ flex: `1 1 ${100 - splitPercent}%` }}
           >

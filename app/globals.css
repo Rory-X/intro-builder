@@ -324,3 +324,26 @@
 .animate-mesh-breathe {
   animation: mesh-breathe 6s ease-in-out infinite;
 }
+
+/* Editor panel: compact typography matching editor-hifi.html prototype */
+.editor-panel {
+  font-size: 14px;
+}
+.editor-panel [data-slot="label"] {
+  font-size: 12px;
+  font-weight: 500;
+}
+.editor-panel [data-slot="input"],
+.editor-panel textarea {
+  font-size: 13.5px;
+  height: 38px;
+  border-radius: 6px;
+  background: white;
+}
+.editor-panel textarea {
+  height: auto;
+}
+:is(.dark) .editor-panel [data-slot="input"],
+:is(.dark) .editor-panel textarea {
+  background: var(--input);
+}
