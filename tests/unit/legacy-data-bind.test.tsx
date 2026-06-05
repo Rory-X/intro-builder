@@ -5,6 +5,7 @@ import { describe, it, expect } from 'vitest';
 import { SlotRenderer } from '@/lib/templates/uploaded/html-slot-renderer';
 import { render } from '@testing-library/react';
 import type { ResumeContent } from '@/lib/resume-schema';
+import { emptyDoc } from '@/lib/tiptap-types';
 
 const mockContent: ResumeContent = {
   basics: {
@@ -18,6 +19,12 @@ const mockContent: ResumeContent = {
     status: '在职',
     summary: '',
   },
+  education: [],
+  experience: [],
+  projects: [],
+  research: [],
+  skills: emptyDoc(),
+  custom: [],
   sectionOrder: [],
 };
 
