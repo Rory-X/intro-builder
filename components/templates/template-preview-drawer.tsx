@@ -112,7 +112,7 @@ export function TemplatePreviewDrawer({
             <div className="mx-auto max-w-[600px]">
               {resolved ? (
                 <div className="overflow-hidden rounded-md bg-white shadow-md ring-1 ring-border">
-                  <TemplateThumbnail forceMount>
+                  <TemplateThumbnail forceMount fit="contain">
                     <ClientTemplateRenderFromSerializable
                       resolved={resolved}
                       content={previewContent}
