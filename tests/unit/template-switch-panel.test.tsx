@@ -31,6 +31,7 @@ function renderPanel(overrides: Partial<React.ComponentProps<typeof TemplateSwit
   render(
     <TemplateSwitchPanel
       favorites={favorites}
+      recent={favorites}
       currentTemplateId="professional"
       pendingTemplateId={null}
       previewContent={demoResume}

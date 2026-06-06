@@ -24,7 +24,6 @@ import { ResearchEditor } from "@/components/editor/research-editor";
 import { SkillsEditor } from "@/components/editor/skills-editor";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { Separator } from "@/components/ui/separator";
 import { Loader2, Share2, PanelRightClose, PanelRightOpen, MessageSquare, LayoutTemplate, ChevronLeft, PencilLine, CloudCheck, Copy, CircleAlert } from "lucide-react";
 import { Popover, PopoverContent, PopoverDescription, PopoverHeader, PopoverTitle, PopoverTrigger } from "@/components/ui/popover";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
@@ -200,6 +199,19 @@ export default function EditorClient({ id, initialTitle, initialTemplate, initia
     }
     return items;
   }, [allTemplates, favoritedTemplateIds, uploadedById]);
+
+  const recentTemplateItems = useMemo<TemplatePanelItem[]>(() => {
+    const items: TemplatePanelItem[] = [];
+    // allTemplates 按 createdAt 升序，倒序遍历取最新 20 条
+    for (let i = allTemplates.length - 1; i >= 0 && items.length < 20; i--) {
+      const t = allTemplates[i];
+      const up = uploadedById.get(t.id);
+      if (!up) continue;
+      items.push({ id: t.id, name: t.name, resolved: uploadedTemplateToSerializable(t.id, up) });
+    }
+    return items;
+  }, [allTemplates, uploadedById]);
+
   const persistResume = useCallback(
     async (content: ResumeContent, resumeTitle: string) => {
       await saveResume(id, content, resumeTitle);
@@ -659,7 +671,7 @@ export default function EditorClient({ id, initialTitle, initialTemplate, initia
             </PopoverContent>
           </Popover>
 
-          <InviteCollabDialog resumeId={id} onSessionCreated={(sid) => setCollabSessionId(sid)} />
+          <InviteCollabDialog resumeId={id} onSessionCreated={(sid) => setCollabSessionId(sid)} isActive={collabSessionId !== null} />
           <ExportButton
             resumeId={id}
             filename={title}
@@ -697,42 +709,48 @@ export default function EditorClient({ id, initialTitle, initialTemplate, initia
           <div className="relative min-w-0 border-r" style={{ flex: `0 0 ${splitPercent}%` }}>
             <div
               ref={editorPanelRef}
-              className="thin-scrollbar editor-panel h-full space-y-1.5 overflow-y-auto bg-card p-2.5"
+              className="thin-scrollbar editor-panel h-full overflow-y-auto overflow-x-hidden bg-background p-3.5"
             >
-              <div className={cn(
-                "rounded-lg transition-all duration-500",
-                collabSync.highlightedFields.has("basics") && "ring-2 ring-violet-400/60 bg-violet-50/30 dark:bg-violet-950/20"
-              )}>
-                <BasicsEditor />
-              </div>
-              {sectionOrder.filter(k => k !== "basics").map((key) => (
-                <div key={key} className={cn(
+              <div className="space-y-4 [zoom:1.18]">
+                <div className={cn(
                   "rounded-lg transition-all duration-500",
-                  collabSync.highlightedFields.has(key) && "ring-2 ring-violet-400/60 bg-violet-50/30 dark:bg-violet-950/20"
+                  collabSync.highlightedFields.has("basics") && "ring-2 ring-violet-400/60 bg-violet-50/30 dark:bg-violet-950/20"
                 )}>
-                  <SectionWrapper id={key}>
-                    {key === "experience" && <ExperienceEditor />}
-                    {key === "education" && <EducationEditor />}
-                    {key === "projects" && <ProjectsEditor />}
-                    {key === "research" && <ResearchEditor />}
-                    {key === "skills" && <SkillsEditor />}
-                    {isCustomSection(key) && <CustomSectionEditor sectionId={key} />}
-                  </SectionWrapper>
+                  <BasicsEditor />
                 </div>
-              ))}
+                {sectionOrder.filter(k => k !== "basics").map((key) => (
+                  <div key={key} className={cn(
+                    "rounded-lg transition-all duration-500",
+                    collabSync.highlightedFields.has(key) && "ring-2 ring-violet-400/60 bg-violet-50/30 dark:bg-violet-950/20"
+                  )}>
+                    <SectionWrapper id={key}>
+                      {key === "experience" && <ExperienceEditor />}
+                      {key === "education" && <EducationEditor />}
+                      {key === "projects" && <ProjectsEditor />}
+                      {key === "research" && <ResearchEditor />}
+                      {key === "skills" && <SkillsEditor />}
+                      {isCustomSection(key) && <CustomSectionEditor sectionId={key} />}
+                    </SectionWrapper>
+                  </div>
+                ))}
+              </div>
             </div>
             {/* 模板面板：覆盖左侧表单列（右侧预览常驻可见，换模板实时看效果）。
-                表单不卸载（仅被遮住），保留编辑状态与滚动位置。 */}
+                表单不卸载（仅被遮住），保留编辑状态与滚动位置。
+                点击右侧预览区域(backdrop)关闭面板。 */}
             {showTemplatePanel && (
-              <TemplateSwitchPanel
-                className="absolute inset-0 z-20"
-                favorites={favoriteTemplateItems}
-                currentTemplateId={template}
-                pendingTemplateId={pendingTemplateId}
-                previewContent={form.getValues() as ResumeContent}
-                onApply={changeTemplate}
-                onClose={() => setShowTemplatePanel(false)}
-              />
+              <>
+                <TemplateSwitchPanel
+                  className="absolute inset-0 z-20"
+                  favorites={favoriteTemplateItems}
+                  recent={recentTemplateItems}
+                  currentTemplateId={template}
+                  pendingTemplateId={pendingTemplateId}
+                  previewContent={form.getValues() as ResumeContent}
+                  onApply={changeTemplate}
+                  onClose={() => setShowTemplatePanel(false)}
+                />
+              </>
             )}
           </div>
           {/* Resize handle */}
@@ -746,6 +764,7 @@ export default function EditorClient({ id, initialTitle, initialTemplate, initia
             data-preview-scroll-pane=""
             className="thin-scrollbar min-w-0 overflow-auto overscroll-contain bg-muted p-6"
             style={{ flex: `1 1 ${100 - splitPercent}%` }}
+            onClick={showTemplatePanel ? () => setShowTemplatePanel(false) : undefined}
           >
             <LivePreview ref={previewRootRef} resolvedTemplate={resolvedTemplate} />
             {/* Annotation highlights on preview (when collab active) */}
