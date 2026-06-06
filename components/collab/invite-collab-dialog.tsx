@@ -5,13 +5,15 @@ import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Input } from "@/components/ui/input";
 import { Copy, Check, Users, Loader2 } from "lucide-react";
+import { cn } from "@/lib/utils";
 
 type Props = {
   resumeId: string;
   onSessionCreated: (sessionId: string) => void;
+  isActive?: boolean;
 };
 
-export function InviteCollabDialog({ resumeId, onSessionCreated }: Props) {
+export function InviteCollabDialog({ resumeId, onSessionCreated, isActive = false }: Props) {
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const [inviteUrl, setInviteUrl] = useState("");
@@ -60,7 +62,7 @@ export function InviteCollabDialog({ resumeId, onSessionCreated }: Props) {
   return (
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger
-        render={<Button variant="ghost" size="icon" className="h-8 w-8" title="邀请协作" aria-label="邀请协作" />}
+        render={<Button variant="ghost" size="icon" className={cn("h-8 w-8", isActive && "bg-primary/10 text-primary hover:bg-primary/15")} title="邀请协作" aria-label="邀请协作" />}
       >
         <Users className="h-4 w-4" />
       </PopoverTrigger>

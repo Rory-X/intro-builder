@@ -327,24 +327,24 @@
 
 /* Editor panel: compact typography matching editor-redesign-v3.html prototype */
 .editor-panel {
-  font-size: 13px;
+  font-size: 15px;
 }
 .editor-panel [data-slot="label"] {
-  font-size: 11px;
+  font-size: 13px;
   font-weight: 400;
 }
 .editor-panel [data-slot="input"],
 .editor-panel textarea {
-  font-size: 12.5px;
-  height: 30px;
-  padding: 0 8px;
-  border-radius: 5px;
+  font-size: 14.5px;
+  height: 36px;
+  padding: 0 10px;
+  border-radius: 6px;
   background: white;
 }
 .editor-panel textarea {
   height: auto;
-  min-height: 48px;
-  padding: 6px 8px;
+  min-height: 56px;
+  padding: 7px 10px;
 }
 :is(.dark) .editor-panel [data-slot="input"],
 :is(.dark) .editor-panel textarea {

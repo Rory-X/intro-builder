@@ -348,8 +348,8 @@ describe("SlotRenderer — profile contacts loop", () => {
     });
     expect(container.querySelector("h1")?.textContent).toBe("张三");
     const contacts = Array.from(container.querySelectorAll(".contact")).map((el) => el.textContent);
-    expect(contacts).toEqual(["138", "z@example.com", "github.com/z"]);
-    expect(container.querySelectorAll("svg.contact-icon")).toHaveLength(3);
+    expect(contacts).toEqual(["138", "z@example.com", "北京", "github.com/z"]);
+    expect(container.querySelectorAll("svg.contact-icon")).toHaveLength(4);
   });
 });
 
@@ -685,6 +685,7 @@ describe("SlotRenderer — item fields fixture", () => {
     expect(metaText).not.toContain("深圳");
     expect(metaText).not.toContain("广州");
   });
+
 });
 
 describe("SlotRenderer — basics 头部自动补 data-pagination-header", () => {

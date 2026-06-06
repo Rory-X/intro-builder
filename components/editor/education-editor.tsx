@@ -9,6 +9,7 @@ import type { ResumeContent } from "@/lib/resume-schema";
 import { monitorForElements } from "@atlaskit/pragmatic-drag-and-drop/element/adapter";
 import { ItemWrapper, ItemSummary } from "./item-wrapper";
 import { SectionEditorHeader } from "./section-editor-header";
+import { cn } from "@/lib/utils";
 
 export function EducationEditor() {
   const { register, control, watch, setValue } = useFormContext<ResumeContent>();
@@ -44,8 +45,12 @@ export function EducationEditor() {
           onAdd={() => { append({ school: "", degree: "", major: "", location: "", start: "", end: "", gpa: "", highlights: emptyDoc() }); setIsOpen(true); }}
         />
       </div>
-      {isOpen && (
-        <div className="space-y-2.5 px-4 pb-4">
+      <div className={cn(
+        "grid transition-all duration-300 ease-out",
+        isOpen ? "grid-rows-[1fr] opacity-100" : "grid-rows-[0fr] opacity-0",
+      )}>
+        <div className="overflow-hidden">
+          <div className="space-y-4 px-3.5 pb-3.5">
           {fields.map((f, idx) => {
             const school = watch(`education.${idx}.school` as const);
             const sub = [watch(`education.${idx}.degree` as const), watch(`education.${idx}.major` as const)].filter(Boolean).join(" · ");
@@ -58,7 +63,7 @@ export function EducationEditor() {
               onDelete={() => remove(idx)}
               summary={<ItemSummary title={school} parts={[sub]} />}
             >
-              <div className="space-y-3">
+              <div className="space-y-2.5">
                 <div className="grid grid-cols-2 gap-x-2 gap-y-[5px]">
                   <div data-testid="education-school-field" className="col-span-2 flex flex-col gap-1.5"><Label>学校</Label><Input {...register(`education.${idx}.school` as const)} /></div>
                   <div className="flex flex-col gap-1.5"><Label>学历</Label><Input {...register(`education.${idx}.degree` as const)} /></div>
@@ -81,8 +86,9 @@ export function EducationEditor() {
             </ItemWrapper>
             );
           })}
+          </div>
         </div>
-      )}
+      </div>
     </section>
   );
 }

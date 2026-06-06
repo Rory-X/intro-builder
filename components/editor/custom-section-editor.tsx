@@ -34,7 +34,7 @@ export function CustomSectionEditor({ sectionId }: Props) {
         />
       </div>
       {isOpen && (
-        <div className="space-y-3 px-4 pb-4">
+        <div className="space-y-2.5 px-3.5 pb-3.5">
           <div className="flex flex-col gap-1.5">
             <Label>模块标题</Label>
             <Input

@@ -9,6 +9,7 @@ import type { ResumeContent } from "@/lib/resume-schema";
 import { monitorForElements } from "@atlaskit/pragmatic-drag-and-drop/element/adapter";
 import { ItemWrapper, ItemSummary } from "./item-wrapper";
 import { SectionEditorHeader } from "./section-editor-header";
+import { cn } from "@/lib/utils";
 
 export function ResearchEditor() {
   const { register, control, watch, setValue } = useFormContext<ResumeContent>();
@@ -44,8 +45,12 @@ export function ResearchEditor() {
           onAdd={() => { append({ name: "", role: "", start: "", end: "", link: "", content: emptyDoc() }); setIsOpen(true); }}
         />
       </div>
-      {isOpen && (
-        <div className="space-y-2.5 px-4 pb-4">
+      <div className={cn(
+        "grid transition-all duration-300 ease-out",
+        isOpen ? "grid-rows-[1fr] opacity-100" : "grid-rows-[0fr] opacity-0",
+      )}>
+        <div className="overflow-hidden">
+        <div className="space-y-4 px-3.5 pb-3.5">
           {fields.map((f, idx) => {
             const name = watch(`research.${idx}.name` as const);
             const role = watch(`research.${idx}.role` as const);
@@ -58,9 +63,9 @@ export function ResearchEditor() {
               onDelete={() => remove(idx)}
               summary={<ItemSummary title={name} parts={[role]} />}
             >
-              <div className="space-y-3">
+              <div className="space-y-2.5">
                 <div className="grid grid-cols-2 gap-x-2 gap-y-[5px]">
-                  <div className="flex flex-col gap-1.5"><Label>课题名</Label><Input {...register(`research.${idx}.name` as const)} /></div>
+                  <div className="col-span-2 flex flex-col gap-1.5"><Label>课题名</Label><Input {...register(`research.${idx}.name` as const)} /></div>
                   <div className="flex flex-col gap-1.5"><Label>角色</Label><Input {...register(`research.${idx}.role` as const)} /></div>
                   <div className="flex flex-col gap-1.5"><Label>开始</Label><Input {...register(`research.${idx}.start` as const)} /></div>
                   <div className="flex flex-col gap-1.5"><Label>结束</Label><Input {...register(`research.${idx}.end` as const)} /></div>
@@ -82,8 +87,9 @@ export function ResearchEditor() {
             </ItemWrapper>
             );
           })}
+          </div>
         </div>
-      )}
+      </div>
     </section>
   );
 }

@@ -1,7 +1,7 @@
 "use client";
 import { useRef, useEffect, useState } from "react";
 import { draggable, dropTargetForElements } from "@atlaskit/pragmatic-drag-and-drop/element/adapter";
-import { GripVertical, ChevronRight, Trash2 } from "lucide-react";
+import { Menu, ChevronRight, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 type Props = {
@@ -23,11 +23,11 @@ export function ItemSummary({ title, parts }: { title?: string; parts?: (string 
   const rest = (parts ?? []).filter(Boolean) as string[];
   return (
     <span className="flex min-w-0 items-center gap-1.5">
-      <span className="truncate font-medium text-foreground">{title || "未填写"}</span>
+      <span className="truncate text-[13.5px] font-semibold leading-none text-foreground">{title || "未填写"}</span>
       {rest.map((p, i) => (
-        <span key={i} className="flex shrink-0 items-center gap-1.5 text-muted-foreground">
-          <span className="text-[10px] leading-none">·</span>
-          <span className="max-w-[150px] truncate">{p}</span>
+        <span key={i} className="flex min-w-0 shrink items-center gap-1.5 text-muted-foreground">
+          <span className="shrink-0 text-[9px] leading-none">·</span>
+          <span className="max-w-[150px] truncate text-[12.5px] leading-none">{p}</span>
         </span>
       ))}
     </span>
@@ -82,7 +82,7 @@ export function ItemWrapper({
         className={`flex gap-2 transition-all duration-200 ${isDragging ? "opacity-40 scale-[0.98]" : ""} ${isDragOver ? "rounded-lg shadow-sm ring-2 ring-primary/30" : ""}`}
       >
         <button ref={handleRef} type="button" className="mt-4 cursor-grab self-start rounded p-0.5 transition-colors duration-200 hover:bg-muted active:cursor-grabbing">
-          <GripVertical className="h-4 w-4 text-muted-foreground" />
+          <Menu className="h-4 w-4 text-muted-foreground" />
         </button>
         <div className="flex-1">{children}</div>
       </div>
@@ -94,24 +94,24 @@ export function ItemWrapper({
     <div
       ref={ref}
       className={cn(
-        "overflow-hidden rounded-lg border border-border/60 bg-card-2 transition-all duration-200",
-        isDragging && "scale-[0.98] opacity-40",
-        isDragOver && "ring-2 ring-primary/30",
+        "overflow-hidden rounded-[9px] border border-border/70 bg-muted/50 transition-[transform,opacity,box-shadow] duration-300 ease-out",
+        isDragging && "scale-[0.97] opacity-40 shadow-lg",
+        isDragOver && "ring-2 ring-primary/30 translate-y-0.5",
       )}
     >
-      <div className="group flex items-center gap-0.5 pr-2">
+      <div className="group flex min-h-[34px] cursor-grab items-center gap-0.5 pr-2 transition-colors hover:bg-foreground/[0.03] active:cursor-grabbing">
         <button
           ref={handleRef}
           type="button"
           aria-label="拖拽排序"
-          className="flex cursor-grab items-center self-stretch px-1.5 text-muted-foreground transition-colors hover:text-foreground active:cursor-grabbing"
+          className="flex w-6 cursor-grab items-center justify-center self-stretch text-muted-foreground transition-colors hover:text-foreground active:cursor-grabbing"
         >
-          <GripVertical className="h-4 w-4" />
+          <Menu className="h-[15px] w-[15px]" />
         </button>
         <button
           type="button"
           onClick={() => setIsOpen((o) => !o)}
-          className="flex min-w-0 flex-1 items-center gap-2 py-2.5 text-left text-sm"
+          className="flex min-w-0 flex-1 items-center gap-1.5 py-1.5 text-left"
         >
           <ChevronRight className={cn("h-4 w-4 shrink-0 text-muted-foreground transition-transform duration-200", isOpen && "rotate-90")} />
           <span className="min-w-0 flex-1 truncate">{summary}</span>
@@ -121,14 +121,22 @@ export function ItemWrapper({
             type="button"
             onClick={onDelete}
             aria-label="删除此条"
-            className="shrink-0 rounded p-1.5 text-muted-foreground opacity-0 transition-colors hover:bg-destructive/10 hover:text-destructive group-hover:opacity-100"
+            className="ml-1 flex h-[26px] w-[26px] shrink-0 items-center justify-center rounded-md text-muted-foreground opacity-0 transition-colors hover:bg-destructive/10 hover:text-destructive group-hover:opacity-100"
           >
-            <Trash2 className="h-4 w-4" />
+            <X className="h-3.5 w-3.5" />
           </button>
         )}
       </div>
-      {/* 正文:折叠时用 hidden 隐藏而非卸载 —— 保住 TipTap 实例 / RHF register / 预览 useWatch */}
-      <div className={cn("border-t border-border/60 p-4", !isOpen && "hidden")}>{children}</div>
+      <div
+        className={cn(
+          "grid transition-all duration-300 ease-out",
+          isOpen ? "grid-rows-[1fr] opacity-100" : "grid-rows-[0fr] opacity-0",
+        )}
+      >
+        <div className="overflow-hidden">
+          <div className="border-t border-border/60 px-3 pb-3 pt-2">{children}</div>
+        </div>
+      </div>
     </div>
   );
 }

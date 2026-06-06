@@ -344,6 +344,9 @@ export function deriveContacts(content: ResumeContent): ContactView[] {
     basics.email
       ? { type: "email", icon: "Mail", label: basics.email, href: `mailto:${basics.email}` }
       : null,
+    basics.location
+      ? { type: "location", icon: "MapPin", label: basics.location, href: "" }
+      : null,
     basics.website
       ? {
           type: "website",

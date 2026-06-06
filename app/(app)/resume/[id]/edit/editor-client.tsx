@@ -145,6 +145,7 @@ export default function EditorClient({ id, initialTitle, initialTemplate, initia
   const [isExportingImage, setIsExportingImage] = useState(false);
   const [paginationData, setPaginationData] = useState<{ pageBreaks: number[]; totalHeight: number } | null>(null);
   const [pendingTemplateId, setPendingTemplateId] = useState<TemplateId | null>(null);
+  const [activeSection, setActiveSection] = useState<string | null>("basics");
   const [showTemplatePanel, setShowTemplatePanel] = useState(false);
   const [isTogglingShare, setIsTogglingShare] = useState(false);
   const [isPending, startTransition] = useTransition();
@@ -711,19 +712,19 @@ export default function EditorClient({ id, initialTitle, initialTemplate, initia
               ref={editorPanelRef}
               className="thin-scrollbar editor-panel h-full overflow-y-auto overflow-x-hidden bg-background p-3.5"
             >
-              <div className="space-y-4 [zoom:1.18]">
+              <div className="space-y-4">
                 <div className={cn(
                   "rounded-lg transition-all duration-500",
                   collabSync.highlightedFields.has("basics") && "ring-2 ring-violet-400/60 bg-violet-50/30 dark:bg-violet-950/20"
-                )}>
-                  <BasicsEditor />
+                )} onClick={() => setActiveSection("basics")}>
+                  <BasicsEditor isActive={activeSection === "basics"} />
                 </div>
                 {sectionOrder.filter(k => k !== "basics").map((key) => (
                   <div key={key} className={cn(
                     "rounded-lg transition-all duration-500",
                     collabSync.highlightedFields.has(key) && "ring-2 ring-violet-400/60 bg-violet-50/30 dark:bg-violet-950/20"
-                  )}>
-                    <SectionWrapper id={key}>
+                  )} onClick={() => setActiveSection(key)}>
+                    <SectionWrapper id={key} isActive={activeSection === key}>
                       {key === "experience" && <ExperienceEditor />}
                       {key === "education" && <EducationEditor />}
                       {key === "projects" && <ProjectsEditor />}

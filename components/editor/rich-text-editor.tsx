@@ -6,7 +6,6 @@ import {
   Bold, Italic, Underline as UnderlineIcon, Link, List, ListOrdered,
   AlignLeft, AlignCenter, AlignRight, Palette,
 } from "lucide-react";
-import { Button } from "@/components/ui/button";
 import { Popover, PopoverTrigger, PopoverContent } from "@/components/ui/popover";
 import {
   applyRichTextFontSize,
@@ -66,7 +65,7 @@ export function RichTextEditor({ content, onChange }: Props) {
     editorProps: {
       attributes: {
         class: cn(
-          "min-h-[56px] resize-y overflow-auto bg-white px-3 py-2 text-[13.5px] focus:outline-none dark:bg-card",
+          "min-h-[56px] resize-y overflow-auto bg-white px-2.5 py-2 text-[13.5px] leading-[1.6] focus:outline-none dark:bg-muted/50 dark:text-foreground",
           RICH_TEXT_EDITOR_PROSE_CLASS,
         ),
       },
@@ -88,8 +87,8 @@ export function RichTextEditor({ content, onChange }: Props) {
   if (!editor) return null;
 
   return (
-    <div className="overflow-hidden rounded-lg border bg-white transition-colors duration-200 focus-within:ring-2 focus-within:ring-ring/30 dark:bg-card">
-      <div className="flex flex-wrap items-center gap-0.5 border-b bg-muted/30 px-1.5 py-1">
+    <div className="mt-1 overflow-hidden rounded-md border border-border/80 bg-white transition-colors duration-200 focus-within:ring-2 focus-within:ring-ring/25 dark:bg-card">
+      <div className="thin-scrollbar flex flex-wrap items-center gap-1 border-b bg-white px-1.5 py-1 dark:bg-card">
         {/* Basic formatting */}
         <ToolBtn active={editor.isActive("bold")} onClick={() => editor.chain().focus().toggleBold().run()} icon={Bold} title="粗体" />
         <ToolBtn active={editor.isActive("italic")} onClick={() => editor.chain().focus().toggleItalic().run()} icon={Italic} title="斜体" />
@@ -100,20 +99,20 @@ export function RichTextEditor({ content, onChange }: Props) {
           else editor.chain().focus().unsetLink().run();
         }} icon={Link} title="链接" />
 
-        <span className="mx-1 h-4 w-px bg-border/60" />
+        <ToolbarSeparator />
 
         {/* Lists */}
         <ToolBtn active={editor.isActive("bulletList")} onClick={() => editor.chain().focus().toggleBulletList().run()} icon={List} title="无序列表" />
         <ToolBtn active={editor.isActive("orderedList")} onClick={() => editor.chain().focus().toggleOrderedList().run()} icon={ListOrdered} title="有序列表" />
 
-        <span className="mx-1 h-4 w-px bg-border/60" />
+        <ToolbarSeparator />
 
         {/* Alignment */}
         <ToolBtn active={editor.isActive({ textAlign: "left" })} onClick={() => editor.chain().focus().setTextAlign("left").run()} icon={AlignLeft} title="左对齐" />
         <ToolBtn active={editor.isActive({ textAlign: "center" })} onClick={() => editor.chain().focus().setTextAlign("center").run()} icon={AlignCenter} title="居中" />
         <ToolBtn active={editor.isActive({ textAlign: "right" })} onClick={() => editor.chain().focus().setTextAlign("right").run()} icon={AlignRight} title="右对齐" />
 
-        <span className="mx-1 h-4 w-px bg-border/60" />
+        <ToolbarSeparator />
 
         <FontSizeToolbar
           editor={editor}
@@ -128,7 +127,13 @@ export function RichTextEditor({ content, onChange }: Props) {
         {/* Color */}
         <Popover>
           <PopoverTrigger
-            render={<Button type="button" variant="ghost" size="icon" className="h-6 w-6" title="颜色" />}
+            render={
+              <button
+                type="button"
+                className="flex h-[22px] w-[22px] shrink-0 items-center justify-center rounded-[5px] text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                title="颜色"
+              />
+            }
           >
             <Palette className="h-3 w-3" />
           </PopoverTrigger>
@@ -138,7 +143,7 @@ export function RichTextEditor({ content, onChange }: Props) {
                 <button
                   key={color}
                   type="button"
-                  className="h-6 w-6 rounded border border-border transition-transform hover:scale-110"
+                  className="h-5 w-5 rounded border border-border transition-transform hover:scale-110"
                   style={{ backgroundColor: color }}
                   onClick={() => editor.chain().focus().setColor(color).run()}
                   title={color}
@@ -183,7 +188,7 @@ function FontSizeToolbar({
 
   return (
     <div
-      className="flex items-center gap-0.5 rounded-md border border-border/60 bg-background p-0.5"
+      className="ml-0.5 flex shrink-0 items-center gap-px rounded-lg border border-border/60 bg-white p-0.5 dark:bg-card"
       role="group"
       aria-label="字号"
     >
@@ -198,7 +203,7 @@ function FontSizeToolbar({
             type="button"
             title={isDefault ? "默认字号" : `${label}px`}
             className={cn(
-              "h-5 min-w-6 rounded px-1 text-[11px] tabular-nums transition-colors",
+              "h-5 min-w-6 rounded-md px-1 text-[11px] tabular-nums transition-colors",
               active
                 ? "bg-muted font-medium text-foreground"
                 : "text-muted-foreground hover:bg-muted/70",
@@ -216,17 +221,24 @@ function FontSizeToolbar({
   );
 }
 
+function ToolbarSeparator() {
+  return <span className="mx-0.5 h-3 w-px shrink-0 bg-border/70" />;
+}
+
 function ToolBtn({ active, onClick, icon: Icon, title }: { active: boolean; onClick: () => void; icon: React.FC<{ className?: string }>; title: string }) {
   return (
-    <Button
+    <button
       type="button"
-      variant={active ? "secondary" : "ghost"}
-      size="icon"
-      className="h-6 w-6"
+      className={cn(
+        "flex h-[22px] w-[22px] shrink-0 items-center justify-center rounded-[5px] transition-colors",
+        active
+          ? "bg-muted text-foreground shadow-sm"
+          : "text-muted-foreground hover:bg-muted hover:text-foreground",
+      )}
       onClick={onClick}
       title={title}
     >
       <Icon className="h-3 w-3" />
-    </Button>
+    </button>
   );
 }

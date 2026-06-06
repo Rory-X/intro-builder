@@ -20,6 +20,7 @@ export type SectionMeta = {
 };
 
 export const SECTION_META: Record<string, SectionMeta> = {
+  basics: { icon: User, iconName: "User", label: "基础信息", color: "text-cyan-500" },
   experience: { icon: Briefcase, iconName: "Briefcase", label: "工作经历", color: "text-blue-500" },
   education: { icon: GraduationCap, iconName: "GraduationCap", label: "教育背景", color: "text-green-500" },
   projects: { icon: FolderGit2, iconName: "FolderGit2", label: "项目经历", color: "text-purple-500" },

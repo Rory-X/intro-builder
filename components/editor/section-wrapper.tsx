@@ -15,9 +15,10 @@ export function useSectionDragHandle() {
 type Props = {
   id: string;
   children: React.ReactNode;
+  isActive?: boolean;
 };
 
-export function SectionWrapper({ id, children }: Props) {
+export function SectionWrapper({ id, children, isActive }: Props) {
   const ref = useRef<HTMLDivElement>(null);
   const handleRef = useRef<HTMLDivElement>(null);
   const [isDragging, setIsDragging] = useState(false);
@@ -53,9 +54,10 @@ export function SectionWrapper({ id, children }: Props) {
       <div
         ref={ref}
         className={cn(
-          "overflow-hidden rounded-lg border bg-card transition-all duration-200",
+          "overflow-hidden rounded-xl border bg-card transition-all duration-200",
+          isActive ? "border-primary/60" : "border-border/70 hover:border-primary/40",
           isDragging && "scale-[0.99] opacity-50",
-          isDragOver && "ring-2 ring-primary/40 shadow-md shadow-primary/10",
+          isDragOver && "ring-2 ring-primary/40",
         )}
       >
         {children}

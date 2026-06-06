@@ -16,6 +16,7 @@ type Props = {
 
 // 字面 class 映射(Tailwind 不能识别动态拼接的类名,必须写全)
 const SECTION_COLOR: Record<string, { accent: string; iconBg: string; icon: string }> = {
+  basics: { accent: "bg-cyan-500", iconBg: "bg-cyan-500/10", icon: "text-cyan-500" },
   experience: { accent: "bg-blue-500", iconBg: "bg-blue-500/10", icon: "text-blue-500" },
   education: { accent: "bg-green-500", iconBg: "bg-green-500/10", icon: "text-green-500" },
   projects: { accent: "bg-purple-500", iconBg: "bg-purple-500/10", icon: "text-purple-500" },
@@ -33,20 +34,24 @@ export function SectionEditorHeader({ sectionKey, itemCount, isOpen, onToggle, o
   if (!meta) return null;
   const Icon = meta.icon;
   const c = SECTION_COLOR[sectionKey] ?? SECTION_COLOR.custom;
+  const isDraggable = Boolean(handleRef);
 
   return (
     <div
       ref={handleRef ?? undefined}
       onClick={onToggle}
-      className="flex cursor-grab select-none items-center gap-[7px] px-2.5 py-[9px] transition-colors hover:bg-muted/40 active:cursor-grabbing"
+      className={cn(
+        "flex select-none items-center gap-2.5 px-3.5 py-2.5 transition-colors hover:bg-muted/40",
+        isDraggable ? "cursor-grab active:cursor-grabbing" : "cursor-pointer",
+      )}
     >
-      <span className={cn("h-[18px] w-[3px] shrink-0 rounded-full", c.accent)} />
-      <span className={cn("flex h-[22px] w-[22px] shrink-0 items-center justify-center rounded-[5px]", c.iconBg)}>
-        <Icon className={cn("h-3.5 w-3.5", c.icon)} />
+      <span className={cn("h-5 w-[3px] shrink-0 rounded-full", c.accent)} />
+      <span className={cn("flex h-7 w-7 shrink-0 items-center justify-center rounded-lg", c.iconBg)}>
+        <Icon className={cn("h-4 w-4", c.icon)} />
       </span>
-      <span className="text-[13px] font-medium text-foreground">{meta.label}</span>
+      <span className="text-[14px] font-semibold leading-none text-foreground">{meta.label}</span>
       {itemCount > 0 && (
-        <span className="rounded-full bg-muted px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground">{itemCount}</span>
+        <span className="rounded-full bg-muted px-2 py-1 text-[11px] font-semibold leading-none text-muted-foreground">{itemCount}</span>
       )}
       <span className="ml-auto flex items-center gap-0.5">
         {addLabel && (
@@ -55,13 +60,15 @@ export function SectionEditorHeader({ sectionKey, itemCount, isOpen, onToggle, o
             size="sm"
             variant="ghost"
             onClick={(e) => { e.stopPropagation(); onAdd(); }}
-            className="h-7 gap-1 px-2 text-xs text-muted-foreground hover:text-foreground"
+            className="h-7 gap-1 px-2.5 text-[12px] font-medium text-muted-foreground hover:text-foreground"
           >
-            <Plus className="h-3.5 w-3.5" />
+            <Plus className="h-4 w-4" />
             {addLabel}
           </Button>
         )}
-        <ChevronDown className={cn("h-4 w-4 text-muted-foreground transition-transform duration-200", !isOpen && "-rotate-90")} />
+        <span className="flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground">
+          <ChevronDown className={cn("h-4 w-4 transition-transform duration-200", !isOpen && "-rotate-90")} />
+        </span>
       </span>
     </div>
   );

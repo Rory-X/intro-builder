@@ -8,6 +8,7 @@ import { emptyDoc } from "@/lib/tiptap-types";
 import type { ResumeContent } from "@/lib/resume-schema";
 import { monitorForElements } from "@atlaskit/pragmatic-drag-and-drop/element/adapter";
 import { ItemWrapper, ItemSummary } from "./item-wrapper";
+import { cn } from "@/lib/utils";
 import { SectionEditorHeader } from "./section-editor-header";
 
 export function ExperienceEditor() {
@@ -44,8 +45,12 @@ export function ExperienceEditor() {
           onAdd={() => { append({ company: "", title: "", start: "", end: "", location: "", content: emptyDoc() }); setIsOpen(true); }}
         />
       </div>
-      {isOpen && (
-        <div className="space-y-2.5 px-4 pb-4">
+      <div className={cn(
+        "grid transition-all duration-300 ease-out",
+        isOpen ? "grid-rows-[1fr] opacity-100" : "grid-rows-[0fr] opacity-0",
+      )}>
+        <div className="overflow-hidden">
+        <div className="space-y-4 px-3.5 pb-3.5">
           {fields.map((f, idx) => {
             const company = watch(`experience.${idx}.company` as const);
             const position = watch(`experience.${idx}.title` as const);
@@ -59,9 +64,9 @@ export function ExperienceEditor() {
               onDelete={() => remove(idx)}
               summary={<ItemSummary title={company} parts={[position, range]} />}
             >
-              <div className="space-y-3">
+              <div className="space-y-2.5">
                 <div className="grid grid-cols-2 gap-x-2 gap-y-[5px]">
-                  <div className="flex flex-col gap-1.5"><Label>公司</Label><Input {...register(`experience.${idx}.company` as const)} /></div>
+                  <div className="col-span-2 flex flex-col gap-1.5"><Label>公司</Label><Input {...register(`experience.${idx}.company` as const)} /></div>
                   <div className="flex flex-col gap-1.5"><Label>职位</Label><Input {...register(`experience.${idx}.title` as const)} /></div>
                   <div className="flex flex-col gap-1.5"><Label>城市</Label><Input {...register(`experience.${idx}.location` as const)} /></div>
                   <div className="flex flex-col gap-1.5"><Label>开始</Label><Input placeholder="2023.07" {...register(`experience.${idx}.start` as const)} /></div>
@@ -80,8 +85,9 @@ export function ExperienceEditor() {
             </ItemWrapper>
             );
           })}
+          </div>
         </div>
-      )}
+      </div>
     </section>
   );
 }
