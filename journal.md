@@ -2,6 +2,15 @@
 
 ---
 
+## 2026-06-06　模板 slot 协议梳理
+
+### 记录的问题
+- 当前 `SlotRenderer` 的模板协议同时支持 `basics.*` 与 `profile.*`，两者都读取 `ResumeContent.basics.*`。这对旧模板兼容有价值，但从分层与 MECE 看是重叠：`basics` 应属于表单/数据层，`profile` 才应属于模板 slot 层。
+- 建议后续在 template-studio skill 中只暴露一套 canonical 模板协议：个人信息用 `profile.*`（不含城市），城市与电话/邮箱/网站统一走 `profile.contacts` + `contact.*`，模块用 `section.*`，条目用 `item.*`。`basics.*` 可在 render 层保留兼容，但不再推荐给 AI 生成新模板。
+- 当前“用户表单填了但右侧模板不显示”的主要原因不是表单 schema 缺字段，而是数据库 `templates.html` 里部分模板没有插对应 slot。需要在 skill 里补完整 slot manifest 和 coverage 校验，尤其是 `item.location`、`item.meta`、`item.link`。
+
+---
+
 ## 2026-05-29　v2 渲染器头像图片绑定（feature/v2-avatar-img）
 
 ### 本次目标
