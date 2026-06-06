@@ -314,12 +314,33 @@ export const PaginatedPreview = forwardRef<HTMLDivElement, Props>(function Pagin
   const [measured, setMeasured] = useState(false);
   const debounceTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const applyZoomNow = useCallback((options?: { animateReset?: boolean }) => {
-    const effectiveZoom = baseScaleRef.current * userZoomRef.current;
-    const zoomedWidth = A4_WIDTH_PX * effectiveZoom;
+  const applyZoomNow = useCallback((options?: { animateReset?: boolean; anchor?: { clientX: number; clientY: number } }) => {
     const shell = zoomShellRef.current;
     const pages = visiblePagesRef.current;
     const indicator = zoomIndicatorRef.current;
+    const scrollPane = containerRef.current?.closest("[data-preview-scroll-pane]") as HTMLElement | null;
+
+    // Cursor-anchored zoom: capture the content point under the cursor as a
+    // FRACTION of the zoomed element BEFORE applying the new zoom. Fractions are
+    // invariant to zoom, so after reflow we put the same point back under the
+    // cursor by adjusting scroll. Reading real post-layout rects means we don't
+    // have to reason about centering (mx-auto) / padding — the geometry tells us.
+    // Guard on width/height > 0 so jsdom (all-zero rects) safely skips this path.
+    let anchorFrac: { fx: number; fy: number; clientX: number; clientY: number } | null = null;
+    if (options?.anchor && pages && scrollPane) {
+      const r0 = pages.getBoundingClientRect();
+      if (r0.width > 0 && r0.height > 0) {
+        anchorFrac = {
+          fx: clamp((options.anchor.clientX - r0.left) / r0.width, 0, 1),
+          fy: clamp((options.anchor.clientY - r0.top) / r0.height, 0, 1),
+          clientX: options.anchor.clientX,
+          clientY: options.anchor.clientY,
+        };
+      }
+    }
+
+    const effectiveZoom = baseScaleRef.current * userZoomRef.current;
+    const zoomedWidth = A4_WIDTH_PX * effectiveZoom;
 
     if (shell) {
       shell.style.width = `${zoomedWidth}px`;
@@ -346,14 +367,27 @@ export const PaginatedPreview = forwardRef<HTMLDivElement, Props>(function Pagin
       indicator.textContent = `${Math.round(userZoomRef.current * 100)}%`;
     }
 
-    const scrollPane = containerRef.current?.closest("[data-preview-scroll-pane]") as HTMLElement | null;
     if (scrollPane) {
       const maxScrollLeft = Math.max(0, scrollPane.scrollWidth - scrollPane.clientWidth);
-      scrollPane.scrollLeft = clamp(scrollPane.scrollLeft, 0, maxScrollLeft);
+      const maxScrollTop = Math.max(0, scrollPane.scrollHeight - scrollPane.clientHeight);
+      if (anchorFrac && pages) {
+        // Reading getBoundingClientRect here forces a synchronous reflow, so the
+        // rect reflects the zoom we just set (no transition on this path → final
+        // size is available immediately). Place the captured fraction point back
+        // under the cursor by shifting scroll the delta between where it landed
+        // and where the cursor is.
+        const r1 = pages.getBoundingClientRect();
+        const targetX = r1.left + anchorFrac.fx * r1.width;
+        const targetY = r1.top + anchorFrac.fy * r1.height;
+        scrollPane.scrollLeft = clamp(scrollPane.scrollLeft + (targetX - anchorFrac.clientX), 0, maxScrollLeft);
+        scrollPane.scrollTop = clamp(scrollPane.scrollTop + (targetY - anchorFrac.clientY), 0, maxScrollTop);
+      } else {
+        scrollPane.scrollLeft = clamp(scrollPane.scrollLeft, 0, maxScrollLeft);
+      }
     }
   }, []);
 
-  const scheduleZoom = useCallback((nextUserZoom: number, options?: { animateReset?: boolean }) => {
+  const scheduleZoom = useCallback((nextUserZoom: number, options?: { animateReset?: boolean; anchor?: { clientX: number; clientY: number } }) => {
     userZoomRef.current = clamp(nextUserZoom, 1, 4);
 
     if (zoomRafRef.current !== null) {
@@ -366,7 +400,7 @@ export const PaginatedPreview = forwardRef<HTMLDivElement, Props>(function Pagin
     });
   }, [applyZoomNow]);
 
-  const applyZoom = useCallback((nextUserZoom: number, options?: { animateReset?: boolean }) => {
+  const applyZoom = useCallback((nextUserZoom: number, options?: { animateReset?: boolean; anchor?: { clientX: number; clientY: number } }) => {
     userZoomRef.current = clamp(nextUserZoom, 1, 4);
     applyZoomNow(options);
   }, [applyZoomNow]);
@@ -456,7 +490,9 @@ export const PaginatedPreview = forwardRef<HTMLDivElement, Props>(function Pagin
       if (e.ctrlKey || e.metaKey) {
         e.preventDefault();
         const delta = -e.deltaY * 0.008;
-        scheduleZoom(userZoomRef.current + delta);
+        scheduleZoom(userZoomRef.current + delta, {
+          anchor: { clientX: e.clientX, clientY: e.clientY },
+        });
         return;
       }
 

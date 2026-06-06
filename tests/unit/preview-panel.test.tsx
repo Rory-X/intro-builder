@@ -91,4 +91,49 @@ describe("PreviewPanel", () => {
     expect(event.defaultPrevented).toBe(true);
     expect(scrollPane.scrollLeft).toBe(120);
   });
+
+  it("anchors ctrl/meta wheel zoom to the cursor by adjusting scroll", async () => {
+    const { exportRoot, scrollPane } = renderPreview();
+
+    // Mock the zoomed element's geometry to scale with its inline `zoom` (jsdom
+    // doesn't apply CSS zoom to layout). Origin at (0,0), base 794×1000 px → the
+    // rect grows exactly with the zoom factor, mirroring real browser behavior.
+    Object.defineProperty(exportRoot, "getBoundingClientRect", {
+      configurable: true,
+      value: () => {
+        const zoom = parseFloat(exportRoot.style.getPropertyValue("zoom") || "1");
+        return {
+          left: 0, top: 0,
+          width: 794 * zoom, height: 1000 * zoom,
+          right: 794 * zoom, bottom: 1000 * zoom,
+          x: 0, y: 0, toJSON: () => {},
+        } as DOMRect;
+      },
+    });
+    // Generous scroll range so the computed delta isn't clamped away.
+    Object.defineProperty(scrollPane, "clientWidth", { configurable: true, value: 400 });
+    Object.defineProperty(scrollPane, "scrollWidth", { configurable: true, value: 4000 });
+    Object.defineProperty(scrollPane, "clientHeight", { configurable: true, value: 400 });
+    Object.defineProperty(scrollPane, "scrollHeight", { configurable: true, value: 4000 });
+    scrollPane.scrollLeft = 0;
+    scrollPane.scrollTop = 0;
+
+    // Cursor at (100,100); deltaY=-100 → zoom ×1.8. The content point under the
+    // cursor must stay under it: targetPos = cursor × (newZoom/oldZoom) = 180,
+    // so scroll shifts by 180−100 = 80 on both axes (origin-anchored mock).
+    const event = new WheelEvent("wheel", {
+      bubbles: true, cancelable: true, ctrlKey: true, deltaY: -100,
+      clientX: 100, clientY: 100,
+    });
+
+    act(() => {
+      exportRoot.dispatchEvent(event);
+    });
+    await act(async () => {
+      await nextFrame();
+    });
+
+    expect(scrollPane.scrollLeft).toBe(80);
+    expect(scrollPane.scrollTop).toBe(80);
+  });
 });
