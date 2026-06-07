@@ -131,7 +131,11 @@ jobs:
           docker compose up -d --build --remove-orphans
           docker compose ps
           docker compose exec -T agent node -e 'fetch("http://127.0.0.1:8787/health").then(async r => { if (!r.ok) throw new Error(await r.text()); console.log(await r.text()); })' </dev/null
+          docker compose exec -T agent node -e 'fetch("http://127.0.0.1:8787/ready").then(async r => { if (!r.ok) throw new Error(await r.text()); console.log(await r.text()); })' </dev/null
           curl -kfsS --retry 12 --retry-delay 5 \
             --resolve "$AGENT_DOMAIN:443:127.0.0.1" \
             "https://$AGENT_DOMAIN$AGENT_PUBLIC_BASE_PATH/health"
+          curl -kfsS --retry 12 --retry-delay 5 \
+            --resolve "$AGENT_DOMAIN:443:127.0.0.1" \
+            "https://$AGENT_DOMAIN$AGENT_PUBLIC_BASE_PATH/ready"
           REMOTE

@@ -113,7 +113,7 @@ Deployment steps:
 5. Configure SSH from GitHub Secrets.
 6. Sync deploy files with `rsync`.
 7. Run `docker compose up -d --build --remove-orphans`.
-8. Verify `agent` direct health and Caddy local TLS health.
+8. Verify `agent` direct `/health` and `/ready`, then verify Caddy local TLS `/health` and `/ready`.
 
 Configured GitHub Secrets:
 
@@ -163,7 +163,7 @@ After the 2026-06-06 domain change, verified:
 - Server `.env`: `AGENT_SITE_ADDRESS=api.rory-x.me`, `AGENT_PUBLIC_BASE_PATH=/intro-builder/agent`.
 - `pnpm verify` passes locally after the domain/path change.
 - `docker compose ps`: `agent`, `caddy`, and `redis` are running.
-- Direct Agent health inside the server returns `200`.
+- Direct Agent `/health` and `/ready` inside the server return `200`.
 - `caddy adapt --config /etc/caddy/Caddyfile` confirms host `api.rory-x.me`, paths `/intro-builder/agent` and `/intro-builder/agent/*`, and `strip_path_prefix: /intro-builder/agent`.
 - Caddy logs show `certificate obtained successfully` for `api.rory-x.me`.
 - Public `https://api.rory-x.me/intro-builder/agent/health` returns `HTTP/2 200`.
