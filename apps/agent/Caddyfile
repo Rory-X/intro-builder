@@ -1,0 +1,16 @@
+{$AGENT_SITE_ADDRESS::80} {
+	encode zstd gzip
+
+	header {
+		X-Content-Type-Options nosniff
+		Referrer-Policy no-referrer
+	}
+
+	@agent path {$AGENT_PUBLIC_BASE_PATH:/intro-builder/agent} {$AGENT_PUBLIC_BASE_PATH:/intro-builder/agent}/*
+	handle @agent {
+		uri strip_prefix {$AGENT_PUBLIC_BASE_PATH:/intro-builder/agent}
+		reverse_proxy agent:8787
+	}
+
+	respond 404
+}

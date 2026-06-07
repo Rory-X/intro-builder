@@ -1,0 +1,141 @@
+name: Deploy Agent
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "apps/agent/**"
+      - "package.json"
+      - "pnpm-lock.yaml"
+      - "pnpm-workspace.yaml"
+      - ".dockerignore"
+      - ".github/workflows/deploy-agent.yml"
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-agent-production
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+env:
+  AGENT_DEPLOY_PATH: ${{ vars.AGENT_DEPLOY_PATH || '/opt/intro-agent' }}
+  AGENT_DOMAIN: ${{ vars.AGENT_DOMAIN || 'api.rory-x.me' }}
+  AGENT_PUBLIC_BASE_PATH: ${{ vars.AGENT_PUBLIC_BASE_PATH || '/intro-builder/agent' }}
+  AGENT_SSH_HOST: ${{ secrets.AGENT_SSH_HOST }}
+  AGENT_SSH_PORT: ${{ secrets.AGENT_SSH_PORT || '22' }}
+  AGENT_SSH_USER: ${{ secrets.AGENT_SSH_USER }}
+
+jobs:
+  deploy:
+    name: Verify and deploy Agent
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Verify repository
+        run: pnpm verify
+
+      - name: Build Agent package
+        run: pnpm agent:build
+
+      - name: Configure SSH
+        env:
+          AGENT_SSH_KEY: ${{ secrets.AGENT_SSH_KEY }}
+          AGENT_SSH_KNOWN_HOSTS: ${{ secrets.AGENT_SSH_KNOWN_HOSTS }}
+        run: |
+          set -euo pipefail
+          : "${AGENT_SSH_HOST:?Missing AGENT_SSH_HOST secret}"
+          : "${AGENT_SSH_USER:?Missing AGENT_SSH_USER secret}"
+          : "${AGENT_SSH_KEY:?Missing AGENT_SSH_KEY secret}"
+          : "${AGENT_SSH_KNOWN_HOSTS:?Missing AGENT_SSH_KNOWN_HOSTS secret}"
+
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$AGENT_SSH_KEY" > ~/.ssh/intro-agent-deploy
+          chmod 600 ~/.ssh/intro-agent-deploy
+          printf '%s\n' "$AGENT_SSH_KNOWN_HOSTS" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
+
+      - name: Sync Agent deployment files
+        run: |
+          set -euo pipefail
+          remote="${AGENT_SSH_USER}@${AGENT_SSH_HOST}"
+          ssh_cmd="ssh -i ~/.ssh/intro-agent-deploy -p ${AGENT_SSH_PORT} -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes"
+
+          $ssh_cmd -n "$remote" "mkdir -p '${AGENT_DEPLOY_PATH}/apps/agent'"
+          rsync -az --delete -e "$ssh_cmd" \
+            .dockerignore package.json pnpm-lock.yaml pnpm-workspace.yaml \
+            "$remote:${AGENT_DEPLOY_PATH}/"
+          rsync -az --delete --exclude='.env' --exclude='dist' -e "$ssh_cmd" \
+            apps/agent/ "$remote:${AGENT_DEPLOY_PATH}/apps/agent/"
+
+      - name: Rebuild and health check Agent
+        run: |
+          set -euo pipefail
+          remote="${AGENT_SSH_USER}@${AGENT_SSH_HOST}"
+          ssh_cmd="ssh -i ~/.ssh/intro-agent-deploy -p ${AGENT_SSH_PORT} -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes"
+          agent_version="github-${GITHUB_SHA::12}"
+
+          $ssh_cmd "$remote" \
+            "AGENT_DEPLOY_PATH='${AGENT_DEPLOY_PATH}' AGENT_DOMAIN='${AGENT_DOMAIN}' AGENT_PUBLIC_BASE_PATH='${AGENT_PUBLIC_BASE_PATH}' AGENT_VERSION='${agent_version}' bash -s" <<'REMOTE'
+          set -euo pipefail
+
+          cd "$AGENT_DEPLOY_PATH/apps/agent"
+          touch .env
+
+          upsert_env() {
+            key="$1"
+            value="$2"
+            tmp="$(mktemp)"
+
+            if grep -q "^${key}=" .env; then
+              awk -v key="$key" -v value="$value" '
+                $0 ~ "^" key "=" { print key "=" value; next }
+                { print }
+              ' .env > "$tmp"
+            else
+              cp .env "$tmp"
+              printf '%s=%s\n' "$key" "$value" >> "$tmp"
+            fi
+
+            mv "$tmp" .env
+          }
+
+          upsert_env AGENT_HOST 0.0.0.0
+          upsert_env AGENT_PORT 8787
+          upsert_env AGENT_SERVICE_NAME intro-agent
+          upsert_env AGENT_VERSION "$AGENT_VERSION"
+          upsert_env AGENT_SHUTDOWN_TIMEOUT_MS 10000
+          upsert_env AGENT_SITE_ADDRESS "$AGENT_DOMAIN"
+          upsert_env AGENT_PUBLIC_BASE_PATH "$AGENT_PUBLIC_BASE_PATH"
+          upsert_env REDIS_URL redis://redis:6379
+          chmod 600 .env
+
+          docker compose up -d --build --remove-orphans
+          docker compose ps
+          docker compose exec -T agent node -e 'fetch("http://127.0.0.1:8787/health").then(async r => { if (!r.ok) throw new Error(await r.text()); console.log(await r.text()); })' </dev/null
+          docker compose exec -T agent node -e 'fetch("http://127.0.0.1:8787/ready").then(async r => { if (!r.ok) throw new Error(await r.text()); console.log(await r.text()); })' </dev/null
+          curl -kfsS --retry 12 --retry-delay 5 \
+            --resolve "$AGENT_DOMAIN:443:127.0.0.1" \
+            "https://$AGENT_DOMAIN$AGENT_PUBLIC_BASE_PATH/health"
+          curl -kfsS --retry 12 --retry-delay 5 \
+            --resolve "$AGENT_DOMAIN:443:127.0.0.1" \
+            "https://$AGENT_DOMAIN$AGENT_PUBLIC_BASE_PATH/ready"
+          REMOTE
