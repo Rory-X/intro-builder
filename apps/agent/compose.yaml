@@ -1,0 +1,39 @@
+services:
+  agent:
+    build:
+      context: ../..
+      dockerfile: apps/agent/Dockerfile
+    env_file:
+      - .env
+    environment:
+      AGENT_HOST: 0.0.0.0
+      AGENT_PORT: 8787
+      REDIS_URL: redis://redis:6379
+    restart: unless-stopped
+
+  caddy:
+    image: caddy:2-alpine
+    depends_on:
+      - agent
+    env_file:
+      - .env
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    restart: unless-stopped
+
+  redis:
+    image: redis:8-alpine
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redis_data:/data
+    restart: unless-stopped
+
+volumes:
+  caddy_data:
+  caddy_config:
+  redis_data:

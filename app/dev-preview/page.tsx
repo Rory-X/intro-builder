@@ -2,6 +2,8 @@ import { db } from "@/db";
 import { templates } from "@/db/schema";
 import { PublishButton } from "./publish-button";
 
+export const dynamic = "force-dynamic";
+
 export default async function DevPreviewIndexPage() {
   const rows = await db
     .select({

@@ -1,0 +1,78 @@
+import { loadConfig } from "./config.js";
+import { createAgentServer } from "./http.js";
+import {
+  checkRedisReady,
+  closeRedisConnection,
+  createRedisConnection,
+} from "./redis.js";
+
+const config = loadConfig();
+const redis = createRedisConnection(config, {
+  onError: (error) => {
+    log("error", "redis client error", { error: error.message });
+  },
+});
+const server = createAgentServer({
+  config,
+  redisReady: () =>
+    checkRedisReady(redis, { timeoutMs: config.redisConnectTimeoutMs }),
+});
+
+server.listen(config.port, config.host, () => {
+  log("info", "agent service listening", {
+    host: config.host,
+    port: config.port,
+    service: config.serviceName,
+    version: config.version,
+  });
+});
+
+for (const signal of ["SIGINT", "SIGTERM"] as const) {
+  process.once(signal, () => {
+    shutdown(signal);
+  });
+}
+
+function shutdown(signal: NodeJS.Signals): void {
+  log("info", "agent service shutting down", { signal });
+
+  const timeout = setTimeout(() => {
+    log("error", "agent service shutdown timed out", {
+      timeoutMs: config.shutdownTimeoutMs,
+    });
+    process.exit(1);
+  }, config.shutdownTimeoutMs);
+
+  server.close((error?: Error) => {
+    clearTimeout(timeout);
+
+    if (error) {
+      log("error", "agent service shutdown failed", { error: error.message });
+      process.exit(1);
+    }
+
+    void closeRedisConnection(redis).finally(() => {
+      log("info", "agent service stopped", { signal });
+      process.exit(0);
+    });
+  });
+}
+
+function log(
+  level: "info" | "error",
+  message: string,
+  fields: Record<string, unknown>,
+): void {
+  const line = JSON.stringify({
+    level,
+    message,
+    timestamp: new Date().toISOString(),
+    ...fields,
+  });
+
+  if (level === "error") {
+    console.error(line);
+  } else {
+    console.log(line);
+  }
+}
