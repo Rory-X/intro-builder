@@ -72,6 +72,36 @@ describe("agent JWT authentication", () => {
     });
   });
 
+  it("accepts tokens signed by legacy web deployments with an env-line secret", async () => {
+    const replayStore = new FakeReplayStore();
+    const token = await signAgentToken({
+      sub: "user_123",
+      scope: "agent:session",
+      jti: "jti_legacy_env_line_secret",
+      jwtSecret: "AGENT_JWT_SECRET=test-agent-secret",
+    });
+
+    const result = await authenticateAgentRequest({
+      authorizationHeader: `Bearer ${token}`,
+      expectedScope: "agent:session",
+      config: {
+        ...createConfig(),
+        jwtSecret: "AGENT_JWT_SECRET=test-agent-secret",
+      },
+      replayStore,
+      now: NOW,
+    });
+
+    expect(result).toMatchObject({
+      ok: true,
+      session: {
+        userId: "user_123",
+        scope: "agent:session",
+        jti: "jti_legacy_env_line_secret",
+      },
+    });
+  });
+
   it("rejects requests without a bearer token", async () => {
     await expectAuthFailure({
       authorizationHeader: undefined,
@@ -271,6 +301,7 @@ async function signAgentToken({
   scope,
   jti,
   resumeId,
+  jwtSecret = "test-agent-secret",
   issuer = "intro-builder-web",
   audience = "intro-builder-agent",
   expiresAt = EXPIRES_AT,
@@ -279,6 +310,7 @@ async function signAgentToken({
   scope: string;
   jti: string;
   resumeId?: string;
+  jwtSecret?: string;
   issuer?: string;
   audience?: string;
   expiresAt?: Date;
@@ -294,7 +326,7 @@ async function signAgentToken({
     .setJti(jti)
     .setIssuedAt(Math.floor(NOW.getTime() / 1_000))
     .setExpirationTime(Math.floor(expiresAt.getTime() / 1_000))
-    .sign(new TextEncoder().encode("test-agent-secret"));
+    .sign(new TextEncoder().encode(jwtSecret));
 }
 
 function createConfig(): AgentConfig {

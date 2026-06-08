@@ -77,8 +77,8 @@ export async function authenticateAgentRequest({
     );
   }
 
-  const jwtSecret = normalizeAgentJwtSecret(config.jwtSecret);
-  if (!jwtSecret) {
+  const jwtSecrets = createJwtSecretCandidates(config.jwtSecret);
+  if (jwtSecrets.length === 0) {
     return authFailure(
       503,
       "dependency_unavailable",
@@ -87,7 +87,7 @@ export async function authenticateAgentRequest({
     );
   }
 
-  const verified = await verifyJwt(token, config, jwtSecret, now);
+  const verified = await verifyJwtWithSecrets(token, config, jwtSecrets, now);
   if (!verified.ok) return verified;
 
   const { payload } = verified;
@@ -188,6 +188,47 @@ async function verifyJwt(
   }
 }
 
+async function verifyJwtWithSecrets(
+  token: string,
+  config: AgentConfig,
+  jwtSecrets: string[],
+  now: Date,
+): ReturnType<typeof verifyJwt> {
+  let signatureFailure: AgentAuthFailure | null = null;
+
+  for (const jwtSecret of jwtSecrets) {
+    const verified = await verifyJwt(token, config, jwtSecret, now);
+    if (verified.ok) return verified;
+
+    if (verified.diagnosticReason !== "signature_verification_failed") {
+      return verified;
+    }
+
+    signatureFailure = verified;
+  }
+
+  return (
+    signatureFailure ??
+    authFailure(
+      401,
+      "unauthorized",
+      "Invalid or expired bearer token",
+      undefined,
+      "signature_verification_failed",
+    )
+  );
+}
+
+function createJwtSecretCandidates(secret: string | undefined): string[] {
+  const candidates = [
+    normalizeAgentJwtSecret(secret),
+    normalizeLegacyWebJwtSecret(secret),
+    secret?.trim() ?? "",
+  ];
+
+  return [...new Set(candidates.filter((candidate) => candidate.length > 0))];
+}
+
 function normalizeAgentJwtSecret(secret: string | undefined): string {
   let value = secret?.trim() ?? "";
   value = value.replace(/^export\s+/, "").trim();
@@ -204,6 +245,19 @@ function normalizeAgentJwtSecret(secret: string | undefined): string {
   }
 
   return value;
+}
+
+function normalizeLegacyWebJwtSecret(secret: string | undefined): string {
+  const trimmed = secret?.trim() ?? "";
+  if (
+    trimmed.length >= 2 &&
+    ((trimmed.startsWith('"') && trimmed.endsWith('"')) ||
+      (trimmed.startsWith("'") && trimmed.endsWith("'")))
+  ) {
+    return trimmed.slice(1, -1);
+  }
+
+  return trimmed;
 }
 
 function classifyJwtVerifyFailure(error: unknown): string {
