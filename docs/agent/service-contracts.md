@@ -271,8 +271,22 @@ Response:
   "status": "ok",
   "requestId": "req_01H...",
   "result": {
-    "format": "plain_text",
+    "format": "tiptap_json",
     "polishedText": "负责业务系统前端开发，围绕页面性能瓶颈持续优化加载与交互体验。",
+    "replacementTiptapJson": {
+      "type": "doc",
+      "content": [
+        {
+          "type": "paragraph",
+          "content": [
+            {
+              "type": "text",
+              "text": "负责业务系统前端开发，围绕页面性能瓶颈持续优化加载与交互体验。"
+            }
+          ]
+        }
+      ]
+    },
     "changeSummary": "按 STAR 思路强化职责与行动表达，未新增结果数据。",
     "riskFlags": [
       {
@@ -294,7 +308,8 @@ Prompt rules:
 
 - 只润色表达，不新增事实、数字、公司、学校、职位、技术栈、奖项或结果。
 - `strategy=star` 时只按 STAR 顺序重排与强化已有信息；原文没有 Result 时不得编造量化结果。
-- 第一版返回 `plain_text`，Web 端只作为候选文本展示，不自动写回 RHF。
+- `content.format=tiptap_json` 时，模型必须返回与原始文本块数量一致的 `polishedBlocks`；Agent 用代码克隆原 TipTap JSON 并生成 `replacementTiptapJson`，不接受模型直接生成任意 TipTap 树。
+- 兼容旧 provider：如果响应只有 `plain_text`，Web 端仍只作为候选文本展示，并在用户确认后走纯文本 fallback。
 - 模型返回必须是 JSON；Agent 负责解析与后处理校验，校验失败返回结构化错误。
 
 Rules:

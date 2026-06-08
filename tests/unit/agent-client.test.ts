@@ -2,7 +2,11 @@
 
 import { describe, expect, it, vi } from "vitest";
 
-import { AgentClientError, createAgentClient } from "@/lib/agent/client";
+import {
+  AgentClientError,
+  createAgentClient,
+  type RichTextPolishResponse,
+} from "@/lib/agent/client";
 
 describe("Web Agent client", () => {
   it("calls the protected Agent session endpoint with bearer token and request id", async () => {
@@ -88,14 +92,29 @@ describe("Web Agent client", () => {
   });
 
   it("posts rich text polish requests with bearer token and request id", async () => {
+    const replacementTiptapJson = {
+      type: "doc",
+      content: [
+        {
+          type: "paragraph",
+          content: [
+            {
+              type: "text",
+              text: "负责业务系统前端开发，围绕页面性能瓶颈持续优化加载与交互体验。",
+            },
+          ],
+        },
+      ],
+    };
     const fetchMock = vi.fn(async (): Promise<Response> => {
       return new Response(
         JSON.stringify({
           status: "ok",
           requestId: "req_agent_polish",
           result: {
-            format: "plain_text",
+            format: "tiptap_json",
             polishedText: "负责业务系统前端开发，围绕页面性能瓶颈持续优化加载与交互体验。",
+            replacementTiptapJson,
             changeSummary: "按 STAR 思路强化职责与行动表达，未新增结果数据。",
             riskFlags: [
               {
@@ -150,6 +169,14 @@ describe("Web Agent client", () => {
 
     expect(result.requestId).toBe("req_agent_polish");
     expect(result.data.result.polishedText).toContain("性能瓶颈");
+    if (result.data.result.format !== "tiptap_json") {
+      throw new Error("Expected TipTap polish result");
+    }
+    const tiptapResult: Extract<
+      RichTextPolishResponse["result"],
+      { format: "tiptap_json" }
+    > = result.data.result;
+    expect(tiptapResult.replacementTiptapJson).toEqual(replacementTiptapJson);
     expect(fetchMock).toHaveBeenCalledWith(
       "https://agent.test/intro-builder/agent/v1/rich-text/polish",
       expect.objectContaining({

@@ -63,6 +63,19 @@ export type RichTextPolishResponse = {
         | "unsafe_claim";
       message: string;
     }>;
+  } | {
+    format: "tiptap_json";
+    polishedText: string;
+    replacementTiptapJson: unknown;
+    changeSummary: string;
+    riskFlags: Array<{
+      type:
+        | "possible_fabrication"
+        | "changed_entity"
+        | "too_little_context"
+        | "unsafe_claim";
+      message: string;
+    }>;
   };
   usage: {
     provider: string;

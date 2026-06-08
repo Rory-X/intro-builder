@@ -12,8 +12,7 @@ import { createErrorEnvelope } from "./errors.js";
 import { checkRateLimit, type RateLimitRedis } from "./rate-limit.js";
 import type { RedisReadyResult } from "./redis.js";
 import {
-  buildRichTextPolishPrompt,
-  parsePolishProviderResponse,
+  polishRichText,
   RichTextPolishProviderError,
   validateRichTextPolishRequest,
   type RichTextPolishProvider,
@@ -213,26 +212,13 @@ async function routeRequest(
       }
     }
 
-    const prompt = buildRichTextPolishPrompt({
-      ...validation.request,
-      requestId: context.requestId,
-    });
-
     try {
-      const providerResult = await richTextPolishProvider.polish({
+      const polished = await polishRichText({
         request: validation.request,
-        prompt,
+        provider: richTextPolishProvider,
         session: auth.session,
         requestId: context.requestId,
       });
-      const parsed = parsePolishProviderResponse(providerResult.content);
-      if (!parsed.ok) {
-        return sendError(response, 503, context, {
-          error: "dependency_unavailable",
-          message: parsed.message,
-          dependency: "provider",
-        });
-      }
 
       return sendJson(
         response,
@@ -240,8 +226,8 @@ async function routeRequest(
         {
           status: "ok",
           requestId: context.requestId,
-          result: parsed.result,
-          usage: providerResult.usage,
+          result: polished.result,
+          usage: polished.usage,
         },
         context,
       );

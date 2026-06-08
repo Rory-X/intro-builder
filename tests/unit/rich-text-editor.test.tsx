@@ -374,4 +374,133 @@ describe("RichTextEditor", () => {
       expect(JSON.stringify(applied)).toContain('"textAlign":"left"');
     });
   });
+
+  it("applies a structured TipTap polish replacement before plain text fallback", async () => {
+    const onChange = vi.fn();
+    const replacementTiptapJson: TipTapJSON = {
+      type: "doc",
+      content: [
+        {
+          type: "bulletList",
+          content: [
+            {
+              type: "listItem",
+              attrs: { textAlign: "left" },
+              content: [
+                {
+                  type: "paragraph",
+                  attrs: { textAlign: "left" },
+                  content: [
+                    {
+                      type: "text",
+                      marks: [{ type: "bold" }],
+                      text: "项目描述：",
+                    },
+                    {
+                      type: "text",
+                      text: "结构化写回成功，保留原有列表与标签样式。",
+                    },
+                  ],
+                },
+              ],
+            },
+            {
+              type: "listItem",
+              attrs: { textAlign: "left" },
+              content: [
+                {
+                  type: "paragraph",
+                  attrs: { textAlign: "left" },
+                  content: [
+                    {
+                      type: "text",
+                      marks: [{ type: "bold" }],
+                      text: "项目难点：",
+                    },
+                  ],
+                },
+                {
+                  type: "bulletList",
+                  content: [
+                    {
+                      type: "listItem",
+                      attrs: { textAlign: "left" },
+                      content: [
+                        {
+                          type: "paragraph",
+                          attrs: { textAlign: "left" },
+                          content: [
+                            {
+                              type: "text",
+                              text: "嵌套列表也直接来自 Agent 生成的 replacementTiptapJson。",
+                            },
+                          ],
+                        },
+                      ],
+                    },
+                  ],
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    };
+    const fetchMock = vi.fn<
+      (...args: [RequestInfo | URL, RequestInit?]) => Promise<Response>
+    >(async () => {
+      return new Response(
+        JSON.stringify({
+          status: "ok",
+          requestId: "req_polish_tiptap",
+          result: {
+            format: "tiptap_json",
+            polishedText: "如果使用纯文本 fallback，这句话会被写进编辑器。",
+            replacementTiptapJson,
+            changeSummary: "返回结构化 TipTap 替换内容。",
+            riskFlags: [],
+          },
+          usage: {
+            provider: "fake-provider",
+            model: "fake-model",
+            inputTokens: 120,
+            outputTokens: 36,
+          },
+        }),
+        { status: 200, headers: { "content-type": "application/json" } },
+      );
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(
+      <RichTextEditor
+        content={bulletListDoc}
+        onChange={onChange}
+        polish={{
+          resumeId: "resume_abc",
+          section: "projects",
+          fieldPath: "projects.0.content",
+        }}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "AI 润色" }));
+    expect(await screen.findByText("返回结构化 TipTap 替换内容。")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "应用润色" }));
+
+    await waitFor(() => {
+      const applied = onChange.mock.calls.at(-1)?.[0] as TipTapJSON;
+      const serialized = JSON.stringify(applied);
+      expect(applied.content[0].type).toBe("bulletList");
+      expect(applied.content[0].content[0].content[0].content[0]).toMatchObject({
+        type: "text",
+        marks: [{ type: "bold" }],
+        text: "项目描述：",
+      });
+      expect(serialized).toContain("结构化写回成功");
+      expect(serialized).toContain("嵌套列表也直接来自 Agent 生成的 replacementTiptapJson");
+      expect(serialized).not.toContain("如果使用纯文本 fallback");
+    });
+  });
 });

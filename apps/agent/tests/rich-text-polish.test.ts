@@ -4,6 +4,7 @@ import {
   buildRichTextPolishPrompt,
   createOpenAICompatibleRichTextPolishProvider,
   parsePolishProviderResponse,
+  polishRichText,
   validateRichTextPolishRequest,
 } from "../src/rich-text-polish";
 
@@ -107,10 +108,158 @@ describe("rich text polish prompt", () => {
 
     expect(prompt.developer).toContain("保持原 TipTap 富文本结构");
     expect(prompt.developer).toContain("polishedText");
-    expect(prompt.developer).toContain("每个文本块一行");
+    expect(prompt.developer).toContain("polishedBlocks");
     expect(prompt.user).toContain("textBlockCount: 3");
     expect(prompt.user).toContain("0. paragraph: 项目描述：负责系统开发。");
     expect(prompt.user).toContain("2. paragraph: 登录请求采用RSA+AES混合加密方案。");
+  });
+
+  it("builds a TipTap replacement from block-aligned provider output", async () => {
+    const tiptapJson = {
+      type: "doc",
+      content: [
+        {
+          type: "bulletList",
+          content: [
+            {
+              type: "listItem",
+              attrs: { textAlign: "left" },
+              content: [
+                {
+                  type: "paragraph",
+                  attrs: { textAlign: "left" },
+                  content: [
+                    {
+                      type: "text",
+                      marks: [{ type: "bold" }],
+                      text: "项目描述：",
+                    },
+                    {
+                      type: "text",
+                      text: "负责企业内部部门管理系统的前后端开发。",
+                    },
+                  ],
+                },
+              ],
+            },
+            {
+              type: "listItem",
+              attrs: { textAlign: "left" },
+              content: [
+                {
+                  type: "paragraph",
+                  attrs: { textAlign: "left" },
+                  content: [
+                    {
+                      type: "text",
+                      marks: [{ type: "bold" }],
+                      text: "项目难点：",
+                    },
+                  ],
+                },
+                {
+                  type: "bulletList",
+                  content: [
+                    {
+                      type: "listItem",
+                      attrs: { textAlign: "left" },
+                      content: [
+                        {
+                          type: "paragraph",
+                          attrs: { textAlign: "left" },
+                          content: [
+                            {
+                              type: "text",
+                              text: "登录请求采用RSA+AES混合加密方案。",
+                            },
+                          ],
+                        },
+                      ],
+                    },
+                  ],
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    };
+    const provider = {
+      polish: async () => ({
+        content: JSON.stringify({
+          polishedText:
+            "项目描述：负责企业内部部门管理系统前后端开发与安全体系建设。\n项目难点：\n登录请求采用RSA+AES混合加密方案，降低中间人攻击风险。",
+          polishedBlocks: [
+            "项目描述：负责企业内部部门管理系统前后端开发与安全体系建设。",
+            "项目难点：",
+            "登录请求采用RSA+AES混合加密方案，降低中间人攻击风险。",
+          ],
+          changeSummary: "保留富文本结构，优化项目描述和难点表达。",
+          riskFlags: [],
+        }),
+        usage: {
+          provider: "fake-provider",
+          model: "fake-model",
+          inputTokens: 100,
+          outputTokens: 40,
+        },
+      }),
+    };
+
+    const result = await polishRichText({
+      request: {
+        requestId: "req_tiptap_result",
+        resumeId: "resume_abc",
+        section: "projects",
+        fieldPath: "projects.0.content",
+        locale: "zh-CN",
+        content: {
+          format: "tiptap_json",
+          plainText:
+            "项目描述：负责企业内部部门管理系统的前后端开发。\n项目难点：\n登录请求采用RSA+AES混合加密方案。",
+          tiptapJson,
+        },
+        intent: {
+          mode: "polish",
+          tone: "professional",
+          length: "same",
+          strategy: "star",
+        },
+      },
+      provider,
+      session: {
+        userId: "user_123",
+        resumeId: "resume_abc",
+        scope: "rich_text:polish",
+        jti: "jti_tiptap_result",
+        expiresAt: new Date("2026-06-08T08:02:00.000Z"),
+      },
+      requestId: "req_tiptap_result",
+    });
+
+    expect(result.result.format).toBe("tiptap_json");
+    if (result.result.format !== "tiptap_json") {
+      throw new Error("Expected TipTap polish result");
+    }
+    expect(result.result.replacementTiptapJson).toBeDefined();
+    const replacement = result.result.replacementTiptapJson as typeof tiptapJson;
+    expect(replacement.content[0].type).toBe("bulletList");
+    expect(replacement.content[0].content[0].content[0]).toMatchObject({
+      type: "paragraph",
+      attrs: { textAlign: "left" },
+    });
+    expect(
+      replacement.content[0].content[0].content[0].content[0],
+    ).toMatchObject({
+      type: "text",
+      marks: [{ type: "bold" }],
+      text: "项目描述：",
+    });
+    expect(JSON.stringify(replacement)).toContain(
+      "负责企业内部部门管理系统前后端开发与安全体系建设",
+    );
+    expect(JSON.stringify(replacement)).toContain("降低中间人攻击风险");
+    expect(JSON.stringify(replacement)).toContain('"textAlign":"left"');
   });
 
   it("defaults experience and projects requests to STAR strategy", () => {

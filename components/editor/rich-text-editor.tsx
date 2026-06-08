@@ -19,7 +19,7 @@ import {
   RICH_TEXT_FONT_SIZES,
   RICH_TEXT_FONT_SIZE_LABELS,
 } from "@/lib/rich-text-prose";
-import type { TipTapJSON } from "@/lib/tiptap-types";
+import { TipTapJSON as TipTapJSONSchema, type TipTapJSON } from "@/lib/tiptap-types";
 import { cn } from "@/lib/utils";
 
 /**
@@ -62,6 +62,7 @@ type RichTextPolishContext = {
 
 type PolishCandidate = {
   polishedText: string;
+  replacementTiptapJson?: TipTapJSON;
   changeSummary: string;
   riskFlags: Array<{
     type: string;
@@ -182,6 +183,7 @@ export function RichTextEditor({ content, onChange, polish }: Props) {
         status: "ready",
         candidate: {
           polishedText: result.polishedText,
+          ...readReplacementTiptapJson(result),
           changeSummary: result.changeSummary,
           riskFlags: result.riskFlags.filter(isRiskFlag),
         },
@@ -192,10 +194,12 @@ export function RichTextEditor({ content, onChange, polish }: Props) {
   }
 
   function applyPolishCandidate(candidate: PolishCandidate) {
-    const nextContent = applyPolishedTextToExistingDoc(
-      toPlainJson(activeEditor.getJSON()),
-      candidate.polishedText,
-    );
+    const nextContent =
+      candidate.replacementTiptapJson ??
+      applyPolishedTextToExistingDoc(
+        toPlainJson(activeEditor.getJSON()),
+        candidate.polishedText,
+      );
     activeEditor.commands.setContent(nextContent, { emitUpdate: false });
     lastSyncedContentRef.current = JSON.stringify(nextContent);
     onChangeRef.current(nextContent);
@@ -670,6 +674,19 @@ function cloneOptionalProperty(
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
+function readReplacementTiptapJson(
+  result: Record<string, unknown>,
+): { replacementTiptapJson: TipTapJSON } | Record<string, never> {
+  if (
+    result.format !== "tiptap_json" ||
+    result.replacementTiptapJson === undefined
+  ) {
+    return {};
+  }
+  const parsed = TipTapJSONSchema.safeParse(result.replacementTiptapJson);
+  return parsed.success ? { replacementTiptapJson: parsed.data } : {};
 }
 
 function isRiskFlag(value: unknown): value is PolishCandidate["riskFlags"][number] {

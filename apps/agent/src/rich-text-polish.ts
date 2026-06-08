@@ -49,12 +49,18 @@ export type RichTextPolishRiskFlag = {
   message: string;
 };
 
-export type RichTextPolishResult = {
-  format: "plain_text";
+type RichTextPolishBaseResult = {
   polishedText: string;
   changeSummary: string;
   riskFlags: RichTextPolishRiskFlag[];
 };
+
+export type RichTextPolishResult = RichTextPolishBaseResult & ({
+  format: "plain_text";
+} | {
+  format: "tiptap_json";
+  replacementTiptapJson: unknown;
+});
 
 export type RichTextPolishUsage = {
   provider: string;
@@ -73,6 +79,11 @@ export type RichTextPolishProvider = {
     content: string;
     usage: RichTextPolishUsage;
   }>;
+};
+
+export type RichTextPolishRunResult = {
+  result: RichTextPolishResult;
+  usage: RichTextPolishUsage;
 };
 
 export type RichTextPolishProviderFailureCode =
@@ -110,6 +121,15 @@ type RequiredStringResult =
 export type RichTextPolishParseResult =
   | { ok: true; result: RichTextPolishResult }
   | { ok: false; message: string };
+
+type TipTapNode = {
+  type?: unknown;
+  text?: unknown;
+  attrs?: unknown;
+  marks?: unknown;
+  content?: TipTapNode[];
+  [key: string]: unknown;
+};
 
 const SECTIONS = new Set<RichTextPolishSection>([
   "summary",
@@ -236,16 +256,16 @@ export function buildRichTextPolishPrompt(
     ].join("\n"),
     developer: [
       "输出 JSON schema：",
-      '{"polishedText":"string","changeSummary":"string","riskFlags":[{"type":"possible_fabrication|changed_entity|too_little_context|unsafe_claim","message":"string"}]}',
+      '{"polishedText":"string","polishedBlocks":["string"],"changeSummary":"string","riskFlags":[{"type":"possible_fabrication|changed_entity|too_little_context|unsafe_claim","message":"string"}]}',
       "必须输出合法 JSON，不要输出 Markdown、代码块或解释文字。",
-      "字段要求：polishedText 是润色后的文本；changeSummary 用一句中文概括主要修改；riskFlags 无风险时为空数组。",
+      "字段要求：polishedText 是润色后的完整文本；changeSummary 用一句中文概括主要修改；riskFlags 无风险时为空数组。",
       "风格要求：locale=zh-CN 时使用自然中文，不要中英混杂。",
       "tone=professional: 稳健、正式、适合简历。tone=confident: 更主动有力，但不能夸大。tone=concise: 更短、更直接。",
       "length=same: 字数尽量接近原文，允许上下浮动 20%。length=shorter: 明显压缩但保留关键信息。length=longer: 只能展开表达方式，不能新增事实。",
       "当 strategy=star 时，优先使用 STAR 原则优化表达：Situation 只能使用原文已有背景；Task 明确职责但不得夸大；Action 强化已有动作、方法、技术手段；Result 只有原文明确提供结果、指标、收益时才能写入。",
       "如果原文缺少 Result，不要编造结果；可以更清晰地表达动作，并在 riskFlags 中加入 too_little_context。",
       request.content.format === "tiptap_json"
-        ? "当 content.format=tiptap_json 时，必须保持原 TipTap 富文本结构：不得合并或拆散原有段落、无序列表、有序列表、列表项层级；polishedText 必须按原始文本块顺序输出，每个文本块一行，不要自行添加 Markdown 列表符号或编号。"
+        ? "当 content.format=tiptap_json 时，必须保持原 TipTap 富文本结构，并额外输出 polishedBlocks；polishedBlocks 必须与 textBlockCount 数量一致，并按原始文本块顺序逐项给出润色后的文本；不要自行添加 Markdown 列表符号或编号，不得合并或拆散原有段落、列表项层级。"
         : "",
       `当前 strategy=${request.intent.strategy}。`,
     ].filter(Boolean).join("\n"),
@@ -272,6 +292,39 @@ export function buildRichTextPolishPrompt(
       "原文：",
       request.content.plainText,
     ].join("\n"),
+  };
+}
+
+export async function polishRichText({
+  request,
+  provider,
+  session,
+  requestId,
+}: {
+  request: RichTextPolishRequest;
+  provider: RichTextPolishProvider;
+  session: AuthenticatedAgentSession;
+  requestId: string;
+}): Promise<RichTextPolishRunResult> {
+  const requestWithId = { ...request, requestId };
+  const prompt = buildRichTextPolishPrompt(requestWithId);
+  const providerResult = await provider.polish({
+    request: requestWithId,
+    prompt,
+    session,
+    requestId,
+  });
+  const parsed = parsePolishProviderResponse(providerResult.content, requestWithId);
+  if (!parsed.ok) {
+    throw new RichTextPolishProviderError(
+      parsed.message,
+      "dependency_unavailable",
+    );
+  }
+
+  return {
+    result: parsed.result,
+    usage: providerResult.usage,
   };
 }
 
@@ -318,6 +371,7 @@ function truncateStructureText(text: string): string {
 
 export function parsePolishProviderResponse(
   content: string,
+  request?: RichTextPolishRequest,
 ): RichTextPolishParseResult {
   let parsed: unknown;
   try {
@@ -361,14 +415,167 @@ export function parsePolishProviderResponse(
     });
   }
 
+  const result = createPolishResult({
+    parsed,
+    polishedText: polishedText.trim(),
+    changeSummary: changeSummary.trim(),
+    riskFlags: normalizedFlags,
+    request,
+  });
+  if (!result.ok) return result;
+
+  return { ok: true, result: result.value };
+}
+
+function createPolishResult({
+  parsed,
+  polishedText,
+  changeSummary,
+  riskFlags,
+  request,
+}: {
+  parsed: Record<string, unknown>;
+  polishedText: string;
+  changeSummary: string;
+  riskFlags: RichTextPolishRiskFlag[];
+  request: RichTextPolishRequest | undefined;
+}): { ok: true; value: RichTextPolishResult } | { ok: false; message: string } {
+  const fallback: RichTextPolishResult = {
+    format: "plain_text",
+    polishedText,
+    changeSummary,
+    riskFlags,
+  };
+  if (
+    request?.content.format !== "tiptap_json" ||
+    request.content.tiptapJson === undefined ||
+    parsed.polishedBlocks === undefined
+  ) {
+    return { ok: true, value: fallback };
+  }
+
+  const replacement = createReplacementTipTapJson(
+    request.content.tiptapJson,
+    parsed.polishedBlocks,
+  );
+  if (!replacement.ok) {
+    return {
+      ok: false,
+      message: "Provider polishedBlocks do not match TipTap text blocks",
+    };
+  }
+
   return {
     ok: true,
-    result: {
-      format: "plain_text",
-      polishedText: polishedText.trim(),
-      changeSummary: changeSummary.trim(),
-      riskFlags: normalizedFlags,
+    value: {
+      ...fallback,
+      format: "tiptap_json",
+      replacementTiptapJson: replacement.value,
     },
+  };
+}
+
+function createReplacementTipTapJson(
+  original: unknown,
+  polishedBlocks: unknown,
+): { ok: true; value: unknown } | { ok: false } {
+  if (!Array.isArray(polishedBlocks)) return { ok: false };
+  const blockTexts = polishedBlocks.map((block) =>
+    typeof block === "string" ? block.trim() : "",
+  );
+  if (blockTexts.some((block) => block === "")) return { ok: false };
+
+  const nextDoc = cloneJson(original);
+  if (!isRecord(nextDoc)) return { ok: false };
+
+  const textBlocks = collectReplaceableTextBlocks(nextDoc as TipTapNode);
+  if (textBlocks.length === 0 || textBlocks.length !== blockTexts.length) {
+    return { ok: false };
+  }
+
+  textBlocks.forEach((block, index) => {
+    block.content = createInlineContentForBlock(block, blockTexts[index]);
+  });
+
+  return { ok: true, value: nextDoc };
+}
+
+function cloneJson(value: unknown): unknown {
+  try {
+    return JSON.parse(JSON.stringify(value));
+  } catch {
+    return null;
+  }
+}
+
+function collectReplaceableTextBlocks(node: TipTapNode): TipTapNode[] {
+  if (node.type === "paragraph") {
+    return extractTipTapNodeText(node).trim() ? [node] : [];
+  }
+  return Array.isArray(node.content)
+    ? node.content.flatMap((child) => collectReplaceableTextBlocks(child))
+    : [];
+}
+
+function createInlineContentForBlock(
+  block: TipTapNode,
+  nextText: string,
+): TipTapNode[] {
+  const textNodes = Array.isArray(block.content)
+    ? block.content.filter(isTextNode)
+    : [];
+  const labelNode = textNodes[0];
+  const labelText = typeof labelNode?.text === "string" ? labelNode.text : "";
+
+  if (
+    labelNode &&
+    hasMarks(labelNode) &&
+    isShortLabel(labelText) &&
+    nextText.startsWith(labelText)
+  ) {
+    const rest = nextText.slice(labelText.length).trimStart();
+    return [
+      createTextNode(labelText, labelNode),
+      ...(rest
+        ? [createTextNode(rest, findNonBoldTextNode(textNodes) ?? labelNode)]
+        : []),
+    ];
+  }
+
+  return [createTextNode(nextText, textNodes[0])];
+}
+
+function isTextNode(node: TipTapNode): node is TipTapNode & { text: string } {
+  return node.type === "text" && typeof node.text === "string";
+}
+
+function hasMarks(node: TipTapNode): boolean {
+  return Array.isArray(node.marks) && node.marks.length > 0;
+}
+
+function isShortLabel(text: string): boolean {
+  return text.length > 0 && text.length <= 24 && /[：:]$/.test(text);
+}
+
+function findNonBoldTextNode(nodes: TipTapNode[]): TipTapNode | undefined {
+  return nodes.find((node) => {
+    if (!Array.isArray(node.marks)) return true;
+    return !node.marks.some(
+      (mark) => isRecord(mark) && mark.type === "bold",
+    );
+  });
+}
+
+function createTextNode(
+  text: string,
+  template: TipTapNode | undefined,
+): TipTapNode {
+  return {
+    type: "text",
+    ...(template?.marks === undefined
+      ? {}
+      : { marks: cloneJson(template.marks) }),
+    text,
   };
 }
 
