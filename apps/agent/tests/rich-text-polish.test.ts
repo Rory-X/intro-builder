@@ -39,6 +39,80 @@ describe("rich text polish prompt", () => {
     expect(prompt.user).toContain("负责业务系统前端开发，优化页面性能。");
   });
 
+  it("describes TipTap text blocks so providers keep list structure", () => {
+    const prompt = buildRichTextPolishPrompt({
+      requestId: "req_prompt_structure",
+      resumeId: "resume_abc",
+      section: "projects",
+      fieldPath: "projects.0.content",
+      locale: "zh-CN",
+      content: {
+        format: "tiptap_json",
+        plainText: "项目描述：负责系统开发。\n项目难点：\n登录请求采用RSA+AES混合加密方案。",
+        tiptapJson: {
+          type: "doc",
+          content: [
+            {
+              type: "bulletList",
+              content: [
+                {
+                  type: "listItem",
+                  content: [
+                    {
+                      type: "paragraph",
+                      content: [{ type: "text", text: "项目描述：负责系统开发。" }],
+                    },
+                  ],
+                },
+                {
+                  type: "listItem",
+                  content: [
+                    {
+                      type: "paragraph",
+                      content: [{ type: "text", text: "项目难点：" }],
+                    },
+                    {
+                      type: "bulletList",
+                      content: [
+                        {
+                          type: "listItem",
+                          content: [
+                            {
+                              type: "paragraph",
+                              content: [
+                                {
+                                  type: "text",
+                                  text: "登录请求采用RSA+AES混合加密方案。",
+                                },
+                              ],
+                            },
+                          ],
+                        },
+                      ],
+                    },
+                  ],
+                },
+              ],
+            },
+          ],
+        },
+      },
+      intent: {
+        mode: "polish",
+        tone: "professional",
+        length: "same",
+        strategy: "star",
+      },
+    });
+
+    expect(prompt.developer).toContain("保持原 TipTap 富文本结构");
+    expect(prompt.developer).toContain("polishedText");
+    expect(prompt.developer).toContain("每个文本块一行");
+    expect(prompt.user).toContain("textBlockCount: 3");
+    expect(prompt.user).toContain("0. paragraph: 项目描述：负责系统开发。");
+    expect(prompt.user).toContain("2. paragraph: 登录请求采用RSA+AES混合加密方案。");
+  });
+
   it("defaults experience and projects requests to STAR strategy", () => {
     const result = validateRichTextPolishRequest({
       resumeId: "resume_abc",

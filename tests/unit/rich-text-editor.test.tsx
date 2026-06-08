@@ -13,6 +13,92 @@ const paragraphDoc: TipTapJSON = {
   ],
 };
 
+const bulletListDoc: TipTapJSON = {
+  type: "doc",
+  content: [
+    {
+      type: "bulletList",
+      content: [
+        {
+          type: "listItem",
+          attrs: { textAlign: "left" },
+          content: [
+            {
+              type: "paragraph",
+              attrs: { textAlign: "left" },
+              content: [
+                {
+                  type: "text",
+                  marks: [{ type: "bold" }],
+                  text: "项目描述：",
+                },
+                {
+                  type: "text",
+                  text: "负责企业内部部门管理系统的前后端开发。",
+                },
+              ],
+            },
+          ],
+        },
+        {
+          type: "listItem",
+          attrs: { textAlign: "left" },
+          content: [
+            {
+              type: "paragraph",
+              attrs: { textAlign: "left" },
+              content: [
+                {
+                  type: "text",
+                  marks: [{ type: "bold" }],
+                  text: "项目难点：",
+                },
+              ],
+            },
+            {
+              type: "bulletList",
+              content: [
+                {
+                  type: "listItem",
+                  attrs: { textAlign: "left" },
+                  content: [
+                    {
+                      type: "paragraph",
+                      attrs: { textAlign: "left" },
+                      content: [
+                        {
+                          type: "text",
+                          text: "登录请求采用RSA+AES混合加密方案。",
+                        },
+                      ],
+                    },
+                  ],
+                },
+                {
+                  type: "listItem",
+                  attrs: { textAlign: "left" },
+                  content: [
+                    {
+                      type: "paragraph",
+                      attrs: { textAlign: "left" },
+                      content: [
+                        {
+                          type: "text",
+                          text: "使用JWT+RefreshToken双令牌机制。",
+                        },
+                      ],
+                    },
+                  ],
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    },
+  ],
+};
+
 describe("RichTextEditor", () => {
   afterEach(() => {
     vi.unstubAllGlobals();
@@ -217,6 +303,75 @@ describe("RichTextEditor", () => {
     await waitFor(() => {
       const lastJson = JSON.stringify(onChange.mock.calls.at(-1)?.[0]);
       expect(lastJson).toContain("负责核心业务系统前端开发");
+    });
+  });
+
+  it("preserves list structure and inline marks when applying a polish candidate", async () => {
+    const onChange = vi.fn();
+    const fetchMock = vi.fn<
+      (...args: [RequestInfo | URL, RequestInit?]) => Promise<Response>
+    >(async () => {
+      return new Response(
+        JSON.stringify({
+          status: "ok",
+          requestId: "req_polish_list",
+          result: {
+            format: "plain_text",
+            polishedText:
+              "项目描述：负责企业内部部门管理系统前后端开发与安全体系建设。项目难点：登录请求采用RSA+AES混合加密方案，降低中间人攻击风险；使用JWT+RefreshToken双令牌机制实现会话续期。",
+            changeSummary: "保留列表结构，优化项目描述表达。",
+            riskFlags: [],
+          },
+          usage: {
+            provider: "fake-provider",
+            model: "fake-model",
+            inputTokens: 120,
+            outputTokens: 36,
+          },
+        }),
+        { status: 200, headers: { "content-type": "application/json" } },
+      );
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(
+      <RichTextEditor
+        content={bulletListDoc}
+        onChange={onChange}
+        polish={{
+          resumeId: "resume_abc",
+          section: "projects",
+          fieldPath: "projects.0.content",
+        }}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "AI 润色" }));
+    expect(await screen.findByText("保留列表结构，优化项目描述表达。")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "应用润色" }));
+
+    await waitFor(() => {
+      expect(onChange).toHaveBeenCalled();
+      const applied = onChange.mock.calls.at(-1)?.[0] as TipTapJSON;
+      expect(applied.content[0].type).toBe("bulletList");
+      expect(applied.content[0].content[0].content[0].content[0]).toMatchObject({
+        type: "text",
+        marks: [{ type: "bold" }],
+        text: "项目描述：",
+      });
+      expect(JSON.stringify(applied)).toContain(
+        "负责企业内部部门管理系统前后端开发与安全体系建设",
+      );
+      const nestedList = applied.content[0].content[1].content[1];
+      expect(nestedList.type).toBe("bulletList");
+      expect(nestedList.content[0].content[0].content[0].text).toContain(
+        "降低中间人攻击风险",
+      );
+      expect(nestedList.content[1].content[0].content[0].text).toContain(
+        "使用JWT+RefreshToken双令牌机制实现会话续期",
+      );
+      expect(JSON.stringify(applied)).toContain('"textAlign":"left"');
     });
   });
 });
