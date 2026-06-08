@@ -10,6 +10,9 @@ import type { ResumeContent } from "@/lib/resume-schema";
 import { monitorForElements } from "@atlaskit/pragmatic-drag-and-drop/element/adapter";
 import { ItemWrapper } from "./item-wrapper";
 import { SectionEditorHeader } from "./section-editor-header";
+import { SectionHelperButton } from "@/components/agent/section-helper-button";
+import { tiptapPlainText } from "@/lib/agent/resume-helper-context";
+import { useCompletenessScore } from "@/hooks/use-completeness-score";
 
 type Props = {
   resumeId?: string;
@@ -19,6 +22,9 @@ export function ResearchEditor({ resumeId }: Props) {
   const { register, control, watch, setValue } = useFormContext<ResumeContent>();
   const { fields, append, remove, move } = useFieldArray({ control, name: "research" });
   const [isOpen, setIsOpen] = useState(true);
+  const completeness = useCompletenessScore();
+  const research = watch("research") ?? [];
+  const helperText = research.map((item) => tiptapPlainText(item.content)).filter(Boolean).join("\n");
 
   useEffect(() => {
     return monitorForElements({
@@ -47,6 +53,16 @@ export function ResearchEditor({ resumeId }: Props) {
           isOpen={isOpen}
           onToggle={() => setIsOpen(!isOpen)}
           onAdd={() => { append({ name: "", role: "", start: "", end: "", link: "", content: emptyDoc() }); setIsOpen(true); }}
+          helper={resumeId ? (
+            <SectionHelperButton
+              resumeId={resumeId}
+              section="research"
+              fieldPath="research"
+              label="研究经历"
+              plainText={helperText}
+              completeness={completeness}
+            />
+          ) : undefined}
         />
       </div>
       {isOpen && (

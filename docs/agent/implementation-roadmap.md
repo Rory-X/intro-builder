@@ -179,15 +179,31 @@ Exit gates:
 
 ## Phase 2: Resume Helper APIs
 
+Status: Phase 2A implemented locally and verified, pending normal PR/deploy flow.
+
 Goal: 增量扩展到简历模块级 helper，但仍不是聊天面板。
+
+Phase 2A delivered:
+
+- Agent route `POST /v1/resume/helpers/:helperId`。
+- Web BFF route `POST /api/agent/resume/helpers/[helperId]`。
+- Helper IDs: `resume-diagnose` and `section-next-steps`。
+- Required Agent JWT scope: `resume:helper`。
+- Web-side Auth.js session and resume ownership check before proxying。
+- RHF snapshot context builder with capped plain text。
+- Editor toolbar `AI 诊断` entry and section header `AI 建议` entries。
+- Suggestion card UI only; no generated patch apply and no automatic RHF writeback。
+- Tests for Agent domain, Agent HTTP route, Web client, Web BFF, context builder, and UI components。
+- Verification passed: `pnpm verify` and `pnpm agent:build`。
 
 Candidate helpers:
 
-- `summary:suggest`
-- `experience:quantify`
-- `project:impact`
-- `skills:dedupe`
-- `resume:next_steps`
+- Phase 2A: `resume-diagnose`
+- Phase 2A: `section-next-steps`
+- Later Phase 2B candidate: `summary:suggest`
+- Later Phase 2B candidate: `experience:quantify`
+- Later Phase 2B candidate: `project:impact`
+- Later Phase 2B candidate: `skills:dedupe`
 
 Rules:
 
@@ -199,7 +215,7 @@ Rules:
 Exit gates:
 
 - 每个 helper 有 schema、prompt、route tests。
-- Web UI 有 apply/cancel。
+- Phase 2A Web UI 只展示建议；Phase 2B 生成内容类 helper 才设计 apply/cancel。
 - rate limit key 按 helper scope 分离。
 
 ## Phase 3: assistant-ui Agent Panel

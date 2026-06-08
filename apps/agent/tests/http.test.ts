@@ -7,6 +7,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { AgentReplayStore } from "../src/auth";
 import { createAgentServer } from "../src/http";
 import type { RichTextPolishProvider } from "../src/rich-text-polish";
+import type { ResumeHelperProvider } from "../src/resume-helpers";
 
 type TestAgentServer = Server & {
   url: (path: string) => string;
@@ -404,6 +405,182 @@ describe("agent HTTP service", () => {
       dependency: "provider",
     });
   });
+
+  it("returns structured resume helper suggestions from /v1/resume/helpers/:helperId", async () => {
+    const provider = new FakeResumeHelperProvider(
+      JSON.stringify({
+        summary: "整体内容完整，但工作经历缺少可验证结果。",
+        suggestions: [
+          {
+            id: "sug_experience_result",
+            section: "experience",
+            fieldPath: "experience",
+            severity: "high",
+            title: "为工作经历补充可验证结果",
+            rationale: "当前经历描述了动作，但没有说明产出或影响。",
+            actionLabel: "补充结果",
+            example: "如果原文已有真实数据，可以补充加载速度、转化率或交付周期变化。",
+            riskFlags: [
+              {
+                type: "needs_user_fact",
+                message: "结果数据必须由用户提供，Agent 不应编造。",
+              },
+            ],
+          },
+        ],
+      }),
+    );
+    const server = await listenOnRandomPort({
+      replayStore: new FakeReplayStore(),
+      resumeHelperProvider: provider,
+    });
+    const token = await signAgentToken({
+      sub: "user_123",
+      resumeId: "resume_abc",
+      scope: "resume:helper",
+      jti: "jti_resume_helper_valid",
+    });
+
+    const response = await fetch(server.url("/v1/resume/helpers/resume-diagnose"), {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${token}`,
+        "content-type": "application/json",
+        "x-request-id": "req-client-helper",
+      },
+      body: JSON.stringify(validResumeHelperBody()),
+    });
+
+    expect(response.status).toBe(200);
+    expect(provider.calls).toHaveLength(1);
+    expect(provider.calls[0]?.request.helperId).toBe("resume-diagnose");
+    expect(provider.calls[0]?.prompt.system).toContain("不得编造事实");
+    await expect(response.json()).resolves.toEqual({
+      status: "ok",
+      requestId: "req-client-helper",
+      helperId: "resume-diagnose",
+      result: {
+        summary: "整体内容完整，但工作经历缺少可验证结果。",
+        suggestions: [
+          {
+            id: "sug_experience_result",
+            section: "experience",
+            fieldPath: "experience",
+            severity: "high",
+            title: "为工作经历补充可验证结果",
+            rationale: "当前经历描述了动作，但没有说明产出或影响。",
+            actionLabel: "补充结果",
+            example: "如果原文已有真实数据，可以补充加载速度、转化率或交付周期变化。",
+            riskFlags: [
+              {
+                type: "needs_user_fact",
+                message: "结果数据必须由用户提供，Agent 不应编造。",
+              },
+            ],
+          },
+        ],
+      },
+      usage: {
+        provider: "fake-provider",
+        model: "fake-model",
+        inputTokens: 620,
+        outputTokens: 180,
+      },
+    });
+  });
+
+  it("rejects resume helper tokens with the wrong scope", async () => {
+    const server = await listenOnRandomPort({
+      replayStore: new FakeReplayStore(),
+      resumeHelperProvider: new FakeResumeHelperProvider("{}"),
+    });
+    const token = await signAgentToken({
+      sub: "user_123",
+      resumeId: "resume_abc",
+      scope: "rich_text:polish",
+      jti: "jti_helper_wrong_scope",
+    });
+
+    const response = await fetch(server.url("/v1/resume/helpers/resume-diagnose"), {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${token}`,
+        "content-type": "application/json",
+        "x-request-id": "req-client-helper-scope",
+      },
+      body: JSON.stringify(validResumeHelperBody()),
+    });
+
+    expect(response.status).toBe(403);
+    await expect(response.json()).resolves.toEqual({
+      error: "forbidden",
+      message: "Token scope is not allowed for this route",
+      requestId: "req-client-helper-scope",
+    });
+  });
+
+  it("rejects resume helper requests whose resumeId does not match the JWT", async () => {
+    const server = await listenOnRandomPort({
+      replayStore: new FakeReplayStore(),
+      resumeHelperProvider: new FakeResumeHelperProvider("{}"),
+    });
+    const token = await signAgentToken({
+      sub: "user_123",
+      resumeId: "resume_abc",
+      scope: "resume:helper",
+      jti: "jti_helper_resume_mismatch",
+    });
+
+    const response = await fetch(server.url("/v1/resume/helpers/resume-diagnose"), {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${token}`,
+        "content-type": "application/json",
+        "x-request-id": "req-client-helper-resume",
+      },
+      body: JSON.stringify({
+        ...validResumeHelperBody(),
+        resumeId: "resume_other",
+      }),
+    });
+
+    expect(response.status).toBe(403);
+    await expect(response.json()).resolves.toEqual({
+      error: "forbidden",
+      message: "Token resumeId does not match request resumeId",
+      requestId: "req-client-helper-resume",
+    });
+  });
+
+  it("returns dependency_unavailable when no resume helper provider is configured", async () => {
+    const server = await listenOnRandomPort({
+      replayStore: new FakeReplayStore(),
+    });
+    const token = await signAgentToken({
+      sub: "user_123",
+      resumeId: "resume_abc",
+      scope: "resume:helper",
+      jti: "jti_helper_no_provider",
+    });
+
+    const response = await fetch(server.url("/v1/resume/helpers/resume-diagnose"), {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${token}`,
+        "content-type": "application/json",
+        "x-request-id": "req-client-helper-provider",
+      },
+      body: JSON.stringify(validResumeHelperBody()),
+    });
+
+    expect(response.status).toBe(503);
+    await expect(response.json()).resolves.toEqual({
+      error: "dependency_unavailable",
+      message: "Resume helper provider is not configured",
+      requestId: "req-client-helper-provider",
+      dependency: "provider",
+    });
+  });
 });
 
 async function listenOnRandomPort(
@@ -411,6 +588,7 @@ async function listenOnRandomPort(
     redisReady?: () => Promise<{ ok: true } | { ok: false; message: string }>;
     replayStore?: AgentReplayStore;
     richTextPolishProvider?: RichTextPolishProvider;
+    resumeHelperProvider?: ResumeHelperProvider;
   } = {},
 ): Promise<TestAgentServer> {
   const server = createAgentServer({
@@ -439,6 +617,7 @@ async function listenOnRandomPort(
     redisReady: options.redisReady ?? (async () => ({ ok: true })),
     replayStore: options.replayStore,
     richTextPolishProvider: options.richTextPolishProvider,
+    resumeHelperProvider: options.resumeHelperProvider,
     createRequestId: () => "req_test_1",
   });
 
@@ -454,6 +633,39 @@ async function listenOnRandomPort(
   servers.push(testServer);
 
   return testServer;
+}
+
+function validResumeHelperBody() {
+  return {
+    resumeId: "resume_abc",
+    locale: "zh-CN",
+    target: {
+      kind: "resume",
+      section: null,
+      fieldPath: null,
+    },
+    context: {
+      resumeTitle: "前端开发工程师",
+      completeness: {
+        overall: 68,
+        sections: [
+          { key: "experience", label: "工作经历", score: 7, max: 10 },
+        ],
+      },
+      sections: [
+        {
+          key: "experience",
+          label: "工作经历",
+          plainText: "负责业务系统前端开发，优化页面性能。",
+        },
+      ],
+    },
+    intent: {
+      mode: "diagnose",
+      maxSuggestions: 5,
+      strategy: "star",
+    },
+  };
 }
 
 async function signAgentToken({
@@ -518,6 +730,28 @@ class FakeRichTextPolishProvider implements RichTextPolishProvider {
         model: "fake-model",
         inputTokens: 120,
         outputTokens: 36,
+      },
+    };
+  }
+}
+
+class FakeResumeHelperProvider implements ResumeHelperProvider {
+  readonly calls: Array<{
+    request: Parameters<ResumeHelperProvider["run"]>[0]["request"];
+    prompt: Parameters<ResumeHelperProvider["run"]>[0]["prompt"];
+  }> = [];
+
+  constructor(private readonly content: string) {}
+
+  async run(options: Parameters<ResumeHelperProvider["run"]>[0]) {
+    this.calls.push({ request: options.request, prompt: options.prompt });
+    return {
+      content: this.content,
+      usage: {
+        provider: "fake-provider",
+        model: "fake-model",
+        inputTokens: 620,
+        outputTokens: 180,
       },
     };
   }

@@ -8,6 +8,10 @@ service RichTextService {
   rpc PolishRichText(PolishRichTextRequest) returns (PolishRichTextResponse);
 }
 
+service ResumeHelperService {
+  rpc RunResumeHelper(RunResumeHelperRequest) returns (RunResumeHelperResponse);
+}
+
 message PolishRichTextRequest {
   string request_id = 1;
   string resume_id = 2;
@@ -58,6 +62,82 @@ message Usage {
   uint32 output_tokens = 4;
 }
 
+message RunResumeHelperRequest {
+  string request_id = 1;
+  string helper_id = 2;
+  string resume_id = 3;
+  string locale = 4;
+  ResumeHelperTarget target = 5;
+  ResumeHelperContext context = 6;
+  ResumeHelperIntent intent = 7;
+}
+
+message ResumeHelperTarget {
+  ResumeHelperTargetKind kind = 1;
+  ResumeSection section = 2;
+  string field_path = 3;
+}
+
+message ResumeHelperContext {
+  string resume_title = 1;
+  CompletenessSnapshot completeness = 2;
+  repeated ResumeHelperSection sections = 3;
+}
+
+message CompletenessSnapshot {
+  uint32 overall = 1;
+  repeated CompletenessSection sections = 2;
+}
+
+message CompletenessSection {
+  string key = 1;
+  string label = 2;
+  uint32 score = 3;
+  uint32 max = 4;
+}
+
+message ResumeHelperSection {
+  string key = 1;
+  string label = 2;
+  string plain_text = 3;
+}
+
+message ResumeHelperIntent {
+  ResumeHelperMode mode = 1;
+  uint32 max_suggestions = 2;
+  PolishStrategy strategy = 3;
+}
+
+message RunResumeHelperResponse {
+  string status = 1;
+  string request_id = 2;
+  string helper_id = 3;
+  ResumeHelperResult result = 4;
+  Usage usage = 5;
+}
+
+message ResumeHelperResult {
+  string summary = 1;
+  repeated ResumeHelperSuggestion suggestions = 2;
+}
+
+message ResumeHelperSuggestion {
+  string id = 1;
+  string section = 2;
+  string field_path = 3;
+  ResumeHelperSeverity severity = 4;
+  string title = 5;
+  string rationale = 6;
+  string action_label = 7;
+  string example = 8;
+  repeated ResumeHelperRiskFlag risk_flags = 9;
+}
+
+message ResumeHelperRiskFlag {
+  ResumeHelperRiskFlagType type = 1;
+  string message = 2;
+}
+
 enum RichTextFormat {
   RICH_TEXT_FORMAT_UNSPECIFIED = 0;
   RICH_TEXT_FORMAT_PLAIN_TEXT = 1;
@@ -106,4 +186,31 @@ enum RiskFlagType {
   RISK_FLAG_TYPE_CHANGED_ENTITY = 2;
   RISK_FLAG_TYPE_TOO_LITTLE_CONTEXT = 3;
   RISK_FLAG_TYPE_UNSAFE_CLAIM = 4;
+}
+
+enum ResumeHelperTargetKind {
+  RESUME_HELPER_TARGET_KIND_UNSPECIFIED = 0;
+  RESUME_HELPER_TARGET_KIND_RESUME = 1;
+  RESUME_HELPER_TARGET_KIND_SECTION = 2;
+}
+
+enum ResumeHelperMode {
+  RESUME_HELPER_MODE_UNSPECIFIED = 0;
+  RESUME_HELPER_MODE_DIAGNOSE = 1;
+  RESUME_HELPER_MODE_NEXT_STEPS = 2;
+}
+
+enum ResumeHelperSeverity {
+  RESUME_HELPER_SEVERITY_UNSPECIFIED = 0;
+  RESUME_HELPER_SEVERITY_HIGH = 1;
+  RESUME_HELPER_SEVERITY_MEDIUM = 2;
+  RESUME_HELPER_SEVERITY_LOW = 3;
+}
+
+enum ResumeHelperRiskFlagType {
+  RESUME_HELPER_RISK_FLAG_TYPE_UNSPECIFIED = 0;
+  RESUME_HELPER_RISK_FLAG_TYPE_NEEDS_USER_FACT = 1;
+  RESUME_HELPER_RISK_FLAG_TYPE_POSSIBLE_FABRICATION = 2;
+  RESUME_HELPER_RISK_FLAG_TYPE_TOO_LITTLE_CONTEXT = 3;
+  RESUME_HELPER_RISK_FLAG_TYPE_FORMATTING_RISK = 4;
 }

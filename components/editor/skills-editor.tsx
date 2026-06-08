@@ -4,6 +4,9 @@ import { useFormContext } from "react-hook-form";
 import { RichTextEditor } from "./rich-text-editor";
 import type { ResumeContent } from "@/lib/resume-schema";
 import { SectionEditorHeader } from "./section-editor-header";
+import { SectionHelperButton } from "@/components/agent/section-helper-button";
+import { tiptapPlainText } from "@/lib/agent/resume-helper-context";
+import { useCompletenessScore } from "@/hooks/use-completeness-score";
 
 type Props = {
   resumeId?: string;
@@ -12,6 +15,9 @@ type Props = {
 export function SkillsEditor({ resumeId }: Props) {
   const { watch, setValue } = useFormContext<ResumeContent>();
   const [isOpen, setIsOpen] = useState(true);
+  const completeness = useCompletenessScore();
+  const skills = watch("skills");
+  const helperText = tiptapPlainText(skills);
 
   return (
     <section>
@@ -23,6 +29,16 @@ export function SkillsEditor({ resumeId }: Props) {
           onToggle={() => setIsOpen(!isOpen)}
           onAdd={() => {}}
           addLabel=""
+          helper={resumeId ? (
+            <SectionHelperButton
+              resumeId={resumeId}
+              section="skills"
+              fieldPath="skills"
+              label="技能"
+              plainText={helperText}
+              completeness={completeness}
+            />
+          ) : undefined}
         />
       </div>
       {isOpen && (

@@ -204,7 +204,9 @@ describe("EditorClient live preview", () => {
 
     const toolbar = screen.getByTestId("editor-toolbar");
     expect(toolbar).toHaveTextContent("排版");
+    expect(toolbar).toHaveTextContent("AI 诊断");
     expect(screen.getAllByRole("button", { name: "排版" })).toHaveLength(1);
+    expect(screen.getByRole("button", { name: "AI 诊断" })).toBeInTheDocument();
   });
 
   it("shows autosave status details on the save badge", () => {

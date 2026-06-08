@@ -9,14 +9,18 @@
 | `apps/agent/package.json` | Agent package scripts and dependencies |
 | `apps/agent/src/index.ts` | process entrypoint, listen, shutdown |
 | `apps/agent/src/config.ts` | env parsing and validation |
-| `apps/agent/src/http.ts` | health/ready routing, request ids, JSON errors |
+| `apps/agent/src/http.ts` | health/ready routing, protected routes, request ids, JSON errors |
 | `apps/agent/src/redis.ts` | Redis client factory and readiness |
 | `apps/agent/src/rate-limit.ts` | Redis-backed rate limiting primitive |
 | `apps/agent/src/errors.ts` | JSON error envelope helpers |
+| `apps/agent/src/rich-text-polish.ts` | Rich text polish request validation, prompt builder, provider parser |
+| `apps/agent/src/resume-helpers.ts` | Resume helper IDs, validation, prompt builder, provider parser |
 | `apps/agent/tests/config.test.ts` | config behavior |
 | `apps/agent/tests/http.test.ts` | health/ready/404/405 behavior |
 | `apps/agent/tests/redis.test.ts` | Redis dependency behavior |
 | `apps/agent/tests/rate-limit.test.ts` | rate limit primitive |
+| `apps/agent/tests/rich-text-polish.test.ts` | rich text polish validation and parser behavior |
+| `apps/agent/tests/resume-helpers.test.ts` | resume helper validation, prompt rules, parser behavior |
 | `apps/agent/Dockerfile` | production image |
 | `apps/agent/compose.yaml` | local/server compose shape |
 | `apps/agent/Caddyfile` | reverse proxy template |
@@ -38,11 +42,17 @@ Web side entrypoints:
 | --- | --- |
 | `lib/agent/client.ts` | server-side Agent HTTP client |
 | `lib/agent/token.ts` | short-lived Agent JWT signer |
+| `lib/agent/resume-helper-context.ts` | RHF resume content to capped helper context |
 | `app/api/agent/session/route.ts` | protected session smoke route |
+| `app/api/agent/rich-text/polish/route.ts` | Web BFF for rich text polish |
+| `app/api/agent/resume/helpers/[helperId]/route.ts` | Web BFF for Phase 2A resume helpers |
 | `app/api/agent/messages/route.ts` | Phase 3 assistant-ui BFF stream route |
 | `tests/unit/agent-token.test.ts` | signer behavior |
 | `tests/unit/agent-client.test.ts` | timeout/error mapping |
 | `tests/unit/agent-session-route.test.ts` | Web BFF smoke route behavior |
+| `tests/unit/agent-rich-text-polish-route.test.ts` | rich text polish BFF behavior |
+| `tests/unit/agent-resume-helper-context.test.ts` | helper context extraction and caps |
+| `tests/unit/agent-resume-helper-route.test.ts` | resume helper BFF auth/ownership/proxy behavior |
 
 Rules:
 
@@ -85,14 +95,21 @@ Rules:
 
 ## Agent UI Components
 
+Implemented components:
+
+| File | Phase | Responsibility |
+| --- | --- | --- |
+| `components/agent/resume-diagnose-button.tsx` | 2A | whole-resume diagnosis popover trigger and request state |
+| `components/agent/section-helper-button.tsx` | 2A | section-level next-step suggestion trigger |
+| `components/agent/resume-helper-card.tsx` | 2A | reusable structured suggestion card |
+| `tests/unit/resume-diagnose-button.test.tsx` | 2A | diagnosis request and suggestion display |
+| `tests/unit/section-helper-button.test.tsx` | 2A | section helper request shape |
+| `tests/unit/resume-helper-card.test.tsx` | 2A | suggestion card rendering |
+
 Planned components:
 
 | Planned file | Phase | Responsibility |
 | --- | --- | --- |
-| `components/agent/rich-text-polish-button.tsx` | 1 | toolbar button and request state |
-| `components/agent/polish-suggestion-popover.tsx` | 1 | apply/cancel suggestion UI |
-| `components/agent/section-helper-button.tsx` | 2 | section-level helper trigger |
-| `components/agent/agent-suggestion-card.tsx` | 2 | reusable suggestion display |
 | `components/agent/agent-panel-trigger.tsx` | 3 | open assistant panel |
 | `components/agent/agent-panel.tsx` | 3 | assistant-ui panel shell |
 | `components/agent/agent-runtime-provider.tsx` | 3 | assistant-ui runtime integration |

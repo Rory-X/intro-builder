@@ -5,7 +5,7 @@ import { currentUserId } from "@/lib/auth-helpers";
 
 export const dynamic = "force-dynamic";
 
-export async function GET(req?: Request) {
+export async function GET(req: Request) {
   const debug = isDebugRequest(req);
   const userId = await currentUserId();
   if (!userId) {
@@ -51,8 +51,7 @@ export async function GET(req?: Request) {
   }
 }
 
-function isDebugRequest(req: Request | undefined): boolean {
-  if (!req) return false;
+function isDebugRequest(req: Request): boolean {
   return new URL(req.url).searchParams.get("debug") === "1";
 }
 

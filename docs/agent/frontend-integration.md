@@ -94,12 +94,18 @@ UI 行为：
 - `CompletenessScore` 附近的建议入口。
 - 模板面板不承载 Agent helper。
 
+### Phase 2A: Resume Helpers
+
+`resume-diagnose` 放在编辑器顶部工具区，靠近完整度信息，给出整份简历的下一步建议。`section-next-steps` 放在模块 header，覆盖工作经历、项目经历、教育经历、研究经历、技能和自定义模块。
+
+Phase 2A 的 UI 只展示 suggestion cards，不把生成内容自动写回 RHF，也没有 apply/cancel patch 流程。按钮用于引导 AI 能力：文字与图标使用渐变色，按钮背景保持现有编辑器表面风格，不做渐变背景。
+
 推荐组件：
 
 ```text
 components/agent/section-helper-button.tsx
-components/agent/agent-suggestion-card.tsx
-components/agent/agent-suggestion-list.tsx
+components/agent/resume-diagnose-button.tsx
+components/agent/resume-helper-card.tsx
 ```
 
 数据边界：

@@ -198,7 +198,7 @@ Current known warnings:
 
 - `pnpm lint` has existing Web app warnings unrelated to the Agent package.
 - `pnpm build` may print the intentional build-time `DATABASE_URL` placeholder warning when `.env.local` is absent.
-- `pnpm build` currently passes after marking `/dev-preview` as dynamic.
+- `pnpm build` uses `next build --webpack` for deterministic local and Agent deploy verification. The default Turbopack build path was observed to fail when build-time Google Fonts `.woff2` downloads were reset.
 
 ## Docker and Caddy
 

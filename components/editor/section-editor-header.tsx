@@ -1,4 +1,5 @@
 "use client";
+import type { ReactNode } from "react";
 import { ChevronDown, ChevronRight, Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { SECTION_META } from "@/lib/section-meta";
@@ -10,9 +11,10 @@ type Props = {
   onToggle: () => void;
   onAdd: () => void;
   addLabel?: string;
+  helper?: ReactNode;
 };
 
-export function SectionEditorHeader({ sectionKey, itemCount, isOpen, onToggle, onAdd, addLabel = "新增" }: Props) {
+export function SectionEditorHeader({ sectionKey, itemCount, isOpen, onToggle, onAdd, addLabel = "新增", helper }: Props) {
   const meta = SECTION_META[sectionKey];
   if (!meta) return null;
   const Icon = meta.icon;
@@ -35,12 +37,15 @@ export function SectionEditorHeader({ sectionKey, itemCount, isOpen, onToggle, o
           </span>
         )}
       </button>
-      {addLabel && (
-        <Button type="button" size="sm" variant="outline" onClick={onAdd} className="gap-1 text-xs">
-          <Plus className="h-3 w-3" />
-          {addLabel}
-        </Button>
-      )}
+      <div className="flex items-center gap-2">
+        {helper}
+        {addLabel && (
+          <Button type="button" size="sm" variant="outline" onClick={onAdd} className="gap-1 text-xs">
+            <Plus className="h-3 w-3" />
+            {addLabel}
+          </Button>
+        )}
+      </div>
     </div>
   );
 }

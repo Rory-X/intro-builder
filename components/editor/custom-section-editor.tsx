@@ -6,6 +6,9 @@ import { RichTextEditor } from "./rich-text-editor";
 import type { ResumeContent } from "@/lib/resume-schema";
 import { SectionEditorHeader } from "./section-editor-header";
 import { useState } from "react";
+import { SectionHelperButton } from "@/components/agent/section-helper-button";
+import { tiptapPlainText } from "@/lib/agent/resume-helper-context";
+import { useCompletenessScore } from "@/hooks/use-completeness-score";
 
 type Props = {
   sectionId: string;
@@ -15,6 +18,7 @@ type Props = {
 export function CustomSectionEditor({ sectionId, resumeId }: Props) {
   const { watch, setValue, getValues } = useFormContext<ResumeContent>();
   const [isOpen, setIsOpen] = useState(true);
+  const completeness = useCompletenessScore();
 
   const custom = watch("custom") ?? [];
   const idx = custom.findIndex((c) => c.id === sectionId);
@@ -32,6 +36,16 @@ export function CustomSectionEditor({ sectionId, resumeId }: Props) {
           onToggle={() => setIsOpen(!isOpen)}
           onAdd={() => {}} // No items to add for custom sections
           addLabel=""
+          helper={resumeId ? (
+            <SectionHelperButton
+              resumeId={resumeId}
+              section="custom"
+              fieldPath={`custom.${idx}.content`}
+              label={section.title || "自定义模块"}
+              plainText={tiptapPlainText(section.content)}
+              completeness={completeness}
+            />
+          ) : undefined}
         />
       </div>
       {isOpen && (
