@@ -2,9 +2,9 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Show AI rich-text polish suggestions as a compact change summary before users apply them.
+**Goal:** Show AI rich-text polish suggestions as compact single-line text diffs before users apply them.
 
-**Architecture:** Keep all changes inside `components/editor/rich-text-editor.tsx` and its unit test. Capture original plain text at request time, store it on the candidate, compute a small token-level diff in the panel, and render filtered delete/insert chips without changing the existing apply path.
+**Architecture:** Keep all changes inside `components/editor/rich-text-editor.tsx` and its unit test. Capture original plain text and original TipTap JSON at request time, store them on the candidate, compare structured replacement text blocks when available, and render single-line contextual diff rows without changing the existing apply path.
 
 **Tech Stack:** React 19 client component, TipTap editor text extraction, Vitest + Testing Library.
 
@@ -12,8 +12,8 @@
 
 ## File Structure
 
-- `components/editor/rich-text-editor.tsx`: store original text in `PolishCandidate`, add `PolishDiffView`, and add small dependency-free diff/display helpers.
-- `tests/unit/rich-text-editor.test.tsx`: add coverage for delete/insert diff rendering and whitespace-only fragment filtering.
+- `components/editor/rich-text-editor.tsx`: store original text/TipTap JSON in `PolishCandidate`, add `PolishDiffView`, and add small dependency-free diff/display helpers.
+- `tests/unit/rich-text-editor.test.tsx`: add coverage for delete/insert diff rendering, single-line contextual rows, and whitespace-only fragment filtering.
 
 ## Tasks
 
@@ -37,23 +37,30 @@
 - [x] Add a regression test proving whitespace-only diff fragments are not rendered.
 - [x] Use a neutral, height-limited suggestion panel background so long rich-text fields do not dominate the editor.
 
+### Task 2.6: Single-Line Text Diff Rows
+
+- [x] Store the original TipTap JSON on the polish candidate.
+- [x] Prefer block-by-block diffs when `replacementTiptapJson` is available.
+- [x] Render each changed block as a single-line contextual text diff row.
+- [x] Add a regression test proving a row includes surrounding text plus delete/insert spans.
+
 ### Task 3: Verification And PR Update
 
 - [x] Run `pnpm test`.
 - [x] Run `pnpm tsc --noEmit`.
 - [x] Run `pnpm lint`.
 - [x] Run `pnpm build` or record the known Google Fonts network blocker if it recurs.
-- [x] Commit and push to the existing PR branch.
+- [x] Commit and push to the PR branch.
 
 ## Verification
 
-- `pnpm exec vitest run tests/unit/rich-text-editor.test.tsx`: 11 tests passed.
-- `pnpm test`: 58 app test files / 300 tests passed; 6 agent test files / 42 tests passed.
+- `pnpm exec vitest run tests/unit/rich-text-editor.test.tsx`: 12 tests passed.
+- `pnpm test`: 64 app test files / 312 tests passed; 7 agent test files / 52 tests passed.
 - `pnpm tsc --noEmit`: passed.
 - `pnpm lint`: passed with 10 existing warnings outside this change.
 - `pnpm build`: passed. Build logged the expected local placeholder `DATABASE_URL` warnings while prerendering template pages.
 
 ## Risks
 
-- A character-level diff can be noisy for Chinese text. The panel intentionally renders only meaningful delete/insert chips instead of the full raw diff to keep dense rich-text suggestions readable.
+- A character-level diff can be noisy for Chinese text. The panel now scopes diffs to changed text blocks and trims long equal context so users can see where the change happened without rendering the whole field.
 - The diff is display-only. The apply path must continue using `replacementTiptapJson` or the existing plain-text fallback.

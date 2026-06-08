@@ -366,6 +366,82 @@ describe("RichTextEditor", () => {
     expect(inserted).toHaveAttribute("data-diff-kind", "insert");
   });
 
+  it("renders structured polish changes as single-line text diff rows", async () => {
+    const replacementTiptapJson: TipTapJSON = {
+      type: "doc",
+      content: [
+        {
+          type: "paragraph",
+          content: [
+            {
+              type: "text",
+              text: "负责核心业务系统前端开发，持续优化页面性能。",
+            },
+          ],
+        },
+      ],
+    };
+    const fetchMock = vi.fn<
+      (...args: [RequestInfo | URL, RequestInit?]) => Promise<Response>
+    >(async () => {
+      return new Response(
+        JSON.stringify({
+          status: "ok",
+          requestId: "req_polish_single_line_diff",
+          result: {
+            format: "tiptap_json",
+            polishedText: "负责核心业务系统前端开发，持续优化页面性能。",
+            replacementTiptapJson,
+            changeSummary: "补充业务语境，优化性能表述。",
+            riskFlags: [],
+          },
+          usage: {
+            provider: "fake-provider",
+            model: "fake-model",
+            inputTokens: 120,
+            outputTokens: 36,
+          },
+        }),
+        { status: 200, headers: { "content-type": "application/json" } },
+      );
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const { container } = render(
+      <RichTextEditor
+        content={{
+          type: "doc",
+          content: [
+            {
+              type: "paragraph",
+              content: [{ type: "text", text: "负责系统开发，优化页面速度。" }],
+            },
+          ],
+        }}
+        onChange={() => {}}
+        polish={{
+          resumeId: "resume_abc",
+          section: "projects",
+          fieldPath: "projects.0.content",
+        }}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "AI 润色" }));
+    expect(await screen.findByText("补充业务语境，优化性能表述。")).toBeInTheDocument();
+
+    const row = container.querySelector("[data-diff-row]");
+    expect(row).not.toBeNull();
+    expect(row?.textContent).toContain("负责");
+    expect(row?.textContent).toContain("系统");
+    expect(row?.textContent).toContain("开发");
+    expect(row?.textContent).not.toContain("\n");
+    expect(row?.querySelector('[data-diff-kind="delete"]')).toHaveTextContent("速度");
+    expect(row?.querySelector('[data-diff-kind="insert"]')?.textContent).toContain(
+      "核心业务",
+    );
+  });
+
   it("does not render whitespace-only polish diff fragments", async () => {
     const fetchMock = vi.fn<
       (...args: [RequestInfo | URL, RequestInit?]) => Promise<Response>
