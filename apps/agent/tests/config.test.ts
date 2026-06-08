@@ -21,6 +21,10 @@ describe("agent config", () => {
       jwtAudience: "intro-builder-agent",
       jwtSecret: undefined,
       jwtReplayTtlSeconds: 180,
+      modelBaseUrl: undefined,
+      modelApiKey: undefined,
+      modelName: undefined,
+      modelTimeoutMs: 20_000,
     });
   });
 
@@ -40,6 +44,10 @@ describe("agent config", () => {
       AGENT_JWT_AUDIENCE: "intro-test-agent",
       AGENT_JWT_SECRET: "test-secret",
       AGENT_JWT_REPLAY_TTL_SECONDS: "60",
+      AGENT_MODEL_BASE_URL: "https://model.test/v1",
+      AGENT_MODEL_API_KEY: "model-key",
+      AGENT_MODEL_NAME: "gpt-test",
+      AGENT_MODEL_TIMEOUT_MS: "30000",
     });
 
     expect(config).toMatchObject({
@@ -57,6 +65,10 @@ describe("agent config", () => {
       jwtAudience: "intro-test-agent",
       jwtSecret: "test-secret",
       jwtReplayTtlSeconds: 60,
+      modelBaseUrl: "https://model.test/v1",
+      modelApiKey: "model-key",
+      modelName: "gpt-test",
+      modelTimeoutMs: 30000,
     });
   });
 
@@ -85,6 +97,10 @@ describe("agent config", () => {
 
     expect(() => loadConfig({ AGENT_JWT_REPLAY_TTL_SECONDS: "0" })).toThrow(
       /AGENT_JWT_REPLAY_TTL_SECONDS must be an integer between 1 and 86400/,
+    );
+
+    expect(() => loadConfig({ AGENT_MODEL_TIMEOUT_MS: "0" })).toThrow(
+      /AGENT_MODEL_TIMEOUT_MS must be an integer between 1 and 120000/,
     );
   });
 });

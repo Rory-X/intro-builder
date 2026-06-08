@@ -93,6 +93,17 @@ AGENT_JWT_SECRET=<same value as Web production env>
 
 The Agent process still starts without `AGENT_JWT_SECRET` so `/health` and `/ready` stay deployable, but protected routes fail closed until the secret is present.
 
+Phase 1 rich-text polish additionally needs an OpenAI-compatible chat-completions provider before `/v1/rich-text/polish` can return model output:
+
+```bash
+AGENT_MODEL_BASE_URL=<provider-or-relay /v1 base URL>
+AGENT_MODEL_API_KEY=<provider key>
+AGENT_MODEL_NAME=<chat model name>
+AGENT_MODEL_TIMEOUT_MS=20000
+```
+
+If these model vars are absent, the Agent keeps `/health` and `/ready` green and returns a structured `dependency_unavailable` error for rich-text polish requests.
+
 ## GitHub Actions Deployment
 
 Workflow:
@@ -137,6 +148,15 @@ AGENT_SSH_USER
 AGENT_SSH_KEY
 AGENT_SSH_KNOWN_HOSTS
 AGENT_JWT_SECRET
+AGENT_MODEL_BASE_URL
+AGENT_MODEL_API_KEY
+```
+
+Optional GitHub Variables for Phase 1 provider routing:
+
+```text
+AGENT_MODEL_NAME=<chat model name>
+AGENT_MODEL_TIMEOUT_MS=20000
 ```
 
 Configured GitHub Variables:

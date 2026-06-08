@@ -13,6 +13,10 @@ export type AgentConfig = {
   jwtAudience: string;
   jwtSecret?: string;
   jwtReplayTtlSeconds: number;
+  modelBaseUrl?: string;
+  modelApiKey?: string;
+  modelName?: string;
+  modelTimeoutMs: number;
 };
 
 type Env = Record<string, string | undefined>;
@@ -60,6 +64,15 @@ export function loadConfig(env: Env = process.env): AgentConfig {
       "AGENT_JWT_REPLAY_TTL_SECONDS",
       180,
       { min: 1, max: 86_400 },
+    ),
+    modelBaseUrl: env.AGENT_MODEL_BASE_URL,
+    modelApiKey: env.AGENT_MODEL_API_KEY,
+    modelName: env.AGENT_MODEL_NAME,
+    modelTimeoutMs: parseIntegerEnv(
+      env.AGENT_MODEL_TIMEOUT_MS,
+      "AGENT_MODEL_TIMEOUT_MS",
+      20_000,
+      { min: 1, max: 120_000 },
     ),
   };
 }

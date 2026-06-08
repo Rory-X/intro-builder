@@ -4,12 +4,12 @@
 
 ## 当前状态
 
-- 分支：`codex/agent-web-auth-client`
+- 分支：`codex/agent-rich-text-polish`
 - 微服务目录：`apps/agent`
-- 当前能力：基础 Node/TypeScript HTTP 服务，包含 `/health`、Redis-backed `/ready`、protected `/v1/session`、JSON 404/405、统一错误 envelope、request id、Redis readiness、rate limit primitive、短期 Agent JWT 校验、Redis `jti` replay guard、配置解析、启动日志、Docker/Caddy/compose。
+- 当前能力：基础 Node/TypeScript HTTP 服务，包含 `/health`、Redis-backed `/ready`、protected `/v1/session`、`POST /v1/rich-text/polish`、JSON 404/405、统一错误 envelope、request id、Redis readiness、rate limit primitive、短期 Agent JWT 校验、Redis `jti` replay guard、STAR-aware prompt、OpenAI-compatible provider 配置、配置解析、启动日志、Docker/Caddy/compose。
 - 本地 Redis：已安装并启动 Homebrew `redis 8.8.0`，连接串为 `redis://127.0.0.1:6379`。
 - 服务器部署：`101.36.117.253` 已安装 Docker/Compose，`/opt/intro-agent` 已运行 `agent + redis + caddy`。公网入口 `https://api.rory-x.me/intro-builder/agent` 已通过 Cloudflare -> Caddy -> Agent 的 `/health` 与 `/ready` 冒烟。
-- 当前不包含：模型调用、prompt、streaming、tool calling、富文本润色业务、assistant-ui。
+- 当前不包含：streaming、tool calling、编辑器按钮 UI、自动写回、assistant-ui。
 
 ## 产品边界
 
