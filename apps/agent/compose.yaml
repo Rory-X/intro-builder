@@ -1,5 +1,6 @@
 services:
   agent:
+    image: ${AGENT_IMAGE:-intro-builder-agent:local}
     build:
       context: ../..
       dockerfile: apps/agent/Dockerfile
