@@ -69,6 +69,24 @@ describe("Web Agent token signer", () => {
     ).rejects.toThrow(/Agent JWT ttl must be between 1 and 180 seconds/);
   });
 
+  it("normalizes pasted env secrets before signing", async () => {
+    const result = await signAgentToken({
+      userId: "user_123",
+      scope: "agent:session",
+      jwtSecret: ' "test-agent-secret" \n',
+      now: NOW,
+      createJti: () => "jti_normalized_secret",
+    });
+
+    await expect(
+      jwtVerify(result.token, new TextEncoder().encode("test-agent-secret"), {
+        issuer: "intro-builder-web",
+        audience: "intro-builder-agent",
+        currentDate: NOW,
+      }),
+    ).resolves.toBeDefined();
+  });
+
   it("requires a signing secret", async () => {
     await expect(
       signAgentToken({
