@@ -62,6 +62,7 @@ type RichTextPolishContext = {
 
 type PolishCandidate = {
   originalText: string;
+  originalTiptapJson: TipTapJSON;
   polishedText: string;
   replacementTiptapJson?: TipTapJSON;
   changeSummary: string;
@@ -184,6 +185,7 @@ export function RichTextEditor({ content, onChange, polish }: Props) {
         status: "ready",
         candidate: {
           originalText: plainText,
+          originalTiptapJson: tiptapJson,
           polishedText: result.polishedText,
           ...readReplacementTiptapJson(result),
           changeSummary: result.changeSummary,
@@ -370,7 +372,9 @@ function PolishCandidatePanel({
             <p className="font-medium">AI 润色建议</p>
             <PolishDiffView
               originalText={state.candidate.originalText}
+              originalTiptapJson={state.candidate.originalTiptapJson}
               polishedText={state.candidate.polishedText}
+              replacementTiptapJson={state.candidate.replacementTiptapJson}
             />
           </div>
           <p className="text-muted-foreground">{state.candidate.changeSummary}</p>
@@ -411,31 +415,39 @@ type DiffPart = {
   text: string;
 };
 
-type ChangedDiffPart = {
-  kind: "delete" | "insert";
-  text: string;
+type DiffRow = {
+  parts: DiffPart[];
 };
 
 const MAX_INLINE_DIFF_TOKENS = 800;
-const MAX_VISIBLE_DIFF_CHANGES = 18;
-const MAX_DIFF_CHANGE_TEXT_LENGTH = 36;
+const MAX_VISIBLE_DIFF_ROWS = 6;
+const DIFF_CONTEXT_CHARS = 18;
 
 function PolishDiffView({
   originalText,
+  originalTiptapJson,
   polishedText,
+  replacementTiptapJson,
 }: {
   originalText: string;
+  originalTiptapJson: TipTapJSON;
   polishedText: string;
+  replacementTiptapJson?: TipTapJSON;
 }) {
-  const changes = createDisplayDiffParts(originalText, polishedText);
-  const visibleChanges = changes.slice(0, MAX_VISIBLE_DIFF_CHANGES);
-  const hiddenChangeCount = Math.max(0, changes.length - visibleChanges.length);
+  const rows = createDisplayDiffRows({
+    originalText,
+    originalTiptapJson,
+    polishedText,
+    replacementTiptapJson,
+  });
+  const visibleRows = rows.slice(0, MAX_VISIBLE_DIFF_ROWS);
+  const hiddenRowCount = Math.max(0, rows.length - visibleRows.length);
 
-  if (visibleChanges.length === 0) {
+  if (visibleRows.length === 0) {
     return (
       <p
         aria-label="AI 润色差异"
-        className="mt-1 max-h-12 overflow-hidden text-muted-foreground"
+        className="mt-1 overflow-hidden text-ellipsis whitespace-nowrap text-muted-foreground"
       >
         {normalizeDiffDisplayText(polishedText)}
       </p>
@@ -445,79 +457,203 @@ function PolishDiffView({
   return (
     <div
       aria-label="AI 润色差异"
-      className="mt-1 max-h-24 overflow-y-auto rounded-md border border-border/60 bg-background/80 px-2 py-1.5 shadow-sm dark:bg-background/50"
+      className="mt-1 max-h-36 overflow-y-auto rounded-md border border-border/60 bg-background/80 px-2 py-1.5 shadow-sm dark:bg-background/50"
     >
-      <div className="flex flex-wrap items-center gap-1.5">
-        {visibleChanges.map((part, index) => (
-          <span
-            key={`${part.kind}-${index}`}
-            className={cn(
-              "inline-flex max-w-full items-center gap-1 rounded-md border px-1.5 py-0.5 leading-5",
-              part.kind === "delete"
-                ? "border-red-200 bg-red-50 text-red-700 dark:border-red-900/70 dark:bg-red-950/25 dark:text-red-200"
-                : "border-emerald-200 bg-emerald-50 text-emerald-800 dark:border-emerald-900/70 dark:bg-emerald-950/25 dark:text-emerald-100",
-            )}
+      <div className="space-y-1">
+        {visibleRows.map((row, rowIndex) => (
+          <p
+            key={rowIndex}
+            data-diff-row
+            title={getDiffRowText(row)}
+            className="overflow-hidden text-ellipsis whitespace-nowrap leading-6 text-foreground"
           >
-            <span aria-hidden="true" className="shrink-0 text-[10px] font-medium opacity-70">
-              {part.kind === "delete" ? "删" : "增"}
-            </span>
-            <span
-              data-diff-kind={part.kind}
-              className={cn(
-                "min-w-0 max-w-[18rem] truncate",
-                part.kind === "delete" && "line-through decoration-red-400",
-              )}
-              title={part.text}
-            >
-              {truncateDiffDisplayText(part.text)}
-            </span>
-          </span>
+            {row.parts.map((part, partIndex) => (
+              <DiffTextPart
+                key={`${part.kind}-${partIndex}`}
+                part={part}
+              />
+            ))}
+          </p>
         ))}
-        {hiddenChangeCount > 0 && (
-          <span className="rounded-md border border-border/60 bg-muted px-1.5 py-0.5 leading-5 text-muted-foreground">
-            还有 {hiddenChangeCount} 处
-          </span>
+        {hiddenRowCount > 0 && (
+          <p className="leading-6 text-muted-foreground">
+            还有 {hiddenRowCount} 行变更
+          </p>
         )}
       </div>
     </div>
   );
 }
 
-function createDisplayDiffParts(
-  originalText: string,
-  polishedText: string,
-): ChangedDiffPart[] {
-  const displayParts: ChangedDiffPart[] = [];
-
-  for (const part of createInlineDiffParts(originalText, polishedText)) {
-    if (part.kind === "equal") continue;
-    const text = normalizeDiffDisplayText(part.text);
-    if (!hasMeaningfulDiffText(text)) continue;
-    appendDisplayDiffPart(displayParts, part.kind, text);
+function DiffTextPart({ part }: { part: DiffPart }) {
+  if (part.kind === "equal") {
+    return <span className="text-foreground/80">{part.text}</span>;
   }
 
-  return displayParts;
+  return (
+    <span
+      data-diff-kind={part.kind}
+      className={cn(
+        "mx-0.5 rounded px-1 py-0.5",
+        part.kind === "delete"
+          ? "bg-red-100 text-red-800 line-through decoration-red-500 dark:bg-red-950/45 dark:text-red-200"
+          : "bg-emerald-100 text-emerald-900 dark:bg-emerald-950/45 dark:text-emerald-100",
+      )}
+    >
+      {part.text}
+    </span>
+  );
+}
+
+function createDisplayDiffRows({
+  originalText,
+  originalTiptapJson,
+  polishedText,
+  replacementTiptapJson,
+}: {
+  originalText: string;
+  originalTiptapJson: TipTapJSON;
+  polishedText: string;
+  replacementTiptapJson?: TipTapJSON;
+}): DiffRow[] {
+  const blockRows = replacementTiptapJson
+    ? createBlockDiffRows(originalTiptapJson, replacementTiptapJson)
+    : [];
+
+  return blockRows.length > 0
+    ? blockRows
+    : createTextDiffRows(originalText, polishedText);
+}
+
+function createBlockDiffRows(
+  originalTiptapJson: TipTapJSON,
+  replacementTiptapJson: TipTapJSON,
+): DiffRow[] {
+  const originalBlocks = collectTextBlocks(originalTiptapJson as TipTapNode)
+    .map(getBlockText);
+  const replacementBlocks = collectTextBlocks(replacementTiptapJson as TipTapNode)
+    .map(getBlockText);
+
+  if (
+    originalBlocks.length === 0 ||
+    originalBlocks.length !== replacementBlocks.length
+  ) {
+    return [];
+  }
+
+  return originalBlocks
+    .map((blockText, index) =>
+      createDiffRow(blockText, replacementBlocks[index] ?? ""),
+    )
+    .filter(isDiffRow);
+}
+
+function createTextDiffRows(originalText: string, polishedText: string): DiffRow[] {
+  const row = createDiffRow(originalText, polishedText);
+  return row ? [row] : [];
+}
+
+function createDiffRow(originalText: string, polishedText: string): DiffRow | null {
+  const parts = createContextualDiffParts(
+    createInlineDiffParts(
+      normalizeDiffDisplayText(originalText),
+      normalizeDiffDisplayText(polishedText),
+    ),
+  );
+
+  return parts.length > 0 ? { parts } : null;
+}
+
+function createContextualDiffParts(parts: DiffPart[]): DiffPart[] {
+  const normalizedParts = parts
+    .map((part) => ({
+      kind: part.kind,
+      text: normalizeDiffPartText(part.text),
+    }))
+    .filter((part) => part.text.length > 0);
+  const changedIndexes = normalizedParts
+    .map((part, index) =>
+      part.kind !== "equal" && hasMeaningfulDiffText(part.text) ? index : -1,
+    )
+    .filter((index) => index >= 0);
+  if (changedIndexes.length === 0) return [];
+
+  const firstChangedIndex = changedIndexes[0];
+  const lastChangedIndex = changedIndexes.at(-1) ?? firstChangedIndex;
+  const contextualParts: DiffPart[] = [];
+  const beforeText = normalizedParts
+    .slice(0, firstChangedIndex)
+    .map((part) => part.text)
+    .join("");
+  const beforeContext = takeTextEnd(beforeText, DIFF_CONTEXT_CHARS).trimStart();
+  if (beforeContext) {
+    appendDiffPart(
+      contextualParts,
+      "equal",
+      `${beforeText.length > beforeContext.length ? "…" : ""}${beforeContext}`,
+    );
+  }
+
+  for (let index = firstChangedIndex; index <= lastChangedIndex; index += 1) {
+    const part = normalizedParts[index];
+    if (!part) continue;
+    if (part.kind !== "equal" && !hasMeaningfulDiffText(part.text)) continue;
+    appendDiffPart(contextualParts, part.kind, contextTextForDiffPart(part));
+  }
+
+  const afterText = normalizedParts
+    .slice(lastChangedIndex + 1)
+    .map((part) => part.text)
+    .join("");
+  const afterContext = takeTextStart(afterText, DIFF_CONTEXT_CHARS).trimEnd();
+  if (afterContext) {
+    appendDiffPart(
+      contextualParts,
+      "equal",
+      `${afterContext}${afterText.length > afterContext.length ? "…" : ""}`,
+    );
+  }
+
+  return contextualParts;
+}
+
+function contextTextForDiffPart(part: DiffPart): string {
+  if (part.kind !== "equal") return part.text;
+  const chars = Array.from(part.text);
+  const maxEqualContext = DIFF_CONTEXT_CHARS * 2;
+  if (chars.length <= maxEqualContext) return part.text;
+  return `${takeTextStart(part.text, DIFF_CONTEXT_CHARS)}…${takeTextEnd(
+    part.text,
+    DIFF_CONTEXT_CHARS,
+  )}`;
+}
+
+function isDiffRow(row: DiffRow | null): row is DiffRow {
+  return row !== null;
+}
+
+function getDiffRowText(row: DiffRow): string {
+  return normalizeDiffDisplayText(row.parts.map((part) => part.text).join(""));
 }
 
 function normalizeDiffDisplayText(text: string): string {
-  return text.replace(/\s+/g, " ").trim();
+  return normalizeDiffPartText(text).trim();
+}
+
+function normalizeDiffPartText(text: string): string {
+  return text.replace(/\s+/g, " ");
 }
 
 function hasMeaningfulDiffText(text: string): boolean {
   return /[0-9A-Za-z\u4e00-\u9fff]/u.test(text);
 }
 
-function truncateDiffDisplayText(text: string): string {
-  if (text.length <= MAX_DIFF_CHANGE_TEXT_LENGTH) return text;
-  return `${text.slice(0, MAX_DIFF_CHANGE_TEXT_LENGTH - 1)}…`;
+function takeTextStart(text: string, maxLength: number): string {
+  return Array.from(text).slice(0, maxLength).join("");
 }
 
-function appendDisplayDiffPart(
-  parts: ChangedDiffPart[],
-  kind: "delete" | "insert",
-  text: string,
-) {
-  parts.push({ kind, text });
+function takeTextEnd(text: string, maxLength: number): string {
+  return Array.from(text).slice(-maxLength).join("");
 }
 
 function createInlineDiffParts(
