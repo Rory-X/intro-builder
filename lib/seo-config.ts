@@ -23,4 +23,4 @@ export const SEO_CONFIG = {
       keywords: ['求职资讯', '校招', '实习', '秋招', '春招'],
     },
   },
-} as const;
+};
