@@ -56,7 +56,7 @@ describe("agent JWT authentication", () => {
       expectedScope: "agent:session",
       config: {
         ...createConfig(),
-        jwtSecret: ' "test-agent-secret" \n',
+        jwtSecret: ' export AGENT_JWT_SECRET="test-agent-secret" \n',
       },
       replayStore,
       now: NOW,

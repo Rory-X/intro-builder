@@ -73,7 +73,7 @@ describe("Web Agent token signer", () => {
     const result = await signAgentToken({
       userId: "user_123",
       scope: "agent:session",
-      jwtSecret: ' "test-agent-secret" \n',
+      jwtSecret: ' export AGENT_JWT_SECRET="test-agent-secret" \n',
       now: NOW,
       createJti: () => "jti_normalized_secret",
     });

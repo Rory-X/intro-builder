@@ -189,16 +189,21 @@ async function verifyJwt(
 }
 
 function normalizeAgentJwtSecret(secret: string | undefined): string {
-  const trimmed = secret?.trim() ?? "";
+  let value = secret?.trim() ?? "";
+  value = value.replace(/^export\s+/, "").trim();
+
+  const assignment = value.match(/^AGENT_JWT_SECRET\s*=\s*([\s\S]*)$/);
+  if (assignment) value = assignment[1]?.trim() ?? "";
+
   if (
-    trimmed.length >= 2 &&
-    ((trimmed.startsWith('"') && trimmed.endsWith('"')) ||
-      (trimmed.startsWith("'") && trimmed.endsWith("'")))
+    value.length >= 2 &&
+    ((value.startsWith('"') && value.endsWith('"')) ||
+      (value.startsWith("'") && value.endsWith("'")))
   ) {
-    return trimmed.slice(1, -1);
+    return value.slice(1, -1);
   }
 
-  return trimmed;
+  return value;
 }
 
 function classifyJwtVerifyFailure(error: unknown): string {
