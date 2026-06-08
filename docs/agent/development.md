@@ -174,6 +174,44 @@ Direct Agent replay guard check:
 2. Reuse the exact same bearer token against `GET /v1/session`.
 3. Expected result is `401 unauthorized` with `Bearer token has already been used`.
 
+## Phase 3A Agent Message Contract Smoke
+
+Current branch status:
+
+- Agent service `POST /v1/agent/messages` exists and requires `agent:chat`.
+- Shared Web contract and chat context builders exist.
+- Web BFF `/api/agent/messages` exists and validates Auth.js/dev-bypass user plus resume ownership before signing `agent:chat`.
+- assistant-ui runtime and left-column Agent panel are the next implementation slice.
+
+Local contract checks:
+
+```bash
+pnpm vitest run tests/unit/agent-chat-context.test.ts
+pnpm --filter @intro-builder/agent test -- agent-tools.test.ts agent-messages.test.ts http.test.ts
+pnpm agent:typecheck
+```
+
+Web BFF slice verification:
+
+```bash
+pnpm vitest run tests/unit/agent-client.test.ts tests/unit/agent-messages-route.test.ts
+```
+
+Manual Phase 3A smoke should use this shape after the BFF exists:
+
+```text
+Editor Agent 模式
+  -> POST /api/agent/messages
+  -> sign agent:chat JWT after Auth.js and resume ownership checks
+  -> POST /v1/agent/messages
+  -> return assistant message, toolCalls, proposedPatches
+  -> user clicks 应用
+  -> Web allowlisted dispatcher calls RHF setValue
+  -> dispatch resume:flush-autosave
+```
+
+Do not use this smoke to migrate OCR, resume import, or existing AI parsing. Those remain outside the Agent microservice scope.
+
 ## Verification Gates
 
 Before claiming an Agent change is ready:

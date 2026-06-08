@@ -179,7 +179,7 @@ Exit gates:
 
 ## Phase 2: Resume Helper APIs
 
-Status: Phase 2A implemented locally and verified, pending normal PR/deploy flow.
+Status: Phase 2A implemented locally and verified. Phase 2B is intentionally skipped while Phase 3A Agent Mode proceeds.
 
 Goal: 增量扩展到简历模块级 helper，但仍不是聊天面板。
 
@@ -196,14 +196,14 @@ Phase 2A delivered:
 - Tests for Agent domain, Agent HTTP route, Web client, Web BFF, context builder, and UI components。
 - Verification passed: `pnpm verify` and `pnpm agent:build`。
 
-Candidate helpers:
+Deferred helpers:
 
 - Phase 2A: `resume-diagnose`
 - Phase 2A: `section-next-steps`
-- Later Phase 2B candidate: `summary:suggest`
-- Later Phase 2B candidate: `experience:quantify`
-- Later Phase 2B candidate: `project:impact`
-- Later Phase 2B candidate: `skills:dedupe`
+- Not active without a new plan: `summary:suggest`
+- Not active without a new plan: `experience:quantify`
+- Not active without a new plan: `project:impact`
+- Not active without a new plan: `skills:dedupe`
 
 Rules:
 
@@ -215,16 +215,23 @@ Rules:
 Exit gates:
 
 - 每个 helper 有 schema、prompt、route tests。
-- Phase 2A Web UI 只展示建议；Phase 2B 生成内容类 helper 才设计 apply/cancel。
+- Phase 2A Web UI 只展示建议；任何生成内容类 helper 都必须另开 plan 设计 apply/cancel，不要在 Phase 3A 中顺手实现。
 - rate limit key 按 helper scope 分离。
 
 ## Phase 3: assistant-ui Agent Panel
 
-Status: planned by `docs/superpowers/specs/2026-06-09-agent-mode-assistant-ui-design.md` and `docs/superpowers/plans/2026-06-09-agent-mode-assistant-ui-phase-3a.md`.
+Status: in progress by `docs/superpowers/specs/2026-06-09-agent-mode-assistant-ui-design.md` and `docs/superpowers/plans/2026-06-09-agent-mode-assistant-ui-phase-3a.md`.
 
 Goal: 引入聊天式 Agent Mode，承载多轮对话、可见 tool calling 和基础简历修改建议；首版左侧编辑列切换为 Agent panel，右侧 `LivePreview` 保持可见。
 
 Use assistant-ui here, not earlier.
+
+Current Phase 3A branch status:
+
+- Implemented locally: browser-safe message/tool/patch types, capped chat context, Agent service tool validation, Agent message prompt/parser, and Agent `/v1/agent/messages` route.
+- Implemented locally: Web client/BFF `POST /api/agent/messages` with Auth.js/dev-bypass user lookup, resume ownership check, `agent:chat` token signing, Agent proxying, and structured error mapping.
+- In progress next: assistant-ui runtime adapter and left-column Agent panel.
+- Not implemented yet: visible assistant-ui Agent Mode, confirmation cards, RHF patch dispatcher, and production deploy of Phase 3A behavior.
 
 Recommended architecture:
 

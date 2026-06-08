@@ -4,6 +4,10 @@ package intro_builder.agent.v1;
 
 import "google/protobuf/struct.proto";
 
+// IDL draft for keeping HTTP JSON contracts aligned.
+// Phase 3A does not introduce gRPC or streaming; Web still calls the Agent
+// service through POST /api/agent/messages -> POST /v1/agent/messages.
+
 service RichTextService {
   rpc PolishRichText(PolishRichTextRequest) returns (PolishRichTextResponse);
 }

@@ -114,9 +114,9 @@ Consequences:
 - Redis 不存完整简历正文作为长期 memory。
 - `/ready` 检查 Redis，但 `/health` 不检查。
 
-## D8: Web BFF 优先代理 assistant-ui chat stream
+## D8: Web BFF 优先代理 assistant-ui Agent messages
 
-Decision: Phase 3 首版 Agent panel 优先走 `Browser -> Next /api/agent/messages -> Agent`。
+Decision: Phase 3A 首版 Agent panel 优先走 `Browser -> Next /api/agent/messages -> Agent /v1/agent/messages` 的 JSON message contract；streaming/DataStream 升级延后到 Phase 3B。
 
 Why:
 
@@ -126,8 +126,8 @@ Why:
 
 Consequences:
 
-- 需要关注 Next route streaming timeout。
-- 如果 BFF 成为瓶颈，可以升级为 browser -> Agent direct + short-lived token。
+- Phase 3A 先验证 message、tool call、`ResumePatch` 和确认写回语义，不把协议稳定性和 UI 状态复杂度同时放大。
+- 如果 BFF 或 JSON contract 后续成为瓶颈，可以升级为 Web streaming BFF 或 browser -> Agent direct + short-lived token。
 - assistant-ui runtime 不直接知道 Agent 内部部署地址。
 
 ## D9: `/dev-preview` 标记为动态渲染

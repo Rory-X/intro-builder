@@ -157,11 +157,11 @@ Header: `Allow: GET`
 }
 ```
 
-## Planned API Versioning
+## Business API Versioning
 
 业务 API 从 `/v1` 开始。基础健康检查可以保留根路径，但业务能力必须版本化。
 
-Planned endpoints:
+Business endpoints:
 
 | Endpoint | Phase | Purpose |
 | --- | --- | --- |
@@ -169,6 +169,12 @@ Planned endpoints:
 | `POST /v1/rich-text/polish` | Phase 1 | 富文本局部润色 |
 | `POST /v1/resume/helpers/:helperId` | Phase 2 | 简历模块级增量 helper |
 | `POST /v1/agent/messages` | Phase 3 | assistant-ui Agent panel 消息入口 |
+
+Current Phase 3A branch status:
+
+- Implemented locally: shared `AgentMessageRequest`/`AgentMessageResponse` types, capped chat context builder, Agent tool/patch validation, Agent service `POST /v1/agent/messages` route, and Web BFF `POST /api/agent/messages`.
+- Pending in the next slice: assistant-ui runtime adapter, left-column Agent panel, confirmation cards, and RHF writeback dispatcher.
+- Phase 3A still uses HTTP JSON as the source of truth. The proto file is an IDL draft to keep naming aligned; it is not a requirement to introduce gRPC.
 
 ## Agent JWT Contract
 
@@ -426,6 +432,7 @@ Phase 3A 计划新增聊天式 Agent Mode。该能力使用 assistant-ui 承载�
 - Agent 可以为推理调用基础简历修改 tools，但只能返回 `proposedPatches`。
 - Web 只有在用户点击 `应用` 后才把 `ResumePatch` 写入 React Hook Form 并触发 autosave。
 - Agent 不连接 Postgres，不发布简历，不删除 section，不自动切模板。
+- Phase 3A 不做 streaming/DataStream；首版只稳定 JSON message/tool/patch contract。任何 streaming 接入都必须进入 Phase 3B plan。
 
 ### `POST /v1/agent/messages`
 
@@ -566,6 +573,7 @@ Patch rules:
 
 - `replace_plain_text` 只能用于 `basics.summary`。
 - `replace_tiptap_json` 用于富文本字段，必须保持原有段落/列表语义；原文是有序或无序列表时，润色结果也必须是对应列表结构，而不是一整段无结构文本。
+- `draft_section_item` 只能返回草稿 patch；Web 展示确认卡后才能插入，不允许 Agent 自行新增 section/item。
 - `riskFlags` 必须标记需要用户补事实的地方，特别是 STAR 的 Result 指标。
 - Agent provider 输出必须是 JSON；Agent 负责解析和 allowlist 校验，失败返回 `dependency_unavailable` 或 `bad_request`。
 - Web 展示 `proposedPatches` 的确认卡；用户点击 `应用` 后才 `setValue` 到 RHF，并 dispatch `resume:flush-autosave`。

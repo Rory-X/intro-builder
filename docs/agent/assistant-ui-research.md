@@ -11,7 +11,7 @@ Phase 2A resume helpers still use local buttons and cards; assistant-ui remains 
 
 - 富文本润色按钮是局部、短链路、用户确认写回的工作流；引入完整 chat runtime 会扩大交互面。
 - assistant-ui 的强项是线程、消息、composer、tool display、streaming chat UI。
-- intro-builder 当前最需要先稳住 Web -> Agent auth、Redis rate limit、streaming contract，再把聊天面板接进来。
+- intro-builder 当前最需要先稳住 Web -> Agent auth、Redis rate limit、JSON message/tool/patch contract，再把聊天面板接进来。
 
 ## assistant-ui 能提供什么
 
@@ -89,7 +89,7 @@ Browser AgentPanel
 
 assistant-ui DataStream 有协议选项。默认是 `ui-message-stream`，legacy data stream 要显式设置 `protocol: "data-stream"`。如果 backend 与 decoder 不匹配，会出现 stream flush 失败。
 
-因此 Phase 3 开始前必须先确定 Agent 输出哪一种协议：
+因此 Phase 3B 开始前必须先确定 Agent 输出哪一种 streaming 协议：
 
 - Phase 3A 不强行做 streaming；先用 JSON contract 证明 message/tool/patch 语义。
 - Phase 3B 再优先评估 `ui-message-stream`，贴近 assistant-ui 当前默认。
