@@ -113,7 +113,7 @@ Deployment steps:
 5. Configure SSH from GitHub Secrets.
 6. Sync deploy files with `rsync`.
 7. Run `docker compose up -d --build --remove-orphans`.
-8. Verify `agent` direct `/health` and `/ready`, then verify Caddy local TLS `/health` and `/ready`.
+8. Verify `agent` direct `/health` and `/ready` with retry, then verify Caddy local TLS `/health` and `/ready` with retry.
 
 Configured GitHub Secrets:
 
@@ -252,6 +252,8 @@ docker compose up -d --build
 docker compose exec -T agent node -e 'fetch("http://127.0.0.1:8787/health").then(async r => console.log(await r.text()))'
 docker compose exec -T agent node -e 'fetch("http://127.0.0.1:8787/ready").then(async r => console.log(r.status, await r.text()))'
 ```
+
+The deploy workflow intentionally retries direct Agent `/health` and `/ready` checks after `docker compose up -d --build`, because Docker may report the container as started before the Node process is listening on `8787`. The retry window should absorb startup races but still fail when Redis readiness or the Agent process is genuinely broken.
 
 ## Useful Operations
 

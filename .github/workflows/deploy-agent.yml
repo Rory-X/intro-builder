@@ -130,12 +130,49 @@ jobs:
 
           docker compose up -d --build --remove-orphans
           docker compose ps
-          docker compose exec -T agent node -e 'fetch("http://127.0.0.1:8787/health").then(async r => { if (!r.ok) throw new Error(await r.text()); console.log(await r.text()); })' </dev/null
-          docker compose exec -T agent node -e 'fetch("http://127.0.0.1:8787/ready").then(async r => { if (!r.ok) throw new Error(await r.text()); console.log(await r.text()); })' </dev/null
+
+          check_agent_endpoint() {
+            path="$1"
+            docker compose exec -T -e AGENT_CHECK_PATH="$path" agent node -e '
+              const url = `http://127.0.0.1:8787${process.env.AGENT_CHECK_PATH}`;
+              fetch(url)
+                .then(async (response) => {
+                  const body = await response.text();
+                  if (!response.ok) throw new Error(body);
+                  console.log(body);
+                })
+                .catch((error) => {
+                  console.error(error instanceof Error ? error.message : String(error));
+                  process.exit(1);
+                });
+            ' </dev/null
+          }
+
+          retry_agent_endpoint() {
+            path="$1"
+
+            for attempt in 1 2 3 4 5 6 7 8 9 10 11 12; do
+              if check_agent_endpoint "$path"; then
+                return 0
+              fi
+
+              echo "Agent ${path} is not ready yet (attempt ${attempt}/12); retrying in 5s..."
+              sleep 5
+            done
+
+            echo "Agent ${path} did not become ready in time"
+            return 1
+          }
+
+          retry_agent_endpoint /health
+          retry_agent_endpoint /ready
+
           curl -kfsS --retry 12 --retry-delay 5 \
+            --retry-connrefused \
             --resolve "$AGENT_DOMAIN:443:127.0.0.1" \
             "https://$AGENT_DOMAIN$AGENT_PUBLIC_BASE_PATH/health"
           curl -kfsS --retry 12 --retry-delay 5 \
+            --retry-connrefused \
             --resolve "$AGENT_DOMAIN:443:127.0.0.1" \
             "https://$AGENT_DOMAIN$AGENT_PUBLIC_BASE_PATH/ready"
           REMOTE
