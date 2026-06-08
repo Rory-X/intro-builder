@@ -43,6 +43,35 @@ describe("agent JWT authentication", () => {
     ]);
   });
 
+  it("normalizes pasted env secrets before verifying tokens", async () => {
+    const replayStore = new FakeReplayStore();
+    const token = await signAgentToken({
+      sub: "user_123",
+      scope: "agent:session",
+      jti: "jti_normalized_secret",
+    });
+
+    const result = await authenticateAgentRequest({
+      authorizationHeader: `Bearer ${token}`,
+      expectedScope: "agent:session",
+      config: {
+        ...createConfig(),
+        jwtSecret: ' "test-agent-secret" \n',
+      },
+      replayStore,
+      now: NOW,
+    });
+
+    expect(result).toMatchObject({
+      ok: true,
+      session: {
+        userId: "user_123",
+        scope: "agent:session",
+        jti: "jti_normalized_secret",
+      },
+    });
+  });
+
   it("rejects requests without a bearer token", async () => {
     await expectAuthFailure({
       authorizationHeader: undefined,

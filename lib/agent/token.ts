@@ -43,7 +43,8 @@ export async function signAgentToken({
   now = new Date(),
   createJti = randomUUID,
 }: SignAgentTokenOptions): Promise<SignedAgentToken> {
-  if (!jwtSecret) {
+  const normalizedJwtSecret = normalizeAgentJwtSecret(jwtSecret);
+  if (!normalizedJwtSecret) {
     throw new Error("AGENT_JWT_SECRET is required to sign Agent JWTs");
   }
 
@@ -67,7 +68,7 @@ export async function signAgentToken({
     .setJti(jti)
     .setIssuedAt(issuedAtSeconds)
     .setExpirationTime(expiresAtSeconds)
-    .sign(new TextEncoder().encode(jwtSecret));
+    .sign(new TextEncoder().encode(normalizedJwtSecret));
 
   return {
     token,
@@ -75,4 +76,17 @@ export async function signAgentToken({
     scope,
     expiresAt,
   };
+}
+
+function normalizeAgentJwtSecret(secret: string | undefined): string {
+  const trimmed = secret?.trim() ?? "";
+  if (
+    trimmed.length >= 2 &&
+    ((trimmed.startsWith('"') && trimmed.endsWith('"')) ||
+      (trimmed.startsWith("'") && trimmed.endsWith("'")))
+  ) {
+    return trimmed.slice(1, -1);
+  }
+
+  return trimmed;
 }

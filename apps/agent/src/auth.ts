@@ -77,7 +77,17 @@ export async function authenticateAgentRequest({
     );
   }
 
-  const verified = await verifyJwt(token, config, now);
+  const jwtSecret = normalizeAgentJwtSecret(config.jwtSecret);
+  if (!jwtSecret) {
+    return authFailure(
+      503,
+      "dependency_unavailable",
+      "JWT secret is not configured",
+      "config",
+    );
+  }
+
+  const verified = await verifyJwt(token, config, jwtSecret, now);
   if (!verified.ok) return verified;
 
   const { payload } = verified;
@@ -121,6 +131,7 @@ function extractBearerToken(authorizationHeader: string | undefined): string | n
 async function verifyJwt(
   token: string,
   config: AgentConfig,
+  jwtSecret: string,
   now: Date,
 ): Promise<
   | {
@@ -138,7 +149,7 @@ async function verifyJwt(
   try {
     const { payload } = await jwtVerify<AgentJwtPayload>(
       token,
-      textEncoder.encode(config.jwtSecret),
+      textEncoder.encode(jwtSecret),
       {
         issuer: config.jwtIssuer,
         audience: config.jwtAudience,
@@ -175,6 +186,19 @@ async function verifyJwt(
       classifyJwtVerifyFailure(error),
     );
   }
+}
+
+function normalizeAgentJwtSecret(secret: string | undefined): string {
+  const trimmed = secret?.trim() ?? "";
+  if (
+    trimmed.length >= 2 &&
+    ((trimmed.startsWith('"') && trimmed.endsWith('"')) ||
+      (trimmed.startsWith("'") && trimmed.endsWith("'")))
+  ) {
+    return trimmed.slice(1, -1);
+  }
+
+  return trimmed;
 }
 
 function classifyJwtVerifyFailure(error: unknown): string {
