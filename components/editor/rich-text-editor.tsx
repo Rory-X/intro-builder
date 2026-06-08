@@ -4,7 +4,7 @@ import { useEditor, EditorContent } from "@tiptap/react";
 import type { Editor } from "@tiptap/react";
 import {
   Bold, Italic, Underline as UnderlineIcon, Link, List, ListOrdered,
-  AlignLeft, AlignCenter, AlignRight, Palette,
+  AlignLeft, AlignCenter, AlignRight, Palette, Sparkles,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverTrigger, PopoverContent } from "@/components/ui/popover";
@@ -41,7 +41,39 @@ type Props = {
   content: TipTapJSON;
   onChange: (json: TipTapJSON) => void;
   placeholder?: string;
+  polish?: RichTextPolishContext;
 };
+
+type RichTextPolishContext = {
+  resumeId: string;
+  section:
+    | "summary"
+    | "experience"
+    | "projects"
+    | "education"
+    | "skills"
+    | "research"
+    | "custom";
+  fieldPath: string;
+  tone?: "professional" | "confident" | "concise";
+  length?: "same" | "shorter" | "longer";
+  strategy?: "plain" | "star";
+};
+
+type PolishCandidate = {
+  polishedText: string;
+  changeSummary: string;
+  riskFlags: Array<{
+    type: string;
+    message: string;
+  }>;
+};
+
+type PolishState =
+  | { status: "idle" }
+  | { status: "loading" }
+  | { status: "ready"; candidate: PolishCandidate }
+  | { status: "error"; message: string };
 
 const COLOR_PALETTE = [
   "#000000", "#374151", "#DC2626", "#EA580C",
@@ -49,9 +81,10 @@ const COLOR_PALETTE = [
   "#DB2777", "#6B7280",
 ];
 
-export function RichTextEditor({ content, onChange }: Props) {
+export function RichTextEditor({ content, onChange, polish }: Props) {
   const onChangeRef = useRef(onChange);
   const lastSyncedContentRef = useRef(JSON.stringify(content));
+  const [polishState, setPolishState] = useState<PolishState>({ status: "idle" });
 
   useEffect(() => {
     onChangeRef.current = onChange;
@@ -86,6 +119,84 @@ export function RichTextEditor({ content, onChange }: Props) {
   }, [editor, content]);
 
   if (!editor) return null;
+  const activeEditor = editor;
+
+  async function requestPolish() {
+    if (!polish) return;
+    const plainText = activeEditor.getText().trim();
+    if (!plainText) {
+      setPolishState({ status: "error", message: "请先输入需要润色的内容" });
+      return;
+    }
+
+    const tiptapJson = toPlainJson(activeEditor.getJSON());
+    setPolishState({ status: "loading" });
+
+    try {
+      const response = await fetch("/api/agent/rich-text/polish", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          resumeId: polish.resumeId,
+          section: polish.section,
+          fieldPath: polish.fieldPath,
+          locale: "zh-CN",
+          content: {
+            format: "tiptap_json",
+            plainText,
+            tiptapJson,
+          },
+          intent: {
+            mode: "polish",
+            tone: polish.tone ?? "professional",
+            length: polish.length ?? "same",
+            strategy: polish.strategy ?? defaultPolishStrategy(polish.section),
+          },
+        }),
+      });
+      const body = await response.json().catch(() => null);
+      if (!response.ok) {
+        const message =
+          isRecord(body) && typeof body.error === "string"
+            ? body.error
+            : "AI 润色暂不可用，请稍后再试";
+        setPolishState({ status: "error", message });
+        return;
+      }
+      if (!isRecord(body) || !isRecord(body.result)) {
+        setPolishState({ status: "error", message: "AI 润色返回格式异常" });
+        return;
+      }
+      const result = body.result;
+      if (
+        typeof result.polishedText !== "string" ||
+        typeof result.changeSummary !== "string" ||
+        !Array.isArray(result.riskFlags)
+      ) {
+        setPolishState({ status: "error", message: "AI 润色返回格式异常" });
+        return;
+      }
+
+      setPolishState({
+        status: "ready",
+        candidate: {
+          polishedText: result.polishedText,
+          changeSummary: result.changeSummary,
+          riskFlags: result.riskFlags.filter(isRiskFlag),
+        },
+      });
+    } catch {
+      setPolishState({ status: "error", message: "AI 润色暂不可用，请稍后再试" });
+    }
+  }
+
+  function applyPolishCandidate(candidate: PolishCandidate) {
+    const nextContent = plainTextToDoc(candidate.polishedText);
+    activeEditor.commands.setContent(nextContent, { emitUpdate: false });
+    lastSyncedContentRef.current = JSON.stringify(nextContent);
+    onChangeRef.current(nextContent);
+    setPolishState({ status: "idle" });
+  }
 
   return (
     <div className="overflow-hidden rounded-lg border transition-colors duration-200 focus-within:ring-2 focus-within:ring-ring/30">
@@ -154,8 +265,99 @@ export function RichTextEditor({ content, onChange }: Props) {
             </button>
           </PopoverContent>
         </Popover>
+
+        {polish && (
+          <>
+            <span className="mx-1 h-4 w-px bg-border/60" />
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              className="h-7 gap-1.5 px-2 text-xs"
+              disabled={polishState.status === "loading"}
+              onClick={() => void requestPolish()}
+            >
+              <Sparkles className="h-3.5 w-3.5" />
+              {polishState.status === "loading" ? "润色中" : "AI 润色"}
+            </Button>
+          </>
+        )}
       </div>
+      {polishState.status !== "idle" && (
+        <PolishCandidatePanel
+          state={polishState}
+          onApply={applyPolishCandidate}
+          onDismiss={() => setPolishState({ status: "idle" })}
+        />
+      )}
       <EditorContent editor={editor} />
+    </div>
+  );
+}
+
+function PolishCandidatePanel({
+  state,
+  onApply,
+  onDismiss,
+}: {
+  state: Exclude<PolishState, { status: "idle" }>;
+  onApply: (candidate: PolishCandidate) => void;
+  onDismiss: () => void;
+}) {
+  return (
+    <div className="border-b bg-amber-50/70 px-3 py-2 text-xs text-amber-950 dark:bg-amber-950/25 dark:text-amber-100">
+      {state.status === "loading" && (
+        <p className="text-muted-foreground">正在生成润色建议…</p>
+      )}
+      {state.status === "error" && (
+        <div className="flex items-center justify-between gap-3">
+          <p>{state.message}</p>
+          <button
+            type="button"
+            className="font-medium text-foreground hover:underline"
+            onClick={onDismiss}
+          >
+            关闭
+          </button>
+        </div>
+      )}
+      {state.status === "ready" && (
+        <div className="space-y-2">
+          <div>
+            <p className="font-medium">AI 润色建议</p>
+            <p className="mt-1 whitespace-pre-wrap leading-relaxed">
+              {state.candidate.polishedText}
+            </p>
+          </div>
+          <p className="text-muted-foreground">{state.candidate.changeSummary}</p>
+          {state.candidate.riskFlags.length > 0 && (
+            <ul className="space-y-1 text-muted-foreground">
+              {state.candidate.riskFlags.map((flag, index) => (
+                <li key={`${flag.type}-${index}`}>{flag.message}</li>
+              ))}
+            </ul>
+          )}
+          <div className="flex items-center gap-2">
+            <Button
+              type="button"
+              size="sm"
+              className="h-7 px-2 text-xs"
+              onClick={() => onApply(state.candidate)}
+            >
+              应用润色
+            </Button>
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              className="h-7 px-2 text-xs"
+              onClick={onDismiss}
+            >
+              放弃
+            </Button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -228,5 +430,43 @@ function ToolBtn({ active, onClick, icon: Icon, title }: { active: boolean; onCl
     >
       <Icon className="h-3.5 w-3.5" />
     </Button>
+  );
+}
+
+function defaultPolishStrategy(
+  section: RichTextPolishContext["section"],
+): "plain" | "star" {
+  return section === "experience" || section === "projects" ? "star" : "plain";
+}
+
+function plainTextToDoc(text: string): TipTapJSON {
+  const paragraphs = text
+    .split(/\n+/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+
+  if (paragraphs.length === 0) {
+    return { type: "doc", content: [{ type: "paragraph" }] };
+  }
+
+  return {
+    type: "doc",
+    content: paragraphs.map((line) => ({
+      type: "paragraph",
+      content: [{ type: "text", text: line }],
+    })),
+  };
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
+function isRiskFlag(value: unknown): value is PolishCandidate["riskFlags"][number] {
+  return (
+    isRecord(value) &&
+    typeof value.type === "string" &&
+    typeof value.message === "string" &&
+    value.message.trim() !== ""
   );
 }

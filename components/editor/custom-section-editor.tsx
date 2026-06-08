@@ -9,9 +9,10 @@ import { useState } from "react";
 
 type Props = {
   sectionId: string;
+  resumeId?: string;
 };
 
-export function CustomSectionEditor({ sectionId }: Props) {
+export function CustomSectionEditor({ sectionId, resumeId }: Props) {
   const { watch, setValue, getValues } = useFormContext<ResumeContent>();
   const [isOpen, setIsOpen] = useState(true);
 
@@ -57,6 +58,11 @@ export function CustomSectionEditor({ sectionId }: Props) {
                 updated[idx] = { ...updated[idx], content: json };
                 setValue("custom", updated, { shouldDirty: true });
               }}
+              polish={resumeId ? {
+                resumeId,
+                section: "custom",
+                fieldPath: `custom.${idx}.content`,
+              } : undefined}
               placeholder="输入模块内容…"
             />
           </div>
