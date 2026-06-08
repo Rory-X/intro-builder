@@ -233,9 +233,13 @@ Error codes:
 
 ## Rich Text Polish Contract
 
-Phase 1 MVP 的目标是“按钮式局部润色”，不是聊天 Agent。
+Phase 1 MVP 的目标是“按钮式局部润色”，不是聊天 Agent。运行时第一版使用 HTTP/JSON；protobuf IDL 作为服务契约草案，见 `docs/agent/proto/intro_builder_agent_v1.proto`。
 
-Request draft:
+### `POST /v1/rich-text/polish`
+
+认证：`Authorization: Bearer <agent-jwt>`，scope 必须是 `rich_text:polish`。JWT 的 `resumeId` 必须与请求体 `resumeId` 一致。
+
+Request:
 
 ```json
 {
@@ -243,22 +247,55 @@ Request draft:
   "section": "experience",
   "fieldPath": "experience.0.content",
   "locale": "zh-CN",
-  "mode": "polish",
   "content": {
-    "type": "doc",
-    "content": []
+    "format": "tiptap_json",
+    "plainText": "负责业务系统前端开发，优化页面性能。",
+    "tiptapJson": {
+      "type": "doc",
+      "content": []
+    }
+  },
+  "intent": {
+    "mode": "polish",
+    "tone": "professional",
+    "length": "same",
+    "strategy": "star"
   }
 }
 ```
 
-Response should be streamed. Each chunk must be typed:
+Response:
 
 ```json
-{ "type": "start", "requestId": "req_01H..." }
-{ "type": "delta", "text": "..." }
-{ "type": "final", "content": { "type": "doc", "content": [] } }
-{ "type": "usage", "inputTokens": 120, "outputTokens": 80 }
+{
+  "status": "ok",
+  "requestId": "req_01H...",
+  "result": {
+    "format": "plain_text",
+    "polishedText": "负责业务系统前端开发，围绕页面性能瓶颈持续优化加载与交互体验。",
+    "changeSummary": "按 STAR 思路强化职责与行动表达，未新增结果数据。",
+    "riskFlags": [
+      {
+        "type": "too_little_context",
+        "message": "原文缺少可量化结果，已按现有信息保守润色。"
+      }
+    ]
+  },
+  "usage": {
+    "provider": "openai-compatible",
+    "model": "gpt-4.1-mini",
+    "inputTokens": 120,
+    "outputTokens": 36
+  }
+}
 ```
+
+Prompt rules:
+
+- 只润色表达，不新增事实、数字、公司、学校、职位、技术栈、奖项或结果。
+- `strategy=star` 时只按 STAR 顺序重排与强化已有信息；原文没有 Result 时不得编造量化结果。
+- 第一版返回 `plain_text`，Web 端只作为候选文本展示，不自动写回 RHF。
+- 模型返回必须是 JSON；Agent 负责解析与后处理校验，校验失败返回结构化错误。
 
 Rules:
 

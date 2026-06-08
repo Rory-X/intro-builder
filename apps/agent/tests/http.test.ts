@@ -6,6 +6,7 @@ import { afterEach, describe, expect, it } from "vitest";
 
 import type { AgentReplayStore } from "../src/auth";
 import { createAgentServer } from "../src/http";
+import type { RichTextPolishProvider } from "../src/rich-text-polish";
 
 type TestAgentServer = Server & {
   url: (path: string) => string;
@@ -156,12 +157,225 @@ describe("agent HTTP service", () => {
       requestId: "req-client-missing-token",
     });
   });
+
+  it("returns a STAR-aware rich text polish result from /v1/rich-text/polish", async () => {
+    const provider = new FakeRichTextPolishProvider(
+      JSON.stringify({
+        polishedText: "负责业务系统前端开发，围绕页面性能瓶颈持续优化加载与交互体验。",
+        changeSummary: "按 STAR 思路强化职责与行动表达，未新增结果数据。",
+        riskFlags: [
+          {
+            type: "too_little_context",
+            message: "原文缺少可量化结果，已按现有信息保守润色。",
+          },
+        ],
+      }),
+    );
+    const server = await listenOnRandomPort({
+      replayStore: new FakeReplayStore(),
+      richTextPolishProvider: provider,
+    });
+    const token = await signAgentToken({
+      sub: "user_123",
+      resumeId: "resume_abc",
+      scope: "rich_text:polish",
+      jti: "jti_polish_valid",
+    });
+
+    const response = await fetch(server.url("/v1/rich-text/polish"), {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${token}`,
+        "content-type": "application/json",
+        "x-request-id": "req-client-polish",
+      },
+      body: JSON.stringify({
+        resumeId: "resume_abc",
+        section: "experience",
+        fieldPath: "experience.0.content",
+        locale: "zh-CN",
+        content: {
+          format: "tiptap_json",
+          plainText: "负责业务系统前端开发，优化页面性能。",
+          tiptapJson: { type: "doc", content: [] },
+        },
+        intent: {
+          mode: "polish",
+          tone: "professional",
+          length: "same",
+          strategy: "star",
+        },
+      }),
+    });
+
+    expect(response.status).toBe(200);
+    expect(provider.calls).toHaveLength(1);
+    expect(provider.calls[0]?.request.intent.strategy).toBe("star");
+    expect(provider.calls[0]?.prompt.developer).toContain("Result");
+    await expect(response.json()).resolves.toEqual({
+      status: "ok",
+      requestId: "req-client-polish",
+      result: {
+        format: "plain_text",
+        polishedText: "负责业务系统前端开发，围绕页面性能瓶颈持续优化加载与交互体验。",
+        changeSummary: "按 STAR 思路强化职责与行动表达，未新增结果数据。",
+        riskFlags: [
+          {
+            type: "too_little_context",
+            message: "原文缺少可量化结果，已按现有信息保守润色。",
+          },
+        ],
+      },
+      usage: {
+        provider: "fake-provider",
+        model: "fake-model",
+        inputTokens: 120,
+        outputTokens: 36,
+      },
+    });
+  });
+
+  it("rejects rich text polish tokens with the wrong scope", async () => {
+    const server = await listenOnRandomPort({
+      replayStore: new FakeReplayStore(),
+      richTextPolishProvider: new FakeRichTextPolishProvider("{}"),
+    });
+    const token = await signAgentToken({
+      sub: "user_123",
+      resumeId: "resume_abc",
+      scope: "agent:session",
+      jti: "jti_polish_wrong_scope",
+    });
+
+    const response = await fetch(server.url("/v1/rich-text/polish"), {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${token}`,
+        "content-type": "application/json",
+        "x-request-id": "req-client-polish-scope",
+      },
+      body: JSON.stringify({
+        resumeId: "resume_abc",
+        section: "experience",
+        fieldPath: "experience.0.content",
+        locale: "zh-CN",
+        content: {
+          format: "plain_text",
+          plainText: "负责业务系统前端开发。",
+        },
+        intent: {
+          mode: "polish",
+          tone: "professional",
+          length: "same",
+          strategy: "star",
+        },
+      }),
+    });
+
+    expect(response.status).toBe(403);
+    await expect(response.json()).resolves.toEqual({
+      error: "forbidden",
+      message: "Token scope is not allowed for this route",
+      requestId: "req-client-polish-scope",
+    });
+  });
+
+  it("rejects rich text polish requests whose resumeId does not match the JWT", async () => {
+    const server = await listenOnRandomPort({
+      replayStore: new FakeReplayStore(),
+      richTextPolishProvider: new FakeRichTextPolishProvider("{}"),
+    });
+    const token = await signAgentToken({
+      sub: "user_123",
+      resumeId: "resume_abc",
+      scope: "rich_text:polish",
+      jti: "jti_polish_resume_mismatch",
+    });
+
+    const response = await fetch(server.url("/v1/rich-text/polish"), {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${token}`,
+        "content-type": "application/json",
+        "x-request-id": "req-client-polish-resume",
+      },
+      body: JSON.stringify({
+        resumeId: "resume_other",
+        section: "experience",
+        fieldPath: "experience.0.content",
+        locale: "zh-CN",
+        content: {
+          format: "plain_text",
+          plainText: "负责业务系统前端开发。",
+        },
+        intent: {
+          mode: "polish",
+          tone: "professional",
+          length: "same",
+          strategy: "star",
+        },
+      }),
+    });
+
+    expect(response.status).toBe(403);
+    await expect(response.json()).resolves.toEqual({
+      error: "forbidden",
+      message: "Token resumeId does not match request resumeId",
+      requestId: "req-client-polish-resume",
+    });
+  });
+
+  it("returns dependency_unavailable when no rich text provider is configured", async () => {
+    const server = await listenOnRandomPort({
+      replayStore: new FakeReplayStore(),
+    });
+    const token = await signAgentToken({
+      sub: "user_123",
+      resumeId: "resume_abc",
+      scope: "rich_text:polish",
+      jti: "jti_polish_no_provider",
+    });
+
+    const response = await fetch(server.url("/v1/rich-text/polish"), {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${token}`,
+        "content-type": "application/json",
+        "x-request-id": "req-client-polish-provider",
+      },
+      body: JSON.stringify({
+        resumeId: "resume_abc",
+        section: "experience",
+        fieldPath: "experience.0.content",
+        locale: "zh-CN",
+        content: {
+          format: "plain_text",
+          plainText: "负责业务系统前端开发。",
+        },
+        intent: {
+          mode: "polish",
+          tone: "professional",
+          length: "same",
+          strategy: "star",
+        },
+      }),
+    });
+
+    expect(response.status).toBe(503);
+    await expect(response.json()).resolves.toEqual({
+      error: "dependency_unavailable",
+      message: "Rich text polish provider is not configured",
+      requestId: "req-client-polish-provider",
+      dependency: "provider",
+    });
+  });
 });
 
 async function listenOnRandomPort(
   options: {
     redisReady?: () => Promise<{ ok: true } | { ok: false; message: string }>;
     replayStore?: AgentReplayStore;
+    richTextPolishProvider?: RichTextPolishProvider;
   } = {},
 ): Promise<TestAgentServer> {
   const server = createAgentServer({
@@ -180,11 +394,16 @@ async function listenOnRandomPort(
       jwtAudience: "intro-builder-agent",
       jwtSecret: "test-agent-secret",
       jwtReplayTtlSeconds: 180,
+      modelBaseUrl: undefined,
+      modelApiKey: undefined,
+      modelName: undefined,
+      modelTimeoutMs: 20_000,
     },
     now: () => new Date("2026-06-05T00:00:00.000Z"),
     uptimeSeconds: () => 42,
     redisReady: options.redisReady ?? (async () => ({ ok: true })),
     replayStore: options.replayStore,
+    richTextPolishProvider: options.richTextPolishProvider,
     createRequestId: () => "req_test_1",
   });
 
@@ -242,5 +461,27 @@ class FakeReplayStore implements AgentReplayStore {
     if (this.keys.has(key)) return null;
     this.keys.add(key);
     return "OK";
+  }
+}
+
+class FakeRichTextPolishProvider implements RichTextPolishProvider {
+  readonly calls: Array<{
+    request: Parameters<RichTextPolishProvider["polish"]>[0]["request"];
+    prompt: Parameters<RichTextPolishProvider["polish"]>[0]["prompt"];
+  }> = [];
+
+  constructor(private readonly content: string) {}
+
+  async polish(options: Parameters<RichTextPolishProvider["polish"]>[0]) {
+    this.calls.push({ request: options.request, prompt: options.prompt });
+    return {
+      content: this.content,
+      usage: {
+        provider: "fake-provider",
+        model: "fake-model",
+        inputTokens: 120,
+        outputTokens: 36,
+      },
+    };
   }
 }

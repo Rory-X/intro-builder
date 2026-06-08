@@ -27,6 +27,10 @@ env:
   AGENT_SSH_PORT: ${{ secrets.AGENT_SSH_PORT || '22' }}
   AGENT_SSH_USER: ${{ secrets.AGENT_SSH_USER }}
   AGENT_JWT_SECRET: ${{ secrets.AGENT_JWT_SECRET }}
+  AGENT_MODEL_BASE_URL: ${{ secrets.AGENT_MODEL_BASE_URL }}
+  AGENT_MODEL_API_KEY: ${{ secrets.AGENT_MODEL_API_KEY }}
+  AGENT_MODEL_NAME: ${{ vars.AGENT_MODEL_NAME }}
+  AGENT_MODEL_TIMEOUT_MS: ${{ vars.AGENT_MODEL_TIMEOUT_MS || '20000' }}
 
 jobs:
   deploy:
@@ -87,10 +91,23 @@ jobs:
           rsync -az --delete --exclude='.env' --exclude='dist' -e "$ssh_cmd" \
             apps/agent/ "$remote:${AGENT_DEPLOY_PATH}/apps/agent/"
 
+          runtime_env="$(mktemp)"
           if [ -n "${AGENT_JWT_SECRET:-}" ]; then
-            printf '%s' "$AGENT_JWT_SECRET" | \
-              $ssh_cmd "$remote" "umask 077 && cat > '${AGENT_DEPLOY_PATH}/apps/agent/.agent-jwt-secret.tmp'"
+            printf 'AGENT_JWT_SECRET=%s\n' "$AGENT_JWT_SECRET" >> "$runtime_env"
           fi
+          if [ -n "${AGENT_MODEL_BASE_URL:-}" ]; then
+            printf 'AGENT_MODEL_BASE_URL=%s\n' "$AGENT_MODEL_BASE_URL" >> "$runtime_env"
+          fi
+          if [ -n "${AGENT_MODEL_API_KEY:-}" ]; then
+            printf 'AGENT_MODEL_API_KEY=%s\n' "$AGENT_MODEL_API_KEY" >> "$runtime_env"
+          fi
+          if [ -n "${AGENT_MODEL_NAME:-}" ]; then
+            printf 'AGENT_MODEL_NAME=%s\n' "$AGENT_MODEL_NAME" >> "$runtime_env"
+          fi
+          if [ -s "$runtime_env" ]; then
+            $ssh_cmd "$remote" "umask 077 && cat > '${AGENT_DEPLOY_PATH}/apps/agent/.agent-runtime-env.tmp'" < "$runtime_env"
+          fi
+          rm -f "$runtime_env"
 
       - name: Rebuild and health check Agent
         run: |
@@ -100,15 +117,11 @@ jobs:
           agent_version="github-${GITHUB_SHA::12}"
 
           $ssh_cmd "$remote" \
-            "AGENT_DEPLOY_PATH='${AGENT_DEPLOY_PATH}' AGENT_DOMAIN='${AGENT_DOMAIN}' AGENT_PUBLIC_BASE_PATH='${AGENT_PUBLIC_BASE_PATH}' AGENT_VERSION='${agent_version}' bash -s" <<'REMOTE'
+            "AGENT_DEPLOY_PATH='${AGENT_DEPLOY_PATH}' AGENT_DOMAIN='${AGENT_DOMAIN}' AGENT_PUBLIC_BASE_PATH='${AGENT_PUBLIC_BASE_PATH}' AGENT_VERSION='${agent_version}' AGENT_MODEL_TIMEOUT_MS='${AGENT_MODEL_TIMEOUT_MS}' bash -s" <<'REMOTE'
           set -euo pipefail
 
           cd "$AGENT_DEPLOY_PATH/apps/agent"
           touch .env
-          if [ -f .agent-jwt-secret.tmp ]; then
-            AGENT_JWT_SECRET="$(cat .agent-jwt-secret.tmp)"
-            rm -f .agent-jwt-secret.tmp
-          fi
 
           upsert_env() {
             key="$1"
@@ -139,8 +152,16 @@ jobs:
           upsert_env AGENT_JWT_ISSUER intro-builder-web
           upsert_env AGENT_JWT_AUDIENCE intro-builder-agent
           upsert_env AGENT_JWT_REPLAY_TTL_SECONDS 180
-          if [ -n "${AGENT_JWT_SECRET:-}" ]; then
-            upsert_env AGENT_JWT_SECRET "$AGENT_JWT_SECRET"
+          upsert_env AGENT_MODEL_TIMEOUT_MS "$AGENT_MODEL_TIMEOUT_MS"
+          if [ -f .agent-runtime-env.tmp ]; then
+            while IFS='=' read -r key value; do
+              case "$key" in
+                AGENT_JWT_SECRET|AGENT_MODEL_BASE_URL|AGENT_MODEL_API_KEY|AGENT_MODEL_NAME)
+                  upsert_env "$key" "$value"
+                  ;;
+              esac
+            done < .agent-runtime-env.tmp
+            rm -f .agent-runtime-env.tmp
           fi
           chmod 600 .env
 

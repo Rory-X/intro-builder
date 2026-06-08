@@ -6,6 +6,7 @@ import {
   createRedisConnection,
   createRedisReplayStore,
 } from "./redis.js";
+import { createOpenAICompatibleRichTextPolishProvider } from "./rich-text-polish.js";
 
 const config = loadConfig();
 const redis = createRedisConnection(config, {
@@ -20,6 +21,8 @@ const server = createAgentServer({
   replayStore: createRedisReplayStore(redis, {
     timeoutMs: config.redisConnectTimeoutMs,
   }),
+  rateLimitStore: redis,
+  richTextPolishProvider: createOpenAICompatibleRichTextPolishProvider(config),
 });
 
 server.listen(config.port, config.host, () => {

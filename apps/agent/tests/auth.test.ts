@@ -280,6 +280,10 @@ function createConfig(): AgentConfig {
     jwtAudience: "intro-builder-agent",
     jwtSecret: "test-agent-secret",
     jwtReplayTtlSeconds: 180,
+    modelBaseUrl: undefined,
+    modelApiKey: undefined,
+    modelName: undefined,
+    modelTimeoutMs: 20_000,
   };
 }
 

@@ -1,5 +1,6 @@
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import { randomUUID } from "node:crypto";
+import { createHash } from "node:crypto";
 
 import {
   authenticateAgentRequest,
@@ -8,7 +9,15 @@ import {
 } from "./auth.js";
 import type { AgentConfig } from "./config.js";
 import { createErrorEnvelope } from "./errors.js";
+import { checkRateLimit, type RateLimitRedis } from "./rate-limit.js";
 import type { RedisReadyResult } from "./redis.js";
+import {
+  buildRichTextPolishPrompt,
+  parsePolishProviderResponse,
+  RichTextPolishProviderError,
+  validateRichTextPolishRequest,
+  type RichTextPolishProvider,
+} from "./rich-text-polish.js";
 
 export type CreateAgentServerOptions = {
   config: AgentConfig;
@@ -16,6 +25,8 @@ export type CreateAgentServerOptions = {
   uptimeSeconds?: () => number;
   redisReady?: () => Promise<RedisReadyResult>;
   replayStore?: AgentReplayStore;
+  rateLimitStore?: RateLimitRedis;
+  richTextPolishProvider?: RichTextPolishProvider;
   createRequestId?: () => string;
 };
 
@@ -30,6 +41,8 @@ export function createAgentServer({
   uptimeSeconds = () => Math.floor(process.uptime()),
   redisReady = async () => ({ ok: true }),
   replayStore,
+  rateLimitStore,
+  richTextPolishProvider,
   createRequestId = defaultCreateRequestId,
 }: CreateAgentServerOptions): Server {
   return createServer((request, response) => {
@@ -41,6 +54,8 @@ export function createAgentServer({
       uptimeSeconds,
       redisReady,
       replayStore,
+      rateLimitStore,
+      richTextPolishProvider,
       createRequestId,
     ).catch((error: unknown) => {
       if (response.headersSent) {
@@ -67,6 +82,8 @@ async function routeRequest(
   uptimeSeconds: () => number,
   redisReady: () => Promise<RedisReadyResult>,
   replayStore: AgentReplayStore | undefined,
+  rateLimitStore: RateLimitRedis | undefined,
+  richTextPolishProvider: RichTextPolishProvider | undefined,
   createRequestId: () => string,
 ): Promise<void> {
   const context = {
@@ -116,6 +133,129 @@ async function routeRequest(
     }
 
     return sendAgentSession(response, auth.session, context);
+  }
+
+  if (url.pathname === "/v1/rich-text/polish") {
+    if (method !== "POST") return methodNotAllowed(response, context, "POST");
+
+    const auth = await authenticateAgentRequest({
+      authorizationHeader: headerValue(request.headers.authorization),
+      expectedScope: "rich_text:polish",
+      config,
+      replayStore,
+      now: now(),
+    });
+
+    if (!auth.ok) {
+      return sendError(response, auth.statusCode, context, {
+        error: auth.error,
+        message: auth.message,
+        dependency: auth.dependency,
+      });
+    }
+
+    const body = await readJsonBody(request);
+    if (!body.ok) {
+      return sendError(response, 400, context, {
+        error: "bad_request",
+        message: body.message,
+      });
+    }
+
+    const validation = validateRichTextPolishRequest(body.value);
+    if (!validation.ok) {
+      return sendError(response, validation.statusCode, context, {
+        error: validation.error,
+        message: validation.message,
+      });
+    }
+
+    if (auth.session.resumeId !== validation.request.resumeId) {
+      return sendError(response, 403, context, {
+        error: "forbidden",
+        message: "Token resumeId does not match request resumeId",
+      });
+    }
+
+    if (!richTextPolishProvider) {
+      return sendError(response, 503, context, {
+        error: "dependency_unavailable",
+        message: "Rich text polish provider is not configured",
+        dependency: "provider",
+      });
+    }
+
+    if (rateLimitStore) {
+      try {
+        const rateLimit = await checkRateLimit({
+          redis: rateLimitStore,
+          scope: "rich_text:polish",
+          identityHash: hashIdentity(auth.session.userId),
+          limit: config.rateLimitMaxRequests,
+          windowSeconds: config.rateLimitWindowSeconds,
+          now: now(),
+        });
+        if (!rateLimit.allowed) {
+          return sendError(response, 429, context, {
+            error: "rate_limited",
+            message: "Too many rich text polish requests",
+            retryAfterSeconds: rateLimit.retryAfterSeconds,
+          });
+        }
+      } catch {
+        return sendError(response, 503, context, {
+          error: "dependency_unavailable",
+          message: "Rate limit store is unavailable",
+          dependency: "redis",
+        });
+      }
+    }
+
+    const prompt = buildRichTextPolishPrompt({
+      ...validation.request,
+      requestId: context.requestId,
+    });
+
+    try {
+      const providerResult = await richTextPolishProvider.polish({
+        request: validation.request,
+        prompt,
+        session: auth.session,
+        requestId: context.requestId,
+      });
+      const parsed = parsePolishProviderResponse(providerResult.content);
+      if (!parsed.ok) {
+        return sendError(response, 503, context, {
+          error: "dependency_unavailable",
+          message: parsed.message,
+          dependency: "provider",
+        });
+      }
+
+      return sendJson(
+        response,
+        200,
+        {
+          status: "ok",
+          requestId: context.requestId,
+          result: parsed.result,
+          usage: providerResult.usage,
+        },
+        context,
+      );
+    } catch (error) {
+      if (error instanceof RichTextPolishProviderError) {
+        return sendError(response, error.code === "provider_timeout" ? 504 : 503, context, {
+          error: error.code,
+          message: error.message,
+          dependency: error.code === "dependency_unavailable" ? "provider" : undefined,
+        });
+      }
+      return sendError(response, 500, context, {
+        error: "internal_error",
+        message: error instanceof Error ? error.message : "Internal error",
+      });
+    }
   }
 
   return sendError(response, 404, context, {
@@ -176,8 +316,9 @@ function sendAgentSession(
 function methodNotAllowed(
   response: ServerResponse,
   context: RequestContext,
+  allow = "GET",
 ): void {
-  response.setHeader("Allow", "GET");
+  response.setHeader("Allow", allow);
   sendError(response, 405, context, {
     error: "method_not_allowed",
     message: "Method not allowed",
@@ -241,4 +382,25 @@ function headerValue(header: string | string[] | undefined): string | undefined 
 
 function defaultCreateRequestId(): string {
   return `req_${randomUUID()}`;
+}
+
+async function readJsonBody(
+  request: IncomingMessage,
+): Promise<{ ok: true; value: unknown } | { ok: false; message: string }> {
+  const chunks: Buffer[] = [];
+  for await (const chunk of request) {
+    chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+  }
+  const text = Buffer.concat(chunks).toString("utf8");
+  if (!text) return { ok: false, message: "Request body is required" };
+
+  try {
+    return { ok: true, value: JSON.parse(text) };
+  } catch {
+    return { ok: false, message: "Request body must be valid JSON" };
+  }
+}
+
+function hashIdentity(identity: string): string {
+  return createHash("sha256").update(identity).digest("hex").slice(0, 24);
 }

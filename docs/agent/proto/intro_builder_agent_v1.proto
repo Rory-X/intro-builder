@@ -1,0 +1,109 @@
+syntax = "proto3";
+
+package intro_builder.agent.v1;
+
+import "google/protobuf/struct.proto";
+
+service RichTextService {
+  rpc PolishRichText(PolishRichTextRequest) returns (PolishRichTextResponse);
+}
+
+message PolishRichTextRequest {
+  string request_id = 1;
+  string resume_id = 2;
+  ResumeSection section = 3;
+  string field_path = 4;
+  string locale = 5;
+  RichTextContent content = 6;
+  PolishIntent intent = 7;
+}
+
+message RichTextContent {
+  RichTextFormat format = 1;
+  string plain_text = 2;
+  google.protobuf.Struct tiptap_json = 3;
+}
+
+message PolishIntent {
+  PolishMode mode = 1;
+  PolishTone tone = 2;
+  LengthMode length = 3;
+  PolishStrategy strategy = 4;
+}
+
+message PolishRichTextResponse {
+  string status = 1;
+  string request_id = 2;
+  PolishResult result = 3;
+  Usage usage = 4;
+}
+
+message PolishResult {
+  RichTextFormat format = 1;
+  string polished_text = 2;
+  string change_summary = 3;
+  repeated RiskFlag risk_flags = 4;
+  google.protobuf.Struct replacement_tiptap_json = 5;
+}
+
+message RiskFlag {
+  RiskFlagType type = 1;
+  string message = 2;
+}
+
+message Usage {
+  string provider = 1;
+  string model = 2;
+  uint32 input_tokens = 3;
+  uint32 output_tokens = 4;
+}
+
+enum RichTextFormat {
+  RICH_TEXT_FORMAT_UNSPECIFIED = 0;
+  RICH_TEXT_FORMAT_PLAIN_TEXT = 1;
+  RICH_TEXT_FORMAT_TIPTAP_JSON = 2;
+}
+
+enum ResumeSection {
+  RESUME_SECTION_UNSPECIFIED = 0;
+  RESUME_SECTION_SUMMARY = 1;
+  RESUME_SECTION_EXPERIENCE = 2;
+  RESUME_SECTION_PROJECTS = 3;
+  RESUME_SECTION_EDUCATION = 4;
+  RESUME_SECTION_SKILLS = 5;
+  RESUME_SECTION_RESEARCH = 6;
+  RESUME_SECTION_CUSTOM = 7;
+}
+
+enum PolishMode {
+  POLISH_MODE_UNSPECIFIED = 0;
+  POLISH_MODE_POLISH = 1;
+}
+
+enum PolishTone {
+  POLISH_TONE_UNSPECIFIED = 0;
+  POLISH_TONE_PROFESSIONAL = 1;
+  POLISH_TONE_CONFIDENT = 2;
+  POLISH_TONE_CONCISE = 3;
+}
+
+enum LengthMode {
+  LENGTH_MODE_UNSPECIFIED = 0;
+  LENGTH_MODE_SAME = 1;
+  LENGTH_MODE_SHORTER = 2;
+  LENGTH_MODE_LONGER = 3;
+}
+
+enum PolishStrategy {
+  POLISH_STRATEGY_UNSPECIFIED = 0;
+  POLISH_STRATEGY_PLAIN = 1;
+  POLISH_STRATEGY_STAR = 2;
+}
+
+enum RiskFlagType {
+  RISK_FLAG_TYPE_UNSPECIFIED = 0;
+  RISK_FLAG_TYPE_POSSIBLE_FABRICATION = 1;
+  RISK_FLAG_TYPE_CHANGED_ENTITY = 2;
+  RISK_FLAG_TYPE_TOO_LITTLE_CONTEXT = 3;
+  RISK_FLAG_TYPE_UNSAFE_CLAIM = 4;
+}

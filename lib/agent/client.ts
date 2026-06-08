@@ -23,6 +23,55 @@ export type AgentSessionResponse = {
   requestId: string;
 };
 
+export type RichTextPolishRequest = {
+  resumeId: string;
+  section:
+    | "summary"
+    | "experience"
+    | "projects"
+    | "education"
+    | "skills"
+    | "research"
+    | "custom";
+  fieldPath: string;
+  locale: "zh-CN";
+  content: {
+    format: "plain_text" | "tiptap_json";
+    plainText: string;
+    tiptapJson?: unknown;
+  };
+  intent: {
+    mode: "polish";
+    tone: "professional" | "confident" | "concise";
+    length: "same" | "shorter" | "longer";
+    strategy?: "plain" | "star";
+  };
+};
+
+export type RichTextPolishResponse = {
+  status: "ok";
+  requestId: string;
+  result: {
+    format: "plain_text";
+    polishedText: string;
+    changeSummary: string;
+    riskFlags: Array<{
+      type:
+        | "possible_fabrication"
+        | "changed_entity"
+        | "too_little_context"
+        | "unsafe_claim";
+      message: string;
+    }>;
+  };
+  usage: {
+    provider: string;
+    model: string;
+    inputTokens: number;
+    outputTokens: number;
+  };
+};
+
 export type AgentClientResult<T> = {
   data: T;
   requestId: string;
@@ -67,6 +116,11 @@ export type AgentClient = {
     token: string;
     requestId?: string;
   }) => Promise<AgentClientResult<AgentSessionResponse>>;
+  polishRichText: (options: {
+    token: string;
+    request: RichTextPolishRequest;
+    requestId?: string;
+  }) => Promise<AgentClientResult<RichTextPolishResponse>>;
 };
 
 const DEFAULT_AGENT_BASE_URL = "http://127.0.0.1:8787";
@@ -90,6 +144,18 @@ export function createAgentClient({
         fetchFn,
       });
     },
+    polishRichText({ token, request, requestId = createRequestId() }) {
+      return requestJson<RichTextPolishResponse>({
+        baseUrl,
+        path: "/v1/rich-text/polish",
+        method: "POST",
+        token,
+        requestId,
+        body: request,
+        timeoutMs,
+        fetchFn,
+      });
+    },
   };
 }
 
@@ -99,14 +165,16 @@ async function requestJson<T>({
   method,
   token,
   requestId,
+  body,
   timeoutMs,
   fetchFn,
 }: {
   baseUrl: string;
   path: string;
-  method: "GET";
+  method: "GET" | "POST";
   token: string;
   requestId: string;
+  body?: unknown;
   timeoutMs: number;
   fetchFn: typeof fetch;
 }): Promise<AgentClientResult<T>> {
@@ -119,18 +187,20 @@ async function requestJson<T>({
       headers: {
         Authorization: `Bearer ${token}`,
         "X-Request-Id": requestId,
+        ...(body === undefined ? {} : { "Content-Type": "application/json" }),
       },
+      ...(body === undefined ? {} : { body: JSON.stringify(body) }),
       signal: controller.signal,
     });
     const responseRequestId = response.headers.get("x-request-id") ?? requestId;
-    const body = await readJson(response);
+    const responseBody = await readJson(response);
 
     if (!response.ok) {
-      throw errorFromEnvelope(response.status, responseRequestId, body);
+      throw errorFromEnvelope(response.status, responseRequestId, responseBody);
     }
 
     return {
-      data: body as T,
+      data: responseBody as T,
       requestId: responseRequestId,
     };
   } catch (error) {
