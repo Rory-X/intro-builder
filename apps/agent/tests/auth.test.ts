@@ -102,6 +102,37 @@ describe("agent JWT authentication", () => {
     });
   });
 
+  it("accepts tokens signed with the padded form of a base64url secret", async () => {
+    const replayStore = new FakeReplayStore();
+    const unpaddedSecret = "a".repeat(43);
+    const token = await signAgentToken({
+      sub: "user_123",
+      scope: "agent:session",
+      jti: "jti_padded_base64_secret",
+      jwtSecret: `${unpaddedSecret}=`,
+    });
+
+    const result = await authenticateAgentRequest({
+      authorizationHeader: `Bearer ${token}`,
+      expectedScope: "agent:session",
+      config: {
+        ...createConfig(),
+        jwtSecret: unpaddedSecret,
+      },
+      replayStore,
+      now: NOW,
+    });
+
+    expect(result).toMatchObject({
+      ok: true,
+      session: {
+        userId: "user_123",
+        scope: "agent:session",
+        jti: "jti_padded_base64_secret",
+      },
+    });
+  });
+
   it("rejects requests without a bearer token", async () => {
     await expectAuthFailure({
       authorizationHeader: undefined,
