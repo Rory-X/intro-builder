@@ -18,6 +18,7 @@
     "verify": "pnpm lint && pnpm tsc --noEmit && pnpm test && pnpm build"
   },
   "dependencies": {
+    "@assistant-ui/react": "^0.14.15",
     "@atlaskit/pragmatic-drag-and-drop": "^1.8.1",
     "@atlaskit/pragmatic-drag-and-drop-auto-scroll": "^2.1.5",
     "@auth/drizzle-adapter": "^1.11.2",
