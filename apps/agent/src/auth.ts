@@ -220,13 +220,26 @@ async function verifyJwtWithSecrets(
 }
 
 function createJwtSecretCandidates(secret: string | undefined): string[] {
-  const candidates = [
+  const baseCandidates = [
     normalizeAgentJwtSecret(secret),
     normalizeLegacyWebJwtSecret(secret),
     secret?.trim() ?? "",
   ];
+  const candidates = baseCandidates.flatMap((candidate) => [
+    candidate,
+    ...createBase64PaddingCandidates(candidate),
+  ]);
 
   return [...new Set(candidates.filter((candidate) => candidate.length > 0))];
+}
+
+function createBase64PaddingCandidates(secret: string): string[] {
+  if (!/^[A-Za-z0-9+/_-]+$/.test(secret)) return [];
+
+  const remainder = secret.length % 4;
+  if (remainder === 0 || remainder === 1) return [];
+
+  return [`${secret}${"=".repeat(4 - remainder)}`];
 }
 
 function normalizeAgentJwtSecret(secret: string | undefined): string {
