@@ -1,10 +1,10 @@
 "use client";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { useEditor, EditorContent } from "@tiptap/react";
 import type { Editor } from "@tiptap/react";
 import {
   Bold, Italic, Underline as UnderlineIcon, Link, List, ListOrdered,
-  AlignLeft, AlignCenter, AlignRight, Palette, Sparkles,
+  AlignLeft, AlignCenter, AlignRight, Palette,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverTrigger, PopoverContent } from "@/components/ui/popover";
@@ -85,6 +85,7 @@ export function RichTextEditor({ content, onChange, polish }: Props) {
   const onChangeRef = useRef(onChange);
   const lastSyncedContentRef = useRef(JSON.stringify(content));
   const [polishState, setPolishState] = useState<PolishState>({ status: "idle" });
+  const polishIconGradientId = `ai-polish-gradient-${useId().replace(/:/g, "")}`;
 
   useEffect(() => {
     onChangeRef.current = onChange;
@@ -273,12 +274,14 @@ export function RichTextEditor({ content, onChange, polish }: Props) {
               type="button"
               variant="ghost"
               size="sm"
-              className="h-7 gap-1.5 rounded-full bg-gradient-to-r from-sky-500 via-fuchsia-500 to-amber-400 px-2.5 text-xs font-semibold text-white shadow-sm shadow-fuchsia-500/20 hover:from-sky-400 hover:via-fuchsia-400 hover:to-amber-300 hover:text-white focus-visible:ring-fuchsia-400/40 disabled:saturate-50 dark:shadow-fuchsia-950/40"
+              className="h-7 gap-1.5 rounded-full border border-fuchsia-300/50 bg-background/90 px-2.5 text-xs font-semibold shadow-sm shadow-fuchsia-500/10 hover:bg-muted/70 hover:text-foreground focus-visible:ring-fuchsia-400/40 disabled:saturate-50 dark:border-fuchsia-400/40 dark:bg-muted/40 dark:shadow-fuchsia-950/40"
               disabled={polishState.status === "loading"}
               onClick={() => void requestPolish()}
             >
-              <Sparkles className="h-3.5 w-3.5" />
-              {polishState.status === "loading" ? "润色中" : "AI 润色"}
+              <GradientSparklesIcon gradientId={polishIconGradientId} />
+              <span className="bg-gradient-to-r from-sky-500 via-fuchsia-500 to-amber-400 bg-clip-text text-transparent">
+                {polishState.status === "loading" ? "润色中" : "AI 润色"}
+              </span>
             </Button>
           </>
         )}
@@ -292,6 +295,37 @@ export function RichTextEditor({ content, onChange, polish }: Props) {
       )}
       <EditorContent editor={editor} />
     </div>
+  );
+}
+
+function GradientSparklesIcon({ gradientId }: { gradientId: string }) {
+  return (
+    <svg
+      aria-hidden="true"
+      className="h-3.5 w-3.5"
+      fill="none"
+      height="24"
+      stroke={`url(#${gradientId})`}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      strokeWidth="2"
+      viewBox="0 0 24 24"
+      width="24"
+      xmlns="http://www.w3.org/2000/svg"
+    >
+      <defs>
+        <linearGradient id={gradientId} x1="2" x2="22" y1="2" y2="22">
+          <stop offset="0%" stopColor="#0ea5e9" />
+          <stop offset="52%" stopColor="#d946ef" />
+          <stop offset="100%" stopColor="#f59e0b" />
+        </linearGradient>
+      </defs>
+      <path d="M9.937 15.5A2 2 0 0 0 8.5 14.063l-6.135-1.582a.5.5 0 0 1 0-.962L8.5 9.936A2 2 0 0 0 9.937 8.5l1.582-6.135a.5.5 0 0 1 .963 0L14.063 8.5A2 2 0 0 0 15.5 9.937l6.135 1.581a.5.5 0 0 1 0 .964L15.5 14.063a2 2 0 0 0-1.437 1.437l-1.582 6.135a.5.5 0 0 1-.963 0z" />
+      <path d="M20 3v4" />
+      <path d="M22 5h-4" />
+      <path d="M4 17v2" />
+      <path d="M5 18H3" />
+    </svg>
   );
 }
 

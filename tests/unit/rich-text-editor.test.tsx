@@ -31,7 +31,7 @@ describe("RichTextEditor", () => {
     expect(screen.queryByRole("button", { name: "AI 润色" })).not.toBeInTheDocument();
   });
 
-  it("uses a colorful gradient style for the AI polish call-to-action", () => {
+  it("uses gradient text and icon without a gradient button background", () => {
     render(
       <RichTextEditor
         content={paragraphDoc}
@@ -45,10 +45,15 @@ describe("RichTextEditor", () => {
     );
 
     const button = screen.getByRole("button", { name: "AI 润色" });
-    expect(button.className).toContain("bg-gradient-to-r");
-    expect(button.className).toContain("from-sky-500");
-    expect(button.className).toContain("via-fuchsia-500");
-    expect(button.className).toContain("to-amber-400");
+    expect(button.className).not.toContain("bg-gradient-to-r");
+
+    const label = screen.getByText("AI 润色");
+    expect(label.className).toContain("bg-gradient-to-r");
+    expect(label.className).toContain("bg-clip-text");
+    expect(label.className).toContain("text-transparent");
+
+    const iconGradient = button.querySelector("linearGradient");
+    expect(iconGradient).toBeInTheDocument();
   });
 
   it("synchronously hands the fontSize-bearing JSON to the parent on toolbar click", () => {
