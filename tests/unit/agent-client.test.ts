@@ -266,6 +266,74 @@ describe("Web Agent client", () => {
     );
   });
 
+  it("posts Agent messages with bearer token and request id", async () => {
+    const fetchMock = vi.fn(async (): Promise<Response> => {
+      return new Response(
+        JSON.stringify({
+          status: "ok",
+          requestId: "req_agent_message",
+          message: {
+            id: "msg_assistant_1",
+            role: "assistant",
+            content: "建议先优化第一段工作经历。",
+          },
+          toolCalls: [
+            {
+              id: "tool_1",
+              name: "inspect_resume",
+              status: "completed",
+              title: "检查简历",
+              summary: "发现工作经历缺少结果。",
+              input: { scope: "resume" },
+              result: { topIssue: "缺少结果" },
+            },
+          ],
+          proposedPatches: [],
+          usage: {
+            provider: "fake-provider",
+            model: "fake-model",
+            inputTokens: 900,
+            outputTokens: 240,
+          },
+        }),
+        {
+          status: 200,
+          headers: {
+            "content-type": "application/json",
+            "x-request-id": "req_agent_message",
+          },
+        },
+      );
+    });
+    const client = createAgentClient({
+      baseUrl: "https://agent.test/intro-builder/agent",
+      fetchFn: fetchMock as unknown as typeof fetch,
+      createRequestId: () => "req_web_message",
+    });
+    const request = validAgentMessageRequest();
+
+    const result = await client.sendAgentMessage({
+      token: "jwt-token",
+      request,
+    });
+
+    expect(result.requestId).toBe("req_agent_message");
+    expect(result.data.message.content).toContain("优化第一段工作经历");
+    expect(result.data.toolCalls[0]?.name).toBe("inspect_resume");
+    expect(fetchMock).toHaveBeenCalledWith(
+      "https://agent.test/intro-builder/agent/v1/agent/messages",
+      expect.objectContaining({
+        method: "POST",
+        headers: {
+          Authorization: "Bearer jwt-token",
+          "X-Request-Id": "req_web_message",
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(request),
+      }),
+    );
+  });
+
   it("aborts requests after the configured timeout", async () => {
     vi.useFakeTimers();
     const client = createAgentClient({
@@ -294,3 +362,29 @@ describe("Web Agent client", () => {
     vi.useRealTimers();
   });
 });
+
+function validAgentMessageRequest() {
+  return {
+    resumeId: "resume_abc",
+    locale: "zh-CN" as const,
+    workflowId: "resume-diagnose" as const,
+    messages: [{ id: "msg_user_1", role: "user" as const, content: "诊断整份简历" }],
+    context: {
+      resumeTitle: "前端开发工程师",
+      templateId: "professional",
+      activeSection: null,
+      completeness: {
+        overall: 80,
+        sections: [{ key: "experience", label: "工作经历", score: 18, max: 25 }],
+      },
+      sections: [
+        {
+          key: "experience",
+          label: "工作经历 1",
+          fieldPath: "experience.0.content",
+          plainText: "负责业务系统前端开发，优化页面性能。",
+        },
+      ],
+    },
+  };
+}
