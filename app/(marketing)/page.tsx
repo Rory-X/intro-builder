@@ -1,4 +1,5 @@
 import Link from "next/link";
+import type { Metadata } from "next";
 import { Button } from "@/components/ui/button";
 import { ArrowRight } from "lucide-react";
 import { HeroSection } from "@/components/marketing/hero-section";
@@ -12,6 +13,29 @@ import { listUploadedTemplates } from "@/lib/templates/uploaded/fetch";
 import { uploadedTemplateToSerializable } from "@/lib/templates/render";
 import { demoResume } from "@/lib/demo-resume";
 import type { SerializableResolvedTemplate } from "@/lib/templates/render";
+import { SEO_CONFIG } from "@/lib/seo-config";
+
+export const metadata: Metadata = {
+  title: SEO_CONFIG.pages.home.title,
+  description: SEO_CONFIG.pages.home.description,
+  keywords: SEO_CONFIG.pages.home.keywords,
+  openGraph: {
+    title: SEO_CONFIG.pages.home.title,
+    description: SEO_CONFIG.pages.home.description,
+    url: SEO_CONFIG.siteUrl,
+    siteName: SEO_CONFIG.siteName,
+    locale: 'zh_CN',
+    type: 'website',
+  },
+  twitter: {
+    card: 'summary_large_image',
+    title: SEO_CONFIG.pages.home.title,
+    description: SEO_CONFIG.pages.home.description,
+  },
+  alternates: {
+    canonical: SEO_CONFIG.siteUrl,
+  },
+};
 
 const COMPANIES = ["字节跳动", "美团", "腾讯", "阿里巴巴", "小红书", "百度", "京东"];
 
