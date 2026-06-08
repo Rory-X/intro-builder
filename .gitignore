@@ -59,6 +59,7 @@ modern-initial-template.png
 .cursor/
 
 # PoC artifacts and tool caches (never shared)
+.superpowers/
 .playwright-cli/
 .playwright-mcp/
 prototypes/
