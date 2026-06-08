@@ -14,6 +14,11 @@ export type RedisReadyConnection = {
 export type RedisConnection = RedisReadyConnection & {
   incr: (key: string) => Promise<number>;
   expire: (key: string, seconds: number) => Promise<unknown>;
+  set: (
+    key: string,
+    value: string,
+    options: { NX: true; EX: number },
+  ) => Promise<"OK" | null>;
 };
 
 export type RedisReadyResult =
@@ -26,6 +31,10 @@ type CheckRedisReadyOptions = {
 
 type CreateRedisConnectionOptions = {
   onError?: (error: Error) => void;
+};
+
+type CreateRedisReplayStoreOptions = {
+  timeoutMs?: number;
 };
 
 const pendingConnections = new WeakMap<RedisReadyConnection, Promise<void>>();
@@ -47,6 +56,18 @@ export function createRedisConnection(
   });
 
   return client as unknown as RedisConnection;
+}
+
+export function createRedisReplayStore(
+  redis: RedisConnection,
+  options: CreateRedisReplayStoreOptions = {},
+): Pick<RedisConnection, "set"> {
+  return {
+    async set(key, value, setOptions) {
+      await ensureRedisConnected(redis, options.timeoutMs ?? 1_000);
+      return redis.set(key, value, setOptions);
+    },
+  };
 }
 
 export async function checkRedisReady(

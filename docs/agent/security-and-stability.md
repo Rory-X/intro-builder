@@ -27,7 +27,8 @@ Verification:
 - Missing token returns `401 unauthorized`。
 - Expired token returns `401 unauthorized`。
 - Wrong scope returns `403 forbidden`。
-- Replayed `jti` returns `401 unauthorized` or `403 forbidden`，具体 code 在 service contract 中固定。
+- Replayed `jti` returns `401 unauthorized` with `Bearer token has already been used`。
+- Redis replay guard unavailable returns `503 dependency_unavailable` and protected routes fail closed。
 
 ## Authorization Scopes
 

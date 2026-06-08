@@ -293,6 +293,45 @@
 - 本地 Redis-down smoke 使用不可达 `REDIS_URL=redis://127.0.0.1:6390` 验证通过：`/health` 返回 `200`，`/ready` 返回 `503 dependency_unavailable`，并透传 `x-request-id`。
 - 服务器临时 Docker build 验证通过：使用当前 worktree 同步到 `/tmp/intro-agent-phase0b-build` 构建 `intro-agent:phase0b-build-check`，再以一次性容器接入 `agent_default` network，`/health` 与 `/ready` 均返回 `200`；临时镜像与临时目录已清理，线上 compose 容器未重启。
 
+## Phase 0C — Web-to-Agent Auth 与调用客户端
+
+**目标:** 在接入模型调用前，先打通 Web -> Agent 的短期 JWT、Agent 验签、Redis `jti` replay guard 和最小受保护 smoke endpoint，证明服务间调用边界稳定。
+
+**文件计划:**
+
+- `apps/agent/src/auth.ts`: 校验 Agent JWT 的 `iss`、`aud`、`exp`、`sub`、`scope` 与 `jti`，并通过 Redis `SET NX EX` 做 replay guard。
+- `apps/agent/src/config.ts`: 增加 `AGENT_JWT_ISSUER`、`AGENT_JWT_AUDIENCE`、`AGENT_JWT_SECRET`、`AGENT_JWT_REPLAY_TTL_SECONDS`。
+- `apps/agent/src/http.ts`: 新增 `GET /v1/session`，只接受 `agent:session` scope，用于验证认证链路。
+- `apps/agent/tests/auth.test.ts`: 覆盖有效 token、缺失 token、过期 token、错误 issuer / audience / scope、重复 `jti`。
+- `apps/agent/tests/http.test.ts`: 覆盖 protected route 的成功与认证失败响应。
+- `lib/agent/token.ts`: Web server-only 短期 Agent JWT signer。
+- `lib/agent/client.ts`: Web server-only Agent HTTP client，统一 base URL、request id、timeout 和错误映射。
+- `tests/unit/agent-token.test.ts`: 覆盖 signer claims、TTL、scope、resumeId。
+- `tests/unit/agent-client.test.ts`: 覆盖 request id 传递、timeout、错误 envelope。
+- `app/api/agent/session/route.ts`: 最小 Web BFF smoke route，验证 Web 已登录后签发 `agent:session` token 并调用 Agent `/v1/session`。
+
+**明确不做:**
+
+- 不实现 provider / OpenAI / DeepSeek 模型调用。
+- 不实现富文本润色、streaming、tool calling。
+- 不改编辑器 UI、RHF、preview、autosave。
+- 不引入 `assistant-ui`。
+- 不迁移 OCR、导入简历、AI 解析。
+
+**安全原则:**
+
+- Agent 不信任浏览器 cookie，只信任 Web 签发的短期 JWT。
+- Web 在真实业务能力里必须先校验 resume ownership，再签发包含 `resumeId` 的能力 token；本阶段 smoke scope 为 `agent:session`，不授予简历修改能力。
+- 受保护 Agent route 在 Redis replay guard 不可用时 fail closed。
+- 所有认证失败继续使用 JSON error envelope，并透传 `X-Request-Id`。
+
+**退出条件:**
+
+- `pnpm agent:test` 通过。
+- `pnpm test` 通过。
+- `pnpm tsc --noEmit`、`pnpm lint`、`pnpm build` 通过或记录明确阻塞。
+- 本地可用 Redis 时，Web BFF smoke route 能通过 Agent `/v1/session`；重放同一 token 会被拒绝。
+
 ## 后续建议
 
 1. 用户确认本规划后，先补一份对应 spec，专门收敛 Phase 0 的微服务技术选型、部署拓扑、JWT 契约和 Redis 切分。

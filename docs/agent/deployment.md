@@ -80,7 +80,18 @@ AGENT_SHUTDOWN_TIMEOUT_MS=10000
 AGENT_SITE_ADDRESS=api.rory-x.me
 AGENT_PUBLIC_BASE_PATH=/intro-builder/agent
 REDIS_URL=redis://redis:6379
+AGENT_JWT_ISSUER=intro-builder-web
+AGENT_JWT_AUDIENCE=intro-builder-agent
+AGENT_JWT_REPLAY_TTL_SECONDS=180
 ```
+
+Secret keys that must be configured before protected `/v1/*` routes can be used:
+
+```bash
+AGENT_JWT_SECRET=<same value as Web production env>
+```
+
+The Agent process still starts without `AGENT_JWT_SECRET` so `/health` and `/ready` stay deployable, but protected routes fail closed until the secret is present.
 
 ## GitHub Actions Deployment
 
@@ -115,6 +126,8 @@ Deployment steps:
 7. Run `docker compose up -d --build --remove-orphans`.
 8. Verify `agent` direct `/health` and `/ready` with retry, then verify Caddy local TLS `/health` and `/ready` with retry.
 
+If GitHub Secret `AGENT_JWT_SECRET` is set, the workflow writes it into `/opt/intro-agent/apps/agent/.env`. If it is not set, the workflow preserves the existing server `.env` and does not generate a weak default.
+
 Configured GitHub Secrets:
 
 ```text
@@ -123,6 +136,7 @@ AGENT_SSH_PORT
 AGENT_SSH_USER
 AGENT_SSH_KEY
 AGENT_SSH_KNOWN_HOSTS
+AGENT_JWT_SECRET
 ```
 
 Configured GitHub Variables:

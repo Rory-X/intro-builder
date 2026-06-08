@@ -9,6 +9,10 @@ export type AgentConfig = {
   redisConnectTimeoutMs: number;
   rateLimitWindowSeconds: number;
   rateLimitMaxRequests: number;
+  jwtIssuer: string;
+  jwtAudience: string;
+  jwtSecret?: string;
+  jwtReplayTtlSeconds: number;
 };
 
 type Env = Record<string, string | undefined>;
@@ -47,6 +51,15 @@ export function loadConfig(env: Env = process.env): AgentConfig {
       "RATE_LIMIT_MAX_REQUESTS",
       30,
       { min: 1, max: 100_000 },
+    ),
+    jwtIssuer: env.AGENT_JWT_ISSUER ?? "intro-builder-web",
+    jwtAudience: env.AGENT_JWT_AUDIENCE ?? "intro-builder-agent",
+    jwtSecret: env.AGENT_JWT_SECRET,
+    jwtReplayTtlSeconds: parseIntegerEnv(
+      env.AGENT_JWT_REPLAY_TTL_SECONDS,
+      "AGENT_JWT_REPLAY_TTL_SECONDS",
+      180,
+      { min: 1, max: 86_400 },
     ),
   };
 }

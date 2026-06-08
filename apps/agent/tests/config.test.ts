@@ -17,6 +17,10 @@ describe("agent config", () => {
       redisConnectTimeoutMs: 1_000,
       rateLimitWindowSeconds: 60,
       rateLimitMaxRequests: 30,
+      jwtIssuer: "intro-builder-web",
+      jwtAudience: "intro-builder-agent",
+      jwtSecret: undefined,
+      jwtReplayTtlSeconds: 180,
     });
   });
 
@@ -32,6 +36,10 @@ describe("agent config", () => {
       REDIS_CONNECT_TIMEOUT_MS: "1500",
       RATE_LIMIT_WINDOW_SECONDS: "120",
       RATE_LIMIT_MAX_REQUESTS: "10",
+      AGENT_JWT_ISSUER: "intro-test-web",
+      AGENT_JWT_AUDIENCE: "intro-test-agent",
+      AGENT_JWT_SECRET: "test-secret",
+      AGENT_JWT_REPLAY_TTL_SECONDS: "60",
     });
 
     expect(config).toMatchObject({
@@ -45,6 +53,10 @@ describe("agent config", () => {
       redisConnectTimeoutMs: 1500,
       rateLimitWindowSeconds: 120,
       rateLimitMaxRequests: 10,
+      jwtIssuer: "intro-test-web",
+      jwtAudience: "intro-test-agent",
+      jwtSecret: "test-secret",
+      jwtReplayTtlSeconds: 60,
     });
   });
 
@@ -69,6 +81,10 @@ describe("agent config", () => {
 
     expect(() => loadConfig({ RATE_LIMIT_MAX_REQUESTS: "0" })).toThrow(
       /RATE_LIMIT_MAX_REQUESTS must be an integer between 1 and 100000/,
+    );
+
+    expect(() => loadConfig({ AGENT_JWT_REPLAY_TTL_SECONDS: "0" })).toThrow(
+      /AGENT_JWT_REPLAY_TTL_SECONDS must be an integer between 1 and 86400/,
     );
   });
 });

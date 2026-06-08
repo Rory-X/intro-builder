@@ -78,6 +78,61 @@ HTTP status: `503`
 }
 ```
 
+### `GET /v1/session`
+
+用途：验证 Web 签发的短期 Agent JWT、scope 和 Redis `jti` replay guard。这个接口只用于 Phase 0C smoke，不承载业务 Agent 能力。
+
+认证：`Authorization: Bearer <agent-jwt>`，scope 必须是 `agent:session`。
+
+成功响应：
+
+```json
+{
+  "status": "ok",
+  "subject": "user_123",
+  "resumeId": "resume_abc",
+  "scope": "agent:session",
+  "expiresAt": "2026-06-08T08:02:00.000Z",
+  "requestId": "req_01H..."
+}
+```
+
+缺失 token 响应：
+
+HTTP status: `401`
+
+```json
+{
+  "error": "unauthorized",
+  "message": "Missing bearer token",
+  "requestId": "req_01H..."
+}
+```
+
+scope 不匹配响应：
+
+HTTP status: `403`
+
+```json
+{
+  "error": "forbidden",
+  "message": "Token scope is not allowed for this route",
+  "requestId": "req_01H..."
+}
+```
+
+重放同一 `jti` 响应：
+
+HTTP status: `401`
+
+```json
+{
+  "error": "unauthorized",
+  "message": "Bearer token has already been used",
+  "requestId": "req_01H..."
+}
+```
+
 ### Unknown route
 
 ```json
@@ -110,7 +165,7 @@ Planned endpoints:
 
 | Endpoint | Phase | Purpose |
 | --- | --- | --- |
-| `GET /v1/session` | Phase 0C | 验证 Web 签发的 Agent JWT 与 scope |
+| `GET /v1/session` | Phase 0C | 已实现：验证 Web 签发的 Agent JWT 与 scope |
 | `POST /v1/rich-text/polish` | Phase 1 | 富文本局部润色 |
 | `POST /v1/resume/helpers/:helperId` | Phase 2 | 简历模块级增量 helper |
 | `POST /v1/agent/messages` | Phase 3 | assistant-ui Agent panel 消息入口 |
@@ -138,7 +193,15 @@ Rules:
 - Agent 不查询 Web session。
 - Web 端必须先校验 resume ownership，再签发 Agent JWT。
 - Agent 必须校验 `iss`、`aud`、`exp`、`scope`。
-- Phase 0B/0C 后，`jti` 应进入 Redis 短期 replay guard。
+- Phase 0C 后，`jti` 已进入 Redis 短期 replay guard，key 为 `auth:jti:{jti}`。
+
+Web smoke endpoint:
+
+```bash
+GET /api/agent/session
+```
+
+此 Web BFF route 会读取当前 Web session / dev bypass，签发 `agent:session` token，并调用 Agent `GET /v1/session`。它只用于链路 smoke，不授权任何简历级操作。
 
 ## Error Envelope
 
