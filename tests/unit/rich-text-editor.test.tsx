@@ -356,9 +356,74 @@ describe("RichTextEditor", () => {
     expect(await screen.findByText("补充业务语境，优化性能表述。")).toBeInTheDocument();
 
     const deleted = screen.getByText("速度");
-    const inserted = screen.getByText("核心业务");
+    const inserted = screen.getByText((text, element) => {
+      return (
+        element?.getAttribute("data-diff-kind") === "insert" &&
+        text.includes("核心业务")
+      );
+    });
     expect(deleted).toHaveAttribute("data-diff-kind", "delete");
     expect(inserted).toHaveAttribute("data-diff-kind", "insert");
+  });
+
+  it("does not render whitespace-only polish diff fragments", async () => {
+    const fetchMock = vi.fn<
+      (...args: [RequestInfo | URL, RequestInit?]) => Promise<Response>
+    >(async () => {
+      return new Response(
+        JSON.stringify({
+          status: "ok",
+          requestId: "req_polish_spacing",
+          result: {
+            format: "plain_text",
+            polishedText:
+              "项目描述：负责系统开发。\n\n\n项目难点：优化页面性能，提升加载速度。",
+            changeSummary: "优化项目难点表述。",
+            riskFlags: [],
+          },
+          usage: {
+            provider: "fake-provider",
+            model: "fake-model",
+            inputTokens: 120,
+            outputTokens: 36,
+          },
+        }),
+        { status: 200, headers: { "content-type": "application/json" } },
+      );
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const { container } = render(
+      <RichTextEditor
+        content={{
+          type: "doc",
+          content: [
+            {
+              type: "paragraph",
+              content: [{ type: "text", text: "项目描述：负责系统开发。" }],
+            },
+            {
+              type: "paragraph",
+              content: [{ type: "text", text: "项目难点：优化页面速度。" }],
+            },
+          ],
+        }}
+        onChange={() => {}}
+        polish={{
+          resumeId: "resume_abc",
+          section: "projects",
+          fieldPath: "projects.0.content",
+        }}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "AI 润色" }));
+    expect(await screen.findByText("优化项目难点表述。")).toBeInTheDocument();
+
+    const whitespaceOnlyDiffs = Array.from(
+      container.querySelectorAll("[data-diff-kind]"),
+    ).filter((element) => element.textContent?.trim() === "");
+    expect(whitespaceOnlyDiffs).toHaveLength(0);
   });
 
   it("preserves list structure and inline marks when applying a polish candidate", async () => {
