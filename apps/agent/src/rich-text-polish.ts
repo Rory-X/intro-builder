@@ -221,6 +221,7 @@ export function validateRichTextPolishRequest(
 export function buildRichTextPolishPrompt(
   request: RichTextPolishRequest,
 ): RichTextPolishPrompt {
+  const textBlocks = extractTipTapTextBlocks(request.content.tiptapJson);
   return {
     system: [
       "你是 intro-builder 的中文简历润色助手。",
@@ -243,8 +244,11 @@ export function buildRichTextPolishPrompt(
       "length=same: 字数尽量接近原文，允许上下浮动 20%。length=shorter: 明显压缩但保留关键信息。length=longer: 只能展开表达方式，不能新增事实。",
       "当 strategy=star 时，优先使用 STAR 原则优化表达：Situation 只能使用原文已有背景；Task 明确职责但不得夸大；Action 强化已有动作、方法、技术手段；Result 只有原文明确提供结果、指标、收益时才能写入。",
       "如果原文缺少 Result，不要编造结果；可以更清晰地表达动作，并在 riskFlags 中加入 too_little_context。",
+      request.content.format === "tiptap_json"
+        ? "当 content.format=tiptap_json 时，必须保持原 TipTap 富文本结构：不得合并或拆散原有段落、无序列表、有序列表、列表项层级；polishedText 必须按原始文本块顺序输出，每个文本块一行，不要自行添加 Markdown 列表符号或编号。"
+        : "",
       `当前 strategy=${request.intent.strategy}。`,
-    ].join("\n"),
+    ].filter(Boolean).join("\n"),
     user: [
       "请润色以下简历片段。",
       "上下文：",
@@ -254,11 +258,62 @@ export function buildRichTextPolishPrompt(
       `- tone: ${request.intent.tone}`,
       `- length: ${request.intent.length}`,
       `- strategy: ${request.intent.strategy}`,
+      ...(textBlocks.length > 0
+        ? [
+            "",
+            "原始富文本结构（只用于保持段落/列表结构，不要改层级）：",
+            `- textBlockCount: ${textBlocks.length}`,
+            ...textBlocks.map(
+              (block, index) => `- ${index}. ${block.type}: ${block.text}`,
+            ),
+          ]
+        : []),
       "",
       "原文：",
       request.content.plainText,
     ].join("\n"),
   };
+}
+
+function extractTipTapTextBlocks(tiptapJson: unknown): Array<{
+  type: string;
+  text: string;
+}> {
+  if (!isRecord(tiptapJson)) return [];
+
+  const blocks: Array<{ type: string; text: string }> = [];
+  visitTipTapNode(tiptapJson, blocks);
+  return blocks;
+}
+
+function visitTipTapNode(
+  node: Record<string, unknown>,
+  blocks: Array<{ type: string; text: string }>,
+): void {
+  const type = typeof node.type === "string" ? node.type : "unknown";
+  if (type === "paragraph") {
+    const text = extractTipTapNodeText(node).trim();
+    if (text) blocks.push({ type, text: truncateStructureText(text) });
+    return;
+  }
+
+  if (!Array.isArray(node.content)) return;
+  for (const child of node.content) {
+    if (isRecord(child)) visitTipTapNode(child, blocks);
+  }
+}
+
+function extractTipTapNodeText(node: Record<string, unknown>): string {
+  if (typeof node.text === "string") return node.text;
+  if (!Array.isArray(node.content)) return "";
+
+  return node.content
+    .map((child) => (isRecord(child) ? extractTipTapNodeText(child) : ""))
+    .join("");
+}
+
+function truncateStructureText(text: string): string {
+  return text.length > 120 ? `${text.slice(0, 117)}...` : text;
 }
 
 export function parsePolishProviderResponse(

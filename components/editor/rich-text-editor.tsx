@@ -192,7 +192,10 @@ export function RichTextEditor({ content, onChange, polish }: Props) {
   }
 
   function applyPolishCandidate(candidate: PolishCandidate) {
-    const nextContent = plainTextToDoc(candidate.polishedText);
+    const nextContent = applyPolishedTextToExistingDoc(
+      toPlainJson(activeEditor.getJSON()),
+      candidate.polishedText,
+    );
     activeEditor.commands.setContent(nextContent, { emitUpdate: false });
     lastSyncedContentRef.current = JSON.stringify(nextContent);
     onChangeRef.current(nextContent);
@@ -490,6 +493,179 @@ function plainTextToDoc(text: string): TipTapJSON {
       content: [{ type: "text", text: line }],
     })),
   };
+}
+
+type TipTapNode = {
+  type?: string;
+  text?: string;
+  attrs?: unknown;
+  marks?: unknown;
+  content?: TipTapNode[];
+  [key: string]: unknown;
+};
+
+function applyPolishedTextToExistingDoc(
+  original: TipTapJSON,
+  polishedText: string,
+): TipTapJSON {
+  const nextDoc = JSON.parse(JSON.stringify(original)) as TipTapJSON;
+  const textBlocks = collectTextBlocks(nextDoc as TipTapNode);
+  if (textBlocks.length === 0) return plainTextToDoc(polishedText);
+
+  const replacementTexts = createReplacementTexts(polishedText, textBlocks);
+  if (replacementTexts.length === 0) return plainTextToDoc(polishedText);
+
+  textBlocks.forEach((block, index) => {
+    block.content = createInlineContentForBlock(
+      block,
+      replacementTexts[index] ?? getBlockText(block),
+    );
+  });
+
+  return nextDoc;
+}
+
+function collectTextBlocks(node: TipTapNode): TipTapNode[] {
+  if (node.type === "paragraph") return [node];
+  return Array.isArray(node.content)
+    ? node.content.flatMap((child) => collectTextBlocks(child))
+    : [];
+}
+
+function createReplacementTexts(text: string, textBlocks: TipTapNode[]): string[] {
+  const expectedCount = textBlocks.length;
+  const lines = splitPolishedTextLines(text);
+  if (lines.length === expectedCount) return lines;
+  if (lines.length > expectedCount) return fitPartsToCount(lines, expectedCount);
+
+  const sentences = splitPolishedTextSentences(text);
+  if (sentences.length >= expectedCount) {
+    return fitPartsToCount(sentences, expectedCount);
+  }
+  const labelAwareSentences = splitBeforeLabelOnlyBlocks(sentences, textBlocks);
+  if (labelAwareSentences.length >= expectedCount) {
+    return fitPartsToCount(labelAwareSentences, expectedCount);
+  }
+
+  return lines;
+}
+
+function splitPolishedTextLines(text: string): string[] {
+  return text
+    .split(/\n+/)
+    .map((line) => line.replace(/^\s*(?:[-*•]\s+|\d+[.)、]\s*)/, "").trim())
+    .filter(Boolean);
+}
+
+function splitPolishedTextSentences(text: string): string[] {
+  return text
+    .replace(/\s+/g, " ")
+    .split(/(?<=[。！？；;])\s*/)
+    .map((part) => part.trim())
+    .filter(Boolean);
+}
+
+function fitPartsToCount(parts: string[], expectedCount: number): string[] {
+  if (expectedCount <= 1) return [parts.join(" ")];
+  return [
+    ...parts.slice(0, expectedCount - 1),
+    parts.slice(expectedCount - 1).join(" "),
+  ];
+}
+
+function splitBeforeLabelOnlyBlocks(
+  parts: string[],
+  textBlocks: TipTapNode[],
+): string[] {
+  const labelOnlyTexts = new Set(
+    textBlocks
+      .map((block) => getBlockText(block).trim())
+      .filter(isShortLabel),
+  );
+  if (labelOnlyTexts.size === 0) return parts;
+
+  return parts.flatMap((part) => {
+    for (const label of labelOnlyTexts) {
+      if (part.startsWith(label) && part.length > label.length) {
+        return [label, part.slice(label.length).trim()];
+      }
+    }
+    return [part];
+  }).filter(Boolean);
+}
+
+function getBlockText(block: TipTapNode): string {
+  if (!Array.isArray(block.content)) return "";
+  return block.content
+    .filter(isTextNode)
+    .map((node) => node.text)
+    .join("");
+}
+
+function createInlineContentForBlock(
+  block: TipTapNode,
+  nextText: string,
+): TipTapNode[] {
+  if (!nextText) return [];
+  const textNodes = Array.isArray(block.content)
+    ? block.content.filter(isTextNode)
+    : [];
+  const labelNode = textNodes[0];
+  const labelText = labelNode?.text ?? "";
+
+  if (
+    labelNode &&
+    hasMarks(labelNode) &&
+    isShortLabel(labelText) &&
+    nextText.startsWith(labelText)
+  ) {
+    const rest = nextText.slice(labelText.length).trimStart();
+    return [
+      createTextNode(labelText, labelNode),
+      ...(rest
+        ? [createTextNode(rest, findNonBoldTextNode(textNodes) ?? labelNode)]
+        : []),
+    ];
+  }
+
+  return [createTextNode(nextText, textNodes[0])];
+}
+
+function isTextNode(node: TipTapNode): node is TipTapNode & { text: string } {
+  return node.type === "text" && typeof node.text === "string";
+}
+
+function hasMarks(node: TipTapNode): boolean {
+  return Array.isArray(node.marks) && node.marks.length > 0;
+}
+
+function isShortLabel(text: string): boolean {
+  return text.length > 0 && text.length <= 24 && /[：:]$/.test(text);
+}
+
+function findNonBoldTextNode(nodes: TipTapNode[]): TipTapNode | undefined {
+  return nodes.find((node) => {
+    if (!Array.isArray(node.marks)) return true;
+    return !node.marks.some(
+      (mark) => isRecord(mark) && mark.type === "bold",
+    );
+  });
+}
+
+function createTextNode(text: string, template: TipTapNode | undefined): TipTapNode {
+  return {
+    type: "text",
+    ...(cloneOptionalProperty(template, "marks")),
+    text,
+  };
+}
+
+function cloneOptionalProperty(
+  source: TipTapNode | undefined,
+  key: "marks",
+): Partial<TipTapNode> {
+  if (!source || source[key] === undefined) return {};
+  return { [key]: JSON.parse(JSON.stringify(source[key])) };
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
