@@ -8,6 +8,7 @@ import {
 } from "./redis.js";
 import { createOpenAICompatibleRichTextPolishProvider } from "./rich-text-polish.js";
 import { createOpenAICompatibleResumeHelperProvider } from "./resume-helpers.js";
+import { createOpenAICompatibleAgentMessageProvider } from "./agent-messages.js";
 
 const config = loadConfig();
 const redis = createRedisConnection(config, {
@@ -25,6 +26,7 @@ const server = createAgentServer({
   rateLimitStore: redis,
   richTextPolishProvider: createOpenAICompatibleRichTextPolishProvider(config),
   resumeHelperProvider: createOpenAICompatibleResumeHelperProvider(config),
+  agentMessageProvider: createOpenAICompatibleAgentMessageProvider(config),
 });
 
 server.listen(config.port, config.host, () => {
