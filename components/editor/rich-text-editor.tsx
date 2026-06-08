@@ -61,6 +61,7 @@ type RichTextPolishContext = {
 };
 
 type PolishCandidate = {
+  originalText: string;
   polishedText: string;
   replacementTiptapJson?: TipTapJSON;
   changeSummary: string;
@@ -182,6 +183,7 @@ export function RichTextEditor({ content, onChange, polish }: Props) {
       setPolishState({
         status: "ready",
         candidate: {
+          originalText: plainText,
           polishedText: result.polishedText,
           ...readReplacementTiptapJson(result),
           changeSummary: result.changeSummary,
@@ -366,9 +368,10 @@ function PolishCandidatePanel({
         <div className="space-y-2">
           <div>
             <p className="font-medium">AI 润色建议</p>
-            <p className="mt-1 whitespace-pre-wrap leading-relaxed">
-              {state.candidate.polishedText}
-            </p>
+            <PolishDiffView
+              originalText={state.candidate.originalText}
+              polishedText={state.candidate.polishedText}
+            />
           </div>
           <p className="text-muted-foreground">{state.candidate.changeSummary}</p>
           {state.candidate.riskFlags.length > 0 && (
@@ -401,6 +404,170 @@ function PolishCandidatePanel({
       )}
     </div>
   );
+}
+
+type DiffPart = {
+  kind: "equal" | "delete" | "insert";
+  text: string;
+};
+
+const MAX_INLINE_DIFF_TOKENS = 800;
+
+function PolishDiffView({
+  originalText,
+  polishedText,
+}: {
+  originalText: string;
+  polishedText: string;
+}) {
+  const parts = createInlineDiffParts(originalText, polishedText);
+
+  return (
+    <p
+      aria-label="AI 润色差异"
+      className="mt-1 whitespace-pre-wrap leading-relaxed"
+    >
+      {parts.map((part, index) => {
+        if (part.kind === "equal") {
+          return <span key={`${part.kind}-${index}`}>{part.text}</span>;
+        }
+        return (
+          <span
+            key={`${part.kind}-${index}`}
+            data-diff-kind={part.kind}
+            className={cn(
+              "rounded px-0.5",
+              part.kind === "delete"
+                ? "bg-red-100 text-red-800 line-through decoration-red-500 dark:bg-red-950/50 dark:text-red-200"
+                : "bg-emerald-100 text-emerald-900 dark:bg-emerald-950/50 dark:text-emerald-100",
+            )}
+          >
+            {part.text}
+          </span>
+        );
+      })}
+    </p>
+  );
+}
+
+function createInlineDiffParts(
+  originalText: string,
+  polishedText: string,
+): DiffPart[] {
+  if (originalText === polishedText) {
+    return [{ kind: "equal", text: polishedText }];
+  }
+
+  const originalTokens = tokenizeDiffText(originalText);
+  const polishedTokens = tokenizeDiffText(polishedText);
+  if (
+    originalTokens.length + polishedTokens.length > MAX_INLINE_DIFF_TOKENS ||
+    polishedTokens.length === 0
+  ) {
+    return [{ kind: "equal", text: polishedText }];
+  }
+  if (originalTokens.length === 0) {
+    return [{ kind: "insert", text: polishedText }];
+  }
+
+  const table = createLcsTable(originalTokens, polishedTokens);
+  const parts: DiffPart[] = [];
+  let originalIndex = 0;
+  let polishedIndex = 0;
+
+  while (
+    originalIndex < originalTokens.length &&
+    polishedIndex < polishedTokens.length
+  ) {
+    if (originalTokens[originalIndex] === polishedTokens[polishedIndex]) {
+      appendDiffPart(parts, "equal", originalTokens[originalIndex]);
+      originalIndex += 1;
+      polishedIndex += 1;
+    } else if (
+      table[originalIndex + 1][polishedIndex] >=
+      table[originalIndex][polishedIndex + 1]
+    ) {
+      appendDiffPart(parts, "delete", originalTokens[originalIndex]);
+      originalIndex += 1;
+    } else {
+      appendDiffPart(parts, "insert", polishedTokens[polishedIndex]);
+      polishedIndex += 1;
+    }
+  }
+
+  while (originalIndex < originalTokens.length) {
+    appendDiffPart(parts, "delete", originalTokens[originalIndex]);
+    originalIndex += 1;
+  }
+  while (polishedIndex < polishedTokens.length) {
+    appendDiffPart(parts, "insert", polishedTokens[polishedIndex]);
+    polishedIndex += 1;
+  }
+
+  return parts;
+}
+
+function tokenizeDiffText(text: string): string[] {
+  const tokens: string[] = [];
+  let buffer = "";
+  let bufferKind: "word" | "space" | null = null;
+
+  for (const char of Array.from(text)) {
+    const kind = getDiffCharKind(char);
+    if (kind === "char") {
+      if (buffer) tokens.push(buffer);
+      buffer = "";
+      bufferKind = null;
+      tokens.push(char);
+      continue;
+    }
+    if (bufferKind === kind) {
+      buffer += char;
+    } else {
+      if (buffer) tokens.push(buffer);
+      buffer = char;
+      bufferKind = kind;
+    }
+  }
+  if (buffer) tokens.push(buffer);
+
+  return tokens;
+}
+
+function getDiffCharKind(char: string): "word" | "space" | "char" {
+  if (/\s/.test(char)) return "space";
+  if (/[\w#+./-]/u.test(char)) return "word";
+  return "char";
+}
+
+function createLcsTable(left: string[], right: string[]): number[][] {
+  const table = Array.from({ length: left.length + 1 }, () =>
+    Array(right.length + 1).fill(0) as number[],
+  );
+
+  for (let i = left.length - 1; i >= 0; i -= 1) {
+    for (let j = right.length - 1; j >= 0; j -= 1) {
+      table[i][j] =
+        left[i] === right[j]
+          ? table[i + 1][j + 1] + 1
+          : Math.max(table[i + 1][j], table[i][j + 1]);
+    }
+  }
+
+  return table;
+}
+
+function appendDiffPart(
+  parts: DiffPart[],
+  kind: DiffPart["kind"],
+  text: string,
+) {
+  const last = parts.at(-1);
+  if (last?.kind === kind) {
+    last.text += text;
+  } else {
+    parts.push({ kind, text });
+  }
 }
 
 function FontSizeToolbar({
