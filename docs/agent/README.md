@@ -4,14 +4,15 @@
 
 ## 当前状态
 
-- 分支：`codex/agent-next-plan`
+- 当前规划分支：`codex/agent-phase-3-assistant-ui-design`
 - 微服务目录：`apps/agent`
 - 当前能力：基础 Node/TypeScript HTTP 服务，包含 `/health`、Redis-backed `/ready`、protected `/v1/session`、`POST /v1/rich-text/polish`、`POST /v1/resume/helpers/:helperId`、JSON 404/405、统一错误 envelope、request id、Redis readiness、rate limit primitive、短期 Agent JWT 校验、Redis `jti` replay guard、STAR-aware prompt、OpenAI-compatible provider 配置、配置解析、启动日志、Docker/Caddy/compose。
 - Phase 2A 能力：`resume-diagnose` 提供整份简历诊断，`section-next-steps` 提供单个模块下一步建议。Web BFF 为 `POST /api/agent/resume/helpers/[helperId]`，会校验 Auth.js session 与 resume ownership 后签发 `resume:helper` JWT。
 - Phase 2A UI：编辑器顶部有 `AI 诊断` 入口，工作经历、项目经历、教育经历、研究经历、技能、自定义模块 header 有 `AI 建议` 入口。按钮使用文字与图标渐变，不使用渐变背景。
+- Phase 3A 规划：已确认 A 方案 `Agent Mode replaces left editor`。点击 `Agent 模式` 后左侧编辑列切换为 assistant-ui Agent panel，右侧 `LivePreview` 保持可见。首版计划新增 `POST /v1/agent/messages`、`POST /api/agent/messages`、基础简历修改 tools 和用户确认的 `ResumePatch` 写回。
 - 本地 Redis：已安装并启动 Homebrew `redis 8.8.0`，连接串为 `redis://127.0.0.1:6379`。
 - 服务器部署：`101.36.117.253` 已安装 Docker/Compose，`/opt/intro-agent` 已运行 `agent + redis + caddy`。公网入口 `https://api.rory-x.me/intro-builder/agent` 已通过 Cloudflare -> Caddy -> Agent 的 `/health` 与 `/ready` 冒烟。
-- 当前不包含：tool calling、resume helper 自动写回、assistant-ui。
+- 当前生产不包含：Phase 3A assistant-ui Agent Mode、`/v1/agent/messages`、可确认写回的 `ResumePatch`。
 
 ## 产品边界
 
@@ -51,6 +52,8 @@ Agent 微服务逐步负责：
 
 - 当前工作计划：[docs/superpowers/plans/2026-06-05-ai-agent-work-plan.md](../superpowers/plans/2026-06-05-ai-agent-work-plan.md)
 - Phase 2A 实施计划：[docs/superpowers/plans/2026-06-08-agent-resume-helpers-phase-2a.md](../superpowers/plans/2026-06-08-agent-resume-helpers-phase-2a.md)
+- Phase 3A 设计：[docs/superpowers/specs/2026-06-09-agent-mode-assistant-ui-design.md](../superpowers/specs/2026-06-09-agent-mode-assistant-ui-design.md)
+- Phase 3A 实施计划：[docs/superpowers/plans/2026-06-09-agent-mode-assistant-ui-phase-3a.md](../superpowers/plans/2026-06-09-agent-mode-assistant-ui-phase-3a.md)
 - 基础服务设计：[docs/superpowers/specs/2026-06-05-agent-service-foundation-design.md](../superpowers/specs/2026-06-05-agent-service-foundation-design.md)
 - 当前服务代码：[apps/agent](../../apps/agent)
 

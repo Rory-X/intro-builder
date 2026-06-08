@@ -15,12 +15,16 @@
 | `apps/agent/src/errors.ts` | JSON error envelope helpers |
 | `apps/agent/src/rich-text-polish.ts` | Rich text polish request validation, prompt builder, provider parser |
 | `apps/agent/src/resume-helpers.ts` | Resume helper IDs, validation, prompt builder, provider parser |
+| `apps/agent/src/agent-messages.ts` | Phase 3A planned: Agent Mode message validation, prompt builder, provider parser |
+| `apps/agent/src/agent-tools.ts` | Phase 3A planned: basic resume tool and `ResumePatch` validation |
 | `apps/agent/tests/config.test.ts` | config behavior |
 | `apps/agent/tests/http.test.ts` | health/ready/404/405 behavior |
 | `apps/agent/tests/redis.test.ts` | Redis dependency behavior |
 | `apps/agent/tests/rate-limit.test.ts` | rate limit primitive |
 | `apps/agent/tests/rich-text-polish.test.ts` | rich text polish validation and parser behavior |
 | `apps/agent/tests/resume-helpers.test.ts` | resume helper validation, prompt rules, parser behavior |
+| `apps/agent/tests/agent-messages.test.ts` | Phase 3A planned: Agent message contract and prompt/parser behavior |
+| `apps/agent/tests/agent-tools.test.ts` | Phase 3A planned: basic tool and patch validation |
 | `apps/agent/Dockerfile` | production image |
 | `apps/agent/compose.yaml` | local/server compose shape |
 | `apps/agent/Caddyfile` | reverse proxy template |
@@ -43,16 +47,20 @@ Web side entrypoints:
 | `lib/agent/client.ts` | server-side Agent HTTP client |
 | `lib/agent/token.ts` | short-lived Agent JWT signer |
 | `lib/agent/resume-helper-context.ts` | RHF resume content to capped helper context |
+| `lib/agent/agent-message-contract.ts` | Phase 3A planned: browser-safe Agent message/tool/patch types |
+| `lib/agent/chat-context.ts` | Phase 3A planned: RHF resume content to capped Agent chat context |
 | `app/api/agent/session/route.ts` | protected session smoke route |
 | `app/api/agent/rich-text/polish/route.ts` | Web BFF for rich text polish |
 | `app/api/agent/resume/helpers/[helperId]/route.ts` | Web BFF for Phase 2A resume helpers |
-| `app/api/agent/messages/route.ts` | Phase 3 assistant-ui BFF stream route |
+| `app/api/agent/messages/route.ts` | Phase 3A planned: assistant-ui Agent Mode BFF JSON route |
 | `tests/unit/agent-token.test.ts` | signer behavior |
 | `tests/unit/agent-client.test.ts` | timeout/error mapping |
 | `tests/unit/agent-session-route.test.ts` | Web BFF smoke route behavior |
 | `tests/unit/agent-rich-text-polish-route.test.ts` | rich text polish BFF behavior |
 | `tests/unit/agent-resume-helper-context.test.ts` | helper context extraction and caps |
 | `tests/unit/agent-resume-helper-route.test.ts` | resume helper BFF auth/ownership/proxy behavior |
+| `tests/unit/agent-chat-context.test.ts` | Phase 3A planned: Agent chat context extraction and field paths |
+| `tests/unit/agent-messages-route.test.ts` | Phase 3A planned: Agent message BFF auth/ownership/proxy behavior |
 
 Rules:
 
@@ -75,6 +83,8 @@ Rules:
 - Do not pass full resume content down into preview as a prop.
 - Do not bypass `useResumeAutosave`.
 - Do not let Agent panel own resume state.
+- Phase 3A Agent Mode replaces the left editor column; it is not a right-side drawer.
+- Right `LivePreview` must remain visible in desktop Agent Mode.
 
 ## Rich Text
 
@@ -110,14 +120,19 @@ Planned components:
 
 | Planned file | Phase | Responsibility |
 | --- | --- | --- |
-| `components/agent/agent-panel-trigger.tsx` | 3 | open assistant panel |
-| `components/agent/agent-panel.tsx` | 3 | assistant-ui panel shell |
+| `components/agent/agent-mode-toggle.tsx` | 3A | toolbar `Agent 模式` toggle with gradient text/icon |
+| `components/agent/agent-panel.tsx` | 3A | left-column assistant-ui Agent panel shell |
 | `components/agent/agent-runtime-provider.tsx` | 3 | assistant-ui runtime integration |
+| `components/agent/agent-preset-workflows.tsx` | 3A | preset workflow chips |
+| `components/agent/agent-tool-card.tsx` | 3A | visible tool call/result card |
+| `components/agent/agent-confirmation-card.tsx` | 3A | `ResumePatch` apply/ignore card |
+| `tests/unit/agent-panel.test.tsx` | 3A | Agent panel workflow and confirmation behavior |
+| `tests/unit/editor-client-agent-mode.test.tsx` | 3A | editor mode toggle, preview preservation, RHF writeback |
 
 Reuse:
 
 - `components/ui/button.tsx`
-- `components/ui/sheet.tsx`
+- `components/ui/sheet.tsx` only for later Phase 3B mobile exploration, not Phase 3A desktop
 - `components/ui/popover.tsx`
 - `components/ui/separator.tsx`
 - `sonner`

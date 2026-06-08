@@ -83,6 +83,31 @@ flowchart TB
 - 每个 chunk 必须有类型，不能让前端猜字符串语义。
 - Web 端仍负责确认写回和 autosave。
 
+### Phase 3A Agent Mode 请求
+
+Phase 3A 的首版 Agent panel 先走 JSON message contract，不强行做 streaming。目标是先稳定 message、tool call、`ResumePatch` 和用户确认写回语义。
+
+```mermaid
+flowchart LR
+  Toolbar["Agent 模式"] --> LeftPanel["Left editor column AgentPanel"]
+  LeftPanel --> WebBff["Next /api/agent/messages"]
+  WebBff --> AgentRoute["Agent /v1/agent/messages"]
+  AgentRoute --> Tools["basic resume tools"]
+  AgentRoute --> Provider["Model Provider"]
+  AgentRoute --> WebBff
+  WebBff --> Confirm["Web confirmation card"]
+  Confirm --> RHF["RHF setValue"]
+  RHF --> Autosave["resume:flush-autosave"]
+  RHF --> Preview["LivePreview"]
+```
+
+Rules:
+
+- 右侧 `LivePreview` 在桌面 Agent Mode 中保持可见。
+- assistant-ui 只负责 thread、composer、tool display，不拥有简历状态。
+- 基础 tools 可以推理和生成 `ResumePatch`，但不能直接写 RHF 或 Postgres。
+- 富文本 patch 必须保持 TipTap JSON 语义；列表不能被压成无结构段落。
+
 ## 稳定性原则
 
 1. `/health` 只代表进程存活，不依赖 Redis 或模型 provider。

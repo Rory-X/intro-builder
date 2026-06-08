@@ -143,3 +143,45 @@ Consequences:
 
 - `pnpm build` 在无 `.env.local` 时可以继续通过。
 - `/dev-preview` 作为开发 DB 页面按请求渲染。
+
+## D10: Phase 3A Agent Mode 替换左侧编辑列
+
+Decision: Phase 3A 采用 **Agent Mode replaces left editor**。用户点击编辑器 toolbar 的 `Agent 模式` 后，左侧编辑列切换为 assistant-ui Agent panel，右侧 `LivePreview` 保持可见。
+
+Why:
+
+- 简历优化需要边聊边看预览，右侧 drawer 会压缩 preview，削弱核心排版反馈。
+- 左侧编辑列是用户“修改简历”的工作区域，切换成 Agent panel 更像一个明确模式，而不是泛用客服聊天气泡。
+- 首版可以保留 Web 的 RHF、autosave、preview 真源，同时验证 Agent 工作流和工具调用。
+
+Consequences:
+
+- Phase 3A 不做右侧 Sheet/side panel。
+- 移动端 Agent panel 延后到 Phase 3B，再评估 `Sheet`。
+- Template panel 与 Agent panel 互斥。
+- Agent Mode 切换不得重置 RHF state、section order、模板选择或 autosave 队列。
+
+## D11: Phase 3A tools 只返回 ResumePatch
+
+Decision: Phase 3A 必须封装基础简历修改 tools 供 Agent 推理调用，但 tools 只能返回 `ResumePatch`，不能直接保存或改写简历。
+
+Initial tools:
+
+- `inspect_resume`
+- `propose_rich_text_rewrite`
+- `propose_summary_rewrite`
+- `propose_bullet_rewrite`
+- `draft_section_item`
+
+Why:
+
+- 用户需要看到 Agent 不只是聊天，而是在使用可解释的简历工具推理。
+- 直接写 RHF 或 Postgres 会破坏用户确认、安全边界和 autosave 队列。
+- `ResumePatch` 可以让 Web 在确认卡里展示差异、风险和 `应用` / `忽略`。
+
+Consequences:
+
+- Web 是唯一写回执行者。
+- Agent provider 输出必须经过 allowlist 和 schema 校验。
+- 富文本 patch 必须保持 TipTap 语义；列表输入不能被润色成一段无结构文本。
+- STAR 优化不得编造 Result 指标，缺事实时必须返回 `needs_user_fact`。

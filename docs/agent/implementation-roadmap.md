@@ -220,33 +220,56 @@ Exit gates:
 
 ## Phase 3: assistant-ui Agent Panel
 
-Goal: 引入聊天式 Agent panel，承载多轮对话和可见 tool calling。
+Status: planned by `docs/superpowers/specs/2026-06-09-agent-mode-assistant-ui-design.md` and `docs/superpowers/plans/2026-06-09-agent-mode-assistant-ui-phase-3a.md`.
+
+Goal: 引入聊天式 Agent Mode，承载多轮对话、可见 tool calling 和基础简历修改建议；首版左侧编辑列切换为 Agent panel，右侧 `LivePreview` 保持可见。
 
 Use assistant-ui here, not earlier.
 
 Recommended architecture:
 
 ```text
-AgentPanel -> Next /api/agent/messages -> Agent /v1/agent/messages
+Editor toolbar Agent 模式
+  -> left editor column AgentPanel
+  -> assistant-ui LocalRuntime/custom adapter
+  -> Next /api/agent/messages
+  -> Agent /v1/agent/messages
+  -> basic resume tools
+  -> provider
 ```
 
 Deliverables:
 
 - assistant-ui runtime provider。
-- Agent panel trigger。
-- Right-side Sheet panel。
-- Stream adapter matching selected assistant-ui protocol。
+- `Agent 模式` toolbar toggle，文字和 icon 渐变，背景不渐变。
+- Left-column Agent panel shell，替换编辑表单视觉但不接管 RHF。
+- Preset workflows: `诊断整份简历`、`目标岗位匹配`、`经历 STAR 优化`、`终检导出前检查`。
+- JSON message adapter for Phase 3A; streaming/DataStream deferred to Phase 3B。
+- `POST /v1/agent/messages` with scope `agent:chat`。
+- Web BFF `POST /api/agent/messages` with Auth.js session and resume ownership check。
 - Tool call display。
-- Human-confirmed writeback actions。
+- Basic resume modification tools:
+  - `inspect_resume`
+  - `propose_rich_text_rewrite`
+  - `propose_summary_rewrite`
+  - `propose_bullet_rewrite`
+  - `draft_section_item`
+- `ResumePatch` confirmation cards with `应用` / `忽略`。
+- Human-confirmed writeback via RHF `setValue` and `resume:flush-autosave`。
 - Lazy loading to protect editor initial bundle。
 
 Exit gates:
 
-- Panel opens without resetting RHF form。
-- Message stream completes under selected protocol。
-- Tool calls render but cannot mutate resume without confirmation。
-- Closing panel does not break autosave。
-- Mobile Sheet smoke passes。
+- `Agent 模式` opens from desktop editor toolbar。
+- Left panel switches to Agent panel while right `LivePreview` remains visible。
+- FormProvider/RHF state, section order, template state, and autosave queue are not reset。
+- First e2e smoke: click `诊断整份简历` and see user message, assistant message, at least one tool card。
+- At least one proposed `ResumePatch` can render as a confirmation card。
+- Patch does not mutate resume content before `应用`。
+- Confirmed patch writes through existing RHF path and triggers autosave flush。
+- Rich text list patches preserve ordered/unordered list structure instead of collapsing to one paragraph。
+- Agent unavailable degrades to a Chinese error state without breaking normal editor typing。
+- Phase 3A desktop passes; mobile Sheet is explicitly Phase 3B, not an exit gate for this slice。
 
 ## Phase 4: BYO Key, Credits, and Limits
 

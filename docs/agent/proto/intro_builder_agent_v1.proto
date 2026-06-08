@@ -12,6 +12,10 @@ service ResumeHelperService {
   rpc RunResumeHelper(RunResumeHelperRequest) returns (RunResumeHelperResponse);
 }
 
+service AgentMessageService {
+  rpc SendAgentMessage(SendAgentMessageRequest) returns (SendAgentMessageResponse);
+}
+
 message PolishRichTextRequest {
   string request_id = 1;
   string resume_id = 2;
@@ -138,6 +142,74 @@ message ResumeHelperRiskFlag {
   string message = 2;
 }
 
+message SendAgentMessageRequest {
+  string request_id = 1;
+  string resume_id = 2;
+  string locale = 3;
+  AgentWorkflowId workflow_id = 4;
+  repeated AgentChatMessage messages = 5;
+  AgentResumeContext context = 6;
+}
+
+message AgentChatMessage {
+  string id = 1;
+  AgentChatRole role = 2;
+  string content = 3;
+}
+
+message AgentResumeContext {
+  string resume_title = 1;
+  string template_id = 2;
+  string active_section = 3;
+  CompletenessSnapshot completeness = 4;
+  repeated AgentResumeSection sections = 5;
+}
+
+message AgentResumeSection {
+  string key = 1;
+  string label = 2;
+  string field_path = 3;
+  string plain_text = 4;
+}
+
+message SendAgentMessageResponse {
+  string status = 1;
+  string request_id = 2;
+  AgentChatMessage message = 3;
+  repeated AgentToolCall tool_calls = 4;
+  repeated ResumePatch proposed_patches = 5;
+  Usage usage = 6;
+}
+
+message AgentToolCall {
+  string id = 1;
+  AgentToolName name = 2;
+  string status = 3;
+  string title = 4;
+  string summary = 5;
+  google.protobuf.Struct input = 6;
+  google.protobuf.Struct result = 7;
+}
+
+message ResumePatch {
+  string id = 1;
+  string tool_call_id = 2;
+  string label = 3;
+  ResumeSection section = 4;
+  string field_path = 5;
+  ResumePatchOperation operation = 6;
+  string before_plain_text = 7;
+  string after_plain_text = 8;
+  google.protobuf.Struct replacement_tiptap_json = 9;
+  string change_summary = 10;
+  repeated AgentPatchRiskFlag risk_flags = 11;
+}
+
+message AgentPatchRiskFlag {
+  AgentPatchRiskFlagType type = 1;
+  string message = 2;
+}
+
 enum RichTextFormat {
   RICH_TEXT_FORMAT_UNSPECIFIED = 0;
   RICH_TEXT_FORMAT_PLAIN_TEXT = 1;
@@ -213,4 +285,41 @@ enum ResumeHelperRiskFlagType {
   RESUME_HELPER_RISK_FLAG_TYPE_POSSIBLE_FABRICATION = 2;
   RESUME_HELPER_RISK_FLAG_TYPE_TOO_LITTLE_CONTEXT = 3;
   RESUME_HELPER_RISK_FLAG_TYPE_FORMATTING_RISK = 4;
+}
+
+enum AgentWorkflowId {
+  AGENT_WORKFLOW_ID_UNSPECIFIED = 0;
+  AGENT_WORKFLOW_ID_RESUME_DIAGNOSE = 1;
+  AGENT_WORKFLOW_ID_TARGET_ROLE_MATCH = 2;
+  AGENT_WORKFLOW_ID_EXPERIENCE_STAR = 3;
+  AGENT_WORKFLOW_ID_PRE_EXPORT_CHECK = 4;
+}
+
+enum AgentChatRole {
+  AGENT_CHAT_ROLE_UNSPECIFIED = 0;
+  AGENT_CHAT_ROLE_USER = 1;
+  AGENT_CHAT_ROLE_ASSISTANT = 2;
+}
+
+enum AgentToolName {
+  AGENT_TOOL_NAME_UNSPECIFIED = 0;
+  AGENT_TOOL_NAME_INSPECT_RESUME = 1;
+  AGENT_TOOL_NAME_PROPOSE_RICH_TEXT_REWRITE = 2;
+  AGENT_TOOL_NAME_PROPOSE_SUMMARY_REWRITE = 3;
+  AGENT_TOOL_NAME_PROPOSE_BULLET_REWRITE = 4;
+  AGENT_TOOL_NAME_DRAFT_SECTION_ITEM = 5;
+}
+
+enum ResumePatchOperation {
+  RESUME_PATCH_OPERATION_UNSPECIFIED = 0;
+  RESUME_PATCH_OPERATION_REPLACE_PLAIN_TEXT = 1;
+  RESUME_PATCH_OPERATION_REPLACE_TIPTAP_JSON = 2;
+}
+
+enum AgentPatchRiskFlagType {
+  AGENT_PATCH_RISK_FLAG_TYPE_UNSPECIFIED = 0;
+  AGENT_PATCH_RISK_FLAG_TYPE_NEEDS_USER_FACT = 1;
+  AGENT_PATCH_RISK_FLAG_TYPE_POSSIBLE_FABRICATION = 2;
+  AGENT_PATCH_RISK_FLAG_TYPE_FORMATTING_RISK = 3;
+  AGENT_PATCH_RISK_FLAG_TYPE_UNSAFE_CLAIM = 4;
 }

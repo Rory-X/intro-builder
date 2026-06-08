@@ -206,10 +206,13 @@ Rollback rule:
 Rules:
 
 - Agent suggestions require user confirmation。
+- Phase 3A Agent Mode replaces the left editor column; the right `LivePreview` must remain visible on desktop。
+- Agent tools may only return `ResumePatch` envelopes; Web owns patch application。
 - Do not write partial stream chunks into RHF。
 - Do not call `saveResume` directly from Agent UI components。
 - After confirmed writeback, use existing RHF callbacks and autosave flush。
 - assistant-ui panel state must not become resume content。
+- Rich text patches must preserve TipTap JSON structure; list-shaped input must not become one unstructured paragraph。
 
 Verification:
 
@@ -217,6 +220,7 @@ Verification:
 - Apply suggestion updates preview。
 - Apply suggestion triggers autosave。
 - Agent unavailable does not break typing in editor。
+- Agent Mode toggle does not reset RHF form state, section order, template state, or autosave queue。
 
 ## Production Red Flags
 

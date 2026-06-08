@@ -35,14 +35,25 @@ assistant-ui 是面向 React 的 AI chat / assistant UI 库。它通过 runtime 
 
 ## 对 intro-builder 的推荐模式
 
-Phase 3 推荐使用 assistant-ui 的 DataStream 或 AssistantTransport 模式，而不是让 assistant-ui 直接决定业务状态。
+Phase 3 推荐使用 assistant-ui 承载 Agent panel 的 thread、composer 和 tool display，但不让 assistant-ui 决定简历产品状态。
+
+Phase 3A 已确认的产品形态是 **Agent Mode replaces left editor**：
+
+- 用户点击编辑器 toolbar 的 `Agent 模式`。
+- 左侧编辑列切换为 Agent panel。
+- 右侧 `LivePreview` 保持可见。
+- RHF、autosave、模板状态、preview 仍由 Web 编辑器掌管。
+- 所有写回都必须经过 Web UI 的 `应用` / `忽略` 确认。
+
+Phase 3A runtime 首选 LocalRuntime/custom adapter 或等价薄适配层，先跑通稳定 JSON contract；DataStream/SSE 在 Phase 3B 再升级。原因是当前产品需要 human-confirmed writeback，直接追求 streaming protocol 容易把协议稳定性和 UI 状态一起放大。
 
 Preferred first integration:
 
 ```text
-Browser AgentPanel
+Browser AgentPanel assistant-ui
   -> Next.js /api/agent/messages
   -> Agent Microservice /v1/agent/messages
+  -> Basic resume tools
   -> Redis memory / rate limit
   -> Model provider
 ```
@@ -68,10 +79,11 @@ Browser AgentPanel
 
 | 方案 | 适用阶段 | 推荐度 | 说明 |
 | --- | --- | --- | --- |
-| DataStream runtime | Phase 3 MVP | 高 | 后端只需要输出标准 stream，前端接入较薄 |
-| AssistantTransport | Phase 3 后 | 中 | 适合后端有更丰富状态同步需求 |
+| LocalRuntime/custom adapter | Phase 3A | 高 | 先适配现有 Web BFF JSON contract，最适合 human-confirmed patch 写回 |
+| DataStream runtime | Phase 3B | 中 | 后端输出标准 stream 后再接入，避免首版协议漂移 |
+| AssistantTransport | Phase 3B+ | 中 | 适合后端有更丰富状态同步需求 |
 | AI SDK runtime | 待评估 | 中 | 若 Agent 服务采用 AI SDK v6，可复用更多适配 |
-| LocalRuntime 直连 provider | 不推荐 | 低 | 会让模型调用回到前端或 Web client 边界，破坏微服务目标 |
+| LocalRuntime 直连 provider | 不推荐 | 低 | 会让模型调用回到浏览器或 Web client 边界，破坏微服务目标 |
 
 ## 对 streaming protocol 的要求
 
@@ -79,7 +91,8 @@ assistant-ui DataStream 有协议选项。默认是 `ui-message-stream`，legacy
 
 因此 Phase 3 开始前必须先确定 Agent 输出哪一种协议：
 
-- 推荐优先评估 `ui-message-stream`，贴近 assistant-ui 当前默认。
+- Phase 3A 不强行做 streaming；先用 JSON contract 证明 message/tool/patch 语义。
+- Phase 3B 再优先评估 `ui-message-stream`，贴近 assistant-ui 当前默认。
 - 如果 Phase 1/2 已经沉淀自定义 line-delimited JSON stream，Phase 3 需要写 adapter，不要让 assistant-ui 直接消费不兼容流。
 
 ## Tool calling 策略
@@ -89,9 +102,10 @@ Agent panel 可以展示工具调用状态，但简历写入类工具必须 huma
 Allowed tool classes:
 
 - `inspect_resume`: 读取当前简历摘要和完成度。
-- `suggest_rewrite`: 生成建议，不写回。
-- `explain_template`: 解释当前模板排版。
-- `draft_section`: 生成一个待用户确认的 section draft。
+- `propose_rich_text_rewrite`: 针对富文本 field 生成候选 `replace_tiptap_json` patch，不写回。
+- `propose_summary_rewrite`: 针对 `basics.summary` 生成候选 `replace_plain_text` patch，不写回。
+- `propose_bullet_rewrite`: 针对列表型 TipTap 内容做保格式润色，不把列表压成一整段文本。
+- `draft_section_item`: 生成一个待用户确认的 section/item draft。
 
 Disallowed direct tools:
 
@@ -100,7 +114,7 @@ Disallowed direct tools:
 - `publish_resume`
 - `change_template_without_confirmation`
 
-工具调用结果应该回到 Web UI，用户点击确认后才进入 RHF 和 autosave。
+工具调用结果应该回到 Web UI。Agent 只能返回 `ResumePatch`，用户点击确认后才进入 RHF 和 autosave。STAR 优化必须保守：缺 Result 指标就提示用户补事实，不能编造数字或业务结果。
 
 ## Phase 3 UI 形态
 
@@ -108,16 +122,16 @@ Agent panel 应该是编辑器里的辅助工作区，不是营销页，也不�
 
 Recommended desktop layout:
 
-- 右侧 `Sheet` 或固定 side panel。
-- 宽度约 `360px` 到 `420px`。
-- 保持 editor 和 preview 的主工作区优先级。
+- 左侧 editor column 原地切换为 Agent panel。
+- 右侧 preview 常驻可见。
+- Agent mode 激活时隐藏或禁用 resize handle。
+- Template panel 与 Agent panel 互斥。
 - 聊天线程只在用户打开 Agent panel 时渲染。
 
 Recommended mobile layout:
 
-- 使用现有 `Sheet` 从右侧或底部打开。
-- composer 固定在底部。
-- 不遮挡保存状态和主要返回入口。
+- Phase 3A 不解决移动端 Agent panel。
+- Phase 3B 可评估现有 `Sheet`，但不能牺牲保存反馈和主要返回入口。
 
 ## 不用于 Phase 1 的原因
 
@@ -154,6 +168,7 @@ assistant-ui 提供的是：
 - Phase 0C Agent JWT 已完成。
 - Phase 1 或 Phase 2 已有稳定 Agent API 和 error envelope。
 - 已选定 assistant-ui runtime。
-- 已确认 stream protocol 与后端一致。
-- 已有 Agent panel 不接管 RHF 的设计。
+- Phase 3A 已确认 JSON message/tool/patch contract；如果做 streaming，必须确认 stream protocol 与后端一致。
+- 已有 Agent Mode 左侧替换、不接管 RHF 的设计。
+- 已定义基础简历修改 tools 和 `ResumePatch` 确认写回规则。
 - 已有 bundle 和 lazy loading 策略。
