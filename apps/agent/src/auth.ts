@@ -27,6 +27,7 @@ export type AgentAuthResult =
       error: AgentErrorCode;
       message: string;
       dependency?: string;
+      diagnosticReason?: string;
     };
 
 type AgentAuthFailure = Extract<AgentAuthResult, { ok: false }>;
@@ -165,9 +166,34 @@ async function verifyJwt(
         ...(payload.resumeId ? { resumeId: payload.resumeId } : {}),
       },
     };
-  } catch {
-    return authFailure(401, "unauthorized", "Invalid or expired bearer token");
+  } catch (error) {
+    return authFailure(
+      401,
+      "unauthorized",
+      "Invalid or expired bearer token",
+      undefined,
+      classifyJwtVerifyFailure(error),
+    );
   }
+}
+
+function classifyJwtVerifyFailure(error: unknown): string {
+  if (!isRecord(error)) return "jwt_verify_failed";
+
+  const code = typeof error.code === "string" ? error.code : "";
+  const claim = typeof error.claim === "string" ? error.claim : "";
+  const name = error.constructor?.name ?? "";
+
+  if (code === "ERR_JWS_SIGNATURE_VERIFICATION_FAILED") {
+    return "signature_verification_failed";
+  }
+  if (code === "ERR_JWT_EXPIRED") return "token_expired";
+  if (code === "ERR_JWT_CLAIM_VALIDATION_FAILED" && claim) {
+    return `claim_validation_failed:${claim}`;
+  }
+  if (name) return `jwt_verify_failed:${name}`;
+
+  return "jwt_verify_failed";
 }
 
 async function reserveJwtId(
@@ -205,6 +231,7 @@ function authFailure(
   error: AgentErrorCode,
   message: string,
   dependency?: string,
+  diagnosticReason?: string,
 ): AgentAuthFailure {
   return {
     ok: false,
@@ -212,5 +239,10 @@ function authFailure(
     error,
     message,
     ...(dependency ? { dependency } : {}),
+    ...(diagnosticReason ? { diagnosticReason } : {}),
   };
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === "object";
 }

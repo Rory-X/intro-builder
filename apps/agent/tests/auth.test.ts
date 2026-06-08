@@ -68,6 +68,7 @@ describe("agent JWT authentication", () => {
         statusCode: 401,
         error: "unauthorized",
         message: "Invalid or expired bearer token",
+        diagnosticReason: "token_expired",
       },
     });
   });
@@ -92,6 +93,7 @@ describe("agent JWT authentication", () => {
         statusCode: 401,
         error: "unauthorized",
         message: "Invalid or expired bearer token",
+        diagnosticReason: "claim_validation_failed:iss",
       },
     });
     await expectAuthFailure({
@@ -100,6 +102,7 @@ describe("agent JWT authentication", () => {
         statusCode: 401,
         error: "unauthorized",
         message: "Invalid or expired bearer token",
+        diagnosticReason: "claim_validation_failed:aud",
       },
     });
   });
@@ -217,6 +220,7 @@ async function expectAuthFailure({
     statusCode: number;
     error: string;
     message: string;
+    diagnosticReason?: string;
   };
 }): Promise<void> {
   const result = await authenticateAgentRequest({
