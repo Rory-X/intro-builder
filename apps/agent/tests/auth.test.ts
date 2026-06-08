@@ -152,6 +152,33 @@ describe("agent JWT authentication", () => {
     });
   });
 
+  it("fails closed when the signing secret is not configured", async () => {
+    const token = await signAgentToken({
+      sub: "user_123",
+      scope: "agent:session",
+      jti: "jti_missing_secret",
+    });
+
+    const result = await authenticateAgentRequest({
+      authorizationHeader: `Bearer ${token}`,
+      expectedScope: "agent:session",
+      config: {
+        ...createConfig(),
+        jwtSecret: undefined,
+      },
+      replayStore: new FakeReplayStore(),
+      now: NOW,
+    });
+
+    expect(result).toEqual({
+      ok: false,
+      statusCode: 503,
+      error: "dependency_unavailable",
+      message: "JWT secret is not configured",
+      dependency: "config",
+    });
+  });
+
   it("fails closed when the replay guard is unavailable", async () => {
     const token = await signAgentToken({
       sub: "user_123",

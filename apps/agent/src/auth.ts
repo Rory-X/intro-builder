@@ -63,7 +63,7 @@ export async function authenticateAgentRequest({
       503,
       "dependency_unavailable",
       "JWT secret is not configured",
-      "redis",
+      "config",
     );
   }
 

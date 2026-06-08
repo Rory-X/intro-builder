@@ -87,6 +87,11 @@ jobs:
           rsync -az --delete --exclude='.env' --exclude='dist' -e "$ssh_cmd" \
             apps/agent/ "$remote:${AGENT_DEPLOY_PATH}/apps/agent/"
 
+          if [ -n "${AGENT_JWT_SECRET:-}" ]; then
+            printf '%s' "$AGENT_JWT_SECRET" | \
+              $ssh_cmd "$remote" "umask 077 && cat > '${AGENT_DEPLOY_PATH}/apps/agent/.agent-jwt-secret.tmp'"
+          fi
+
       - name: Rebuild and health check Agent
         run: |
           set -euo pipefail
@@ -100,6 +105,10 @@ jobs:
 
           cd "$AGENT_DEPLOY_PATH/apps/agent"
           touch .env
+          if [ -f .agent-jwt-secret.tmp ]; then
+            AGENT_JWT_SECRET="$(cat .agent-jwt-secret.tmp)"
+            rm -f .agent-jwt-secret.tmp
+          fi
 
           upsert_env() {
             key="$1"
