@@ -74,6 +74,7 @@ Current non-secret keys:
 ```bash
 AGENT_HOST=0.0.0.0
 AGENT_PORT=8787
+AGENT_IMAGE=<ghcr.io/rory-x/intro-builder/agent:github-sha>
 AGENT_SERVICE_NAME=intro-agent
 AGENT_VERSION=<set by deploy>
 AGENT_SHUTDOWN_TIMEOUT_MS=10000
@@ -143,10 +144,14 @@ Deployment steps:
 2. Install with pnpm 10 on Node 22.
 3. Run `pnpm verify`.
 4. Run `pnpm agent:build`.
-5. Configure SSH from GitHub Secrets.
-6. Sync deploy files with `rsync`.
-7. Run `docker compose up -d --build --remove-orphans`.
-8. Verify `agent` direct `/health` and `/ready` with retry, then verify Caddy local TLS `/health` and `/ready` with retry.
+5. Build and push an immutable Agent image to GHCR, tagged as `ghcr.io/rory-x/intro-builder/agent:github-<sha>`.
+6. Configure SSH from GitHub Secrets.
+7. Sync deploy files with `rsync`.
+8. Log the server into GHCR with the workflow token, write `AGENT_IMAGE` into `.env`, then run `docker compose pull agent` with retry.
+9. Run `docker compose up -d --no-build --remove-orphans`.
+10. Verify `agent` direct `/health` and `/ready` with retry, then verify Caddy local TLS `/health` and `/ready` with retry.
+
+The server intentionally uses the prebuilt GHCR image instead of building from `node:22-alpine` during deploy. This keeps production deploys from depending on Docker Hub token/metadata availability from the server network; transient Docker Hub `504 Gateway Timeout` failures should only affect the CI image build step, where the workflow retries the build/push before failing.
 
 If GitHub Secret `AGENT_JWT_SECRET` is set, the workflow writes it into `/opt/intro-agent/apps/agent/.env`. If it is not set, the workflow preserves the existing server `.env` and does not generate a weak default.
 

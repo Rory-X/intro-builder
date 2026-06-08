@@ -18,6 +18,7 @@ concurrency:
 
 permissions:
   contents: read
+  packages: write
 
 env:
   AGENT_DEPLOY_PATH: ${{ vars.AGENT_DEPLOY_PATH || '/opt/intro-agent' }}
@@ -60,6 +61,50 @@ jobs:
 
       - name: Build Agent package
         run: pnpm agent:build
+
+      - name: Resolve Agent image tags
+        run: |
+          set -euo pipefail
+          image_repo="ghcr.io/${GITHUB_REPOSITORY,,}/agent"
+          image_tag="github-${GITHUB_SHA::12}"
+
+          echo "AGENT_IMAGE=${image_repo}:${image_tag}" >> "$GITHUB_ENV"
+          echo "AGENT_IMAGE_LATEST=${image_repo}:main" >> "$GITHUB_ENV"
+
+      - name: Setup Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ github.token }}
+
+      - name: Build and push Agent image
+        run: |
+          set -euo pipefail
+
+          for attempt in 1 2 3 4; do
+            if docker buildx build \
+              --file apps/agent/Dockerfile \
+              --tag "$AGENT_IMAGE" \
+              --tag "$AGENT_IMAGE_LATEST" \
+              --push \
+              .; then
+              exit 0
+            fi
+
+            status=$?
+            if [ "$attempt" -eq 4 ]; then
+              echo "Agent image build/push failed after ${attempt} attempts"
+              exit "$status"
+            fi
+
+            delay=$((attempt * 20))
+            echo "Agent image build/push failed (attempt ${attempt}/4); retrying in ${delay}s..."
+            sleep "$delay"
+          done
 
       - name: Configure SSH
         env:
@@ -109,6 +154,16 @@ jobs:
           fi
           rm -f "$runtime_env"
 
+      - name: Login server to GHCR
+        env:
+          GHCR_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          remote="${AGENT_SSH_USER}@${AGENT_SSH_HOST}"
+          ssh_cmd="ssh -i ~/.ssh/intro-agent-deploy -p ${AGENT_SSH_PORT} -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes"
+
+          printf '%s' "$GHCR_TOKEN" | $ssh_cmd "$remote" "docker login ghcr.io -u '${GITHUB_ACTOR}' --password-stdin >/dev/null"
+
       - name: Rebuild and health check Agent
         run: |
           set -euo pipefail
@@ -117,7 +172,7 @@ jobs:
           agent_version="github-${GITHUB_SHA::12}"
 
           $ssh_cmd "$remote" \
-            "AGENT_DEPLOY_PATH='${AGENT_DEPLOY_PATH}' AGENT_DOMAIN='${AGENT_DOMAIN}' AGENT_PUBLIC_BASE_PATH='${AGENT_PUBLIC_BASE_PATH}' AGENT_VERSION='${agent_version}' AGENT_MODEL_TIMEOUT_MS='${AGENT_MODEL_TIMEOUT_MS}' bash -s" <<'REMOTE'
+            "AGENT_DEPLOY_PATH='${AGENT_DEPLOY_PATH}' AGENT_DOMAIN='${AGENT_DOMAIN}' AGENT_PUBLIC_BASE_PATH='${AGENT_PUBLIC_BASE_PATH}' AGENT_VERSION='${agent_version}' AGENT_MODEL_TIMEOUT_MS='${AGENT_MODEL_TIMEOUT_MS}' AGENT_IMAGE='${AGENT_IMAGE}' bash -s" <<'REMOTE'
           set -euo pipefail
 
           cd "$AGENT_DEPLOY_PATH/apps/agent"
@@ -153,6 +208,7 @@ jobs:
           upsert_env AGENT_JWT_AUDIENCE intro-builder-agent
           upsert_env AGENT_JWT_REPLAY_TTL_SECONDS 180
           upsert_env AGENT_MODEL_TIMEOUT_MS "$AGENT_MODEL_TIMEOUT_MS"
+          upsert_env AGENT_IMAGE "$AGENT_IMAGE"
           if [ -f .agent-runtime-env.tmp ]; then
             while IFS='=' read -r key value; do
               case "$key" in
@@ -165,7 +221,29 @@ jobs:
           fi
           chmod 600 .env
 
-          docker compose up -d --build --remove-orphans
+          retry_command() {
+            description="$1"
+            shift
+
+            for attempt in 1 2 3 4 5; do
+              if "$@"; then
+                return 0
+              fi
+
+              status=$?
+              if [ "$attempt" -eq 5 ]; then
+                echo "${description} failed after ${attempt} attempts"
+                return "$status"
+              fi
+
+              delay=$((attempt * 15))
+              echo "${description} failed (attempt ${attempt}/5); retrying in ${delay}s..."
+              sleep "$delay"
+            done
+          }
+
+          retry_command "Pull Agent image" docker compose pull agent
+          docker compose up -d --no-build --remove-orphans
           docker compose ps
 
           check_agent_endpoint() {
