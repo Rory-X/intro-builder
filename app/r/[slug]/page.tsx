@@ -1,4 +1,5 @@
 import { notFound } from "next/navigation";
+import type { Metadata } from "next";
 import { and, eq } from "drizzle-orm";
 import { db } from "@/db";
 import { resumes } from "@/db/schema";
@@ -6,6 +7,14 @@ import { migrateContent } from "@/lib/migrate-content";
 import { TemplateRender } from "@/lib/templates/render-server";
 
 export const revalidate = 60;
+
+export const metadata: Metadata = {
+  robots: {
+    index: false,      // Prevent indexing
+    follow: false,     // Prevent following links
+    nocache: true,     // Prevent caching
+  },
+};
 
 export default async function PublicResume({ params }: { params: Promise<{ slug: string }> }) {
   const { slug } = await params;
