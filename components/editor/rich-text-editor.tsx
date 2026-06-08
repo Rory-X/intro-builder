@@ -348,7 +348,7 @@ function PolishCandidatePanel({
   onDismiss: () => void;
 }) {
   return (
-    <div className="border-b bg-amber-50/70 px-3 py-2 text-xs text-amber-950 dark:bg-amber-950/25 dark:text-amber-100">
+    <div className="border-b bg-muted/30 px-3 py-2 text-xs text-foreground dark:bg-muted/20">
       {state.status === "loading" && (
         <p className="text-muted-foreground">正在生成润色建议…</p>
       )}
@@ -411,7 +411,14 @@ type DiffPart = {
   text: string;
 };
 
+type ChangedDiffPart = {
+  kind: "delete" | "insert";
+  text: string;
+};
+
 const MAX_INLINE_DIFF_TOKENS = 800;
+const MAX_VISIBLE_DIFF_CHANGES = 18;
+const MAX_DIFF_CHANGE_TEXT_LENGTH = 36;
 
 function PolishDiffView({
   originalText,
@@ -420,34 +427,97 @@ function PolishDiffView({
   originalText: string;
   polishedText: string;
 }) {
-  const parts = createInlineDiffParts(originalText, polishedText);
+  const changes = createDisplayDiffParts(originalText, polishedText);
+  const visibleChanges = changes.slice(0, MAX_VISIBLE_DIFF_CHANGES);
+  const hiddenChangeCount = Math.max(0, changes.length - visibleChanges.length);
+
+  if (visibleChanges.length === 0) {
+    return (
+      <p
+        aria-label="AI 润色差异"
+        className="mt-1 max-h-12 overflow-hidden text-muted-foreground"
+      >
+        {normalizeDiffDisplayText(polishedText)}
+      </p>
+    );
+  }
 
   return (
-    <p
+    <div
       aria-label="AI 润色差异"
-      className="mt-1 whitespace-pre-wrap leading-relaxed"
+      className="mt-1 max-h-24 overflow-y-auto rounded-md border border-border/60 bg-background/80 px-2 py-1.5 shadow-sm dark:bg-background/50"
     >
-      {parts.map((part, index) => {
-        if (part.kind === "equal") {
-          return <span key={`${part.kind}-${index}`}>{part.text}</span>;
-        }
-        return (
+      <div className="flex flex-wrap items-center gap-1.5">
+        {visibleChanges.map((part, index) => (
           <span
             key={`${part.kind}-${index}`}
-            data-diff-kind={part.kind}
             className={cn(
-              "rounded px-0.5",
+              "inline-flex max-w-full items-center gap-1 rounded-md border px-1.5 py-0.5 leading-5",
               part.kind === "delete"
-                ? "bg-red-100 text-red-800 line-through decoration-red-500 dark:bg-red-950/50 dark:text-red-200"
-                : "bg-emerald-100 text-emerald-900 dark:bg-emerald-950/50 dark:text-emerald-100",
+                ? "border-red-200 bg-red-50 text-red-700 dark:border-red-900/70 dark:bg-red-950/25 dark:text-red-200"
+                : "border-emerald-200 bg-emerald-50 text-emerald-800 dark:border-emerald-900/70 dark:bg-emerald-950/25 dark:text-emerald-100",
             )}
           >
-            {part.text}
+            <span aria-hidden="true" className="shrink-0 text-[10px] font-medium opacity-70">
+              {part.kind === "delete" ? "删" : "增"}
+            </span>
+            <span
+              data-diff-kind={part.kind}
+              className={cn(
+                "min-w-0 max-w-[18rem] truncate",
+                part.kind === "delete" && "line-through decoration-red-400",
+              )}
+              title={part.text}
+            >
+              {truncateDiffDisplayText(part.text)}
+            </span>
           </span>
-        );
-      })}
-    </p>
+        ))}
+        {hiddenChangeCount > 0 && (
+          <span className="rounded-md border border-border/60 bg-muted px-1.5 py-0.5 leading-5 text-muted-foreground">
+            还有 {hiddenChangeCount} 处
+          </span>
+        )}
+      </div>
+    </div>
   );
+}
+
+function createDisplayDiffParts(
+  originalText: string,
+  polishedText: string,
+): ChangedDiffPart[] {
+  const displayParts: ChangedDiffPart[] = [];
+
+  for (const part of createInlineDiffParts(originalText, polishedText)) {
+    if (part.kind === "equal") continue;
+    const text = normalizeDiffDisplayText(part.text);
+    if (!hasMeaningfulDiffText(text)) continue;
+    appendDisplayDiffPart(displayParts, part.kind, text);
+  }
+
+  return displayParts;
+}
+
+function normalizeDiffDisplayText(text: string): string {
+  return text.replace(/\s+/g, " ").trim();
+}
+
+function hasMeaningfulDiffText(text: string): boolean {
+  return /[0-9A-Za-z\u4e00-\u9fff]/u.test(text);
+}
+
+function truncateDiffDisplayText(text: string): string {
+  if (text.length <= MAX_DIFF_CHANGE_TEXT_LENGTH) return text;
+  return `${text.slice(0, MAX_DIFF_CHANGE_TEXT_LENGTH - 1)}…`;
+}
+
+function appendDisplayDiffPart(
+  parts: ChangedDiffPart[],
+  kind: "delete" | "insert",
+  text: string,
+) {
+  parts.push({ kind, text });
 }
 
 function createInlineDiffParts(

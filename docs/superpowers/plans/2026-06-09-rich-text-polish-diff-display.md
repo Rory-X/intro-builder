@@ -2,9 +2,9 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Show AI rich-text polish suggestions as a compact inline diff before users apply them.
+**Goal:** Show AI rich-text polish suggestions as a compact change summary before users apply them.
 
-**Architecture:** Keep all changes inside `components/editor/rich-text-editor.tsx` and its unit test. Capture original plain text at request time, store it on the candidate, compute a small token-level diff in the panel, and render delete/insert spans without changing the existing apply path.
+**Architecture:** Keep all changes inside `components/editor/rich-text-editor.tsx` and its unit test. Capture original plain text at request time, store it on the candidate, compute a small token-level diff in the panel, and render filtered delete/insert chips without changing the existing apply path.
 
 **Tech Stack:** React 19 client component, TipTap editor text extraction, Vitest + Testing Library.
 
@@ -12,8 +12,8 @@
 
 ## File Structure
 
-- `components/editor/rich-text-editor.tsx`: store original text in `PolishCandidate`, add `PolishDiffView`, and add a small dependency-free diff helper.
-- `tests/unit/rich-text-editor.test.tsx`: add coverage for delete/insert diff rendering.
+- `components/editor/rich-text-editor.tsx`: store original text in `PolishCandidate`, add `PolishDiffView`, and add small dependency-free diff/display helpers.
+- `tests/unit/rich-text-editor.test.tsx`: add coverage for delete/insert diff rendering and whitespace-only fragment filtering.
 
 ## Tasks
 
@@ -30,6 +30,13 @@
 - [x] Render the diff in `PolishCandidatePanel` with compact red/green spans.
 - [x] Re-run `pnpm exec vitest run tests/unit/rich-text-editor.test.tsx` and confirm it passes.
 
+### Task 2.5: Visual Noise Reduction
+
+- [x] Replace full-text diff rendering with compact delete/insert chips.
+- [x] Filter whitespace-only and punctuation-only diff fragments.
+- [x] Add a regression test proving whitespace-only diff fragments are not rendered.
+- [x] Use a neutral, height-limited suggestion panel background so long rich-text fields do not dominate the editor.
+
 ### Task 3: Verification And PR Update
 
 - [x] Run `pnpm test`.
@@ -40,13 +47,13 @@
 
 ## Verification
 
-- `pnpm exec vitest run tests/unit/rich-text-editor.test.tsx`: 10 tests passed.
-- `pnpm test`: 58 app test files / 299 tests passed; 6 agent test files / 42 tests passed.
+- `pnpm exec vitest run tests/unit/rich-text-editor.test.tsx`: 11 tests passed.
+- `pnpm test`: 58 app test files / 300 tests passed; 6 agent test files / 42 tests passed.
 - `pnpm tsc --noEmit`: passed.
 - `pnpm lint`: passed with 10 existing warnings outside this change.
 - `pnpm build`: passed. Build logged the expected local placeholder `DATABASE_URL` warnings while prerendering template pages.
 
 ## Risks
 
-- A character-level diff can be noisy for Chinese text. Tokenizing by whitespace/non-whitespace chunks and using LCS keeps the implementation small, but may highlight larger phrase chunks. This is acceptable for the first compact panel.
+- A character-level diff can be noisy for Chinese text. The panel intentionally renders only meaningful delete/insert chips instead of the full raw diff to keep dense rich-text suggestions readable.
 - The diff is display-only. The apply path must continue using `replacementTiptapJson` or the existing plain-text fallback.
