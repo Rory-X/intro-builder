@@ -5,6 +5,7 @@
 ## 结论
 
 assistant-ui 适合放在 **Phase 3: Agent Panel**，不适合放在 **Phase 1: 单个富文本润色按钮**。
+Phase 2A resume helpers still use local buttons and cards; assistant-ui remains reserved for Phase 3 because helpers do not need multi-turn message state.
 
 原因：
 

@@ -320,6 +320,101 @@ Rules:
 - 用户取消时，Web 必须 abort 请求。
 - 失败后不自动覆盖原文。
 
+## Resume Helper Contract
+
+Phase 2A 增加结构化简历 helper 建议。它不是聊天界面，也不写入简历内容。
+
+### `POST /v1/resume/helpers/:helperId`
+
+Supported helper IDs:
+
+| Helper ID | Meaning |
+| --- | --- |
+| `resume-diagnose` | Diagnose whole-resume gaps and next edits |
+| `section-next-steps` | Suggest next edits for one section |
+
+认证：`Authorization: Bearer <agent-jwt>`，scope 必须是 `resume:helper`。JWT 的 `resumeId` 必须与请求体 `resumeId` 一致。
+
+Request:
+
+```json
+{
+  "resumeId": "resume_abc",
+  "locale": "zh-CN",
+  "target": {
+    "kind": "resume",
+    "section": null,
+    "fieldPath": null
+  },
+  "context": {
+    "resumeTitle": "前端开发工程师",
+    "completeness": {
+      "overall": 68,
+      "sections": [
+        { "key": "experience", "label": "工作经历", "score": 7, "max": 10 }
+      ]
+    },
+    "sections": [
+      {
+        "key": "experience",
+        "label": "工作经历",
+        "plainText": "负责业务系统前端开发，优化页面性能。"
+      }
+    ]
+  },
+  "intent": {
+    "mode": "diagnose",
+    "maxSuggestions": 5,
+    "strategy": "star"
+  }
+}
+```
+
+Response:
+
+```json
+{
+  "status": "ok",
+  "requestId": "req_01H...",
+  "helperId": "resume-diagnose",
+  "result": {
+    "summary": "整体内容完整，但工作经历缺少可验证结果。",
+    "suggestions": [
+      {
+        "id": "sug_experience_result",
+        "section": "experience",
+        "fieldPath": "experience",
+        "severity": "high",
+        "title": "为工作经历补充可验证结果",
+        "rationale": "当前经历描述了动作，但没有说明产出或影响。",
+        "actionLabel": "补充结果",
+        "example": "如果原文已有真实数据，可以补充加载速度、转化率或交付周期变化。",
+        "riskFlags": [
+          {
+            "type": "needs_user_fact",
+            "message": "结果数据必须由用户提供，Agent 不应编造。"
+          }
+        ]
+      }
+    ]
+  },
+  "usage": {
+    "provider": "openai-compatible",
+    "model": "deepseek-chat",
+    "inputTokens": 620,
+    "outputTokens": 180
+  }
+}
+```
+
+Rules:
+
+- `resume-diagnose` accepts `target.kind=resume`.
+- `section-next-steps` accepts `target.kind=section` and requires `target.section`.
+- `context.sections[*].plainText` is capped by Web before forwarding and capped again by Agent validation.
+- Agent suggestions cannot claim facts, numbers, technologies, companies, schools, awards, or outcomes not present in the provided context.
+- Web displays suggestions and lets users edit manually. Phase 2A does not auto-apply generated patches.
+
 ## Rate Limit Keys
 
 Phase 0B rate limit key format:

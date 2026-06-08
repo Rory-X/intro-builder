@@ -7,6 +7,7 @@ import {
   createRedisReplayStore,
 } from "./redis.js";
 import { createOpenAICompatibleRichTextPolishProvider } from "./rich-text-polish.js";
+import { createOpenAICompatibleResumeHelperProvider } from "./resume-helpers.js";
 
 const config = loadConfig();
 const redis = createRedisConnection(config, {
@@ -23,6 +24,7 @@ const server = createAgentServer({
   }),
   rateLimitStore: redis,
   richTextPolishProvider: createOpenAICompatibleRichTextPolishProvider(config),
+  resumeHelperProvider: createOpenAICompatibleResumeHelperProvider(config),
 });
 
 server.listen(config.port, config.host, () => {

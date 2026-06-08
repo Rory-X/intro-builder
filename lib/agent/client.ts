@@ -85,6 +85,73 @@ export type RichTextPolishResponse = {
   };
 };
 
+export type ResumeHelperId = "resume-diagnose" | "section-next-steps";
+
+export type ResumeHelperRequest = {
+  resumeId: string;
+  locale: "zh-CN";
+  target:
+    | { kind: "resume"; section: null; fieldPath: null }
+    | {
+        kind: "section";
+        section:
+          | "summary"
+          | "experience"
+          | "projects"
+          | "education"
+          | "skills"
+          | "research"
+          | "custom";
+        fieldPath: string | null;
+      };
+  context: {
+    resumeTitle: string;
+    completeness: {
+      overall: number;
+      sections: Array<{ key: string; label: string; score: number; max: number }>;
+    };
+    sections: Array<{ key: string; label: string; plainText: string }>;
+  };
+  intent: {
+    mode: "diagnose" | "next_steps";
+    maxSuggestions: number;
+    strategy: "plain" | "star";
+  };
+};
+
+export type ResumeHelperResponse = {
+  status: "ok";
+  requestId: string;
+  helperId: ResumeHelperId;
+  result: {
+    summary: string;
+    suggestions: Array<{
+      id: string;
+      section: string;
+      fieldPath: string;
+      severity: "high" | "medium" | "low";
+      title: string;
+      rationale: string;
+      actionLabel: string;
+      example: string;
+      riskFlags: Array<{
+        type:
+          | "needs_user_fact"
+          | "possible_fabrication"
+          | "too_little_context"
+          | "formatting_risk";
+        message: string;
+      }>;
+    }>;
+  };
+  usage: {
+    provider: string;
+    model: string;
+    inputTokens: number;
+    outputTokens: number;
+  };
+};
+
 export type AgentClientResult<T> = {
   data: T;
   requestId: string;
@@ -134,6 +201,12 @@ export type AgentClient = {
     request: RichTextPolishRequest;
     requestId?: string;
   }) => Promise<AgentClientResult<RichTextPolishResponse>>;
+  runResumeHelper: (options: {
+    token: string;
+    helperId: ResumeHelperId;
+    request: ResumeHelperRequest;
+    requestId?: string;
+  }) => Promise<AgentClientResult<ResumeHelperResponse>>;
 };
 
 const DEFAULT_AGENT_BASE_URL = "http://127.0.0.1:8787";
@@ -161,6 +234,18 @@ export function createAgentClient({
       return requestJson<RichTextPolishResponse>({
         baseUrl,
         path: "/v1/rich-text/polish",
+        method: "POST",
+        token,
+        requestId,
+        body: request,
+        timeoutMs,
+        fetchFn,
+      });
+    },
+    runResumeHelper({ token, helperId, request, requestId = createRequestId() }) {
+      return requestJson<ResumeHelperResponse>({
+        baseUrl,
+        path: `/v1/resume/helpers/${encodeURIComponent(helperId)}`,
         method: "POST",
         token,
         requestId,

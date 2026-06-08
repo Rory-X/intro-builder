@@ -42,7 +42,7 @@ describe("GET /api/agent/session", () => {
   it("requires a Web user session", async () => {
     (currentUserId as unknown as Mock).mockResolvedValue(null);
 
-    const response = await GET();
+    const response = await GET(new Request("https://intro.test/api/agent/session"));
 
     expect(response.status).toBe(401);
     await expect(response.json()).resolves.toEqual({ error: "未登录" });
@@ -67,7 +67,7 @@ describe("GET /api/agent/session", () => {
     });
     (createAgentClient as unknown as Mock).mockReturnValue({ getSession });
 
-    const response = await GET();
+    const response = await GET(new Request("https://intro.test/api/agent/session"));
 
     expect(response.status).toBe(200);
     expect(signAgentToken).toHaveBeenCalledWith({

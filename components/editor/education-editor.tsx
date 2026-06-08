@@ -10,6 +10,9 @@ import type { ResumeContent } from "@/lib/resume-schema";
 import { monitorForElements } from "@atlaskit/pragmatic-drag-and-drop/element/adapter";
 import { ItemWrapper } from "./item-wrapper";
 import { SectionEditorHeader } from "./section-editor-header";
+import { SectionHelperButton } from "@/components/agent/section-helper-button";
+import { tiptapPlainText } from "@/lib/agent/resume-helper-context";
+import { useCompletenessScore } from "@/hooks/use-completeness-score";
 
 type Props = {
   resumeId?: string;
@@ -19,6 +22,9 @@ export function EducationEditor({ resumeId }: Props) {
   const { register, control, watch, setValue } = useFormContext<ResumeContent>();
   const { fields, append, remove, move } = useFieldArray({ control, name: "education" });
   const [isOpen, setIsOpen] = useState(true);
+  const completeness = useCompletenessScore();
+  const education = watch("education") ?? [];
+  const helperText = education.map((item) => tiptapPlainText(item.highlights)).filter(Boolean).join("\n");
 
   useEffect(() => {
     return monitorForElements({
@@ -47,6 +53,16 @@ export function EducationEditor({ resumeId }: Props) {
           isOpen={isOpen}
           onToggle={() => setIsOpen(!isOpen)}
           onAdd={() => { append({ school: "", degree: "", major: "", location: "", start: "", end: "", gpa: "", highlights: emptyDoc() }); setIsOpen(true); }}
+          helper={resumeId ? (
+            <SectionHelperButton
+              resumeId={resumeId}
+              section="education"
+              fieldPath="education"
+              label="教育背景"
+              plainText={helperText}
+              completeness={completeness}
+            />
+          ) : undefined}
         />
       </div>
       {isOpen && (

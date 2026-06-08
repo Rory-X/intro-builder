@@ -191,6 +191,81 @@ describe("Web Agent client", () => {
     );
   });
 
+  it("posts resume helper requests with bearer token and request id", async () => {
+    const fetchMock = vi.fn(async (): Promise<Response> => {
+      return new Response(
+        JSON.stringify({
+          status: "ok",
+          requestId: "req_agent_helper",
+          helperId: "resume-diagnose",
+          result: {
+            summary: "整体内容完整，但工作经历缺少可验证结果。",
+            suggestions: [],
+          },
+          usage: {
+            provider: "fake-provider",
+            model: "fake-model",
+            inputTokens: 620,
+            outputTokens: 180,
+          },
+        }),
+        {
+          status: 200,
+          headers: {
+            "content-type": "application/json",
+            "x-request-id": "req_agent_helper",
+          },
+        },
+      );
+    });
+    const client = createAgentClient({
+      baseUrl: "https://agent.test/intro-builder/agent",
+      fetchFn: fetchMock as unknown as typeof fetch,
+      createRequestId: () => "req_web_helper",
+    });
+    const request = {
+      resumeId: "resume_abc",
+      locale: "zh-CN" as const,
+      target: { kind: "resume" as const, section: null, fieldPath: null },
+      context: {
+        resumeTitle: "前端开发工程师",
+        completeness: {
+          overall: 68,
+          sections: [{ key: "experience", label: "工作经历", score: 7, max: 10 }],
+        },
+        sections: [
+          {
+            key: "experience",
+            label: "工作经历",
+            plainText: "负责业务系统前端开发，优化页面性能。",
+          },
+        ],
+      },
+      intent: { mode: "diagnose" as const, maxSuggestions: 5, strategy: "star" as const },
+    };
+
+    const result = await client.runResumeHelper({
+      token: "jwt-token",
+      helperId: "resume-diagnose",
+      request,
+    });
+
+    expect(result.requestId).toBe("req_agent_helper");
+    expect(result.data.result.summary).toContain("工作经历");
+    expect(fetchMock).toHaveBeenCalledWith(
+      "https://agent.test/intro-builder/agent/v1/resume/helpers/resume-diagnose",
+      expect.objectContaining({
+        method: "POST",
+        headers: {
+          Authorization: "Bearer jwt-token",
+          "X-Request-Id": "req_web_helper",
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(request),
+      }),
+    );
+  });
+
   it("aborts requests after the configured timeout", async () => {
     vi.useFakeTimers();
     const client = createAgentClient({

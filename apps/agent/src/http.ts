@@ -17,6 +17,12 @@ import {
   validateRichTextPolishRequest,
   type RichTextPolishProvider,
 } from "./rich-text-polish.js";
+import {
+  buildResumeHelperPrompt,
+  parseResumeHelperProviderResponse,
+  validateResumeHelperRequest,
+  type ResumeHelperProvider,
+} from "./resume-helpers.js";
 
 export type CreateAgentServerOptions = {
   config: AgentConfig;
@@ -26,6 +32,7 @@ export type CreateAgentServerOptions = {
   replayStore?: AgentReplayStore;
   rateLimitStore?: RateLimitRedis;
   richTextPolishProvider?: RichTextPolishProvider;
+  resumeHelperProvider?: ResumeHelperProvider;
   createRequestId?: () => string;
 };
 
@@ -42,6 +49,7 @@ export function createAgentServer({
   replayStore,
   rateLimitStore,
   richTextPolishProvider,
+  resumeHelperProvider,
   createRequestId = defaultCreateRequestId,
 }: CreateAgentServerOptions): Server {
   return createServer((request, response) => {
@@ -55,6 +63,7 @@ export function createAgentServer({
       replayStore,
       rateLimitStore,
       richTextPolishProvider,
+      resumeHelperProvider,
       createRequestId,
     ).catch((error: unknown) => {
       if (response.headersSent) {
@@ -83,6 +92,7 @@ async function routeRequest(
   replayStore: AgentReplayStore | undefined,
   rateLimitStore: RateLimitRedis | undefined,
   richTextPolishProvider: RichTextPolishProvider | undefined,
+  resumeHelperProvider: ResumeHelperProvider | undefined,
   createRequestId: () => string,
 ): Promise<void> {
   const context = {
@@ -228,6 +238,133 @@ async function routeRequest(
           requestId: context.requestId,
           result: polished.result,
           usage: polished.usage,
+        },
+        context,
+      );
+    } catch (error) {
+      if (error instanceof RichTextPolishProviderError) {
+        return sendError(response, error.code === "provider_timeout" ? 504 : 503, context, {
+          error: error.code,
+          message: error.message,
+          dependency: error.code === "dependency_unavailable" ? "provider" : undefined,
+        });
+      }
+      return sendError(response, 500, context, {
+        error: "internal_error",
+        message: error instanceof Error ? error.message : "Internal error",
+      });
+    }
+  }
+
+  const resumeHelperMatch = url.pathname.match(/^\/v1\/resume\/helpers\/([^/]+)$/);
+  if (resumeHelperMatch) {
+    if (method !== "POST") return methodNotAllowed(response, context, "POST");
+    const helperId = decodeURIComponent(resumeHelperMatch[1]);
+
+    const auth = await authenticateAgentRequest({
+      authorizationHeader: headerValue(request.headers.authorization),
+      expectedScope: "resume:helper",
+      config,
+      replayStore,
+      now: now(),
+    });
+
+    if (!auth.ok) {
+      logAuthFailure(auth, context, url.pathname, method);
+      return sendError(response, auth.statusCode, context, {
+        error: auth.error,
+        message: auth.message,
+        dependency: auth.dependency,
+      });
+    }
+
+    const body = await readJsonBody(request);
+    if (!body.ok) {
+      return sendError(response, 400, context, {
+        error: "bad_request",
+        message: body.message,
+      });
+    }
+
+    const validation = validateResumeHelperRequest(helperId, body.value);
+    if (!validation.ok) {
+      return sendError(response, validation.statusCode, context, {
+        error: validation.error,
+        message: validation.message,
+      });
+    }
+
+    if (auth.session.resumeId !== validation.request.resumeId) {
+      return sendError(response, 403, context, {
+        error: "forbidden",
+        message: "Token resumeId does not match request resumeId",
+      });
+    }
+
+    if (!resumeHelperProvider) {
+      return sendError(response, 503, context, {
+        error: "dependency_unavailable",
+        message: "Resume helper provider is not configured",
+        dependency: "provider",
+      });
+    }
+
+    if (rateLimitStore) {
+      try {
+        const rateLimit = await checkRateLimit({
+          redis: rateLimitStore,
+          scope: "resume:helper",
+          identityHash: hashIdentity(auth.session.userId),
+          limit: config.rateLimitMaxRequests,
+          windowSeconds: config.rateLimitWindowSeconds,
+          now: now(),
+        });
+        if (!rateLimit.allowed) {
+          return sendError(response, 429, context, {
+            error: "rate_limited",
+            message: "Too many resume helper requests",
+            retryAfterSeconds: rateLimit.retryAfterSeconds,
+          });
+        }
+      } catch {
+        return sendError(response, 503, context, {
+          error: "dependency_unavailable",
+          message: "Rate limit store is unavailable",
+          dependency: "redis",
+        });
+      }
+    }
+
+    const prompt = buildResumeHelperPrompt({
+      ...validation.request,
+      requestId: context.requestId,
+    });
+
+    try {
+      const providerResult = await resumeHelperProvider.run({
+        request: validation.request,
+        prompt,
+        session: auth.session,
+        requestId: context.requestId,
+      });
+      const parsed = parseResumeHelperProviderResponse(providerResult.content);
+      if (!parsed.ok) {
+        return sendError(response, 503, context, {
+          error: "dependency_unavailable",
+          message: parsed.message,
+          dependency: "provider",
+        });
+      }
+
+      return sendJson(
+        response,
+        200,
+        {
+          status: "ok",
+          requestId: context.requestId,
+          helperId: validation.request.helperId,
+          result: parsed.result,
+          usage: providerResult.usage,
         },
         context,
       );

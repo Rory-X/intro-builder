@@ -54,6 +54,7 @@ import { PresenceBar } from "@/components/collab/presence-bar";
 import { VoiceChatControls } from "@/components/collab/voice-chat-controls";
 import { AnnotationHighlights, flashAnnotation } from "@/components/collab/annotation-highlights";
 import { AnnotationList } from "@/components/collab/annotation-list";
+import { ResumeDiagnoseButton } from "@/components/agent/resume-diagnose-button";
 
 type Props = {
   id: string;
@@ -478,6 +479,7 @@ export default function EditorClient({ id, initialTitle, initialTemplate, initia
             <SmartLayoutButton templateId={template} measureRef={previewRootRef} />
             <StyleEditor />
             <ModuleManager sectionOrder={sectionOrder} onOrderChange={handleOrderChange} />
+            <ResumeDiagnoseButton resumeId={id} />
             <Button
               size="sm"
               variant="outline"
