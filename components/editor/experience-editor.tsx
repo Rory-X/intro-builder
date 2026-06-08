@@ -11,7 +11,11 @@ import { monitorForElements } from "@atlaskit/pragmatic-drag-and-drop/element/ad
 import { ItemWrapper } from "./item-wrapper";
 import { SectionEditorHeader } from "./section-editor-header";
 
-export function ExperienceEditor() {
+type Props = {
+  resumeId?: string;
+};
+
+export function ExperienceEditor({ resumeId }: Props) {
   const { register, control, watch, setValue } = useFormContext<ResumeContent>();
   const { fields, append, remove, move } = useFieldArray({ control, name: "experience" });
   const [isOpen, setIsOpen] = useState(true);
@@ -63,6 +67,11 @@ export function ExperienceEditor() {
                     key={`experience-content-${f.id}`}
                     content={watch(`experience.${idx}.content` as const)}
                     onChange={(json) => setValue(`experience.${idx}.content` as const, json, { shouldDirty: true })}
+                    polish={resumeId ? {
+                      resumeId,
+                      section: "experience",
+                      fieldPath: `experience.${idx}.content`,
+                    } : undefined}
                     placeholder="描述你的工作成果…"
                   />
                 </div>

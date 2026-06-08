@@ -5,7 +5,11 @@ import { RichTextEditor } from "./rich-text-editor";
 import type { ResumeContent } from "@/lib/resume-schema";
 import { SectionEditorHeader } from "./section-editor-header";
 
-export function SkillsEditor() {
+type Props = {
+  resumeId?: string;
+};
+
+export function SkillsEditor({ resumeId }: Props) {
   const { watch, setValue } = useFormContext<ResumeContent>();
   const [isOpen, setIsOpen] = useState(true);
 
@@ -27,6 +31,11 @@ export function SkillsEditor() {
             key="skills-richtext"
             content={watch("skills")}
             onChange={(json) => setValue("skills", json, { shouldDirty: true })}
+            polish={resumeId ? {
+              resumeId,
+              section: "skills",
+              fieldPath: "skills",
+            } : undefined}
             placeholder="如：编程语言：JavaScript、TypeScript、Python&#10;框架：React、Next.js、Vue&#10;工具：Git、Docker、Linux"
           />
         </div>

@@ -11,7 +11,11 @@ import { monitorForElements } from "@atlaskit/pragmatic-drag-and-drop/element/ad
 import { ItemWrapper } from "./item-wrapper";
 import { SectionEditorHeader } from "./section-editor-header";
 
-export function ProjectsEditor() {
+type Props = {
+  resumeId?: string;
+};
+
+export function ProjectsEditor({ resumeId }: Props) {
   const { register, control, watch, setValue } = useFormContext<ResumeContent>();
   const { fields, append, remove, move } = useFieldArray({ control, name: "projects" });
   const [isOpen, setIsOpen] = useState(true);
@@ -73,6 +77,11 @@ export function ProjectsEditor() {
                     key={`projects-content-${f.id}`}
                     content={watch(`projects.${idx}.content` as const)}
                     onChange={(json) => setValue(`projects.${idx}.content` as const, json, { shouldDirty: true })}
+                    polish={resumeId ? {
+                      resumeId,
+                      section: "projects",
+                      fieldPath: `projects.${idx}.content`,
+                    } : undefined}
                     placeholder="描述你的项目亮点…"
                   />
                 </div>

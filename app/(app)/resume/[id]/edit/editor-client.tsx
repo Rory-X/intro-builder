@@ -613,12 +613,12 @@ export default function EditorClient({ id, initialTitle, initialTemplate, initia
                   collabSync.highlightedFields.has(key) && "ring-2 ring-violet-400/60 bg-violet-50/30 dark:bg-violet-950/20"
                 )}>
                   <SectionWrapper id={key}>
-                    {key === "experience" && <ExperienceEditor />}
-                    {key === "education" && <EducationEditor />}
-                    {key === "projects" && <ProjectsEditor />}
-                    {key === "research" && <ResearchEditor />}
-                    {key === "skills" && <SkillsEditor />}
-                    {isCustomSection(key) && <CustomSectionEditor sectionId={key} />}
+                    {key === "experience" && <ExperienceEditor resumeId={id} />}
+                    {key === "education" && <EducationEditor resumeId={id} />}
+                    {key === "projects" && <ProjectsEditor resumeId={id} />}
+                    {key === "research" && <ResearchEditor resumeId={id} />}
+                    {key === "skills" && <SkillsEditor resumeId={id} />}
+                    {isCustomSection(key) && <CustomSectionEditor sectionId={key} resumeId={id} />}
                   </SectionWrapper>
                 </div>
               ))}

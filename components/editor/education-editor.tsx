@@ -11,7 +11,11 @@ import { monitorForElements } from "@atlaskit/pragmatic-drag-and-drop/element/ad
 import { ItemWrapper } from "./item-wrapper";
 import { SectionEditorHeader } from "./section-editor-header";
 
-export function EducationEditor() {
+type Props = {
+  resumeId?: string;
+};
+
+export function EducationEditor({ resumeId }: Props) {
   const { register, control, watch, setValue } = useFormContext<ResumeContent>();
   const { fields, append, remove, move } = useFieldArray({ control, name: "education" });
   const [isOpen, setIsOpen] = useState(true);
@@ -65,6 +69,11 @@ export function EducationEditor() {
                     key={`education-highlights-${f.id}`}
                     content={watch(`education.${idx}.highlights` as const)}
                     onChange={(json) => setValue(`education.${idx}.highlights` as const, json, { shouldDirty: true })}
+                    polish={resumeId ? {
+                      resumeId,
+                      section: "education",
+                      fieldPath: `education.${idx}.highlights`,
+                    } : undefined}
                     placeholder="描述你的在校经历、荣誉奖项或相关成果…"
                   />
                 </div>
