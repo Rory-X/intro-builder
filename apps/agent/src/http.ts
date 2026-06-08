@@ -125,6 +125,7 @@ async function routeRequest(
     });
 
     if (!auth.ok) {
+      logAuthFailure(auth, context, url.pathname, method);
       return sendError(response, auth.statusCode, context, {
         error: auth.error,
         message: auth.message,
@@ -147,6 +148,7 @@ async function routeRequest(
     });
 
     if (!auth.ok) {
+      logAuthFailure(auth, context, url.pathname, method);
       return sendError(response, auth.statusCode, context, {
         error: auth.error,
         message: auth.message,
@@ -344,6 +346,36 @@ function sendError(
       requestId: context.requestId,
     }),
     context,
+  );
+}
+
+function logAuthFailure(
+  auth: {
+    statusCode: number;
+    error: string;
+    message: string;
+    dependency?: string;
+    diagnosticReason?: string;
+  },
+  context: RequestContext,
+  path: string,
+  method: string,
+): void {
+  console.warn(
+    JSON.stringify({
+      level: "warn",
+      event: "agent_auth_failure",
+      requestId: context.requestId,
+      path,
+      method,
+      statusCode: auth.statusCode,
+      error: auth.error,
+      message: auth.message,
+      ...(auth.dependency ? { dependency: auth.dependency } : {}),
+      ...(auth.diagnosticReason
+        ? { diagnosticReason: auth.diagnosticReason }
+        : {}),
+    }),
   );
 }
 

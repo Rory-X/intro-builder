@@ -2,7 +2,7 @@ import { AddressInfo } from "node:net";
 import type { Server } from "node:http";
 
 import { SignJWT } from "jose";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { AgentReplayStore } from "../src/auth";
 import { createAgentServer } from "../src/http";
@@ -15,6 +15,7 @@ type TestAgentServer = Server & {
 const servers: TestAgentServer[] = [];
 
 afterEach(async () => {
+  vi.restoreAllMocks();
   await Promise.all(
     servers.splice(0).map(
       (server: TestAgentServer) =>
@@ -155,6 +156,40 @@ describe("agent HTTP service", () => {
       error: "unauthorized",
       message: "Missing bearer token",
       requestId: "req-client-missing-token",
+    });
+  });
+
+  it("logs safe diagnostics for invalid Agent JWTs", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    const server = await listenOnRandomPort({
+      replayStore: new FakeReplayStore(),
+    });
+    const token = await signAgentToken({
+      sub: "user_123",
+      scope: "agent:session",
+      jti: "jti_http_bad_signature",
+      secret: "wrong-web-secret",
+    });
+
+    const response = await fetch(server.url("/v1/session"), {
+      headers: {
+        authorization: `Bearer ${token}`,
+        "x-request-id": "req-client-bad-signature",
+      },
+    });
+
+    expect(response.status).toBe(401);
+    expect(warn).toHaveBeenCalledTimes(1);
+    expect(JSON.parse(String(warn.mock.calls[0]?.[0]))).toEqual({
+      level: "warn",
+      event: "agent_auth_failure",
+      requestId: "req-client-bad-signature",
+      path: "/v1/session",
+      method: "GET",
+      statusCode: 401,
+      error: "unauthorized",
+      message: "Invalid or expired bearer token",
+      diagnosticReason: "signature_verification_failed",
     });
   });
 
@@ -426,11 +461,13 @@ async function signAgentToken({
   scope,
   jti,
   resumeId,
+  secret = "test-agent-secret",
 }: {
   sub: string;
   scope: string;
   jti: string;
   resumeId?: string;
+  secret?: string;
 }): Promise<string> {
   const now = new Date("2026-06-08T08:00:00.000Z");
   const expiresAt = new Date("2026-06-08T08:02:00.000Z");
@@ -446,7 +483,7 @@ async function signAgentToken({
     .setJti(jti)
     .setIssuedAt(Math.floor(now.getTime() / 1_000))
     .setExpirationTime(Math.floor(expiresAt.getTime() / 1_000))
-    .sign(new TextEncoder().encode("test-agent-secret"));
+    .sign(new TextEncoder().encode(secret));
 }
 
 class FakeReplayStore implements AgentReplayStore {
