@@ -273,7 +273,7 @@ export function RichTextEditor({ content, onChange, polish }: Props) {
               type="button"
               variant="ghost"
               size="sm"
-              className="h-7 gap-1.5 px-2 text-xs"
+              className="h-7 gap-1.5 rounded-full bg-gradient-to-r from-sky-500 via-fuchsia-500 to-amber-400 px-2.5 text-xs font-semibold text-white shadow-sm shadow-fuchsia-500/20 hover:from-sky-400 hover:via-fuchsia-400 hover:to-amber-300 hover:text-white focus-visible:ring-fuchsia-400/40 disabled:saturate-50 dark:shadow-fuchsia-950/40"
               disabled={polishState.status === "loading"}
               onClick={() => void requestPolish()}
             >
