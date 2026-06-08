@@ -124,14 +124,55 @@ Current:
 | `REDIS_CONNECT_TIMEOUT_MS` | `1000` | Redis connect timeout |
 | `RATE_LIMIT_WINDOW_SECONDS` | `60` | Rate limit window |
 | `RATE_LIMIT_MAX_REQUESTS` | `30` | Per-window limit |
+| `AGENT_JWT_ISSUER` | `intro-builder-web` | Expected JWT issuer |
+| `AGENT_JWT_AUDIENCE` | `intro-builder-agent` | Expected JWT audience |
+| `AGENT_JWT_SECRET` | unset | Shared signing secret; required for protected `/v1/*` routes |
+| `AGENT_JWT_REPLAY_TTL_SECONDS` | `180` | Redis `jti` replay guard TTL |
 
-Planned Phase 0C:
+## Phase 0C Auth Smoke
 
-| Variable | Meaning |
-| --- | --- |
-| `AGENT_JWT_ISSUER` | Expected JWT issuer |
-| `AGENT_JWT_AUDIENCE` | Expected JWT audience |
-| `AGENT_JWT_SECRET` | Shared signing secret or key material |
+Start Agent with Redis and a local shared secret:
+
+```bash
+AGENT_HOST=127.0.0.1 \
+  AGENT_PORT=8788 \
+  REDIS_URL=redis://127.0.0.1:6379 \
+  AGENT_JWT_SECRET=local-agent-secret \
+  AGENT_VERSION=auth-smoke \
+  pnpm agent:start
+```
+
+Start Web with the same secret and an Agent base URL:
+
+```bash
+AGENT_BASE_URL=http://127.0.0.1:8788 \
+  AGENT_JWT_SECRET=local-agent-secret \
+  pnpm dev
+```
+
+Then request the Web BFF smoke route while logged in, or with local dev bypass configured:
+
+```bash
+curl -sS -i http://127.0.0.1:3000/api/agent/session
+```
+
+Expected authenticated result:
+
+```json
+{
+  "status": "ok",
+  "agent": {
+    "status": "ok",
+    "scope": "agent:session"
+  }
+}
+```
+
+Direct Agent replay guard check:
+
+1. Sign one token with `lib/agent/token.ts`.
+2. Reuse the exact same bearer token against `GET /v1/session`.
+3. Expected result is `401 unauthorized` with `Bearer token has already been used`.
 
 ## Verification Gates
 

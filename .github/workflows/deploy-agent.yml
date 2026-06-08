@@ -26,6 +26,7 @@ env:
   AGENT_SSH_HOST: ${{ secrets.AGENT_SSH_HOST }}
   AGENT_SSH_PORT: ${{ secrets.AGENT_SSH_PORT || '22' }}
   AGENT_SSH_USER: ${{ secrets.AGENT_SSH_USER }}
+  AGENT_JWT_SECRET: ${{ secrets.AGENT_JWT_SECRET }}
 
 jobs:
   deploy:
@@ -126,6 +127,12 @@ jobs:
           upsert_env AGENT_SITE_ADDRESS "$AGENT_DOMAIN"
           upsert_env AGENT_PUBLIC_BASE_PATH "$AGENT_PUBLIC_BASE_PATH"
           upsert_env REDIS_URL redis://redis:6379
+          upsert_env AGENT_JWT_ISSUER intro-builder-web
+          upsert_env AGENT_JWT_AUDIENCE intro-builder-agent
+          upsert_env AGENT_JWT_REPLAY_TTL_SECONDS 180
+          if [ -n "${AGENT_JWT_SECRET:-}" ]; then
+            upsert_env AGENT_JWT_SECRET "$AGENT_JWT_SECRET"
+          fi
           chmod 600 .env
 
           docker compose up -d --build --remove-orphans

@@ -1,6 +1,11 @@
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import { randomUUID } from "node:crypto";
 
+import {
+  authenticateAgentRequest,
+  type AgentReplayStore,
+  type AuthenticatedAgentSession,
+} from "./auth.js";
 import type { AgentConfig } from "./config.js";
 import { createErrorEnvelope } from "./errors.js";
 import type { RedisReadyResult } from "./redis.js";
@@ -10,6 +15,7 @@ export type CreateAgentServerOptions = {
   now?: () => Date;
   uptimeSeconds?: () => number;
   redisReady?: () => Promise<RedisReadyResult>;
+  replayStore?: AgentReplayStore;
   createRequestId?: () => string;
 };
 
@@ -23,6 +29,7 @@ export function createAgentServer({
   now = () => new Date(),
   uptimeSeconds = () => Math.floor(process.uptime()),
   redisReady = async () => ({ ok: true }),
+  replayStore,
   createRequestId = defaultCreateRequestId,
 }: CreateAgentServerOptions): Server {
   return createServer((request, response) => {
@@ -33,6 +40,7 @@ export function createAgentServer({
       now,
       uptimeSeconds,
       redisReady,
+      replayStore,
       createRequestId,
     ).catch((error: unknown) => {
       if (response.headersSent) {
@@ -58,6 +66,7 @@ async function routeRequest(
   now: () => Date,
   uptimeSeconds: () => number,
   redisReady: () => Promise<RedisReadyResult>,
+  replayStore: AgentReplayStore | undefined,
   createRequestId: () => string,
 ): Promise<void> {
   const context = {
@@ -85,6 +94,28 @@ async function routeRequest(
     }
 
     return sendStatus(response, "ready", config, now, uptimeSeconds, context);
+  }
+
+  if (url.pathname === "/v1/session") {
+    if (method !== "GET") return methodNotAllowed(response, context);
+
+    const auth = await authenticateAgentRequest({
+      authorizationHeader: headerValue(request.headers.authorization),
+      expectedScope: "agent:session",
+      config,
+      replayStore,
+      now: now(),
+    });
+
+    if (!auth.ok) {
+      return sendError(response, auth.statusCode, context, {
+        error: auth.error,
+        message: auth.message,
+        dependency: auth.dependency,
+      });
+    }
+
+    return sendAgentSession(response, auth.session, context);
   }
 
   return sendError(response, 404, context, {
@@ -117,6 +148,26 @@ function sendStatus(
             },
           }
         : {}),
+    },
+    context,
+  );
+}
+
+function sendAgentSession(
+  response: ServerResponse,
+  session: AuthenticatedAgentSession,
+  context: RequestContext,
+): void {
+  sendJson(
+    response,
+    200,
+    {
+      status: "ok",
+      subject: session.userId,
+      resumeId: session.resumeId ?? null,
+      scope: session.scope,
+      expiresAt: session.expiresAt.toISOString(),
+      requestId: context.requestId,
     },
     context,
   );
@@ -182,6 +233,10 @@ function resolveRequestId(
   }
 
   return createRequestId();
+}
+
+function headerValue(header: string | string[] | undefined): string | undefined {
+  return Array.isArray(header) ? header[0] : header;
 }
 
 function defaultCreateRequestId(): string {

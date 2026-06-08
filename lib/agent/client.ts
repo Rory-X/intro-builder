@@ -1,0 +1,213 @@
+import { randomUUID } from "node:crypto";
+
+export type AgentErrorCode =
+  | "bad_request"
+  | "unauthorized"
+  | "forbidden"
+  | "not_found"
+  | "method_not_allowed"
+  | "payload_too_large"
+  | "rate_limited"
+  | "dependency_unavailable"
+  | "provider_timeout"
+  | "internal_error"
+  | "agent_timeout"
+  | "agent_unavailable";
+
+export type AgentSessionResponse = {
+  status: "ok";
+  subject: string;
+  resumeId: string | null;
+  scope: string;
+  expiresAt: string;
+  requestId: string;
+};
+
+export type AgentClientResult<T> = {
+  data: T;
+  requestId: string;
+};
+
+export type CreateAgentClientOptions = {
+  baseUrl?: string;
+  timeoutMs?: number;
+  fetchFn?: typeof fetch;
+  createRequestId?: () => string;
+};
+
+export class AgentClientError extends Error {
+  statusCode: number;
+  error: AgentErrorCode;
+  requestId: string;
+  retryAfterSeconds?: number;
+  dependency?: string;
+
+  constructor(
+    message: string,
+    options: {
+      statusCode: number;
+      error: AgentErrorCode;
+      requestId: string;
+      retryAfterSeconds?: number;
+      dependency?: string;
+    },
+  ) {
+    super(message);
+    this.name = "AgentClientError";
+    this.statusCode = options.statusCode;
+    this.error = options.error;
+    this.requestId = options.requestId;
+    this.retryAfterSeconds = options.retryAfterSeconds;
+    this.dependency = options.dependency;
+  }
+}
+
+export type AgentClient = {
+  getSession: (options: {
+    token: string;
+    requestId?: string;
+  }) => Promise<AgentClientResult<AgentSessionResponse>>;
+};
+
+const DEFAULT_AGENT_BASE_URL = "http://127.0.0.1:8787";
+const DEFAULT_TIMEOUT_MS = 10_000;
+
+export function createAgentClient({
+  baseUrl = process.env.AGENT_BASE_URL ?? DEFAULT_AGENT_BASE_URL,
+  timeoutMs = DEFAULT_TIMEOUT_MS,
+  fetchFn = fetch,
+  createRequestId = () => `req_${randomUUID()}`,
+}: CreateAgentClientOptions = {}): AgentClient {
+  return {
+    getSession({ token, requestId = createRequestId() }) {
+      return requestJson<AgentSessionResponse>({
+        baseUrl,
+        path: "/v1/session",
+        method: "GET",
+        token,
+        requestId,
+        timeoutMs,
+        fetchFn,
+      });
+    },
+  };
+}
+
+async function requestJson<T>({
+  baseUrl,
+  path,
+  method,
+  token,
+  requestId,
+  timeoutMs,
+  fetchFn,
+}: {
+  baseUrl: string;
+  path: string;
+  method: "GET";
+  token: string;
+  requestId: string;
+  timeoutMs: number;
+  fetchFn: typeof fetch;
+}): Promise<AgentClientResult<T>> {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+
+  try {
+    const response = await fetchFn(joinUrl(baseUrl, path), {
+      method,
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "X-Request-Id": requestId,
+      },
+      signal: controller.signal,
+    });
+    const responseRequestId = response.headers.get("x-request-id") ?? requestId;
+    const body = await readJson(response);
+
+    if (!response.ok) {
+      throw errorFromEnvelope(response.status, responseRequestId, body);
+    }
+
+    return {
+      data: body as T,
+      requestId: responseRequestId,
+    };
+  } catch (error) {
+    if (error instanceof AgentClientError) throw error;
+
+    if (isAbortError(error)) {
+      throw new AgentClientError("Agent request timed out", {
+        statusCode: 504,
+        error: "agent_timeout",
+        requestId,
+      });
+    }
+
+    throw new AgentClientError("Agent request failed", {
+      statusCode: 503,
+      error: "agent_unavailable",
+      requestId,
+    });
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+async function readJson(response: Response): Promise<unknown> {
+  const text = await response.text();
+  if (!text) return null;
+
+  try {
+    return JSON.parse(text);
+  } catch {
+    return null;
+  }
+}
+
+function errorFromEnvelope(
+  statusCode: number,
+  fallbackRequestId: string,
+  body: unknown,
+): AgentClientError {
+  if (isAgentErrorEnvelope(body)) {
+    return new AgentClientError(body.message, {
+      statusCode,
+      error: body.error,
+      requestId: body.requestId || fallbackRequestId,
+      retryAfterSeconds: body.retryAfterSeconds,
+      dependency: body.dependency,
+    });
+  }
+
+  return new AgentClientError("Agent request failed", {
+    statusCode,
+    error: "agent_unavailable",
+    requestId: fallbackRequestId,
+  });
+}
+
+function isAgentErrorEnvelope(body: unknown): body is {
+  error: AgentErrorCode;
+  message: string;
+  requestId: string;
+  retryAfterSeconds?: number;
+  dependency?: string;
+} {
+  if (!body || typeof body !== "object") return false;
+
+  const value = body as Record<string, unknown>;
+  return (
+    typeof value.error === "string" &&
+    typeof value.message === "string" &&
+    typeof value.requestId === "string"
+  );
+}
+
+function isAbortError(error: unknown): boolean {
+  return error instanceof DOMException && error.name === "AbortError";
+}
+
+function joinUrl(baseUrl: string, path: string): string {
+  return `${baseUrl.replace(/\/+$/, "")}/${path.replace(/^\/+/, "")}`;
+}

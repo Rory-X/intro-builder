@@ -88,6 +88,8 @@ Expected:
 
 ## Phase 0C: Web-to-Agent Auth and Client
 
+Status: implemented locally, pending normal merge/deploy flow.
+
 Goal: 建立稳定的 Web -> Agent 调用层和短期 JWT 认证边界。
 
 Deliverables:
@@ -97,8 +99,9 @@ Deliverables:
 - Request id propagation。
 - Web Agent client wrapper。
 - `GET /v1/session` protected route。
-- Error envelope middleware。
-- Tests for expired token, wrong scope, missing token, valid token。
+- Web BFF smoke route `GET /api/agent/session`。
+- Redis `jti` replay guard。
+- Tests for valid token, expired token, wrong issuer/audience, wrong scope, missing token, replayed `jti`, Web signer, Web client, Web BFF route。
 
 Recommended files:
 
@@ -108,7 +111,10 @@ Recommended files:
 - `apps/agent/src/auth.ts`
 - `apps/agent/src/errors.ts`
 - `apps/agent/tests/auth.test.ts`
+- `apps/agent/tests/http.test.ts`
 - `tests/unit/agent-token.test.ts`
+- `tests/unit/agent-client.test.ts`
+- `tests/unit/agent-session-route.test.ts`
 
 Exit gates:
 
@@ -127,6 +133,12 @@ Security requirements:
 - JWT 必须含 `scope`。
 - Agent 校验 `iss`、`aud`、`exp`、`scope`。
 - `jti` 进入 Redis replay guard。
+
+Deployment note:
+
+- Agent protected routes require `AGENT_JWT_SECRET` in the Agent server env.
+- Web BFF signing requires the same `AGENT_JWT_SECRET` in the Web production env.
+- CD writes `AGENT_JWT_SECRET` only when the GitHub Secret exists; it does not create a default production secret.
 
 ## Phase 1: Rich Text Polish MVP
 

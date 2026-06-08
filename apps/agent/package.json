@@ -17,6 +17,7 @@
     "vitest": "^4.1.5"
   },
   "dependencies": {
+    "jose": "^6.2.3",
     "redis": "^6.0.0"
   }
 }

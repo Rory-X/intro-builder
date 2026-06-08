@@ -4,6 +4,7 @@ import {
   checkRedisReady,
   closeRedisConnection,
   createRedisConnection,
+  createRedisReplayStore,
 } from "./redis.js";
 
 const config = loadConfig();
@@ -16,6 +17,9 @@ const server = createAgentServer({
   config,
   redisReady: () =>
     checkRedisReady(redis, { timeoutMs: config.redisConnectTimeoutMs }),
+  replayStore: createRedisReplayStore(redis, {
+    timeoutMs: config.redisConnectTimeoutMs,
+  }),
 });
 
 server.listen(config.port, config.host, () => {

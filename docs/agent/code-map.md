@@ -22,19 +22,19 @@
 | `apps/agent/Caddyfile` | reverse proxy template |
 | `apps/agent/.env.example` | env hints |
 
-Phase 0C likely additions:
+Phase 0C additions:
 
-| Planned file | Responsibility |
+| File | Responsibility |
 | --- | --- |
 | `apps/agent/src/auth.ts` | Agent JWT verification |
-| `apps/agent/src/request-context.ts` | request id, scope, user hash |
 | `apps/agent/tests/auth.test.ts` | token validation cases |
+| `apps/agent/tests/http.test.ts` | protected `/v1/session` route behavior |
 
 ## Web Agent Client
 
-These files do not exist yet, but should be the Web side entrypoints:
+Web side entrypoints:
 
-| Planned file | Responsibility |
+| File | Responsibility |
 | --- | --- |
 | `lib/agent/client.ts` | server-side Agent HTTP client |
 | `lib/agent/token.ts` | short-lived Agent JWT signer |
@@ -42,6 +42,7 @@ These files do not exist yet, but should be the Web side entrypoints:
 | `app/api/agent/messages/route.ts` | Phase 3 assistant-ui BFF stream route |
 | `tests/unit/agent-token.test.ts` | signer behavior |
 | `tests/unit/agent-client.test.ts` | timeout/error mapping |
+| `tests/unit/agent-session-route.test.ts` | Web BFF smoke route behavior |
 
 Rules:
 

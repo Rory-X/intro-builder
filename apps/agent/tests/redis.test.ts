@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 
-import { checkRedisReady, type RedisReadyConnection } from "../src/redis";
+import {
+  checkRedisReady,
+  createRedisReplayStore,
+  type RedisConnection,
+} from "../src/redis";
 
 describe("Redis readiness", () => {
   it("connects lazily and reports ready after PONG", async () => {
@@ -37,12 +41,35 @@ describe("Redis readiness", () => {
     });
     expect(redis.disconnectCalls).toBe(1);
   });
+
+  it("connects lazily before reserving replay guard keys", async () => {
+    const redis = new FakeRedisConnection({ pingResponse: "PONG" });
+    const replayStore = createRedisReplayStore(redis, { timeoutMs: 100 });
+
+    await expect(
+      replayStore.set("auth:jti:jti_123", "1", { NX: true, EX: 180 }),
+    ).resolves.toBe("OK");
+
+    expect(redis.connectCalls).toBe(1);
+    expect(redis.setCalls).toEqual([
+      {
+        key: "auth:jti:jti_123",
+        value: "1",
+        options: { NX: true, EX: 180 },
+      },
+    ]);
+  });
 });
 
-class FakeRedisConnection implements RedisReadyConnection {
+class FakeRedisConnection implements RedisConnection {
   connectCalls = 0;
   disconnectCalls = 0;
   pingCalls = 0;
+  setCalls: Array<{
+    key: string;
+    value: string;
+    options: { NX: true; EX: number };
+  }> = [];
   isOpen: boolean;
 
   constructor(
@@ -73,6 +100,23 @@ class FakeRedisConnection implements RedisReadyConnection {
   async ping(): Promise<string> {
     this.pingCalls += 1;
     return this.options.pingResponse ?? "PONG";
+  }
+
+  async incr(): Promise<number> {
+    return 1;
+  }
+
+  async expire(): Promise<unknown> {
+    return "OK";
+  }
+
+  async set(
+    key: string,
+    value: string,
+    options: { NX: true; EX: number },
+  ): Promise<"OK" | null> {
+    this.setCalls.push({ key, value, options });
+    return "OK";
   }
 
   disconnect(): void {
