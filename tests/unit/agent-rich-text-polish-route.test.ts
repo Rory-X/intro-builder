@@ -78,14 +78,29 @@ describe("POST /api/agent/rich-text/polish", () => {
       token: "signed-polish-token",
       expiresAt: new Date("2026-06-08T08:02:00.000Z"),
     });
+    const replacementTiptapJson = {
+      type: "doc",
+      content: [
+        {
+          type: "paragraph",
+          content: [
+            {
+              type: "text",
+              text: "负责业务系统前端开发，围绕页面性能瓶颈持续优化加载与交互体验。",
+            },
+          ],
+        },
+      ],
+    };
     const polishRichText = vi.fn().mockResolvedValue({
       requestId: "req_agent_polish",
       data: {
         status: "ok",
         requestId: "req_agent_polish",
         result: {
-          format: "plain_text",
+          format: "tiptap_json",
           polishedText: "负责业务系统前端开发，围绕页面性能瓶颈持续优化加载与交互体验。",
+          replacementTiptapJson,
           changeSummary: "按 STAR 思路强化职责与行动表达，未新增结果数据。",
           riskFlags: [],
         },
@@ -117,8 +132,9 @@ describe("POST /api/agent/rich-text/polish", () => {
       tokenExpiresAt: "2026-06-08T08:02:00.000Z",
       requestId: "req_agent_polish",
       result: {
-        format: "plain_text",
+        format: "tiptap_json",
         polishedText: "负责业务系统前端开发，围绕页面性能瓶颈持续优化加载与交互体验。",
+        replacementTiptapJson,
         changeSummary: "按 STAR 思路强化职责与行动表达，未新增结果数据。",
         riskFlags: [],
       },
