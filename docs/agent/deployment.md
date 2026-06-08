@@ -102,6 +102,17 @@ AGENT_MODEL_NAME=<chat model name>
 AGENT_MODEL_TIMEOUT_MS=20000
 ```
 
+DeepSeek smoke example:
+
+```bash
+AGENT_MODEL_BASE_URL=https://api.deepseek.com
+AGENT_MODEL_API_KEY=<deepseek key>
+AGENT_MODEL_NAME=deepseek-v4-flash
+AGENT_MODEL_TIMEOUT_MS=20000
+```
+
+The Agent provider sends OpenAI-compatible chat completion requests with only `system` and `user` message roles. Provider-specific developer instructions are folded into the `system` message, and `thinking` is disabled for deterministic JSON polish output.
+
 If these model vars are absent, the Agent keeps `/health` and `/ready` green and returns a structured `dependency_unavailable` error for rich-text polish requests.
 
 ## GitHub Actions Deployment

@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   buildRichTextPolishPrompt,
+  createOpenAICompatibleRichTextPolishProvider,
   parsePolishProviderResponse,
   validateRichTextPolishRequest,
 } from "../src/rich-text-polish";
@@ -140,6 +141,102 @@ describe("rich text polish prompt", () => {
           },
         ],
       },
+    });
+  });
+
+  it("sends DeepSeek-compatible chat completion messages", async () => {
+    let requestBody: unknown;
+    const fetchFn: typeof fetch = async (_input, init) => {
+      requestBody = JSON.parse(init?.body as string);
+      return new Response(
+        JSON.stringify({
+          choices: [
+            {
+              message: {
+                content: JSON.stringify({
+                  polishedText: "负责核心业务系统前端开发。",
+                  changeSummary: "优化表达。",
+                  riskFlags: [],
+                }),
+              },
+            },
+          ],
+          usage: {
+            prompt_tokens: 20,
+            completion_tokens: 10,
+          },
+        }),
+        { status: 200 },
+      );
+    };
+    const provider = createOpenAICompatibleRichTextPolishProvider(
+      {
+        host: "127.0.0.1",
+        port: 8787,
+        serviceName: "intro-agent-test",
+        version: "test-version",
+        nodeEnv: "test",
+        shutdownTimeoutMs: 100,
+        redisUrl: "redis://127.0.0.1:6379",
+        redisConnectTimeoutMs: 100,
+        rateLimitWindowSeconds: 60,
+        rateLimitMaxRequests: 30,
+        jwtIssuer: "intro-builder-web",
+        jwtAudience: "intro-builder-agent",
+        jwtSecret: "test-agent-secret",
+        jwtReplayTtlSeconds: 180,
+        modelBaseUrl: "https://api.deepseek.com",
+        modelApiKey: "deepseek-test-key",
+        modelName: "deepseek-v4-flash",
+        modelTimeoutMs: 20_000,
+      },
+      fetchFn,
+    );
+
+    expect(provider).toBeDefined();
+    await provider!.polish({
+      request: {
+        resumeId: "resume_abc",
+        section: "experience",
+        fieldPath: "experience.0.content",
+        locale: "zh-CN",
+        content: {
+          format: "plain_text",
+          plainText: "负责业务系统前端开发。",
+        },
+        intent: {
+          mode: "polish",
+          tone: "professional",
+          length: "same",
+          strategy: "star",
+        },
+      },
+      prompt: {
+        system: "system rules",
+        developer: "developer rules",
+        user: "user payload",
+      },
+      session: {
+        userId: "user_123",
+        resumeId: "resume_abc",
+        scope: "rich_text:polish",
+        jti: "jti_provider_test",
+        expiresAt: new Date("2026-06-08T08:02:00.000Z"),
+      },
+      requestId: "req_provider_test",
+    });
+
+    expect(requestBody).toEqual({
+      model: "deepseek-v4-flash",
+      response_format: { type: "json_object" },
+      thinking: { type: "disabled" },
+      messages: [
+        {
+          role: "system",
+          content: "system rules\n\n开发者指令：\ndeveloper rules",
+        },
+        { role: "user", content: "user payload" },
+      ],
     });
   });
 });

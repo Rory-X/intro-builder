@@ -344,9 +344,9 @@ export function createOpenAICompatibleRichTextPolishProvider(
             body: JSON.stringify({
               model: config.modelName,
               response_format: { type: "json_object" },
+              thinking: { type: "disabled" },
               messages: [
-                { role: "system", content: prompt.system },
-                { role: "developer", content: prompt.developer },
+                { role: "system", content: combineSystemAndDeveloperPrompt(prompt) },
                 { role: "user", content: prompt.user },
               ],
             }),
@@ -394,6 +394,12 @@ export function createOpenAICompatibleRichTextPolishProvider(
       }
     },
   };
+}
+
+function combineSystemAndDeveloperPrompt(
+  prompt: RichTextPolishPrompt,
+): string {
+  return `${prompt.system}\n\n开发者指令：\n${prompt.developer}`;
 }
 
 function defaultStrategy(section: RichTextPolishSection): RichTextPolishStrategy {
