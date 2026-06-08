@@ -2,6 +2,8 @@ import { randomUUID } from "node:crypto";
 
 import { SignJWT } from "jose";
 
+import { normalizeAgentJwtSecret } from "./secret";
+
 export type AgentTokenScope =
   | "agent:session"
   | "rich_text:polish"
@@ -76,17 +78,4 @@ export async function signAgentToken({
     scope,
     expiresAt,
   };
-}
-
-function normalizeAgentJwtSecret(secret: string | undefined): string {
-  const trimmed = secret?.trim() ?? "";
-  if (
-    trimmed.length >= 2 &&
-    ((trimmed.startsWith('"') && trimmed.endsWith('"')) ||
-      (trimmed.startsWith("'") && trimmed.endsWith("'")))
-  ) {
-    return trimmed.slice(1, -1);
-  }
-
-  return trimmed;
 }
