@@ -19,6 +19,11 @@ type Options = {
 
 export type ResumeAutosaveStatus = "idle" | "pending" | "saving" | "error";
 
+function isRetriableError(e: unknown): boolean {
+  const msg = e instanceof Error ? e.message : String(e);
+  return /fetch failed|Failed to fetch|network|timeout|ECONNRESET|socket/i.test(msg);
+}
+
 /**
  * Debounced autosave with a serial queue so an older in-flight save
  * cannot overwrite newer edits (affects every form field, not only summary).
@@ -38,14 +43,14 @@ export function useResumeAutosave({
   const savingRef = useRef(false);
   const saveAgainRef = useRef(false);
   const hasPendingSaveRef = useRef(false);
+  const retryCountRef = useRef(0);
 
   useEffect(() => {
     titleRef.current = title;
   }, [title]);
 
-  // The serial save queue intentionally uses refs so in-flight saves never
-  // overwrite newer edits when React re-renders during autosave.
-  // eslint-disable-next-line react-hooks/preserve-manual-memoization
+  const persistRef = useRef<(() => Promise<void>) | undefined>(undefined);
+
   const persist = useCallback(async () => {
     if (savingRef.current) {
       saveAgainRef.current = true;
@@ -56,18 +61,30 @@ export function useResumeAutosave({
     try {
       hasPendingSaveRef.current = false;
       await onSave(form.getValues(), titleRef.current);
+      retryCountRef.current = 0;
       setStatus("idle");
     } catch (e: unknown) {
+      if (isRetriableError(e) && retryCountRef.current < 1) {
+        retryCountRef.current += 1;
+        savingRef.current = false;
+        setTimeout(() => void persistRef.current?.(), 2000);
+        return;
+      }
+      retryCountRef.current = 0;
       setStatus("error");
       onError(e);
     } finally {
       savingRef.current = false;
       if (saveAgainRef.current) {
         saveAgainRef.current = false;
-        await persist();
+        await persistRef.current?.();
       }
     }
   }, [form, onSave, onError]);
+
+  useEffect(() => {
+    persistRef.current = persist;
+  }, [persist]);
 
   const schedule = useCallback(() => {
     hasPendingSaveRef.current = true;

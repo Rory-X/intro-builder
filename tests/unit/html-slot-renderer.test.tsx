@@ -169,6 +169,62 @@ describe("SlotRenderer — value slots", () => {
   });
 });
 
+describe("SlotRenderer — 联系字段自动 linkify（直绑路径）", () => {
+  function renderBasics(field: string, basics: Partial<ResumeContent["basics"]>) {
+    return render_({
+      content: makeContent({ basics }),
+      html: `<article><span class="c"><slot data-bind="${field}" /></span></article>`,
+    });
+  }
+
+  it("email 直绑包成 mailto 链接，文本不变", () => {
+    const { container } = renderBasics("basics.email", { email: "z@example.com" });
+    const a = container.querySelector("span.c a");
+    expect(a?.getAttribute("href")).toBe("mailto:z@example.com");
+    expect(a?.textContent).toBe("z@example.com");
+  });
+
+  it("phone 直绑包成 tel 链接，并去掉空格", () => {
+    const { container } = renderBasics("basics.phone", { phone: "138 0000 0000" });
+    const a = container.querySelector("span.c a");
+    expect(a?.getAttribute("href")).toBe("tel:13800000000");
+    expect(a?.textContent).toBe("138 0000 0000");
+  });
+
+  it("website 缺协议头时补 https", () => {
+    const { container } = renderBasics("basics.website", { website: "github.com/z" });
+    const a = container.querySelector("span.c a");
+    expect(a?.getAttribute("href")).toBe("https://github.com/z");
+  });
+
+  it("website 已带协议头则原样保留", () => {
+    const { container } = renderBasics("basics.website", { website: "https://me.dev" });
+    expect(container.querySelector("span.c a")?.getAttribute("href")).toBe("https://me.dev");
+  });
+
+  it("location 无可点目标，保持纯文本不包链接", () => {
+    const { container } = renderBasics("basics.location", { location: "北京" });
+    expect(container.querySelector("span.c a")).toBeNull();
+    expect(container.querySelector("span.c")?.textContent).toBe("北京");
+  });
+
+  it("name 等非联系字段不 linkify", () => {
+    const { container } = renderBasics("basics.name", { name: "张三" });
+    expect(container.querySelector("span.c a")).toBeNull();
+    expect(container.querySelector("span.c")?.textContent).toBe("张三");
+  });
+
+  it("profile.* 同名字段同样 linkify", () => {
+    const { container } = renderBasics("profile.email", { email: "z@example.com" });
+    expect(container.querySelector("span.c a")?.getAttribute("href")).toBe("mailto:z@example.com");
+  });
+
+  it("空值不渲染空链接", () => {
+    const { container } = renderBasics("basics.website", { website: "" });
+    expect(container.querySelector("span.c a")).toBeNull();
+  });
+});
+
 describe("SlotRenderer — sectionOrder loop", () => {
   it("uses section kind templates for block and list sections", () => {
     const { container } = render_({
@@ -348,8 +404,8 @@ describe("SlotRenderer — profile contacts loop", () => {
     });
     expect(container.querySelector("h1")?.textContent).toBe("张三");
     const contacts = Array.from(container.querySelectorAll(".contact")).map((el) => el.textContent);
-    expect(contacts).toEqual(["138", "z@example.com", "github.com/z"]);
-    expect(container.querySelectorAll("svg.contact-icon")).toHaveLength(3);
+    expect(contacts).toEqual(["138", "z@example.com", "北京", "github.com/z"]);
+    expect(container.querySelectorAll("svg.contact-icon")).toHaveLength(4);
   });
 });
 
@@ -461,9 +517,9 @@ describe("SlotRenderer — CSS scope + style injection", () => {
     expect(root.style.getPropertyValue("--page-padding")).toBe("40px");
     expect(root.style.getPropertyValue("--section-gap")).toBe("16px");
     expect(root.style.getPropertyValue("--item-gap")).toBe("12px");
-    // One <style> child: scoped customCss only (heading-gap enforcement removed).
+    // Two <style> children: scoped customCss + renderer fixes (header font + marker color).
     const styleEls = root.querySelectorAll("style");
-    expect(styleEls.length).toBe(1);
+    expect(styleEls.length).toBe(2);
     expect(styleEls[0].textContent).toContain('[data-template-id="test-tpl"] .my-name');
   });
 
@@ -472,11 +528,11 @@ describe("SlotRenderer — CSS scope + style injection", () => {
       html: '<article><h1><slot data-bind="basics.name" /></h1></article>',
       css: "@media (min-width: 600px) { .x { color: red } }",
     });
-    // Should still render the h1; no <style> emitted because scopeCss threw
-    // and there's no heading-gap enforcement anymore.
+    // Should still render the h1; only the renderer fixes <style> emitted
+    // (header font + marker color) since scopeCss threw.
     expect(container.querySelector("h1")?.textContent).toBe("张三");
     const styleEls = container.querySelectorAll("style");
-    expect(styleEls.length).toBe(0);
+    expect(styleEls.length).toBe(1); // only renderer fixes, no scoped CSS
   });
 });
 
@@ -555,8 +611,8 @@ describe("SlotRenderer — section fixture integration", () => {
       photo: "",
     },
     skills: richDoc("Python、Go、Rust"),
-    custom: [{ id: "summary", title: "个人总结", content: richDoc("热爱技术") }],
-    sectionOrder: ["experience", "education", "skills", "summary"],
+    custom: [{ id: "custom_hobby", title: "兴趣爱好", content: richDoc("热爱技术") }],
+    sectionOrder: ["experience", "education", "skills", "custom_hobby"],
   });
 
   it("renders name and contact info", () => {
@@ -595,6 +651,27 @@ describe("SlotRenderer — section fixture integration", () => {
     const text = container.textContent ?? "";
     expect(text).toContain("Python、Go、Rust");
     expect(text).toContain("热爱技术");
+  });
+
+  it("renders promoted first-class block modules (summary/awards/portfolio) once each", () => {
+    const promoted = makeContent({
+      summary: richDoc("六年全栈经验"),
+      awards: richDoc("国家奖学金"),
+      portfolio: richDoc("开源项目 Foo"),
+      sectionOrder: ["summary", "awards", "portfolio"],
+    });
+    const { container } = render_({
+      html: SECTION_FIXTURE_HTML,
+      css: ".fixture-resume { color: black; }",
+      content: promoted,
+      templateId: "fixture",
+    });
+    const text = container.textContent ?? "";
+    expect(text).toContain("六年全栈经验");
+    expect(text).toContain("国家奖学金");
+    expect(text).toContain("开源项目 Foo");
+    // 标题来自 section-meta（固定），各渲染一次
+    expect(container.querySelectorAll(".fixture-section").length).toBe(3);
   });
 
   it("renders list sections with item details", () => {
@@ -684,6 +761,39 @@ describe("SlotRenderer — item fields fixture", () => {
     expect(metaText).toContain("https://intro.dev");
     expect(metaText).not.toContain("深圳");
     expect(metaText).not.toContain("广州");
+  });
+
+});
+
+describe("SlotRenderer — basics 头部自动补 data-pagination-header", () => {
+  // 回归：除 professional 外的模板用裸 <header>，PDF 导出
+  // `header:not([data-pagination-header]){display:none}` 会把整块个人信息隐藏。
+  // 引擎层自动补标记，所有模板的 basics 头部都能在导出时保留。
+  it("裸 <header> 渲染后带 data-pagination-header", () => {
+    const { container } = render_({
+      html: '<article><header><h1><slot data-bind="basics.name" /></h1></header></article>',
+    });
+    const header = container.querySelector("header");
+    expect(header).not.toBeNull();
+    expect(header!.hasAttribute("data-pagination-header")).toBe(true);
+  });
+
+  it("已手写 data-pagination-header 时不重复（幂等）", () => {
+    const { container } = render_({
+      html: '<article><header data-pagination-header class="pro"><h1><slot data-bind="basics.name" /></h1></header></article>',
+    });
+    const header = container.querySelector("header");
+    expect(header).not.toBeNull();
+    expect(header!.getAttribute("class")).toBe("pro");
+    expect(header!.hasAttribute("data-pagination-header")).toBe(true);
+  });
+
+  it("basics 用 <div>（无 <header>）时不报错且正常渲染", () => {
+    const { container } = render_({
+      html: '<article><div class="basics"><h1><slot data-bind="basics.name" /></h1></div></article>',
+    });
+    expect(container.querySelector("header")).toBeNull();
+    expect(container.textContent).toContain("张三");
   });
 });
 

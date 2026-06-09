@@ -38,7 +38,7 @@ describe("interpolateSettings", () => {
   it("returns aesthetic floor (incl. font floor) when scale=0", () => {
     const result = interpolateSettings(current, 0);
     expect(result.fontFamily).toBe("sans");
-    expect(result.fontSize).toBe(11); // 字号压到 floor
+    expect(result.fontSize).toBe(11); // 正文字号压到 floor
     expect(result.bodyLineHeight).toBe(1.25);
     expect(result.lineHeight).toBe(1.25);
     expect(result.pagePadding).toBe(40); // 页边距不压
@@ -49,12 +49,10 @@ describe("interpolateSettings", () => {
 
   it("at the knee (scale=0.5): gaps bottomed out, font still at current", () => {
     const result = interpolateSettings(current, 0.5);
-    // 间距/行距已触底
     expect(result.bodyLineHeight).toBe(1.25);
     expect(result.sectionGap).toBe(8);
     expect(result.itemGap).toBe(4);
     expect(result.headingGap).toBe(4);
-    // 字号尚未开始压
     expect(result.fontSize).toBe(14);
   });
 
@@ -71,7 +69,6 @@ describe("interpolateSettings", () => {
     const result = interpolateSettings(current, 0.25);
     // fontScale = 0.25/0.5 = 0.5 → 11 + (14-11)*0.5 = 12.5
     expect(result.fontSize).toBe(12.5);
-    // 间距维持 floor
     expect(result.sectionGap).toBe(8);
     expect(result.itemGap).toBe(4);
     expect(result.bodyLineHeight).toBe(1.25);
@@ -140,7 +137,7 @@ describe("findOptimalSettings", () => {
     const result = await findOptimalSettings(current, measure);
     expect(result.status).toBe("cannot-fit");
     if (result.status === "cannot-fit") {
-      expect(result.settings.fontSize).toBe(11); // 兜底压到字号 floor
+      expect(result.settings.fontSize).toBe(11); // 正文字号压到 floor
       expect(result.settings.bodyLineHeight).toBe(1.25);
       expect(result.settings.pagePadding).toBe(40);
       expect(result.settings.sectionGap).toBe(8);
@@ -170,7 +167,6 @@ describe("findOptimalSettings", () => {
   it("engages font compression when gap compression alone cannot fit", async () => {
     // 即便间距压到 floor（scale=0.5）仍 1200>1123，必须靠压字号才塞下。
     const measure = async (s: StyleSettings) => {
-      // 字号每小 1px 减 120px；间距贡献忽略，保证只有压字号能过线。
       return 1200 - (current.fontSize - s.fontSize) * 120;
     };
     const result = await findOptimalSettings(current, measure);
@@ -178,8 +174,8 @@ describe("findOptimalSettings", () => {
     if (result.status === "optimized") {
       const h = await measure(result.settings);
       expect(h).toBeLessThanOrEqual(A4_HEIGHT_PX);
-      expect(result.settings.fontSize).toBeLessThan(current.fontSize); // 字号确实被压
-      expect(result.settings.fontSize).toBeGreaterThanOrEqual(11); // 但不破 floor
+      expect(result.settings.fontSize).toBeLessThan(current.fontSize);
+      expect(result.settings.fontSize).toBeGreaterThanOrEqual(11);
     }
   });
 

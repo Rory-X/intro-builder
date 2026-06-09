@@ -3,13 +3,13 @@ import { useEffect, useState } from "react";
 import { useFieldArray, useFormContext } from "react-hook-form";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Button } from "@/components/ui/button";
 import { RichTextEditor } from "./rich-text-editor";
 import { emptyDoc } from "@/lib/tiptap-types";
 import type { ResumeContent } from "@/lib/resume-schema";
 import { monitorForElements } from "@atlaskit/pragmatic-drag-and-drop/element/adapter";
-import { ItemWrapper } from "./item-wrapper";
+import { ItemWrapper, ItemSummary } from "./item-wrapper";
 import { SectionEditorHeader } from "./section-editor-header";
+import { cn } from "@/lib/utils";
 import { SectionHelperButton } from "@/components/agent/section-helper-button";
 import { tiptapPlainText } from "@/lib/agent/resume-helper-context";
 import { useCompletenessScore } from "@/hooks/use-completeness-score";
@@ -46,13 +46,13 @@ export function ResearchEditor({ resumeId }: Props) {
 
   return (
     <section>
-      <div className="px-4 pt-2">
+      <div>
         <SectionEditorHeader
           sectionKey="research"
           itemCount={fields.length}
           isOpen={isOpen}
           onToggle={() => setIsOpen(!isOpen)}
-          onAdd={() => { append({ name: "", role: "", start: "", end: "", link: "", content: emptyDoc() }); setIsOpen(true); }}
+          onAdd={() => { append({ name: "", role: "", location: "", start: "", end: "", paperTitle: "", link: "", content: emptyDoc() }); setIsOpen(true); }}
           helper={resumeId ? (
             <SectionHelperButton
               resumeId={resumeId}
@@ -65,20 +65,33 @@ export function ResearchEditor({ resumeId }: Props) {
           ) : undefined}
         />
       </div>
-      {isOpen && (
-        <div className="space-y-3 px-4 pb-4">
-          {fields.map((f, idx) => (
-            <ItemWrapper key={f.id} id={f.id} sectionKey="research">
-              <div className="space-y-3 rounded-lg border border-border/60 bg-background/50 p-4">
-                <div className="grid grid-cols-2 gap-3">
-                  <div className="flex flex-col gap-1.5"><Label>课题名</Label><Input {...register(`research.${idx}.name` as const)} /></div>
+      <div className={cn(
+        "grid transition-all duration-300 ease-out",
+        isOpen ? "grid-rows-[1fr] opacity-100" : "grid-rows-[0fr] opacity-0",
+      )} data-section-body-collapsed={isOpen ? undefined : "true"}>
+        <div className="overflow-hidden">
+        <div className="space-y-4 px-3.5 pb-3.5">
+          {fields.map((f, idx) => {
+            const name = watch(`research.${idx}.name` as const);
+            const role = watch(`research.${idx}.role` as const);
+            return (
+            <ItemWrapper
+              key={f.id}
+              id={f.id}
+              sectionKey="research"
+              collapsible
+              onDelete={() => remove(idx)}
+              summary={<ItemSummary title={name} parts={[role]} />}
+            >
+              <div className="space-y-2.5">
+                <div className="grid grid-cols-2 gap-x-2 gap-y-[5px]">
+                  <div className="col-span-2 flex flex-col gap-1.5"><Label>课题名</Label><Input {...register(`research.${idx}.name` as const)} /></div>
                   <div className="flex flex-col gap-1.5"><Label>角色</Label><Input {...register(`research.${idx}.role` as const)} /></div>
+                  <div className="flex flex-col gap-1.5"><Label>城市</Label><Input {...register(`research.${idx}.location` as const)} /></div>
                   <div className="flex flex-col gap-1.5"><Label>开始</Label><Input {...register(`research.${idx}.start` as const)} /></div>
                   <div className="flex flex-col gap-1.5"><Label>结束</Label><Input {...register(`research.${idx}.end` as const)} /></div>
-                </div>
-                <div className="flex flex-col gap-1.5">
-                  <Label>论文链接</Label>
-                  <Input {...register(`research.${idx}.link` as const)} />
+                  <div className="flex flex-col gap-1.5"><Label>论文名称</Label><Input {...register(`research.${idx}.paperTitle` as const)} /></div>
+                  <div className="flex flex-col gap-1.5"><Label>论文链接</Label><Input {...register(`research.${idx}.link` as const)} /></div>
                 </div>
                 <div>
                   <Label>研究描述</Label>
@@ -94,12 +107,13 @@ export function ResearchEditor({ resumeId }: Props) {
                     placeholder="描述你的研究内容和成果…"
                   />
                 </div>
-                <Button type="button" variant="ghost" size="sm" className="text-xs text-muted-foreground hover:text-destructive" onClick={() => remove(idx)}>删除此条</Button>
               </div>
             </ItemWrapper>
-          ))}
+            );
+          })}
+          </div>
         </div>
-      )}
+      </div>
     </section>
   );
 }

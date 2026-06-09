@@ -331,3 +331,33 @@ describe("useFitThumbnail", () => {
     }
   });
 });
+
+// ============================================================================
+// fit 模式 —— page（按宽缩放/只露首页/固定大小）vs contain（整份自适应）
+// ============================================================================
+
+describe("TemplateThumbnail — fit 模式", () => {
+  it("page 模式（默认）：stage 非 absolute、宽=baseWidth，容器带 container-type", () => {
+    const { container } = render(
+      <TemplateThumbnail forceMount>
+        <div>x</div>
+      </TemplateThumbnail>,
+    );
+    const thumb = container.querySelector("[data-template-thumbnail]") as HTMLElement;
+    const stage = container.querySelector("[data-template-thumbnail-stage]") as HTMLElement;
+    expect(thumb.className).toContain("[container-type:inline-size]");
+    // page 模式是普通流（非 absolute），宽度铺到 baseWidth 再按 cqw 缩放
+    expect(stage.style.position).not.toBe("absolute");
+    expect(stage.style.width).toBe("794px");
+  });
+
+  it("contain 模式：stage 为 absolute（走 useFitThumbnail 居中/整份可见）", () => {
+    const { container } = render(
+      <TemplateThumbnail forceMount fit="contain">
+        <div>x</div>
+      </TemplateThumbnail>,
+    );
+    const stage = container.querySelector("[data-template-thumbnail-stage]") as HTMLElement;
+    expect(stage.style.position).toBe("absolute");
+  });
+});

@@ -9,6 +9,7 @@ import { getTemplateMetaAsync } from "@/lib/templates/registry-server";
 import { toSerializable } from "@/lib/templates/render";
 import { PdfPreview } from "@/components/preview/pdf-preview";
 import { verifyPdfToken } from "@/lib/pdf-token";
+import { withDbRetry } from "@/lib/db-retry";
 
 export default async function PreviewPage({
   params,
@@ -32,9 +33,11 @@ export default async function PreviewPage({
     userId = await requireUserId();
   }
 
-  const row = await db.query.resumes.findFirst({
-    where: and(eq(resumes.id, id), eq(resumes.userId, userId)),
-  });
+  const row = await withDbRetry("preview.load", () =>
+    db.query.resumes.findFirst({
+      where: and(eq(resumes.id, id), eq(resumes.userId, userId)),
+    }),
+  );
   if (!row) notFound();
   const content = migrateContent(row.content);
   const isPdf = _pdf === "1";

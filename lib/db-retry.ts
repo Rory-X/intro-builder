@@ -25,14 +25,14 @@ function isTransientNetworkError(err: unknown): boolean {
 export async function withDbRetry<T>(
   label: string,
   fn: () => Promise<T>,
-  max = 4,
+  max = 5,
 ): Promise<T> {
   for (let attempt = 1; attempt <= max; attempt++) {
     try {
       return await fn();
     } catch (err) {
       if (attempt === max || !isTransientNetworkError(err)) throw err;
-      const delay = 200 * 2 ** (attempt - 1);
+      const delay = 1000 * 2 ** (attempt - 1);
       console.warn(`[db] ${label} attempt ${attempt}/${max} transient — retry in ${delay}ms`);
       await new Promise((r) => setTimeout(r, delay));
     }

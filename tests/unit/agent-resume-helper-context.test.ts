@@ -77,6 +77,9 @@ function validContent(): ResumeContent {
     projects: [],
     research: [],
     skills: { type: "doc", content: [] },
+    summary: { type: "doc", content: [] },
+    awards: { type: "doc", content: [] },
+    portfolio: { type: "doc", content: [] },
     custom: [],
     sectionOrder: ["basics", "experience", "education", "projects", "skills"],
   };

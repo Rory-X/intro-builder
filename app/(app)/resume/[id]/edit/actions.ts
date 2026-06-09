@@ -5,6 +5,7 @@ import { db } from "@/db";
 import { resumes } from "@/db/schema";
 import { ResumeContent } from "@/lib/resume-schema";
 import { newSlug } from "@/lib/slug";
+import { withDbRetry } from "@/lib/db-retry";
 import {
   getTemplateMetaAsync,
   getTemplateDefaultStyleSettings,
@@ -38,13 +39,15 @@ export async function saveResume(id: string, content: unknown, title?: string) {
   const userId = await actionUserId();
   const parsed = ResumeContent.safeParse(content);
   if (!parsed.success) throw new Error("invalid: " + parsed.error.message);
-  await db.update(resumes)
-    .set({
-      content: parsed.data,
-      ...(title ? { title } : {}),
-      updatedAt: new Date(),
-    })
-    .where(and(eq(resumes.id, id), eq(resumes.userId, userId)));
+  await withDbRetry("saveResume", () =>
+    db.update(resumes)
+      .set({
+        content: parsed.data,
+        ...(title ? { title } : {}),
+        updatedAt: new Date(),
+      })
+      .where(and(eq(resumes.id, id), eq(resumes.userId, userId))),
+  );
 }
 
 export async function setTemplate(
@@ -70,14 +73,13 @@ export async function setTemplate(
     updatedAt: new Date(),
   };
   if (shouldReset) {
-    // 读出当前 content 把 styleSettings 字段单点改写 —— jsonb 更新粒度。
-    // 注意：content 是 jsonb 列，这里走 raw merge 不需要 zod 解析（trust
-    // boundary 是写入；读出来的就是写之前 zod 校验过的那份）。
-    const existing = await db
-      .select({ content: resumes.content })
-      .from(resumes)
-      .where(and(eq(resumes.id, id), eq(resumes.userId, userId)))
-      .limit(1);
+    const existing = await withDbRetry("setTemplate.read", () =>
+      db
+        .select({ content: resumes.content })
+        .from(resumes)
+        .where(and(eq(resumes.id, id), eq(resumes.userId, userId)))
+        .limit(1),
+    );
     const row = existing[0];
     if (row && row.content && typeof row.content === "object") {
       const newSettings = getTemplateDefaultStyleSettings(resolved);
@@ -91,10 +93,12 @@ export async function setTemplate(
       } as typeof resumes.$inferInsert.content;
     }
   }
-  await db
-    .update(resumes)
-    .set(update)
-    .where(and(eq(resumes.id, id), eq(resumes.userId, userId)));
+  await withDbRetry("setTemplate.write", () =>
+    db
+      .update(resumes)
+      .set(update)
+      .where(and(eq(resumes.id, id), eq(resumes.userId, userId))),
+  );
 }
 
 export async function toggleShare(
@@ -103,9 +107,11 @@ export async function toggleShare(
 ): Promise<{ slug: string | null }> {
   const userId = await actionUserId();
   const slug = enable ? newSlug() : null;
-  await db
-    .update(resumes)
-    .set({ isPublic: enable, slug, updatedAt: new Date() })
-    .where(and(eq(resumes.id, id), eq(resumes.userId, userId)));
+  await withDbRetry("toggleShare", () =>
+    db
+      .update(resumes)
+      .set({ isPublic: enable, slug, updatedAt: new Date() })
+      .where(and(eq(resumes.id, id), eq(resumes.userId, userId))),
+  );
   return { slug };
 }

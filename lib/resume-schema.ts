@@ -73,8 +73,10 @@ function migrateSkills(input: unknown): unknown {
 export const Research = z.object({
   name: z.string().default(""),
   role: z.string().default(""),
+  location: z.string().default(""),
   start: z.string().default(""),
   end: z.string().default(""),
+  paperTitle: z.string().optional().default(""),
   link: z.string().optional().default(""),
   content: TipTapJSON.default(() => emptyDoc()),
 });
@@ -94,13 +96,13 @@ export const MODULE_PRESETS = [
   { id: "projects", label: "项目经历", builtIn: true },
   { id: "research", label: "研究经历", builtIn: true },
   { id: "skills", label: "专业技能", builtIn: true },
-  { id: "summary", label: "个人总结", builtIn: false },
-  { id: "awards", label: "荣誉奖项", builtIn: false },
-  { id: "portfolio", label: "作品集", builtIn: false },
+  { id: "summary", label: "个人总结", builtIn: true },
+  { id: "awards", label: "荣誉奖项", builtIn: true },
+  { id: "portfolio", label: "作品集", builtIn: true },
 ] as const;
 
 /** Built-in section keys (have dedicated editors) */
-export const BUILTIN_SECTION_KEYS = new Set(["basics", "experience", "education", "projects", "research", "skills"]);
+export const BUILTIN_SECTION_KEYS = new Set(["basics", "experience", "education", "projects", "research", "skills", "summary", "awards", "portfolio"]);
 
 // preprocess fires before defaults — required so a legacy row that has
 // `lineHeight: 1.8` but no bodyLineHeight can backfill the new field.
@@ -153,6 +155,12 @@ export const ResumeContent = z.object({
   projects: z.array(Project).default([]),
   research: z.array(Research).default([]),
   skills: z.preprocess(migrateSkills, TipTapJSON).default(() => emptyDoc()),
+  // 一等公民富文本块模块（与 skills 同型）：个人总结 / 荣誉奖项 / 作品集。
+  // 历史上这三个曾寄生在 custom[]（id=summary/awards/portfolio），现已提升为
+  // 顶层字段；存量数据由 migrateContent 读时搬迁。
+  summary: TipTapJSON.default(() => emptyDoc()),
+  awards: TipTapJSON.default(() => emptyDoc()),
+  portfolio: TipTapJSON.default(() => emptyDoc()),
   custom: z.array(CustomSection).default([]),
   sectionOrder: z.array(z.string()).default([...DEFAULT_SECTION_ORDER]),
   styleSettings: StyleSettings.optional(),
@@ -166,21 +174,24 @@ export type ResumeContent = z.infer<typeof ResumeContent>;
 
 export const emptyResumeContent = (): ResumeContent => ({
   basics: {
-    name: "你的姓名",
-    status: "",
-    title: "目标岗位",
-    email: "you@example.com",
-    phone: "",
-    location: "",
-    website: "",
+    name: "张三",
+    status: "在职",
+    title: "前端工程师",
+    email: "zhang@example.com",
+    phone: "138 0000 0000",
+    location: "北京",
+    website: "github.com/zhangsan",
     summary: "",
-    photo: "",
+    photo: "/templates/placeholder-avatar.png",
   },
   education: [],
   experience: [],
   projects: [],
   research: [],
   skills: emptyDoc(),
+  summary: emptyDoc(),
+  awards: emptyDoc(),
+  portfolio: emptyDoc(),
   custom: [],
   sectionOrder: [...DEFAULT_SECTION_ORDER],
 });

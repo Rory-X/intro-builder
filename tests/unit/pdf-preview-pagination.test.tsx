@@ -6,7 +6,9 @@ import { emptyResumeContent } from "@/lib/resume-schema";
 vi.mock("@/lib/templates/render", () => ({
   ClientTemplateRenderFromSerializable: () => (
     <article>
-      <div data-pagination-header>单页简历内容</div>
+      <div data-pagination-item>
+        <p data-line-fixture>第一行 第二行 第三行 第四行 第五行</p>
+      </div>
     </article>
   ),
 }));
@@ -29,6 +31,7 @@ describe("PdfPreview pagination", () => {
   let measuredHeight = 0;
   let originalScrollHeight: PropertyDescriptor | undefined;
   let originalGetBoundingClientRect: typeof HTMLElement.prototype.getBoundingClientRect;
+  let originalCreateRange: typeof document.createRange;
 
   function setMeasuredHeight(height: number) {
     measuredHeight = height;
@@ -40,6 +43,7 @@ describe("PdfPreview pagination", () => {
       "scrollHeight",
     );
     originalGetBoundingClientRect = HTMLElement.prototype.getBoundingClientRect;
+    originalCreateRange = document.createRange;
 
     Object.defineProperty(HTMLElement.prototype, "scrollHeight", {
       configurable: true,
@@ -49,7 +53,11 @@ describe("PdfPreview pagination", () => {
     });
 
     HTMLElement.prototype.getBoundingClientRect = function getBoundingClientRect() {
-      if (this.hasAttribute("data-pagination-header")) {
+      if (this.hasAttribute("aria-hidden")) {
+        return rect(0, 0);
+      }
+
+      if (this.hasAttribute("data-pagination-item") || this.hasAttribute("data-line-fixture")) {
         return rect(0, measuredHeight);
       }
 
@@ -62,6 +70,7 @@ describe("PdfPreview pagination", () => {
       Object.defineProperty(HTMLElement.prototype, "scrollHeight", originalScrollHeight);
     }
     HTMLElement.prototype.getBoundingClientRect = originalGetBoundingClientRect;
+    document.createRange = originalCreateRange;
   });
 
   it("keeps content below one A4 page on a single PDF page", async () => {
@@ -109,6 +118,40 @@ describe("PdfPreview pagination", () => {
         "data-pdf-num-pages",
         "1",
       );
+    });
+  });
+
+  it("breaks at a previous text line instead of cutting through a line", async () => {
+    setMeasuredHeight(1400);
+    document.createRange = () => ({
+      selectNodeContents: vi.fn(),
+      getClientRects: () => [
+        rect(0, 180),
+        rect(180, 420),
+        rect(420, 660),
+        rect(660, 900),
+        rect(900, 1140),
+      ],
+      detach: vi.fn(),
+    } as unknown as Range);
+
+    render(
+      <PdfPreview
+        content={emptyResumeContent()}
+        resolved={{
+          source: "unified",
+          id: "professional",
+          templateId: "professional",
+          html: "<article></article>",
+          css: null,
+        }}
+      />,
+    );
+
+    await waitFor(() => {
+      const ready = document.querySelector("[data-pdf-ready]");
+      expect(ready).toHaveAttribute("data-pdf-num-pages", "2");
+      expect(ready).toHaveAttribute("data-pdf-breaks", "[894]");
     });
   });
 });

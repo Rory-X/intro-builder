@@ -1,5 +1,4 @@
-import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { EventType, type BaseEvent } from "@ag-ui/core";
+import { act, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import EditorClient from "@/app/(app)/resume/[id]/edit/editor-client";
 import { DEFAULT_STYLE_SETTINGS, emptyResumeContent } from "@/lib/resume-schema";
@@ -49,7 +48,6 @@ const saveResumeMock = vi.fn();
 const exportPreviewImageMock = vi.fn();
 const toastErrorMock = vi.fn();
 const toastSuccessMock = vi.fn();
-const originalScrollTo = Element.prototype.scrollTo;
 
 vi.mock("@/app/(app)/resume/[id]/edit/actions", () => ({
   saveResume: (...args: unknown[]) => saveResumeMock(...args),
@@ -110,23 +108,10 @@ describe("EditorClient live preview", () => {
       unobserve() {}
       disconnect() {}
     } as unknown as typeof ResizeObserver;
-    Object.defineProperty(Element.prototype, "scrollTo", {
-      configurable: true,
-      value: vi.fn(),
-    });
   });
 
   afterEach(() => {
     vi.useRealTimers();
-    if (originalScrollTo) {
-      Object.defineProperty(Element.prototype, "scrollTo", {
-        configurable: true,
-        value: originalScrollTo,
-      });
-    } else {
-      delete (Element.prototype as { scrollTo?: Element["scrollTo"] }).scrollTo;
-    }
-    vi.unstubAllGlobals();
   });
 
   it("keeps the server-resolved unified template for classic", () => {
@@ -149,6 +134,7 @@ describe("EditorClient live preview", () => {
         initialIsPublic={false}
         initialSlug={null}
         initialUpdatedAtIso={new Date().toISOString()}
+        initialNowIso={new Date().toISOString()}
         initialResolvedTemplate={unifiedResolved}
         uploadedTemplates={[]}
         allTemplates={DB_TEMPLATE_ROWS}
@@ -173,6 +159,7 @@ describe("EditorClient live preview", () => {
         initialIsPublic={false}
         initialSlug={null}
         initialUpdatedAtIso={new Date().toISOString()}
+        initialNowIso={new Date().toISOString()}
         initialResolvedTemplate={DB_RESOLVED}
         uploadedTemplates={[]}
         allTemplates={DB_TEMPLATE_ROWS}
@@ -210,6 +197,7 @@ describe("EditorClient live preview", () => {
         initialIsPublic={false}
         initialSlug={null}
         initialUpdatedAtIso={new Date().toISOString()}
+        initialNowIso={new Date().toISOString()}
         initialResolvedTemplate={DB_RESOLVED}
         uploadedTemplates={[]}
         allTemplates={DB_TEMPLATE_ROWS}
@@ -219,12 +207,40 @@ describe("EditorClient live preview", () => {
 
     const toolbar = screen.getByTestId("editor-toolbar");
     expect(toolbar).toHaveTextContent("排版");
-    expect(toolbar).toHaveTextContent("AI 诊断");
     expect(screen.getAllByRole("button", { name: "排版" })).toHaveLength(1);
-    expect(screen.getByRole("button", { name: "AI 诊断" })).toBeInTheDocument();
+
+    const templateButton = screen.getByRole("button", { name: "模板" });
+    fireEvent.click(templateButton);
+    expect(templateButton.className).toContain("bg-primary/5");
+    expect(templateButton.className).toContain("font-semibold");
+    expect(templateButton.className).toContain("text-primary");
+    expect(templateButton.className).not.toContain("text-primary-foreground");
   });
 
-  it("toggles Agent mode without unmounting the live preview", async () => {
+  it("uses a solid blue toolbar state when public sharing is enabled", () => {
+    render(
+      <EditorClient
+        id="r1"
+        initialTitle="简历"
+        initialTemplate="professional"
+        initialContent={emptyResumeContent()}
+        initialIsPublic
+        initialSlug="public-slug"
+        initialUpdatedAtIso={new Date().toISOString()}
+        initialNowIso={new Date().toISOString()}
+        initialResolvedTemplate={DB_RESOLVED}
+        uploadedTemplates={[]}
+        allTemplates={DB_TEMPLATE_ROWS}
+        from={null}
+      />,
+    );
+
+    const shareButton = screen.getByRole("button", { name: "公开分享" });
+    expect(shareButton.className).toContain("bg-primary");
+    expect(shareButton.className).toContain("text-primary-foreground");
+  });
+
+  it("uses a light blue toolbar state while the share popover is open but not enabled", () => {
     render(
       <EditorClient
         id="r1"
@@ -234,6 +250,7 @@ describe("EditorClient live preview", () => {
         initialIsPublic={false}
         initialSlug={null}
         initialUpdatedAtIso={new Date().toISOString()}
+        initialNowIso={new Date().toISOString()}
         initialResolvedTemplate={DB_RESOLVED}
         uploadedTemplates={[]}
         allTemplates={DB_TEMPLATE_ROWS}
@@ -241,161 +258,15 @@ describe("EditorClient live preview", () => {
       />,
     );
 
-    expect(screen.getByTestId("resume-export-preview")).toBeInTheDocument();
+    const shareButton = screen.getByRole("button", { name: "公开分享" });
+    fireEvent.click(shareButton);
 
-    await act(async () => {
-      fireEvent.click(screen.getByRole("button", { name: "Agent 模式" }));
-    });
-
-    expect(screen.getAllByText("简历 Agent").length).toBeGreaterThan(0);
-    expect(screen.getByRole("button", { name: "切回编辑" })).toBeInTheDocument();
-    expect(screen.getByTestId("resume-export-preview")).toBeInTheDocument();
+    expect(shareButton.className).toContain("bg-primary/5");
+    expect(shareButton.className).toContain("text-primary");
+    expect(shareButton.className).not.toContain("text-primary-foreground");
   });
 
-  it("keeps unsaved editor values when switching out of Agent mode", async () => {
-    const content = emptyResumeContent();
-    content.basics.name = "旧姓名";
-
-    render(
-      <EditorClient
-        id="r1"
-        initialTitle="简历"
-        initialTemplate="professional"
-        initialContent={content}
-        initialIsPublic={false}
-        initialSlug={null}
-        initialUpdatedAtIso={new Date().toISOString()}
-        initialResolvedTemplate={DB_RESOLVED}
-        uploadedTemplates={[]}
-        allTemplates={DB_TEMPLATE_ROWS}
-        from={null}
-      />,
-    );
-
-    await act(async () => {
-      fireEvent.change(screen.getByLabelText("姓名"), {
-        target: { value: "阶段三候选人" },
-      });
-    });
-    expect(screen.getByRole("heading", { name: "阶段三候选人" })).toBeInTheDocument();
-
-    await act(async () => {
-      fireEvent.click(screen.getByRole("button", { name: "Agent 模式" }));
-    });
-    expect(screen.getByText("简历 Agent")).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "阶段三候选人" })).toBeInTheDocument();
-
-    await act(async () => {
-      fireEvent.click(screen.getByRole("button", { name: "切回编辑" }));
-    });
-
-    expect(screen.getByLabelText("姓名")).toHaveValue("阶段三候选人");
-    expect(screen.getByRole("heading", { name: "阶段三候选人" })).toBeInTheDocument();
-  });
-
-  it("applies an Agent summary patch through RHF after confirmation", async () => {
-    vi.useRealTimers();
-    const content = emptyResumeContent();
-    content.basics.summary = "三年前端经验。";
-    const flushListener = vi.fn();
-    window.addEventListener("resume:flush-autosave", flushListener);
-    const fetchMock = vi.fn<
-      (...args: [RequestInfo | URL, RequestInit?]) => Promise<Response>
-    >(async () => {
-      return agUiResponse({
-        text: "我准备了一条个人总结改写建议。",
-        toolCalls: [
-          {
-            id: "tool_1",
-            name: "resume_update_section",
-            status: "completed",
-            title: "改写个人总结",
-            summary: "生成一版更聚焦的个人总结。",
-            input: {},
-            result: {},
-          },
-        ],
-        proposedOperations: [
-          {
-            id: "op_1",
-            toolCallId: "tool_1",
-            label: "应用个人总结改写",
-            section: "summary",
-            fieldPath: "basics.summary",
-            operation: "update_section",
-            beforePlainText: "三年前端经验。",
-            afterPlainText: "三年前端工程经验，擅长 React 与工程化交付。",
-            changeSummary: "让总结更具体。",
-            riskFlags: [],
-          },
-        ],
-      });
-    });
-    vi.stubGlobal("fetch", fetchMock);
-
-    try {
-      render(
-        <EditorClient
-          id="r1"
-          initialTitle="简历"
-          initialTemplate="professional"
-          initialContent={content}
-          initialIsPublic={false}
-          initialSlug={null}
-          initialUpdatedAtIso={new Date().toISOString()}
-          initialResolvedTemplate={DB_RESOLVED}
-          uploadedTemplates={[]}
-          allTemplates={DB_TEMPLATE_ROWS}
-          from={null}
-        />,
-      );
-
-      await act(async () => {
-        fireEvent.click(screen.getByRole("button", { name: "Agent 模式" }));
-      });
-      await act(async () => {
-        fireEvent.click(screen.getByRole("button", { name: "诊断整份简历" }));
-      });
-
-      await waitFor(() => {
-        expect(fetchMock).toHaveBeenCalledWith(
-          "/api/agent/runs",
-          expect.objectContaining({
-            method: "POST",
-            headers: expect.objectContaining({ Accept: "text/event-stream" }),
-          }),
-        );
-      });
-
-      await act(async () => {
-        fireEvent.click(await screen.findByRole("button", { name: "应用" }));
-      });
-
-      expect(flushListener).toHaveBeenCalledTimes(1);
-
-      await act(async () => {
-        fireEvent.click(screen.getByRole("button", { name: "切回编辑" }));
-      });
-
-      expect(screen.getByLabelText("自我介绍")).toHaveValue(
-        "三年前端工程经验，擅长 React 与工程化交付。",
-      );
-    } finally {
-      window.removeEventListener("resume:flush-autosave", flushListener);
-    }
-  });
-
-  it("opens Agent as a mobile sheet entry", async () => {
-    Object.defineProperty(window, "matchMedia", {
-      configurable: true,
-      value: vi.fn().mockImplementation((query: string) => ({
-        matches: query !== "(min-width: 1024px)",
-        media: query,
-        addEventListener: vi.fn(),
-        removeEventListener: vi.fn(),
-      })),
-    });
-
+  it("animates title editing without increasing the title input font size", () => {
     render(
       <EditorClient
         id="r1"
@@ -405,6 +276,7 @@ describe("EditorClient live preview", () => {
         initialIsPublic={false}
         initialSlug={null}
         initialUpdatedAtIso={new Date().toISOString()}
+        initialNowIso={new Date().toISOString()}
         initialResolvedTemplate={DB_RESOLVED}
         uploadedTemplates={[]}
         allTemplates={DB_TEMPLATE_ROWS}
@@ -412,14 +284,13 @@ describe("EditorClient live preview", () => {
       />,
     );
 
-    expect(screen.getByText("请在电脑端使用简历排版功能")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "重命名" }));
 
-    await act(async () => {
-      fireEvent.click(screen.getByRole("button", { name: "打开 Agent" }));
-    });
-
-    expect(screen.getAllByText("简历 Agent").length).toBeGreaterThan(0);
-    expect(screen.getByRole("button", { name: "切回编辑" })).toBeInTheDocument();
+    const input = screen.getByLabelText("简历名称");
+    expect(input.className).toContain("animate-in");
+    expect(input.className).toContain("text-[0.8rem]");
+    expect(input.className).toContain("md:text-[0.8rem]");
+    expect(input.className).toContain("focus-visible:ring-0");
   });
 
   it("shows autosave status details on the save badge", () => {
@@ -434,6 +305,7 @@ describe("EditorClient live preview", () => {
         initialIsPublic={false}
         initialSlug={null}
         initialUpdatedAtIso="2026-05-19T11:21:00.000Z"
+        initialNowIso="2026-05-19T11:26:00.000Z"
         initialResolvedTemplate={DB_RESOLVED}
         uploadedTemplates={[]}
         allTemplates={DB_TEMPLATE_ROWS}
@@ -444,7 +316,8 @@ describe("EditorClient live preview", () => {
     const badge = screen.getByTestId("autosave-status");
     expect(badge).toHaveTextContent("5分钟前保存");
     expect(badge).toHaveAttribute("title", "当前自动保存状态：5分钟前保存");
-    expect(screen.getByText("当前自动保存状态：5分钟前保存")).toBeInTheDocument();
+    // 重设计后保存状态收成图标:可见文案走 sr-only(textContent 已覆盖),
+    // 完整描述通过 title 属性 + hover tooltip 呈现(不常驻 DOM)。
   });
 
   it("exports the current live preview as a PNG image", async () => {
@@ -457,6 +330,7 @@ describe("EditorClient live preview", () => {
         initialIsPublic={false}
         initialSlug={null}
         initialUpdatedAtIso={new Date().toISOString()}
+        initialNowIso={new Date().toISOString()}
         initialResolvedTemplate={DB_RESOLVED}
         uploadedTemplates={[]}
         allTemplates={DB_TEMPLATE_ROWS}
@@ -464,10 +338,14 @@ describe("EditorClient live preview", () => {
       />,
     );
 
+    expect(screen.getByRole("button", { name: "导出简历" }).className).toContain("font-bold");
+
     // Open the export dropdown then click "导出图片"
     await act(async () => {
       fireEvent.click(screen.getByRole("button", { name: "导出简历" }));
     });
+    expect(screen.getByRole("button", { name: "下载 PDF" }).className).toContain("whitespace-nowrap");
+    expect(screen.getByRole("button", { name: "下载 PDF" }).className).not.toContain("w-full");
     await act(async () => {
       fireEvent.click(screen.getByRole("button", { name: "导出图片" }));
     });
@@ -496,6 +374,7 @@ describe("EditorClient live preview", () => {
           initialIsPublic={false}
           initialSlug={null}
           initialUpdatedAtIso={iso}
+          initialNowIso="2026-05-19T11:26:00.000Z"
           initialResolvedTemplate={DB_RESOLVED}
           uploadedTemplates={[]}
           allTemplates={DB_TEMPLATE_ROWS}
@@ -518,6 +397,7 @@ describe("EditorClient live preview", () => {
         initialIsPublic={false}
         initialSlug={null}
         initialUpdatedAtIso={new Date().toISOString()}
+        initialNowIso={new Date().toISOString()}
         initialResolvedTemplate={DB_RESOLVED}
         uploadedTemplates={[]}
         allTemplates={DB_TEMPLATE_ROWS}
@@ -536,41 +416,3 @@ describe("EditorClient live preview", () => {
     expect(screen.getByRole("button", { name: "导出简历" })).toBeEnabled();
   });
 });
-
-function agUiResponse({
-  text,
-  toolCalls,
-  proposedOperations,
-}: {
-  text: string;
-  toolCalls: unknown[];
-  proposedOperations: unknown[];
-}): Response {
-  const events: BaseEvent[] = [
-    { type: EventType.RUN_STARTED, threadId: "resume_1", runId: "req_test" },
-    {
-      type: EventType.TEXT_MESSAGE_START,
-      messageId: "msg_assistant_1",
-      role: "assistant",
-    },
-    {
-      type: EventType.TEXT_MESSAGE_CONTENT,
-      messageId: "msg_assistant_1",
-      delta: text,
-    },
-    { type: EventType.TEXT_MESSAGE_END, messageId: "msg_assistant_1" },
-    ...toolCalls.map((toolCall) => ({
-      type: EventType.TOOL_CALL_RESULT,
-      messageId: `${(toolCall as { id: string }).id}_result`,
-      toolCallId: (toolCall as { id: string }).id,
-      role: "tool" as const,
-      content: JSON.stringify({ toolCall, proposedOperations }),
-    })),
-    { type: EventType.RUN_FINISHED, threadId: "resume_1", runId: "req_test" },
-  ];
-
-  return new Response(events.map((event) => `data: ${JSON.stringify(event)}\n\n`).join(""), {
-    status: 200,
-    headers: { "content-type": "text/event-stream" },
-  });
-}

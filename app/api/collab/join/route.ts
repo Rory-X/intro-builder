@@ -3,6 +3,7 @@ import { SignJWT } from "jose";
 import { db } from "@/db";
 import { collabSessions } from "@/db/schema";
 import { eq } from "drizzle-orm";
+import { withDbRetry } from "@/lib/db-retry";
 
 export async function POST(req: Request) {
   const { inviteToken, mentorName } = await req.json();
@@ -12,9 +13,11 @@ export async function POST(req: Request) {
   }
 
   // Look up session
-  const [session] = await db.select().from(collabSessions).where(
-    eq(collabSessions.inviteToken, inviteToken),
-  ).limit(1);
+  const [session] = await withDbRetry("collab.join.read", () =>
+    db.select().from(collabSessions).where(
+      eq(collabSessions.inviteToken, inviteToken),
+    ).limit(1),
+  );
 
   if (!session) {
     return NextResponse.json({ error: "邀请链接无效" }, { status: 404 });
@@ -25,9 +28,11 @@ export async function POST(req: Request) {
   }
 
   // Update session with mentor name, mark active
-  await db.update(collabSessions)
-    .set({ mentorName: mentorName.trim(), status: "active" })
-    .where(eq(collabSessions.id, session.id));
+  await withDbRetry("collab.join.write", () =>
+    db.update(collabSessions)
+      .set({ mentorName: mentorName.trim(), status: "active" })
+      .where(eq(collabSessions.id, session.id)),
+  );
 
   // Issue PartyKit connection JWT (25h to cover session lifetime)
   const secret = new TextEncoder().encode(process.env.COLLAB_JWT_SECRET!);

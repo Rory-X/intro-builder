@@ -1,0 +1,171 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Template Slot Fields",
+  "description": "模板 HTML data-bind 可用字段的完整定义。供 template-studio skill 和校验脚本使用。",
+  "definitions": {
+    "bindingType": {
+      "enum": ["string", "rich-text", "image", "icon", "loop"]
+    }
+  },
+  "namespaces": {
+    "profile": {
+      "description": "基础信息（新模板统一前缀，替代旧 basics.*）",
+      "fields": {
+        "profile.name": {
+          "type": "string",
+          "description": "姓名",
+          "required_in_template": true
+        },
+        "profile.title": {
+          "type": "string",
+          "description": "求职方向 / 职位头衔"
+        },
+        "profile.status": {
+          "type": "string",
+          "description": "求职状态（如「在看机会」）"
+        },
+        "profile.photo": {
+          "type": "image",
+          "description": "头像 URL。必须使用 <img data-bind=\"profile.photo\">，不可用 <slot>",
+          "element": "img",
+          "note": "用户未上传时渲染器自动移除该 img 节点"
+        },
+        "profile.summary": {
+          "type": "string",
+          "description": "自我介绍"
+        }
+      }
+    },
+    "contacts": {
+      "description": "联系方式循环（从 basics 自动派生：phone/email/location/website）",
+      "loop_binding": "profile.contacts",
+      "note": "城市通过此循环显示（type=location），不要在 profile 区单独放城市字段",
+      "fields": {
+        "contact.icon": {
+          "type": "icon",
+          "description": "Lucide 图标组件（自动按 type 匹配：Phone/Mail/MapPin/Globe）"
+        },
+        "contact.label": {
+          "type": "string",
+          "description": "显示文本（电话号码 / 邮箱地址 / 城市名 / URL）"
+        }
+      }
+    },
+    "section": {
+      "description": "分区信息（在 sectionOrder 循环内使用）",
+      "loop_binding": "sectionOrder",
+      "fields": {
+        "section.title": {
+          "type": "string",
+          "description": "分区标题（如「工作经历」「教育背景」「项目经历」）",
+          "required_in_template": true
+        },
+        "section.body": {
+          "type": "rich-text",
+          "description": "分区级富文本（技能、自定义模块的正文内容）"
+        },
+        "section.items": {
+          "type": "loop",
+          "description": "该分区下的条目列表"
+        }
+      }
+    },
+    "item": {
+      "description": "条目字段（在 section.items 循环内使用）。从 experience/education/projects/research 统一映射。",
+      "loop_binding": "section.items",
+      "fields": {
+        "item.title": {
+          "type": "string",
+          "description": "主标题（公司名/学校名/项目名）",
+          "source": "experience.company / education.school / projects.name / research.name",
+          "required_in_template": true
+        },
+        "item.subtitle": {
+          "type": "string",
+          "description": "副标题（职位/学位+专业/角色）",
+          "source": "experience.title / education.degree+major / projects.role / research.role"
+        },
+        "item.dateRange": {
+          "type": "string",
+          "description": "时间范围（格式：start – end）",
+          "source": "start + end 拼接"
+        },
+        "item.location": {
+          "type": "string",
+          "description": "地点（城市/远程）",
+          "source": "experience.location / education.location / projects.location",
+          "note": "AI 生成模板容易遗漏此字段，必须留出显示位置"
+        },
+        "item.meta": {
+          "type": "string",
+          "description": "补充信息（技术栈/GPA）",
+          "source": "projects.stack.join(' · ') / education.gpa",
+          "note": "AI 生成模板容易遗漏此字段，必须留出显示位置"
+        },
+        "item.link": {
+          "type": "string",
+          "description": "项目链接 / 论文链接",
+          "source": "projects.link / research.link",
+          "note": "AI 生成模板容易遗漏此字段，必须留出显示位置"
+        },
+        "item.bullets": {
+          "type": "rich-text",
+          "description": "详细描述（TipTap JSON 富文本）",
+          "source": "experience.content / education.highlights / projects.content / research.content",
+          "required_in_template": true
+        }
+      }
+    }
+  },
+  "deprecated": {
+    "description": "旧模板兼容写法，新模板不要使用",
+    "bindings": {
+      "basics.name": "→ profile.name",
+      "basics.title": "→ profile.title",
+      "basics.email": "→ contact.label (通过 profile.contacts 循环)",
+      "basics.phone": "→ contact.label (通过 profile.contacts 循环)",
+      "basics.location": "→ contact.label (通过 profile.contacts 循环)",
+      "basics.website": "→ contact.label (通过 profile.contacts 循环)",
+      "basics.status": "→ profile.status",
+      "basics.summary": "→ profile.summary",
+      "basics.photo": "→ profile.photo (img 标签)",
+      "basics.icon.Mail": "→ contact.icon (自动处理)",
+      "basics.icon.Phone": "→ contact.icon (自动处理)",
+      "basics.icon.MapPin": "→ contact.icon (自动处理)",
+      "basics.icon.Globe": "→ contact.icon (自动处理)",
+      "basics.icon.Clock": "→ contact.icon (自动处理)"
+    }
+  },
+  "validation_rules": [
+    {
+      "rule": "no_slot_for_images",
+      "description": "profile.photo / basics.photo 必须用 <img> 标签，不能用 <slot>",
+      "severity": "error"
+    },
+    {
+      "rule": "prefer_profile_over_basics",
+      "description": "新模板应使用 profile.* 而非 basics.*",
+      "severity": "warning"
+    },
+    {
+      "rule": "item_location_present",
+      "description": "模板应为 item.location 留出显示位置",
+      "severity": "warning"
+    },
+    {
+      "rule": "item_meta_present",
+      "description": "模板应为 item.meta 留出显示位置",
+      "severity": "warning"
+    },
+    {
+      "rule": "item_link_present",
+      "description": "模板应为 item.link 留出显示位置",
+      "severity": "warning"
+    },
+    {
+      "rule": "no_standalone_city",
+      "description": "城市不应在 profile 区单独显示，应通过 profile.contacts 循环展示",
+      "severity": "warning"
+    }
+  ]
+}

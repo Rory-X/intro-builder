@@ -23,9 +23,9 @@ import { EducationEditor } from "@/components/editor/education-editor";
 import { ProjectsEditor } from "@/components/editor/projects-editor";
 import { ResearchEditor } from "@/components/editor/research-editor";
 import { SkillsEditor } from "@/components/editor/skills-editor";
+import { BlockSectionEditor } from "@/components/editor/block-section-editor";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { Separator } from "@/components/ui/separator";
 import {
   Sheet,
   SheetContent,
@@ -33,7 +33,9 @@ import {
   SheetHeader,
   SheetTitle,
 } from "@/components/ui/sheet";
-import { Loader2, Share2, PanelRightClose, PanelRightOpen, MessageSquare, LayoutTemplate, ChevronLeft } from "lucide-react";
+import { Loader2, Share2, PanelRightClose, PanelRightOpen, MessageSquare, LayoutTemplate, ChevronLeft, PencilLine, CloudCheck, Copy, CircleAlert } from "lucide-react";
+import { Popover, PopoverContent, PopoverDescription, PopoverHeader, PopoverTitle, PopoverTrigger } from "@/components/ui/popover";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import type { AllTemplatesItem, TemplateId } from "@/lib/templates/registry";
 import {
   uploadedTemplateToSerializable,
@@ -78,6 +80,9 @@ type Props = {
   // serializer has dropped Date through the SC → CC boundary in dev, which
   // would crash `lastSavedAt.getTime()` on first render. Strings are safe.
   initialUpdatedAtIso: string;
+  // Server-rendered relative time labels must use the same "now" on the
+  // client hydration pass; otherwise crossing a minute boundary changes text.
+  initialNowIso: string;
   // Pre-resolved template + the full set of uploaded templates so the
   // client preview can dispatch built-in vs uploaded without a round
   // trip on each template switch. Required because every code path that
@@ -141,7 +146,13 @@ function formatRelativeSaveTime(savedAt: Date, now: Date): string {
   return `${days}天前保存`;
 }
 
-export default function EditorClient({ id, initialTitle, initialTemplate, initialContent, initialIsPublic, initialSlug, initialUpdatedAtIso, initialResolvedTemplate, uploadedTemplates, allTemplates, favoritedTemplateIds = [], from }: Props) {
+function parseIsoDate(value: string): Date | null {
+  if (!value) return null;
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? null : date;
+}
+
+export default function EditorClient({ id, initialTitle, initialTemplate, initialContent, initialIsPublic, initialSlug, initialUpdatedAtIso, initialNowIso, initialResolvedTemplate, uploadedTemplates, allTemplates, favoritedTemplateIds = [], from }: Props) {
   const backHref = from === "templates" ? "/templates" : "/dashboard";
   const backLabel = from === "templates" ? "模板库" : "我的简历";
   const isDesktop = useSyncExternalStore(
@@ -159,16 +170,18 @@ export default function EditorClient({ id, initialTitle, initialTemplate, initia
   const [isPublic, setIsPublic] = useState(initialIsPublic);
   const [publicSlug, setPublicSlug] = useState<string | null>(initialSlug);
   const [saveError, setSaveError] = useState<string | null>(null);
+  const initialNow = parseIsoDate(initialNowIso) ?? parseIsoDate(initialUpdatedAtIso) ?? new Date(0);
   const [lastSavedAt, setLastSavedAt] = useState<Date>(() => {
-    const parsed = initialUpdatedAtIso ? new Date(initialUpdatedAtIso) : null;
-    return parsed && !Number.isNaN(parsed.getTime()) ? parsed : new Date();
+    return parseIsoDate(initialUpdatedAtIso) ?? initialNow;
   });
-  const [now, setNow] = useState(() => new Date());
+  const [now, setNow] = useState(() => initialNow);
   const [isExportingImage, setIsExportingImage] = useState(false);
   const [paginationData, setPaginationData] = useState<{ pageBreaks: number[]; totalHeight: number } | null>(null);
   const [pendingTemplateId, setPendingTemplateId] = useState<TemplateId | null>(null);
+  const [activeSection, setActiveSection] = useState<string | null>("basics");
   const [showTemplatePanel, setShowTemplatePanel] = useState(false);
   const [isAgentMode, setIsAgentMode] = useState(false);
+  const [isSharePopoverOpen, setIsSharePopoverOpen] = useState(false);
   const [isTogglingShare, setIsTogglingShare] = useState(false);
   const [isPending, startTransition] = useTransition();
   const previewRootRef = useRef<HTMLDivElement>(null);
@@ -222,6 +235,19 @@ export default function EditorClient({ id, initialTitle, initialTemplate, initia
     }
     return items;
   }, [allTemplates, favoritedTemplateIds, uploadedById]);
+
+  const recentTemplateItems = useMemo<TemplatePanelItem[]>(() => {
+    const items: TemplatePanelItem[] = [];
+    // allTemplates 按 createdAt 升序，倒序遍历取最新 20 条
+    for (let i = allTemplates.length - 1; i >= 0 && items.length < 20; i--) {
+      const t = allTemplates[i];
+      const up = uploadedById.get(t.id);
+      if (!up) continue;
+      items.push({ id: t.id, name: t.name, resolved: uploadedTemplateToSerializable(t.id, up) });
+    }
+    return items;
+  }, [allTemplates, uploadedById]);
+
   const persistResume = useCallback(
     async (content: ResumeContent, resumeTitle: string) => {
       await saveResume(id, content, resumeTitle);
@@ -497,6 +523,29 @@ export default function EditorClient({ id, initialTitle, initialTemplate, initia
     document.addEventListener("mouseup", handleMouseUp);
   }, []);
 
+  const [isEditingTitle, setIsEditingTitle] = useState(false);
+  const titleInputRef = useRef<HTMLInputElement>(null);
+  useEffect(() => {
+    if (isEditingTitle) {
+      titleInputRef.current?.focus();
+      titleInputRef.current?.select();
+    }
+  }, [isEditingTitle]);
+
+  const shareUrl =
+    publicSlug && typeof window !== "undefined"
+      ? `${window.location.origin}/r/${publicSlug}`
+      : publicSlug
+        ? `/r/${publicSlug}`
+        : "";
+  const onCopyShareLink = useCallback(() => {
+    if (!shareUrl) return;
+    navigator.clipboard
+      ?.writeText(shareUrl)
+      .then(() => toast.success("链接已复制"))
+      .catch(() => toast.error("复制失败"));
+  }, [shareUrl]);
+
   const savedLabel = formatRelativeSaveTime(lastSavedAt, now);
   const isSaving = autosave.status === "saving" || isPending;
   const saveStatusLabel = saveError
@@ -516,139 +565,215 @@ export default function EditorClient({ id, initialTitle, initialTemplate, initia
       {/* Toolbar — only visible on desktop */}
       {isDesktop && (
       <div className="sticky top-14 z-30 border-b border-border/60 bg-background/80 backdrop-blur-xl backdrop-saturate-150">
-        <div className="flex items-center py-2.5">
-          <div
-            data-testid="editor-toolbar"
-            className="flex min-w-0 flex-1 flex-nowrap items-center gap-2 overflow-x-auto px-6"
+        <TooltipProvider>
+        <div
+          data-testid="editor-toolbar"
+          className="flex items-center gap-1.5 px-4 pb-1.5 pt-0.5"
+        >
+          {/* ── 左组：导航 + 工具 ── */}
+          <a
+            href={backHref}
+            className="inline-flex shrink-0 items-center gap-0.5 rounded-md px-2 py-1.5 text-[0.8rem] text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
           >
-            <a
-              href={backHref}
-              className="inline-flex shrink-0 items-center gap-0.5 rounded-md px-2 py-1.5 text-sm text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
-            >
-              <ChevronLeft className="h-4 w-4" />
-              {backLabel}
-            </a>
-            <Separator orientation="vertical" className="h-5" />
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={() => {
-                setIsAgentMode(false);
-                setShowTemplatePanel((v) => !v);
-              }}
-              aria-pressed={showTemplatePanel}
-              className={cn(
-                "gap-1.5",
-                showTemplatePanel && "border-primary bg-primary/5 text-primary",
-              )}
-            >
-              <LayoutTemplate className="h-3.5 w-3.5" />
-              模板
-            </Button>
-            <SmartLayoutButton templateId={template} measureRef={previewRootRef} />
-            <StyleEditor />
-            <ModuleManager sectionOrder={sectionOrder} onOrderChange={handleOrderChange} />
-            <ResumeDiagnoseButton resumeId={id} />
-            <AgentModeToggle
-              active={isAgentMode}
-              onClick={() => {
-                setShowTemplatePanel(false);
-                setIsAgentMode((value) => !value);
-              }}
-            />
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={onToggleShare}
-              disabled={isTogglingShare}
-              aria-busy={isTogglingShare}
-              className="gap-1.5"
-            >
-              {isTogglingShare ? (
-                <Loader2 className="h-3.5 w-3.5 animate-spin" />
-              ) : (
-                <Share2 className="h-3.5 w-3.5" />
-              )}
-              {isTogglingShare
-                ? isPublic
-                  ? "关闭中"
-                  : "开启中"
-                : isPublic
-                  ? "关闭分享"
-                  : "开启分享"}
-            </Button>
-            {isPublic && publicSlug && (
-              <a
-                className="self-center rounded-full bg-primary/10 px-2.5 py-0.5 text-xs font-medium text-primary transition-colors hover:bg-primary/20"
-                href={`/r/${publicSlug}`}
-                target="_blank"
-                rel="noreferrer"
-              >
-                /r/{publicSlug}
-              </a>
+            <ChevronLeft className="h-4 w-4" />
+            {backLabel}
+          </a>
+          <div className="h-4 w-[2px] self-center rounded-full bg-border" />
+          <Button
+            size="sm"
+            variant="ghost"
+            onClick={() => {
+              setIsAgentMode(false);
+              setShowTemplatePanel((v) => !v);
+            }}
+            aria-pressed={showTemplatePanel}
+            className={cn(
+              "gap-1.5",
+              showTemplatePanel && "bg-primary/5 font-semibold text-primary hover:bg-primary/10 hover:text-primary dark:bg-primary/15 dark:hover:bg-primary/20",
             )}
-            <ExportButton
-              resumeId={id}
-              filename={title}
-              onExportImage={onExportImage}
-              isExportingImage={isExportingImage}
-              paginationData={paginationData}
-            />
-            <InviteCollabDialog resumeId={id} onSessionCreated={(sid) => setCollabSessionId(sid)} />
-            {collabState?.isConnected && (
-              <>
-                <Separator orientation="vertical" className="h-6" />
-                <VoiceChatControls
-                  provider={collabState.provider}
-                  enabled={collabState.presenceUsers.length >= 2}
-                />
-                <Separator orientation="vertical" className="h-6" />
-                <PresenceBar users={collabState.presenceUsers} isConnected={collabState.isConnected} />
-              </>
-            )}
-          </div>
-          <div
-            className="flex shrink-0 items-center justify-end gap-3 px-6"
           >
-            <Input
-              value={title}
-              onChange={(e) => setTitleState(e.target.value)}
-              className="w-48 text-base font-medium"
-            />
-            <span
-              data-testid="autosave-status"
-              title={saveStatusDescription}
-              className={cn(
-                "group relative inline-flex cursor-default items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-medium",
-                saveError
-                  ? "bg-destructive/10 text-destructive"
-                  : isSaving
-                    ? "bg-orange-500/10 text-orange-600 dark:text-orange-400"
-                    : autosave.status === "pending"
-                      ? "bg-sky-500/10 text-sky-600 dark:text-sky-400"
-                    : "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400",
-              )}
-            >
-              <span
-                className={cn(
-                  "h-1.5 w-1.5 rounded-full",
-                  saveError
-                    ? "bg-destructive"
-                    : isSaving
-                      ? "animate-pulse bg-orange-500"
-                      : autosave.status === "pending"
-                        ? "bg-sky-500"
-                      : "bg-emerald-500",
-                )}
+            <LayoutTemplate className="h-3.5 w-3.5" />
+            模板
+          </Button>
+          <StyleEditor />
+          <SmartLayoutButton templateId={template} measureRef={previewRootRef} />
+          <ModuleManager sectionOrder={sectionOrder} onOrderChange={handleOrderChange} />
+          <ResumeDiagnoseButton resumeId={id} />
+          <AgentModeToggle
+            active={isAgentMode}
+            onClick={() => {
+              setShowTemplatePanel(false);
+              setIsAgentMode((value) => !value);
+            }}
+          />
+
+          {collabState?.isConnected && (
+            <>
+              <div className="h-4 w-[2px] self-center rounded-full bg-border" />
+              <VoiceChatControls
+                provider={collabState.provider}
+                enabled={collabState.presenceUsers.length >= 2}
               />
-              {saveStatusLabel}
-              <span className="pointer-events-none absolute left-1/2 top-[calc(100%+0.4rem)] z-50 hidden w-max max-w-72 -translate-x-1/2 rounded-md bg-popover px-2.5 py-1.5 text-xs font-normal text-popover-foreground shadow-md ring-1 ring-foreground/10 group-hover:block">
-                {saveStatusDescription}
-              </span>
-            </span>
-            <CompletenessScore />
+              <PresenceBar users={collabState.presenceUsers} isConnected={collabState.isConnected} />
+            </>
+          )}
+
+          {/* ── 弹簧 ── */}
+          <div className="flex-1" />
+
+          {/* ── 右组：简历名(铅笔编辑) + 保存图标 ── */}
+          <div className="flex shrink-0 items-center gap-2.5">
+            <div className="relative flex h-8 w-56 shrink-0 items-center justify-end overflow-hidden">
+              {isEditingTitle ? (
+                <Input
+                  ref={titleInputRef}
+                  value={title}
+                  onChange={(e) => setTitleState(e.target.value)}
+                  onBlur={() => setIsEditingTitle(false)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" || e.key === "Escape") setIsEditingTitle(false);
+                  }}
+                  aria-label="简历名称"
+                  className="h-8 w-full animate-in fade-in zoom-in-95 duration-150 border-primary text-[0.8rem] font-medium focus-visible:border-primary focus-visible:ring-0 md:text-[0.8rem]"
+                />
+              ) : (
+                <div className="flex min-w-0 animate-in fade-in slide-in-from-right-1 items-center justify-end gap-2 duration-150">
+                  <button
+                    type="button"
+                    onClick={() => setIsEditingTitle(true)}
+                    aria-label="重命名"
+                    className="rounded p-1 text-muted-foreground/70 transition-colors hover:bg-accent hover:text-muted-foreground"
+                  >
+                    <PencilLine className="h-3 w-3" />
+                  </button>
+                  <span className="max-w-[200px] truncate text-[0.8rem] font-medium text-foreground">
+                    {title || "未命名简历"}
+                  </span>
+                </div>
+              )}
+            </div>
+            <Tooltip>
+              <TooltipTrigger
+                render={
+                  <span
+                    data-testid="autosave-status"
+                    title={saveStatusDescription}
+                    className={cn(
+                      "ml-0.5 inline-flex h-6 w-6 cursor-default items-center justify-center rounded-full",
+                      saveError
+                        ? "text-destructive"
+                        : isSaving
+                          ? "text-orange-500"
+                          : autosave.status === "pending"
+                            ? "text-sky-500"
+                            : "text-emerald-500",
+                    )}
+                  />
+                }
+              >
+                {saveError ? (
+                  <CircleAlert className="h-4 w-4" />
+                ) : isSaving ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : autosave.status === "pending" ? (
+                  <Loader2 className="h-4 w-4" />
+                ) : (
+                  <CloudCheck className="h-4 w-4" />
+                )}
+                <span className="sr-only">{saveStatusLabel}</span>
+              </TooltipTrigger>
+              <TooltipContent>{saveStatusDescription}</TooltipContent>
+            </Tooltip>
           </div>
+
+          <div className="h-4 w-[2px] self-center rounded-full bg-border" />
+          <CompletenessScore />
+          <div className="h-4 w-[2px] self-center rounded-full bg-border" />
+
+          {/* ── 分享：icon + popover(链接可复制) ── */}
+          <Popover open={isSharePopoverOpen} onOpenChange={setIsSharePopoverOpen}>
+            <PopoverTrigger
+              render={
+                <Button
+                  size="icon"
+                  variant="ghost"
+                  aria-label="公开分享"
+                  title="公开分享"
+                  className={cn(
+                    "h-8 w-8",
+                    isSharePopoverOpen && !isPublic && "bg-primary/5 font-semibold text-primary hover:bg-primary/10 hover:text-primary aria-expanded:!bg-primary/5 aria-expanded:!text-primary dark:bg-primary/15 dark:hover:bg-primary/20 dark:aria-expanded:!bg-primary/15",
+                    isPublic && "bg-primary text-primary-foreground hover:bg-primary/90 hover:text-primary-foreground",
+                  )}
+                />
+              }
+            >
+              {isTogglingShare ? <Loader2 className="h-4 w-4 animate-spin" /> : <Share2 className="h-4 w-4" />}
+            </PopoverTrigger>
+            <PopoverContent align="end" className="w-56">
+              {isPublic && publicSlug ? (
+                <>
+                  <PopoverHeader>
+                    <PopoverTitle className="flex items-center gap-2 text-sm">
+                      <span className="h-2 w-2 rounded-full bg-emerald-500" />
+                      公开分享已开启
+                    </PopoverTitle>
+                    <PopoverDescription className="text-xs">任何人凭此链接可查看只读简历（不可编辑）。</PopoverDescription>
+                  </PopoverHeader>
+                  <div className="flex items-center overflow-hidden rounded-lg border border-border bg-muted/40">
+                    <input
+                      readOnly
+                      value={shareUrl}
+                      className="min-w-0 flex-1 truncate bg-transparent px-2.5 py-1.5 text-xs text-muted-foreground outline-none"
+                    />
+                    <button
+                      type="button"
+                      onClick={onCopyShareLink}
+                      className="flex h-8 shrink-0 items-center gap-1 border-l border-border px-2.5 text-xs font-medium text-primary transition-colors hover:bg-accent"
+                    >
+                      <Copy className="h-3.5 w-3.5" />
+                      复制
+                    </button>
+                  </div>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={onToggleShare}
+                    disabled={isTogglingShare}
+                    className="w-full text-xs text-destructive hover:text-destructive"
+                  >
+                    {isTogglingShare ? "处理中…" : "关闭分享"}
+                  </Button>
+                </>
+              ) : (
+                <>
+                  <PopoverHeader>
+                    <PopoverTitle className="text-sm">公开分享</PopoverTitle>
+                    <PopoverDescription className="text-xs">开启后生成只读链接，任何人可凭链接查看你的简历。</PopoverDescription>
+                  </PopoverHeader>
+                  <Button
+                    size="sm"
+                    onClick={onToggleShare}
+                    disabled={isTogglingShare}
+                    className="w-full gap-1.5 text-xs"
+                  >
+                    {isTogglingShare ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Share2 className="h-3.5 w-3.5" />}
+                    开启分享
+                  </Button>
+                </>
+              )}
+            </PopoverContent>
+          </Popover>
+
+          <InviteCollabDialog resumeId={id} onSessionCreated={(sid) => setCollabSessionId(sid)} isActive={collabSessionId !== null} />
+          <ExportButton
+            resumeId={id}
+            filename={title}
+            onExportImage={onExportImage}
+            isExportingImage={isExportingImage}
+            paginationData={paginationData}
+          />
         </div>
+        </TooltipProvider>
       </div>
       )}
 
@@ -678,8 +803,8 @@ export default function EditorClient({ id, initialTitle, initialTemplate, initia
             <div
               ref={editorPanelRef}
               className={cn(
-                "thin-scrollbar h-full overflow-y-auto",
-                isAgentMode ? "p-0" : "space-y-6 p-6",
+                "thin-scrollbar editor-panel h-full overflow-y-auto overflow-x-hidden bg-background",
+                isAgentMode ? "p-0" : "p-3.5",
               )}
             >
               {isAgentMode ? (
@@ -694,57 +819,66 @@ export default function EditorClient({ id, initialTitle, initialTemplate, initia
                   onBackToEdit={() => setIsAgentMode(false)}
                 />
               ) : (
-                <>
-                  <div className={cn(
+              <div className="space-y-4">
+                <div className={cn(
+                  "rounded-lg transition-all duration-500",
+                  collabSync.highlightedFields.has("basics") && "ring-2 ring-violet-400/60 bg-violet-50/30 dark:bg-violet-950/20"
+                )} onClick={() => setActiveSection("basics")}>
+                  <BasicsEditor isActive={activeSection === "basics"} />
+                </div>
+                {sectionOrder.filter(k => k !== "basics").map((key) => (
+                  <div key={key} className={cn(
                     "rounded-lg transition-all duration-500",
-                    collabSync.highlightedFields.has("basics") && "ring-2 ring-violet-400/60 bg-violet-50/30 dark:bg-violet-950/20"
-                  )}>
-                    <BasicsEditor />
+                    collabSync.highlightedFields.has(key) && "ring-2 ring-violet-400/60 bg-violet-50/30 dark:bg-violet-950/20"
+                  )} onClick={() => setActiveSection(key)}>
+                    <SectionWrapper id={key} isActive={activeSection === key}>
+                      {key === "experience" && <ExperienceEditor resumeId={id} />}
+                      {key === "education" && <EducationEditor resumeId={id} />}
+                      {key === "projects" && <ProjectsEditor resumeId={id} />}
+                      {key === "research" && <ResearchEditor resumeId={id} />}
+                      {key === "skills" && <SkillsEditor resumeId={id} />}
+                      {key === "summary" && <BlockSectionEditor field="summary" placeholder="一段话概括你的背景、优势与求职意向…" />}
+                      {key === "awards" && <BlockSectionEditor field="awards" placeholder="如：2024 年国家奖学金&#10;ACM 区域赛银奖" />}
+                      {key === "portfolio" && <BlockSectionEditor field="portfolio" placeholder="放作品名称 + 链接 + 一句话说明…" />}
+                      {isCustomSection(key) && <CustomSectionEditor sectionId={key} resumeId={id} />}
+                    </SectionWrapper>
                   </div>
-                  {sectionOrder.filter(k => k !== "basics").map((key) => (
-                    <div key={key} className={cn(
-                      "rounded-lg transition-all duration-500",
-                      collabSync.highlightedFields.has(key) && "ring-2 ring-violet-400/60 bg-violet-50/30 dark:bg-violet-950/20"
-                    )}>
-                      <SectionWrapper id={key}>
-                        {key === "experience" && <ExperienceEditor resumeId={id} />}
-                        {key === "education" && <EducationEditor resumeId={id} />}
-                        {key === "projects" && <ProjectsEditor resumeId={id} />}
-                        {key === "research" && <ResearchEditor resumeId={id} />}
-                        {key === "skills" && <SkillsEditor resumeId={id} />}
-                        {isCustomSection(key) && <CustomSectionEditor sectionId={key} resumeId={id} />}
-                      </SectionWrapper>
-                    </div>
-                  ))}
-                </>
+                ))}
+              </div>
               )}
             </div>
             {/* 模板面板：覆盖左侧表单列（右侧预览常驻可见，换模板实时看效果）。
-                表单不卸载（仅被遮住），保留编辑状态与滚动位置。 */}
+                表单不卸载（仅被遮住），保留编辑状态与滚动位置。
+                点击右侧预览区域(backdrop)关闭面板。 */}
             {showTemplatePanel && !isAgentMode && (
-              <TemplateSwitchPanel
-                className="absolute inset-0 z-20"
-                favorites={favoriteTemplateItems}
-                currentTemplateId={template}
-                pendingTemplateId={pendingTemplateId}
-                previewContent={form.getValues() as ResumeContent}
-                onApply={changeTemplate}
-                onClose={() => setShowTemplatePanel(false)}
-              />
+              <>
+                <TemplateSwitchPanel
+                  className="absolute inset-0 z-20"
+                  favorites={favoriteTemplateItems}
+                  recent={recentTemplateItems}
+                  currentTemplateId={template}
+                  pendingTemplateId={pendingTemplateId}
+                  previewContent={form.getValues() as ResumeContent}
+                  onApply={changeTemplate}
+                  onClose={() => setShowTemplatePanel(false)}
+                />
+              </>
             )}
           </div>
           {/* Resize handle */}
           {!isAgentMode && (
             <div
-              className="flex w-1.5 shrink-0 cursor-col-resize items-center justify-center hover:bg-accent active:bg-accent"
+              className="group flex w-2 shrink-0 cursor-col-resize items-center justify-center"
               onMouseDown={handleMouseDown}
             >
-              <div className="h-8 w-0.5 rounded-full bg-border" />
+              <div className="h-8 w-1 rounded-full bg-border transition-all duration-200 group-hover:h-12 group-hover:bg-muted-foreground/50 group-active:bg-primary/60" />
             </div>
           )}
           <div
-            className="thin-scrollbar min-w-0 overflow-y-auto bg-muted p-6"
+            data-preview-scroll-pane=""
+            className="thin-scrollbar min-w-0 overflow-auto overscroll-contain bg-muted p-6"
             style={{ flex: `1 1 ${100 - splitPercent}%` }}
+            onClick={showTemplatePanel ? () => setShowTemplatePanel(false) : undefined}
           >
             <LivePreview ref={previewRootRef} resolvedTemplate={resolvedTemplate} />
             {/* Annotation highlights on preview (when collab active) */}
@@ -776,14 +910,12 @@ export default function EditorClient({ id, initialTitle, initialTemplate, initia
           <p className="max-w-sm text-sm text-muted-foreground">
             简历编辑与排版需要较大屏幕以获得最佳体验，请使用电脑浏览器打开此页面。
           </p>
-          <div className="mt-2 flex flex-wrap items-center justify-center gap-3">
-            <Button type="button" onClick={() => setIsAgentMode(true)}>
-              打开 Agent
-            </Button>
-            <a href="/dashboard" className="text-sm font-medium text-primary hover:underline">
-              返回我的简历
-            </a>
-          </div>
+          <a href="/dashboard" className="mt-2 text-sm font-medium text-primary hover:underline">
+            返回我的简历
+          </a>
+          <Button type="button" onClick={() => setIsAgentMode(true)}>
+            打开 Agent
+          </Button>
           <Sheet open={isAgentMode} onOpenChange={setIsAgentMode}>
             <SheetContent side="bottom" className="h-[88vh] gap-0 p-0" showCloseButton={false}>
               <SheetHeader className="sr-only">

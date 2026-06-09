@@ -3,6 +3,7 @@ import { auth } from "@/lib/auth";
 import { db } from "@/db";
 import { collabSessions } from "@/db/schema";
 import { eq, and } from "drizzle-orm";
+import { withDbRetry } from "@/lib/db-retry";
 
 /**
  * GET /api/collab/session-status?sessionId=xxx
@@ -15,6 +16,7 @@ export async function GET(req: Request) {
   if (!session?.user?.id) {
     return NextResponse.json({ error: "未登录" }, { status: 401 });
   }
+  const userId = session.user.id;
 
   const url = new URL(req.url);
   const sessionId = url.searchParams.get("sessionId");
@@ -23,12 +25,14 @@ export async function GET(req: Request) {
     return NextResponse.json({ error: "缺少 sessionId" }, { status: 400 });
   }
 
-  const [collab] = await db.select().from(collabSessions).where(
-    and(
-      eq(collabSessions.id, sessionId),
-      eq(collabSessions.ownerId, session.user.id),
-    ),
-  ).limit(1);
+  const [collab] = await withDbRetry("collab.sessionStatus", () =>
+    db.select().from(collabSessions).where(
+      and(
+        eq(collabSessions.id, sessionId),
+        eq(collabSessions.ownerId, userId),
+      ),
+    ).limit(1),
+  );
 
   if (!collab) {
     return NextResponse.json({ error: "会话不存在" }, { status: 404 });

@@ -277,6 +277,9 @@ function llmDataToResumeContent(data: LLMResumeData): ResumeContent {
     })),
     research: [],
     skills: skillGroupsToDoc(data.skills || []),
+    summary: emptyDoc(),
+    awards: emptyDoc(),
+    portfolio: emptyDoc(),
     custom: [],
     sectionOrder,
   };

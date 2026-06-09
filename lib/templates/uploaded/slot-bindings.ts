@@ -85,10 +85,9 @@ export const BASICS_BINDINGS = {
 
 export type BasicsBinding = keyof typeof BASICS_BINDINGS;
 
-// ─── Basics icon slots (for contact info) ────────────────────────
+// ─── Icon slots (basics.icon.*) ──────────────────────────────────
 // 为联系信息提供 icon 支持，例如 <slot data-bind="basics.icon.Mail">
-// 渲染器会调用 lookupLucideIcon 将其转换为 Lucide React 组件
-
+// 渲染为对应的 lucide 图标。兼容批量生成模板的写法。
 export const BASICS_ICON_BINDINGS = {
   "basics.icon.Mail": "Mail",
   "basics.icon.Phone": "Phone",
@@ -98,6 +97,8 @@ export const BASICS_ICON_BINDINGS = {
 } as const;
 
 export type BasicsIconBinding = keyof typeof BASICS_ICON_BINDINGS;
+
+export const ICON_BINDINGS: Record<string, string> = BASICS_ICON_BINDINGS;
 
 // ─── Profile value slots ─────────────────────────────────────────
 
@@ -191,6 +192,7 @@ export function isValidBinding(name: string): name is SlotBinding {
     name in BASICS_BINDINGS ||
     name in BASICS_ICON_BINDINGS ||
     name in PROFILE_BINDINGS ||
+    name in ICON_BINDINGS ||
     name in IMAGE_BINDINGS ||
     name in SECTION_BINDINGS ||
     name in ITEM_BINDINGS ||
@@ -243,7 +245,7 @@ export function resolveSection(
       title: meta.label,
       icon: decl?.icon ?? meta.iconName,
       iconColor: decl?.color,
-      kind: sectionId === "skills" ? "block" : "list",
+      kind: BLOCK_SECTION_IDS.has(sectionId) ? "block" : "list",
       source: "preset",
     };
   }
@@ -267,22 +269,26 @@ export function resolveSection(
 }
 
 function isPresetSection(id: string): boolean {
-  // 只列实际有 derivePresetItems 实现的 builtIn section（experience /
-  // education / projects / skills）—— awards / research / portfolio /
-  // activities / summary 这些非 builtIn preset 的数据在 ResumeContent.custom
-  // 数组里（见 module-manager.tsx addSection 的 "if !BUILTIN_SECTION_KEYS.has"
-  // 分支），所以走 resolveSection 的 custom 分支查 content.custom.find，而
-  // 不是 preset 分支。之前误把这些 ID 列入 preset，导致 derivePresetItems
-  // 走 default 返回 [] → resolveSection 返回 null → v2 模板里这些 section
-  // 不渲染。
+  // 有 derivePresetItems 实现的 builtIn section。注意 summary/awards/portfolio
+  // 现已提升为一等公民顶层字段（content.summary/awards/portfolio，富文本块，
+  // 与 skills 同型），不再寄生 content.custom[]，所以列在这里走 preset 分支；
+  // 它们的存量数据由 migrate-content 读时从 custom[] 搬到顶层字段。research/
+  // experience/education/projects 是结构化条目（kind=list），skills + 这三个
+  // 是富文本块（kind=block，见 resolveSection 的 BLOCK_SECTION_IDS）。
   return [
     "experience",
     "education",
     "projects",
     "research",
     "skills",
+    "summary",
+    "awards",
+    "portfolio",
   ].includes(id);
 }
+
+/** preset section 中按富文本块（section.body / 单 item.bullets）渲染的，与结构化条目列表（list）相对。 */
+const BLOCK_SECTION_IDS = new Set(["skills", "summary", "awards", "portfolio"]);
 
 // ─── Items derivation ─────────────────────────────────────────────
 
@@ -339,22 +345,37 @@ export function deriveItems(
   return derivePresetItems(id, content);
 }
 
+/** 有可点目标的联系字段类型。location 无可点目标，不在内。 */
+export type LinkableContactType = "email" | "phone" | "website";
+
+/**
+ * 把联系字段值转成可点 href —— email→mailto、phone→tel（去空格，空格在 tel
+ * URI 里非法、部分客户端会断）、website→https（缺协议头自动补）。
+ *
+ * 单一信源：deriveContacts（loop 路径 contact.href）与 html-slot-renderer 的
+ * 直绑路径（basics.email/phone/website 自动 linkify）共用这一处，避免两份
+ * href 计算逻辑漂移。
+ */
+export function contactHref(type: LinkableContactType, value: string): string {
+  if (type === "email") return `mailto:${value.trim()}`;
+  if (type === "phone") return `tel:${value.replace(/\s+/g, "")}`;
+  return /^https?:\/\//i.test(value) ? value : `https://${value}`;
+}
+
 export function deriveContacts(content: ResumeContent): ContactView[] {
   const { basics } = content;
   const contacts: Array<ContactView | null> = [
     basics.phone
-      ? { type: "phone", icon: "Phone", label: basics.phone, href: `tel:${basics.phone}` }
+      ? { type: "phone", icon: "Phone", label: basics.phone, href: contactHref("phone", basics.phone) }
       : null,
     basics.email
-      ? { type: "email", icon: "Mail", label: basics.email, href: `mailto:${basics.email}` }
+      ? { type: "email", icon: "Mail", label: basics.email, href: contactHref("email", basics.email) }
+      : null,
+    basics.location
+      ? { type: "location", icon: "MapPin", label: basics.location, href: "" }
       : null,
     basics.website
-      ? {
-          type: "website",
-          icon: "Monitor",
-          label: basics.website,
-          href: /^https?:\/\//i.test(basics.website) ? basics.website : `https://${basics.website}`,
-        }
+      ? { type: "website", icon: "Globe", label: basics.website, href: contactHref("website", basics.website) }
       : null,
   ];
   return contacts.filter((item): item is ContactView => item !== null);
@@ -366,6 +387,9 @@ function deriveSectionBody(
 ): TipTapJSON {
   if (section.id === "basics") return textToTipTap(content.basics.summary);
   if (section.id === "skills") return content.skills ?? emptyDoc();
+  if (section.id === "summary") return content.summary ?? emptyDoc();
+  if (section.id === "awards") return content.awards ?? emptyDoc();
+  if (section.id === "portfolio") return content.portfolio ?? emptyDoc();
   if (section.source === "custom") {
     return content.custom?.find((cs) => cs.id === section.id)?.content ?? emptyDoc();
   }
@@ -416,9 +440,9 @@ function derivePresetItems(sectionId: string, content: ResumeContent): ItemView[
       return (content.research ?? []).map((r) => ({
         title: r.name,
         subtitle: r.role,
-        meta: "",
+        meta: r.paperTitle ?? "",
         dateRange: formatDateRange(r.start, r.end),
-        location: "",
+        location: r.location ?? "",
         bullets: r.content,
         tags: [],
         link: r.link ?? "",
@@ -436,6 +460,25 @@ function derivePresetItems(sectionId: string, content: ResumeContent): ItemView[
         tags: [],
         link: "",
       }];
+
+    // 富文本块模块（个人总结/荣誉奖项/作品集）与 skills 同型：把整块富文本
+    // 包成单个 item 的 bullets，供未拆 block 模板（仅有 section.items 槽）渲染。
+    case "summary":
+    case "awards":
+    case "portfolio": {
+      const doc = content[sectionId];
+      if (!doc?.content?.length) return [];
+      return [{
+        title: "",
+        subtitle: "",
+        meta: "",
+        dateRange: "",
+        location: "",
+        bullets: doc,
+        tags: [],
+        link: "",
+      }];
+    }
 
     default:
       return [];

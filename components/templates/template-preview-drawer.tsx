@@ -25,12 +25,15 @@ type Props = {
   demoContent: ResumeContent;
   /** 用户最近一份简历的 content；null 表示还没建简历，toggle 会被禁用。 */
   userContent: ResumeContent | null;
-  /** 用户最近一份简历 id；null 时禁用 apply CTA + 提示先建简历 */
-  resumeId: string | null;
+  /** @deprecated 已不参与 apply 禁用逻辑（apply 始终可点：0 份走新建，≥1 份开弹窗）。
+      保留仅为向后兼容现有调用方，可在后续清理中移除。 */
+  resumeId?: string | null;
   /** apply 是否进行中（父组件控制 setTemplate 的 pending 态） */
   isApplying?: boolean;
-  /** apply 回调 —— 父组件接管 setTemplate / toast / redirect 链路 */
+  /** apply 回调 —— 父组件接管：0 份直接新建套用，≥1 份打开选择弹窗 */
   onApply: () => void | Promise<void>;
+  /** 用户简历数量，决定 apply 按钮文案（0 份「用此模板新建简历」，否则「应用到简历…」）。 */
+  resumeCount?: number;
   /** 当前模板是否已被收藏（父组件的 favorites Set 派生）。 */
   isFavorited?: boolean;
   /** 收藏切换回调 —— 父组件接管乐观更新 + action。缺省时不渲染收藏控件。 */
@@ -52,9 +55,9 @@ export function TemplatePreviewDrawer({
   resolved,
   demoContent,
   userContent,
-  resumeId,
   isApplying = false,
   onApply,
+  resumeCount = 1,
   isFavorited = false,
   onToggleFavorite,
 }: Props) {
@@ -94,11 +97,11 @@ export function TemplatePreviewDrawer({
         // 单边约束。
         className="flex h-full w-full flex-col gap-0 p-0 data-[side=right]:sm:max-w-[960px]"
       >
-        <SheetHeader className="border-b border-border px-6 py-4">
-          <SheetTitle className="text-lg">
+        <SheetHeader className="border-b border-border/60 px-6 py-5">
+          <SheetTitle className="text-lg font-semibold tracking-tight">
             {meta ? meta.name : "模板预览"}
           </SheetTitle>
-          <SheetDescription>
+          <SheetDescription className="text-sm text-muted-foreground/80">
             {meta?.description ?? "选一个模板看看效果，确认后再应用到简历"}
           </SheetDescription>
         </SheetHeader>
@@ -109,7 +112,7 @@ export function TemplatePreviewDrawer({
             <div className="mx-auto max-w-[600px]">
               {resolved ? (
                 <div className="overflow-hidden rounded-md bg-white shadow-md ring-1 ring-border">
-                  <TemplateThumbnail forceMount>
+                  <TemplateThumbnail forceMount fit="contain">
                     <ClientTemplateRenderFromSerializable
                       resolved={resolved}
                       content={previewContent}
@@ -125,44 +128,38 @@ export function TemplatePreviewDrawer({
           </div>
 
           {/* Right: meta + features + CTA */}
-          <aside className="flex flex-col gap-5 overflow-y-auto border-t border-border p-6 md:border-t-0 md:border-l">
+          <aside className="flex flex-col gap-5 overflow-y-auto border-t border-border/60 p-6 md:border-t-0 md:border-l md:border-border/60">
             {meta && (
-              <div className="space-y-2">
+              <div className="space-y-2.5">
                 <div className="flex items-center gap-2">
                   {sourceLabel && (
-                    <span className="rounded-full bg-muted px-2 py-0.5 text-[10px] font-medium text-muted-foreground">
+                    <span className="rounded-full bg-muted/80 px-2.5 py-0.5 text-[11px] font-medium text-muted-foreground/90">
                       {sourceLabel}
                     </span>
                   )}
                   {meta.isRecommended && (
-                    <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-medium text-primary">
+                    <span className="rounded-full bg-primary/10 px-2.5 py-0.5 text-[11px] font-medium text-primary">
                       推荐
                     </span>
                   )}
                 </div>
-                {meta.description && (
-                  <p className="text-sm text-muted-foreground">
-                    {meta.description}
-                  </p>
-                )}
               </div>
             )}
 
             <div className="space-y-3">
-              <h3 className="text-sm font-semibold">这个模板的特点</h3>
-              <ul className="space-y-2 text-sm">
+              <h3 className="text-[13px] font-semibold tracking-tight text-foreground/90">这个模板的特点</h3>
+              <ul className="space-y-2.5 text-sm">
                 {(meta?.features && meta.features.length > 0
                   ? meta.features
                   : [
-                      // Fallback：模板还没填 features 时退回通用三条，避免空白。
                       "预览即所见 —— 应用后样式跟这里 100% 一致",
                       "不动你的简历内容，只换排版",
                       "切换后随时再换，可逆",
                     ]
                 ).map((feature: string, i: number) => (
-                  <li key={i} className="flex items-start gap-2">
-                    <Check className="mt-0.5 size-4 shrink-0 text-primary" />
-                    <span>{feature}</span>
+                  <li key={i} className="flex items-start gap-2.5">
+                    <Check className="mt-0.5 size-4 shrink-0 text-primary/80" />
+                    <span className="leading-relaxed text-muted-foreground">{feature}</span>
                   </li>
                 ))}
               </ul>
@@ -213,7 +210,7 @@ export function TemplatePreviewDrawer({
                 aria-label={
                   isFavorited ? `取消收藏 ${meta?.name ?? ""}` : `收藏 ${meta?.name ?? ""}`
                 }
-                className="justify-center gap-2 text-muted-foreground hover:text-foreground"
+                className="justify-center gap-2 border-border/60 text-muted-foreground/80 transition-colors duration-200 hover:text-foreground"
                 data-testid="drawer-favorite"
               >
                 <Star
@@ -227,22 +224,10 @@ export function TemplatePreviewDrawer({
             )}
 
             <div className="mt-auto flex flex-col gap-2 pt-4">
-              {resumeId === null ? (
-                <p className="rounded-md border border-dashed border-border/80 bg-muted/40 p-3 text-xs text-muted-foreground">
-                  你还没创建简历。先到{" "}
-                  <a
-                    href="/dashboard"
-                    className="font-medium text-primary hover:underline"
-                  >
-                    我的简历
-                  </a>{" "}
-                  建一份再来选模板 ✨
-                </p>
-              ) : null}
               <Button
                 type="button"
                 size="lg"
-                disabled={!resumeId || isApplying}
+                disabled={isApplying}
                 onClick={() => {
                   void onApply();
                 }}
@@ -253,8 +238,10 @@ export function TemplatePreviewDrawer({
                     <Loader2 className="size-4 animate-spin" />
                     正在应用…
                   </>
+                ) : resumeCount === 0 ? (
+                  "用此模板新建简历"
                 ) : (
-                  "应用到当前简历"
+                  "应用到简历…"
                 )}
               </Button>
               <Button

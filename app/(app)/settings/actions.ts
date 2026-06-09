@@ -7,6 +7,7 @@ import { db } from "@/db";
 import { users } from "@/db/schema";
 import { auth } from "@/lib/auth";
 import { sendVerificationCode, verifyCode } from "@/lib/email-code";
+import { withDbRetry } from "@/lib/db-retry";
 
 /** Send verification code to the authenticated user's email */
 export async function sendCode(): Promise<{ success: boolean; error?: string }> {
@@ -43,6 +44,7 @@ export async function setPassword(
 
   const { code, password } = parsed.data;
   const email = session.user.email;
+  const userId = session.user.id;
 
   // Verify the code
   const valid = await verifyCode(email, code);
@@ -52,7 +54,9 @@ export async function setPassword(
 
   // Hash and save password
   const passwordHash = await bcrypt.hash(password, 12);
-  await db.update(users).set({ passwordHash }).where(eq(users.id, session.user.id));
+  await withDbRetry("setPassword", () =>
+    db.update(users).set({ passwordHash }).where(eq(users.id, userId)),
+  );
 
   return { success: true };
 }
@@ -61,11 +65,14 @@ export async function setPassword(
 export async function hasPassword(): Promise<boolean> {
   const session = await auth();
   if (!session?.user?.id) return false;
+  const userId = session.user.id;
 
-  const user = await db.query.users.findFirst({
-    where: eq(users.id, session.user.id),
-    columns: { passwordHash: true },
-  });
+  const user = await withDbRetry("hasPassword", () =>
+    db.query.users.findFirst({
+      where: eq(users.id, userId),
+      columns: { passwordHash: true },
+    }),
+  );
 
   return !!user?.passwordHash;
 }

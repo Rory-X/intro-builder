@@ -204,7 +204,20 @@ describe("RichTextEditor", () => {
     await waitFor(() => {
       expect(
         screen.getByRole("button", { name: "16" }).className,
-      ).toContain("font-medium");
+      ).toContain("font-bold");
+      expect(
+        screen.getByRole("button", { name: "16" }).className,
+      ).toContain("text-blue-700");
+    });
+  });
+
+  it("uses a blue active state for selected toolbar icons", async () => {
+    render(<RichTextEditor content={paragraphDoc} onChange={() => {}} />);
+
+    fireEvent.click(screen.getByTitle("粗体"));
+
+    await waitFor(() => {
+      expect(screen.getByTitle("粗体").className).toContain("text-blue-700");
     });
   });
 

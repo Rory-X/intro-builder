@@ -35,6 +35,7 @@ const BREAK_SAFETY_MARGIN = 2;
  * guaranteeing no content loss.
  */
 const BOTTOM_SAFETY_PX = 40;
+const LINE_OVERFLOW_BUFFER = 6;
 
 /**
  * If the last page only contains a tiny tail, treat it as measurement noise
@@ -46,6 +47,7 @@ const BLOCK_TAGS = new Set(["P", "LI", "DIV", "H1", "H2", "H3", "H4", "H5", "H6"
 
 function findBreakPoints(container: HTMLElement): { bottom: number }[] {
   const bottomSet = new Set<number>();
+  const scannedTextNodes = new WeakSet<Node>();
   const breakables = container.querySelectorAll(
     "[data-pagination-item], [data-pagination-section], [data-pagination-section-header], [data-pagination-header]"
   );
@@ -53,37 +55,95 @@ function findBreakPoints(container: HTMLElement): { bottom: number }[] {
 
   breakables.forEach((el) => {
     const element = el as HTMLElement;
+    if (seen.has(element)) return;
+    seen.add(element);
+
+    const hasTextLines = addTextLineBreakPoints(element, container, bottomSet, scannedTextNodes);
+
     if (element.hasAttribute("data-pagination-section")) {
       if (element.querySelector("[data-pagination-item]")) return;
     }
     if (element.hasAttribute("data-pagination-item")) {
       if (element.parentElement?.closest("[data-pagination-item]")) return;
     }
-    if (seen.has(element)) return;
-    seen.add(element);
 
-    const bottom = element.getBoundingClientRect().bottom - container.getBoundingClientRect().top;
-    bottomSet.add(Math.round(bottom));
-
-    if (element.hasAttribute("data-pagination-item")) {
-      addChildBreakPoints(element, container, bottomSet);
+    if (!hasTextLines) {
+      const bottom = element.getBoundingClientRect().bottom - container.getBoundingClientRect().top + LINE_OVERFLOW_BUFFER;
+      bottomSet.add(Math.round(bottom));
     }
+
+    addChildBreakPoints(element, container, bottomSet, scannedTextNodes);
   });
 
   return Array.from(bottomSet).sort((a, b) => a - b).map((bottom) => ({ bottom }));
 }
 
-function addChildBreakPoints(parent: HTMLElement, container: HTMLElement, bottomSet: Set<number>): void {
+function addChildBreakPoints(
+  parent: HTMLElement,
+  container: HTMLElement,
+  bottomSet: Set<number>,
+  scannedTextNodes: WeakSet<Node>,
+): void {
   for (const child of Array.from(parent.children)) {
     const el = child as HTMLElement;
     if (!BLOCK_TAGS.has(el.tagName)) continue;
     if (el.offsetHeight < 10) continue;
-    const bottom = el.getBoundingClientRect().bottom - container.getBoundingClientRect().top;
-    bottomSet.add(Math.round(bottom));
+    const hasTextLines = addTextLineBreakPoints(el, container, bottomSet, scannedTextNodes);
+    if (!hasTextLines) {
+      const bottom = el.getBoundingClientRect().bottom - container.getBoundingClientRect().top + LINE_OVERFLOW_BUFFER;
+      bottomSet.add(Math.round(bottom));
+    }
     if (el.tagName === "DIV" || el.tagName === "UL" || el.tagName === "OL") {
-      addChildBreakPoints(el, container, bottomSet);
+      addChildBreakPoints(el, container, bottomSet, scannedTextNodes);
     }
   }
+}
+
+function addTextLineBreakPoints(
+  parent: HTMLElement,
+  container: HTMLElement,
+  bottomSet: Set<number>,
+  scannedTextNodes: WeakSet<Node>,
+): boolean {
+  if (typeof document === "undefined" || typeof document.createRange !== "function") {
+    return false;
+  }
+
+  let hasLineBreaks = false;
+  const walker = document.createTreeWalker(parent, NodeFilter.SHOW_TEXT, {
+    acceptNode(node) {
+      return node.textContent?.trim()
+        ? NodeFilter.FILTER_ACCEPT
+        : NodeFilter.FILTER_REJECT;
+    },
+  });
+
+  let textNode = walker.nextNode();
+  const containerRect = container.getBoundingClientRect();
+  while (textNode) {
+    if (scannedTextNodes.has(textNode)) {
+      textNode = walker.nextNode();
+      continue;
+    }
+    scannedTextNodes.add(textNode);
+
+    const range = document.createRange();
+    try {
+      range.selectNodeContents(textNode);
+      for (const rect of Array.from(range.getClientRects())) {
+        if (rect.height < 1) continue;
+        const breakBeforeLine = Math.round(rect.top - containerRect.top - LINE_OVERFLOW_BUFFER);
+        if (breakBeforeLine > 0) {
+          bottomSet.add(breakBeforeLine);
+          hasLineBreaks = true;
+        }
+      }
+    } finally {
+      range.detach();
+    }
+    textNode = walker.nextNode();
+  }
+  return hasLineBreaks;
 }
 
 function calculatePageBreaks(breakPoints: { bottom: number }[], totalHeight: number): number[] {

@@ -112,6 +112,9 @@ function validContent(): ResumeContent {
     ],
     research: [],
     skills: richText("React TypeScript"),
+    summary: richText(""),
+    awards: richText(""),
+    portfolio: richText(""),
     custom: [],
     sectionOrder: ["basics", "experience", "projects", "education", "skills"],
   };

@@ -6,6 +6,7 @@ import { RichTextEditor } from "./rich-text-editor";
 import type { ResumeContent } from "@/lib/resume-schema";
 import { SectionEditorHeader } from "./section-editor-header";
 import { useState } from "react";
+import { cn } from "@/lib/utils";
 import { SectionHelperButton } from "@/components/agent/section-helper-button";
 import { tiptapPlainText } from "@/lib/agent/resume-helper-context";
 import { useCompletenessScore } from "@/hooks/use-completeness-score";
@@ -28,7 +29,7 @@ export function CustomSectionEditor({ sectionId, resumeId }: Props) {
 
   return (
     <section>
-      <div className="px-4 pt-2">
+      <div>
         <SectionEditorHeader
           sectionKey={sectionId}
           itemCount={0}
@@ -48,8 +49,12 @@ export function CustomSectionEditor({ sectionId, resumeId }: Props) {
           ) : undefined}
         />
       </div>
-      {isOpen && (
-        <div className="space-y-3 px-4 pb-4">
+      <div className={cn(
+        "grid transition-all duration-300 ease-out",
+        isOpen ? "grid-rows-[1fr] opacity-100" : "grid-rows-[0fr] opacity-0",
+      )} data-section-body-collapsed={isOpen ? undefined : "true"}>
+        <div className="overflow-hidden">
+        <div className="space-y-2.5 px-3.5 pb-3.5">
           <div className="flex flex-col gap-1.5">
             <Label>模块标题</Label>
             <Input
@@ -81,7 +86,8 @@ export function CustomSectionEditor({ sectionId, resumeId }: Props) {
             />
           </div>
         </div>
-      )}
+        </div>
+      </div>
     </section>
   );
 }

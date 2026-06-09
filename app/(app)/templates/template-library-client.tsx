@@ -15,7 +15,12 @@ import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Input } from "@/components/ui/input";
 import { TemplateThumbnail } from "@/components/templates/template-thumbnail";
 import { TemplatePreviewDrawer } from "@/components/templates/template-preview-drawer";
+import {
+  ResumePickerDialog,
+  type PickerResume,
+} from "@/components/templates/resume-picker-dialog";
 import { setTemplate } from "@/app/(app)/resume/[id]/edit/actions";
+import { createResumeWithTemplate } from "@/app/(app)/dashboard/actions";
 import { toggleTemplateFavorite } from "./actions";
 import type { TemplateCategory } from "@/lib/templates/registry";
 
@@ -42,8 +47,13 @@ const CATEGORY_ORDER: TemplateCategory[] = [
 
 type Props = {
   templates: SerializableResolvedTemplate[];
-  /** 用户最近一份简历；null 表示没有简历，drawer 里的 toggle 会被禁用。 */
-  userResume: { id: string; content: ResumeContent } | null;
+  /** 当前用户全部简历（已按 updatedAt desc 排序）；空数组表示没有简历，
+      drawer 的 apply CTA 会被禁用、toggle 也禁用。 */
+  userResumes: PickerResume[];
+  /** templateId → 序列化模板，供选择弹窗按各简历「当前模板」渲染缩略图。 */
+  resumeTemplates: Record<string, SerializableResolvedTemplate>;
+  /** 默认目标简历 id（?resumeId= 命中项或最近修改那份）；null 表示无简历。 */
+  defaultResumeId: string | null;
   demoResume: ResumeContent;
   /** 当前用户已收藏的 templateId 列表，作为客户端收藏状态的初始值。 */
   favoritedIds: string[];
@@ -68,10 +78,15 @@ function getDisplayMeta(resolved: SerializableResolvedTemplate): {
 
 export function TemplateLibraryClient({
   templates,
-  userResume,
+  userResumes,
+  resumeTemplates,
+  defaultResumeId,
   demoResume,
   favoritedIds,
 }: Props) {
+  // 默认那份简历（最近修改 / ?resumeId=）—— 喂给 drawer 的 toggle 预览 + 禁用判断。
+  const defaultResume =
+    userResumes.find((r) => r.id === defaultResumeId) ?? null;
   // 网格里的所有缩略图永远用 demoResume —— /templates 是全局浏览入口，
   // "用我的内容预览"已经下沉到 TemplatePreviewDrawer（点击卡片打开后才决定）。
   const [tab, setTab] = useState<TabValue>("all");
@@ -80,6 +95,8 @@ export function TemplateLibraryClient({
   const [selected, setSelected] =
     useState<SerializableResolvedTemplate | null>(null);
   const [isApplying, startApplying] = useTransition();
+  // 目标简历选择弹窗（多份简历时由 apply CTA 打开）。
+  const [pickerOpen, setPickerOpen] = useState(false);
   // 收藏状态用本地 Set 做乐观更新：点击立即变黄，server action 失败再回滚。
   // 初始值来自 server 预取的 favoritedIds（page.tsx）。
   const [favorites, setFavorites] = useState<Set<string>>(
@@ -161,15 +178,15 @@ export function TemplateLibraryClient({
   // 视觉指示，刷完跟没刷一样，用户会以为"完全没生效"。统一跳编辑器让用户能
   // 立刻看到模板套上自己内容的真实效果，闭环更强。from=editor 时 push 同一份
   // 编辑器路由也是回到原页面，行为不变。
-  const handleApply = () => {
-    if (!selected || !userResume) return;
+  const handleApply = (targetResumeId: string) => {
+    if (!selected) return;
     const targetTemplateId = selected.id;
-    const targetResumeId = userResume.id;
     const targetName = getDisplayMeta(selected).name;
     startApplying(async () => {
       try {
         await setTemplate(targetResumeId, targetTemplateId);
         toast.success(`已应用模板：${targetName}`);
+        setPickerOpen(false);
         setSelected(null);
         router.push(`/resume/${targetResumeId}/edit?from=templates`);
       } catch (error) {
@@ -180,11 +197,43 @@ export function TemplateLibraryClient({
     });
   };
 
+  // ＋新建简历并套用当前模板。createResumeWithTemplate 只写库 + 返回新简历 id，
+  // 跳转交给这里 router.push（与 handleApply 同款）——绝不在 server action 里
+  // redirect()，否则 NEXT_REDIRECT 会被下面的 try/catch 吞成"假失败提示"。
+  const handleCreateAndApply = () => {
+    if (!selected) return;
+    const targetTemplateId = selected.id;
+    const targetName = getDisplayMeta(selected).name;
+    startApplying(async () => {
+      try {
+        const { id } = await createResumeWithTemplate(targetTemplateId);
+        toast.success(`已新建简历并应用模板：${targetName}`);
+        setPickerOpen(false);
+        setSelected(null);
+        router.push(`/resume/${id}/edit?from=templates`);
+      } catch (error) {
+        console.error("[templates] create+apply failed:", error);
+        const message = error instanceof Error ? error.message : "未知错误";
+        toast.error(`新建失败：${message}`);
+      }
+    });
+  };
+
+  // drawer 的「应用」CTA：0 份直接新建并套用（无已有可选）；≥1 份打开选择弹窗，
+  // 弹窗里既能选已有简历套用，也能点「＋新建简历」开一份新的。
+  const handleApplyCta = () => {
+    if (userResumes.length === 0) {
+      handleCreateAndApply();
+    } else {
+      setPickerOpen(true);
+    }
+  };
+
   return (
     <div className="mx-auto w-full max-w-6xl px-4 py-8 md:py-12">
       <div className="mb-8">
-        <h1 className="text-2xl font-bold md:text-3xl">模板库</h1>
-        <p className="mt-1 text-sm text-muted-foreground">
+        <h1 className="text-2xl font-bold tracking-tight md:text-3xl">模板库</h1>
+        <p className="mt-2 text-sm text-muted-foreground/80">
           选个喜欢的模板套到你的简历上 ✨
         </p>
       </div>
@@ -249,14 +298,27 @@ export function TemplateLibraryClient({
         }}
         resolved={selected}
         demoContent={demoResume}
-        userContent={userResume?.content ?? null}
-        resumeId={userResume?.id ?? null}
+        userContent={defaultResume?.content ?? null}
+        resumeId={defaultResume?.id ?? null}
+        resumeCount={userResumes.length}
         isApplying={isApplying}
-        onApply={handleApply}
+        onApply={handleApplyCta}
         isFavorited={selected ? favorites.has(selected.id) : false}
         onToggleFavorite={
           selected ? () => toggleFavorite(selected.id) : undefined
         }
+      />
+
+      <ResumePickerDialog
+        open={pickerOpen}
+        onOpenChange={setPickerOpen}
+        resumes={userResumes}
+        resumeTemplates={resumeTemplates}
+        templateName={selected ? getDisplayMeta(selected).name : ""}
+        defaultSelectedId={defaultResumeId}
+        onConfirm={handleApply}
+        onCreateNew={handleCreateAndApply}
+        isApplying={isApplying}
       />
     </div>
   );
@@ -280,7 +342,7 @@ function TemplateCard({
 
   return (
     <article
-      className="group relative flex flex-col overflow-hidden rounded-xl border border-border bg-card shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:border-primary/30 hover:shadow-lg hover:shadow-primary/5"
+      className="group relative flex flex-col overflow-hidden rounded-xl border border-border/60 bg-card shadow-sm transition-all duration-300 ease-out hover:-translate-y-1 hover:border-primary/40 hover:shadow-xl hover:shadow-primary/5"
     >
       <button
         type="button"
@@ -297,27 +359,25 @@ function TemplateCard({
           />
         </TemplateThumbnail>
       </button>
-      <div className="flex flex-col gap-1.5 p-4">
+      <div className="flex flex-col gap-2 p-4">
         <div className="flex items-baseline justify-between gap-2">
-          <h3 className="text-base font-semibold">{name}</h3>
-          <div className="flex shrink-0 items-center gap-1">
+          <h3 className="text-[15px] font-semibold tracking-tight">{name}</h3>
+          <div className="flex shrink-0 items-center gap-1.5">
             {isRecommended && (
               <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-medium text-primary">
                 推荐
               </span>
             )}
             {categoryLabel && (
-              <span className="rounded-full bg-muted px-2 py-0.5 text-[10px] font-medium text-muted-foreground">
+              <span className="rounded-full bg-muted/80 px-2 py-0.5 text-[10px] font-medium text-muted-foreground/90">
                 {categoryLabel}
               </span>
             )}
           </div>
         </div>
-        {/* 信息区底行：描述（左）+ 收藏五角星（右下角，与描述同行居中对齐）。
-            星放在 meta footer 内而非缩略图上方，绝不遮挡简历预览。收藏后填充黄色。 */}
         <div className="flex min-h-8 items-center gap-2">
           {description && (
-            <p className="line-clamp-2 text-xs text-muted-foreground">
+            <p className="line-clamp-2 text-xs leading-relaxed text-muted-foreground/70">
               {description}
             </p>
           )}
@@ -329,7 +389,7 @@ function TemplateCard({
             }}
             aria-label={isFavorited ? `取消收藏 ${name}` : `收藏 ${name}`}
             aria-pressed={isFavorited}
-            className="ml-auto grid size-8 shrink-0 place-items-center rounded-full text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+            className="ml-auto grid size-8 shrink-0 place-items-center rounded-full text-muted-foreground/60 transition-colors duration-200 hover:bg-muted hover:text-foreground"
           >
             <Star
               className={

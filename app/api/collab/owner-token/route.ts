@@ -4,12 +4,14 @@ import { auth } from "@/lib/auth";
 import { db } from "@/db";
 import { collabSessions } from "@/db/schema";
 import { eq, and } from "drizzle-orm";
+import { withDbRetry } from "@/lib/db-retry";
 
 export async function POST(req: Request) {
   const session = await auth();
   if (!session?.user?.id) {
     return NextResponse.json({ error: "未登录" }, { status: 401 });
   }
+  const userId = session.user.id;
 
   const { sessionId } = await req.json();
 
@@ -17,12 +19,14 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "缺少 sessionId" }, { status: 400 });
   }
 
-  const [collab] = await db.select().from(collabSessions).where(
-    and(
-      eq(collabSessions.id, sessionId),
-      eq(collabSessions.ownerId, session.user.id),
-    ),
-  ).limit(1);
+  const [collab] = await withDbRetry("collab.ownerToken", () =>
+    db.select().from(collabSessions).where(
+      and(
+        eq(collabSessions.id, sessionId),
+        eq(collabSessions.ownerId, userId),
+      ),
+    ).limit(1),
+  );
 
   if (!collab) {
     return NextResponse.json({ error: "协作会话不存在" }, { status: 404 });

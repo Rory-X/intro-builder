@@ -3,6 +3,7 @@ import { and, eq } from "drizzle-orm";
 import { currentUserId } from "@/lib/auth-helpers";
 import { db } from "@/db";
 import { resumes } from "@/db/schema";
+import { withDbRetry } from "@/lib/db-retry";
 import puppeteer from "puppeteer-core";
 import {
   buildPdfFailureResponse,
@@ -28,9 +29,11 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
   const userId = await currentUserId();
   if (!userId) return new NextResponse("unauthorized", { status: 401 });
 
-  const row = await db.query.resumes.findFirst({
-    where: and(eq(resumes.id, id), eq(resumes.userId, userId)),
-  });
+  const row = await withDbRetry("pdf.load", () =>
+    db.query.resumes.findFirst({
+      where: and(eq(resumes.id, id), eq(resumes.userId, userId)),
+    }),
+  );
   if (!row) return new NextResponse("not found", { status: 404 });
 
   // Read pagination data from request body (sent by editor's ExportButton)

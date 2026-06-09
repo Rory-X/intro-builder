@@ -5,8 +5,7 @@ import { templates } from "@/db/schema";
 import { eq } from "drizzle-orm";
 import postgres from "postgres";
 
-const REMOTE_DB_URL =
-  "postgresql://neondb_owner:npg_JPu0GHxNhi9z@ep-blue-hall-aoz2r2jj-pooler.c-2.ap-southeast-1.aws.neon.tech/neondb?sslmode=require";
+const REMOTE_DB_URL = process.env.DEV_PREVIEW_REMOTE_DATABASE_URL;
 
 const SKIP_IDS = ["professional", "classic", "modern"];
 
@@ -31,6 +30,10 @@ export async function publishTemplateToRemote(id: string): Promise<{
   const t = rows[0];
 
   try {
+    if (!REMOTE_DB_URL) {
+      return { ok: false, message: "缺少 DEV_PREVIEW_REMOTE_DATABASE_URL" };
+    }
+
     const remote = postgres(REMOTE_DB_URL, { idle_timeout: 5 });
 
     await remote`

@@ -120,9 +120,9 @@ describe("ResumeContent v2", () => {
     expect(r.success).toBe(true);
   });
 
-  it("defaults photo to empty string", () => {
+  it("defaults photo to placeholder avatar", () => {
     const c = emptyResumeContent();
-    expect(c.basics.photo).toBe("");
+    expect(c.basics.photo).toBe("/templates/placeholder-avatar.png");
   });
 });
 

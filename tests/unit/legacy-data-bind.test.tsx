@@ -24,6 +24,9 @@ const mockContent: ResumeContent = {
   projects: [],
   research: [],
   skills: emptyDoc(),
+  summary: emptyDoc(),
+  awards: emptyDoc(),
+  portfolio: emptyDoc(),
   custom: [],
   sectionOrder: [],
 };

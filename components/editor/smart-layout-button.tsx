@@ -51,7 +51,7 @@ export function SmartLayoutButton({ templateId, measureRef }: Props) {
   return (
     <Button
       size="sm"
-      variant={isActive ? "default" : "outline"}
+      variant={isActive ? "default" : "ghost"}
       onClick={handleClick}
       disabled={isCalculating}
       className={cn("gap-1.5", isActive && "bg-primary text-primary-foreground")}

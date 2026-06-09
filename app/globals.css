@@ -46,6 +46,7 @@
   --color-popover: var(--popover);
   --color-card-foreground: var(--card-foreground);
   --color-card: var(--card);
+  --color-card-2: var(--card-2);
   --radius-sm: calc(var(--radius) * 0.6);
   --radius-md: calc(var(--radius) * 0.8);
   --radius-lg: var(--radius);
@@ -59,6 +60,7 @@
   --background: oklch(0.985 0.002 247);
   --foreground: oklch(0.165 0.015 260);
   --card: oklch(1 0 0);
+  --card-2: oklch(0.975 0.004 260);
   --card-foreground: oklch(0.165 0.015 260);
   --popover: oklch(1 0 0);
   --popover-foreground: oklch(0.165 0.015 260);
@@ -94,6 +96,7 @@
   --background: oklch(0.155 0.015 260);
   --foreground: oklch(0.965 0.005 260);
   --card: oklch(0.195 0.02 260);
+  --card-2: oklch(0.225 0.022 260);
   --card-foreground: oklch(0.965 0.005 260);
   --popover: oklch(0.195 0.02 260);
   --popover-foreground: oklch(0.965 0.005 260);
@@ -320,4 +323,30 @@
 }
 .animate-mesh-breathe {
   animation: mesh-breathe 6s ease-in-out infinite;
+}
+
+/* Editor panel: compact typography matching editor-redesign-v3.html prototype */
+.editor-panel {
+  font-size: 15px;
+}
+.editor-panel [data-slot="label"] {
+  font-size: 13px;
+  font-weight: 400;
+}
+.editor-panel [data-slot="input"],
+.editor-panel textarea {
+  font-size: 14.5px;
+  height: 36px;
+  padding: 0 10px;
+  border-radius: 6px;
+  background: white;
+}
+.editor-panel textarea {
+  height: auto;
+  min-height: 56px;
+  padding: 7px 10px;
+}
+:is(.dark) .editor-panel [data-slot="input"],
+:is(.dark) .editor-panel textarea {
+  background: var(--input);
 }

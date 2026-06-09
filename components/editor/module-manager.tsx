@@ -1,7 +1,8 @@
 "use client";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useFormContext } from "react-hook-form";
-import { ChevronUp, ChevronDown, Trash2, Plus, Layers } from "lucide-react";
+import { AnimatePresence, Reorder } from "motion/react";
+import { GripVertical, Trash2, Plus, Layers } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverTrigger, PopoverContent } from "@/components/ui/popover";
 import { Input } from "@/components/ui/input";
@@ -9,47 +10,99 @@ import { getSectionMeta } from "@/lib/section-meta";
 import { MODULE_PRESETS, BUILTIN_SECTION_KEYS } from "@/lib/resume-schema";
 import type { ResumeContent } from "@/lib/resume-schema";
 import { emptyDoc } from "@/lib/tiptap-types";
+import { cn } from "@/lib/utils";
 
 type Props = {
   sectionOrder: string[];
   onOrderChange: (next: string[]) => void;
 };
 
+function DraggableModuleItem({
+  sectionKey,
+  label,
+  icon: Icon,
+  iconColor,
+  onRemove,
+  onDragEndCommit,
+}: {
+  sectionKey: string;
+  label: string;
+  icon: React.ComponentType<{ className?: string }>;
+  iconColor: string;
+  onRemove: () => void;
+  onDragEndCommit: () => void;
+}) {
+  const [dragging, setDragging] = useState(false);
+
+  return (
+    <Reorder.Item
+      value={sectionKey}
+      onDragStart={() => setDragging(true)}
+      style={{
+        boxShadow: dragging ? "0 4px 12px rgba(0,0,0,0.12)" : "none",
+        scale: dragging ? 1.02 : 1,
+        position: "relative",
+        zIndex: dragging ? 50 : "auto",
+      }}
+      transition={{ type: "spring", stiffness: 300, damping: 25 }}
+      onDragEnd={() => {
+        setDragging(false);
+        onDragEndCommit();
+      }}
+      className="flex items-center gap-1.5 rounded-md border bg-background px-2 py-1.5 cursor-grab active:cursor-grabbing"
+    >
+      <GripVertical className="h-3.5 w-3.5 text-muted-foreground" />
+      <Icon className={`h-4 w-4 shrink-0 ${iconColor}`} />
+      <span className="flex-1 truncate text-sm">{label}</span>
+      <button
+        type="button"
+        className="rounded p-0.5 text-muted-foreground hover:bg-muted hover:text-destructive"
+        onClick={onRemove}
+        title="删除"
+      >
+        <Trash2 className="h-3.5 w-3.5" />
+      </button>
+    </Reorder.Item>
+  );
+}
+
 export function ModuleManager({ sectionOrder, onOrderChange }: Props) {
   const { getValues, setValue } = useFormContext<ResumeContent>();
+  const [open, setOpen] = useState(false);
   const [customTitle, setCustomTitle] = useState("");
   const [showCustomInput, setShowCustomInput] = useState(false);
 
-  // Sections excluding "basics" (always first, not manageable)
   const managedSections = sectionOrder.filter((k) => k !== "basics");
+  const managedSectionsKey = managedSections.join("|");
+  const [draftManagedSections, setDraftManagedSections] = useState({
+    key: managedSectionsKey,
+    value: managedSections,
+  });
+  const visibleManagedSections =
+    draftManagedSections.key === managedSectionsKey
+      ? draftManagedSections.value
+      : managedSections;
+  const draftManagedSectionsRef = useRef(managedSections);
 
-  // Available modules to add (not already in order)
   const availablePresets = MODULE_PRESETS.filter(
     (p) => !sectionOrder.includes(p.id)
   );
 
-  function moveUp(key: string) {
-    const idx = managedSections.indexOf(key);
-    if (idx <= 0) return;
-    const newManaged = [...managedSections];
-    [newManaged[idx - 1], newManaged[idx]] = [newManaged[idx], newManaged[idx - 1]];
-    onOrderChange(["basics", ...newManaged]);
+  function handleReorder(newManaged: string[]) {
+    draftManagedSectionsRef.current = newManaged;
+    setDraftManagedSections({ key: managedSectionsKey, value: newManaged });
   }
 
-  function moveDown(key: string) {
-    const idx = managedSections.indexOf(key);
-    if (idx === -1 || idx >= managedSections.length - 1) return;
-    const newManaged = [...managedSections];
-    [newManaged[idx], newManaged[idx + 1]] = [newManaged[idx + 1], newManaged[idx]];
-    onOrderChange(["basics", ...newManaged]);
+  function commitReorder() {
+    const next = draftManagedSectionsRef.current;
+    if (next.join("|") === managedSections.join("|")) return;
+    onOrderChange(["basics", ...next]);
   }
 
   function removeSection(key: string) {
-    // Remove from order
     const newOrder = sectionOrder.filter((k) => k !== key);
     onOrderChange(newOrder);
 
-    // If it's a custom section, remove its data
     if (!BUILTIN_SECTION_KEYS.has(key)) {
       const custom = getValues("custom") ?? [];
       setValue(
@@ -64,7 +117,6 @@ export function ModuleManager({ sectionOrder, onOrderChange }: Props) {
     const newOrder = [...sectionOrder, presetId];
     onOrderChange(newOrder);
 
-    // If it's a custom-type section (not built-in), add to custom array
     if (!BUILTIN_SECTION_KEYS.has(presetId)) {
       const preset = MODULE_PRESETS.find((p) => p.id === presetId);
       const custom = getValues("custom") ?? [];
@@ -93,21 +145,28 @@ export function ModuleManager({ sectionOrder, onOrderChange }: Props) {
   }
 
   function getSectionLabel(key: string): string {
-    // Check if it's in custom sections
     const custom = getValues("custom") ?? [];
     const cs = custom.find((c) => c.id === key);
     if (cs) return cs.title || key;
-    // Check presets
     const preset = MODULE_PRESETS.find((p) => p.id === key);
     if (preset) return preset.label;
-    // Fallback to section-meta
     return getSectionMeta(key).label;
   }
 
   return (
-    <Popover>
+    <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger
-        render={<Button type="button" variant="outline" size="sm" className="gap-1.5" />}
+        render={
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            className={cn(
+              "gap-1.5",
+              open && "bg-primary/5 font-semibold text-primary hover:bg-primary/10 hover:text-primary aria-expanded:!bg-primary/5 aria-expanded:!text-primary dark:bg-primary/15 dark:hover:bg-primary/20 dark:aria-expanded:!bg-primary/15",
+            )}
+          />
+        }
       >
         <Layers className="h-3.5 w-3.5" />
         模块管理
@@ -117,52 +176,32 @@ export function ModuleManager({ sectionOrder, onOrderChange }: Props) {
           {/* Existing modules */}
           <div className="border-b p-3">
             <h3 className="mb-2 text-sm font-semibold">已有模块</h3>
-            <div className="space-y-1">
-              {managedSections.map((key, idx) => {
-                const meta = getSectionMeta(key);
-                const Icon = meta.icon;
-                return (
-                  <div
-                    key={key}
-                    className="flex items-center gap-2 rounded-md border bg-background px-2 py-1.5"
-                  >
-                    <Icon className={`h-4 w-4 shrink-0 ${meta.color}`} />
-                    <span className="flex-1 truncate text-sm">{getSectionLabel(key)}</span>
-                    <div className="flex items-center gap-0.5">
-                      <button
-                        type="button"
-                        className="rounded p-0.5 text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-30"
-                        onClick={() => moveUp(key)}
-                        disabled={idx === 0}
-                        title="上移"
-                      >
-                        <ChevronUp className="h-3.5 w-3.5" />
-                      </button>
-                      <button
-                        type="button"
-                        className="rounded p-0.5 text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-30"
-                        onClick={() => moveDown(key)}
-                        disabled={idx === managedSections.length - 1}
-                        title="下移"
-                      >
-                        <ChevronDown className="h-3.5 w-3.5" />
-                      </button>
-                      <button
-                        type="button"
-                        className="rounded p-0.5 text-muted-foreground hover:bg-muted hover:text-destructive"
-                        onClick={() => removeSection(key)}
-                        title="删除"
-                      >
-                        <Trash2 className="h-3.5 w-3.5" />
-                      </button>
-                    </div>
-                  </div>
-                );
-              })}
-              {managedSections.length === 0 && (
-                <p className="py-2 text-center text-xs text-muted-foreground">暂无模块</p>
-              )}
-            </div>
+            <Reorder.Group
+              axis="y"
+              values={visibleManagedSections}
+              onReorder={handleReorder}
+              className="space-y-1"
+            >
+              <AnimatePresence>
+                {visibleManagedSections.map((key) => {
+                  const meta = getSectionMeta(key);
+                  return (
+                    <DraggableModuleItem
+                      key={key}
+                      sectionKey={key}
+                      label={getSectionLabel(key)}
+                      icon={meta.icon}
+                      iconColor={meta.color}
+                      onRemove={() => removeSection(key)}
+                      onDragEndCommit={commitReorder}
+                    />
+                  );
+                })}
+              </AnimatePresence>
+            </Reorder.Group>
+            {visibleManagedSections.length === 0 && (
+              <p className="py-2 text-center text-xs text-muted-foreground">暂无模块</p>
+            )}
           </div>
 
           {/* Add modules */}

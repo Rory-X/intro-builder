@@ -1,5 +1,5 @@
 import type { ResumeContent } from "@/lib/resume-schema";
-import { bulletsToDoc } from "@/lib/tiptap-types";
+import { bulletsToDoc, emptyDoc } from "@/lib/tiptap-types";
 
 export const demoResume: ResumeContent = {
   basics: {
@@ -81,17 +81,14 @@ export const demoResume: ResumeContent = {
       ]},
     ],
   },
-  custom: [
-    {
-      id: "awards",
-      title: "荣誉奖项",
-      content: bulletsToDoc([
-        "2023 字节跳动年度新人奖（部门 Top 5%）",
-        "2022 全国大学生计算机设计大赛 一等奖",
-        "2021 ACM-ICPC 亚洲区域赛 银奖",
-      ]),
-    },
-  ],
+  summary: emptyDoc(),
+  awards: bulletsToDoc([
+    "2023 字节跳动年度新人奖（部门 Top 5%）",
+    "2022 全国大学生计算机设计大赛 一等奖",
+    "2021 ACM-ICPC 亚洲区域赛 银奖",
+  ]),
+  portfolio: emptyDoc(),
+  custom: [],
   sectionOrder: [
     "basics",
     "experience",

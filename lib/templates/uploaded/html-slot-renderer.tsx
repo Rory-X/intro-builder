@@ -15,6 +15,7 @@ import {
   BASICS_BINDINGS,
   BASICS_ICON_BINDINGS,
   PROFILE_BINDINGS,
+  ICON_BINDINGS,
   IMAGE_BINDINGS,
   ITEM_BINDINGS,
   CONTACT_BINDINGS,
@@ -25,6 +26,8 @@ import {
   resolveSection,
   deriveItems,
   deriveContacts,
+  contactHref,
+  type LinkableContactType,
   type IterationContext,
 } from "./slot-bindings";
 import { scopeCss, CssScopeError } from "./css-scope";
@@ -83,6 +86,22 @@ const SAFE_ATTRS: Record<string, sanitizeHtml.AllowedAttribute[]> = {
 /** 嵌套深度上限 —— spec §6.3 #5 */
 const MAX_NEST_DEPTH = 3;
 
+/**
+ * 直绑路径里有可点目标的联系字段 → 联系类型。模板作者按 SKILL.md 惯例写
+ * `<slot data-bind="basics.email">` 当纯文本，引擎在这里把 email/phone/website
+ * 自动包成 `<a href>`（mailto/tel/https），一处生效覆盖全部模板，PDF（Puppeteer
+ * 保留链接注释）/在线分享/预览三处都可点。location 无可点目标、name/title 等
+ * 非联系字段不在表内，照常渲染纯文本。
+ */
+const LINKABLE_BINDINGS: Record<string, LinkableContactType> = {
+  "basics.email": "email",
+  "profile.email": "email",
+  "basics.phone": "phone",
+  "profile.phone": "phone",
+  "basics.website": "website",
+  "profile.website": "website",
+};
+
 export function SlotRenderer({
   html,
   css,
@@ -115,12 +134,14 @@ export function SlotRenderer({
   //    hydration warnings.
   const { mainHtml, templates } = extractTemplates(cleanHtml);
 
-  // 引擎层给 basics 头部自动补 data-pagination-header（与 injectAttrIntoFirstTag
-  // 注入 section/item 属性同一套思路）。PDF 导出注入了
-  // `header:not([data-pagination-header]){display:none}` 来隐藏 app 外壳 header，
-  // 模板 basics 用裸 <header> 时会被一起隐藏 —— 整块个人信息在导出里消失。
-  // 目前只有 professional 手写了该属性，classic/abbey/crimson 及协议示例都漏标。
-  // 引擎层补一次所有模板都受益，模板作者/AI 写 HTML 不必记这个工程细节；已手写的幂等跳过。
+  // 引擎层给 basics 头部自动补 data-pagination-header（和 injectAttrIntoFirstTag
+  // 注入 section/item 属性同一套思路）。两个下游强依赖这个标记：
+  //   1. PDF 导出注入 `header:not([data-pagination-header]){display:none}` 隐藏
+  //      app 外壳 header —— 模板 basics 用裸 <header> 时会被一起隐藏，整块个人
+  //      信息消失（zoo 反馈"导出头部缺失"的根因）。
+  //   2. 智能排版用 [data-pagination-header] 锁定 --profile-font-size。
+  // 只有 professional 手写了该属性，classic/abbey/crimson 及协议示例都漏标。
+  // 引擎层补一次所有模板都受益，AI 写 HTML 不必记这个工程细节；已手写的幂等跳过。
   const mainHtmlWithHeader = ensurePaginationHeader(mainHtml);
 
   // 3. CSS auto-scope (defensive: bail to no CSS if Skill wrote forbidden constructs)
@@ -138,16 +159,22 @@ export function SlotRenderer({
   }
 
   // 4. Build CSS variables for styleSettings (dual-constraint §4.2)
+  // --profile-font-size: 个人信息栏字号，不受智能排版压缩影响。
+  // 智能排版 apply 后 styleSettings.fontSize 是压缩值，原始值保存在
+  // content.smartLayout.originalSettings.fontSize。未启用智能排版时两者一致。
+  const smartOriginal = content.smartLayout?.originalSettings;
+  const profileFontSize = smartOriginal?.fontSize ?? styleSettings.fontSize;
   const cssVars: Record<string, string> = {
     "--font-family": fontFamilyValue(styleSettings.fontFamily),
     "--font-size": `${styleSettings.fontSize}px`,
+    "--profile-font-size": `${profileFontSize}px`,
     "--line-height": String(styleSettings.bodyLineHeight),
     "--body-line-height": String(styleSettings.bodyLineHeight),
     "--heading-gap": `${styleSettings.headingGap}px`,
     "--page-padding": `${styleSettings.pagePadding}px`,
     "--section-gap": `${styleSettings.sectionGap}px`,
     "--item-gap": `${styleSettings.itemGap}px`,
-    "--photo-scale": String(styleSettings.photoScale ?? 1),
+    "--photo-scale": "1",
   };
 
   // 5. Sectioned LookupTable (memoized inside resolveSection per call) — pre-resolve
@@ -164,6 +191,9 @@ export function SlotRenderer({
   // 不再全局注入 h1-h4 的 margin-bottom —— 那会把 section title 内部的 h2
   // 也撑开（bar 背景变大的 bug 根源）。
 
+  const headerFontFix = `[data-template-id="${templateId}"] [data-pagination-header] { font-size: var(--profile-font-size); }`;
+  const markerFix = `[data-template-id="${templateId}"] li::marker { color: inherit; }`;
+
   return (
     <div
       data-template-id={templateId}
@@ -171,6 +201,7 @@ export function SlotRenderer({
       style={cssVars as React.CSSProperties}
     >
       {scopedCss && <style dangerouslySetInnerHTML={{ __html: scopedCss }} />}
+      <style dangerouslySetInnerHTML={{ __html: `${headerFontFix}\n${markerFix}` }} />
       {reactTree}
     </div>
   );
@@ -238,7 +269,7 @@ function renderSlotElement(
   // Value slot — context-aware resolution
   if (binding in BASICS_BINDINGS) {
     const fn = BASICS_BINDINGS[binding as keyof typeof BASICS_BINDINGS];
-    return <>{fn(p.content)}</>;
+    return renderContactValue(binding, fn(p.content));
   }
 
   // Basics icon slots (for contact info icons)
@@ -249,7 +280,12 @@ function renderSlotElement(
 
   if (binding in PROFILE_BINDINGS) {
     const fn = PROFILE_BINDINGS[binding as keyof typeof PROFILE_BINDINGS];
-    return <>{fn(p.content)}</>;
+    return renderContactValue(binding, fn(p.content));
+  }
+
+  if (binding in ICON_BINDINGS) {
+    const iconName = ICON_BINDINGS[binding];
+    return renderIconSlot(node, iconName);
   }
 
   if (binding in SECTION_BINDINGS) {
@@ -303,6 +339,23 @@ function renderSlotElement(
 }
 
 /**
+ * 渲染 basics.* / profile.* 直绑值。email/phone/website 包成可点 `<a href>`
+ * （见 LINKABLE_BINDINGS）；inline 样式 color:inherit + 去下划线，外观与原纯文本
+ * 一致，只是可点——不破坏任何模板的联系栏视觉。空值不包链接。
+ */
+function renderContactValue(binding: string, value: string): ReactElement {
+  const linkType = LINKABLE_BINDINGS[binding];
+  if (linkType && value) {
+    return (
+      <a href={contactHref(linkType, value)} style={{ color: "inherit", textDecoration: "none" }}>
+        {value}
+      </a>
+    );
+  }
+  return <>{value}</>;
+}
+
+/**
  * Render `<img data-bind="basics.photo">` → 把解析出的 URL 注入 src。
  * 空 URL → 返回空 Fragment（整个 img 移除）；返回 null 会让 html-react-parser
  * 保留原 src-less <img>（→ 裂图 / React19 空 src 报错），所以必须返回空元素。
@@ -317,8 +370,13 @@ function renderImageBinding(node: Element, p: ParserCtx): ReactElement {
   if (!url) return <></>;
   const props = attributesToProps(node.attribs);
   delete (props as Record<string, unknown>)["data-bind"];
+  const photoScale = p.content.styleSettings?.photoScale ?? 1;
+  const scaleStyle: React.CSSProperties = photoScale !== 1
+    ? { transform: `scale(${photoScale})`, transformOrigin: "center" }
+    : {};
+  const existingStyle = (props as Record<string, unknown>).style as React.CSSProperties | undefined;
   // eslint-disable-next-line @next/next/no-img-element -- Puppeteer PDF uses plain img; alt 由模板作者在 data-bind img 上提供
-  return <img alt="" {...props} src={url} />;
+  return <img alt="" {...props} src={url} style={{ ...existingStyle, ...scaleStyle }} />;
 }
 
 /**
@@ -482,10 +540,9 @@ function injectAttrIntoFirstTag(
  *
  * v2 模板的 basics 头部约定用 <header>，但只有 professional 手写了
  * data-pagination-header；classic/abbey/crimson 及协议示例都漏标。缺这个标记时
- * PDF 导出注入的 `header:not([data-pagination-header]){display:none}`（用于隐藏
- * app 外壳 header）会把整块个人信息一起隐藏。这里在引擎层补一次（regex 只替首个
- * <header>，basics 必是第一个），已带该属性的幂等跳过；模板用 <div> 当 basics
- * （无 <header>）时无副作用。
+ * PDF 导出的 `header:not([data-pagination-header]){display:none}` 会把整块头部
+ * 一起隐藏。这里在引擎层补一次（regex 只替首个 <header>，basics 必是第一个），
+ * 已带该属性的幂等跳过；模板用 <div> 当 basics（无 <header>）时无副作用。
  */
 function ensurePaginationHeader(html: string): string {
   return html.replace(/<header\b([^>]*)>/i, (full, attrs: string) => {

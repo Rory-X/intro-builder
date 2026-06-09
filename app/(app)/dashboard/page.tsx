@@ -4,6 +4,7 @@ import { requireUserId } from "@/lib/auth-helpers";
 import { auth } from "@/lib/auth";
 import { db } from "@/db";
 import { resumes } from "@/db/schema";
+import { withDbRetry } from "@/lib/db-retry";
 import {
   DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem,
 } from "@/components/ui/dropdown-menu";
@@ -12,8 +13,8 @@ import { createResume, deleteResume, duplicateResume } from "./actions";
 import { migrateContent } from "@/lib/migrate-content";
 import { getTemplateMetaAsync } from "@/lib/templates/registry-server";
 import { TemplateRender } from "@/lib/templates/render-server";
+import { TemplateThumbnail } from "@/components/templates/template-thumbnail";
 import { computeCompletenessScore } from "@/lib/completeness-score";
-import { A4_WIDTH_PX } from "@/lib/pagination";
 import { ImportResumeButton } from "@/components/editor/import-resume-button";
 import { DeleteResumeButton } from "@/components/editor/delete-resume-button";
 import type { Metadata } from "next";
@@ -27,7 +28,9 @@ export default async function DashboardPage() {
   const session = await auth();
   const userName = session?.user?.name ?? session?.user?.email?.split("@")[0] ?? "你";
 
-  const list = await db.select().from(resumes).where(eq(resumes.userId, userId)).orderBy(desc(resumes.updatedAt));
+  const list = await withDbRetry("dashboard.list", () =>
+    db.select().from(resumes).where(eq(resumes.userId, userId)).orderBy(desc(resumes.updatedAt)),
+  );
 
   // Batch-resolve every resume's template once at the page level — collapses
   // what would be N awaits in the map loop into a single Promise.all. Built-in
@@ -171,14 +174,11 @@ export default async function DashboardPage() {
                   <div className="overflow-hidden rounded-2xl border border-border bg-card transition-all duration-200 hover:-translate-y-1 hover:shadow-lg hover:shadow-primary/5">
                     {/* Preview thumbnail */}
                     <ResumeCardLink href={`/resume/${r.id}/edit?from=dashboard`}>
-                      <div className="relative m-3 mb-0 overflow-hidden rounded-xl border border-border/60 [container-type:inline-size]"
-                           style={{ aspectRatio: "210/297", backgroundColor: "#ffffff" }}>
-                        <div
-                          className="pointer-events-none origin-top-left"
-                          style={{
-                            width: `${A4_WIDTH_PX}px`,
-                            transform: `scale(calc(100cqw / ${A4_WIDTH_PX}px))`,
-                          }}
+                      <div className="relative m-3 mb-0">
+                        <TemplateThumbnail
+                          fit="page"
+                          forceMount
+                          className="rounded-xl border border-border/60"
                         >
                           <TemplateRender
                             id={r.templateId}
@@ -186,7 +186,7 @@ export default async function DashboardPage() {
                             content={content}
                             sectionOrder={content.sectionOrder}
                           />
-                        </div>
+                        </TemplateThumbnail>
                         {/* Status badge */}
                         {isShared && (
                           <span className="absolute right-2 top-2 flex items-center gap-1.5 rounded-full bg-background/90 px-2.5 py-1 text-[11px] font-semibold shadow-sm backdrop-blur-sm">

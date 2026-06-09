@@ -3,13 +3,13 @@ import { useEffect, useState } from "react";
 import { useFieldArray, useFormContext } from "react-hook-form";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Button } from "@/components/ui/button";
 import { RichTextEditor } from "./rich-text-editor";
 import { emptyDoc } from "@/lib/tiptap-types";
 import type { ResumeContent } from "@/lib/resume-schema";
 import { monitorForElements } from "@atlaskit/pragmatic-drag-and-drop/element/adapter";
-import { ItemWrapper } from "./item-wrapper";
+import { ItemWrapper, ItemSummary } from "./item-wrapper";
 import { SectionEditorHeader } from "./section-editor-header";
+import { cn } from "@/lib/utils";
 import { SectionHelperButton } from "@/components/agent/section-helper-button";
 import { tiptapPlainText } from "@/lib/agent/resume-helper-context";
 import { useCompletenessScore } from "@/hooks/use-completeness-score";
@@ -46,7 +46,7 @@ export function ProjectsEditor({ resumeId }: Props) {
 
   return (
     <section>
-      <div className="px-4 pt-2">
+      <div>
         <SectionEditorHeader
           sectionKey="projects"
           itemCount={fields.length}
@@ -65,19 +65,33 @@ export function ProjectsEditor({ resumeId }: Props) {
           ) : undefined}
         />
       </div>
-      {isOpen && (
-        <div className="space-y-3 px-4 pb-4">
-          {fields.map((f, idx) => (
-            <ItemWrapper key={f.id} id={f.id} sectionKey="projects">
-              <div className="space-y-3 rounded-lg border border-border/60 bg-background/50 p-4">
-                <div className="grid grid-cols-2 gap-3">
-                  <div className="flex flex-col gap-1.5"><Label>项目名</Label><Input {...register(`projects.${idx}.name` as const)} /></div>
+      <div className={cn(
+        "grid transition-all duration-300 ease-out",
+        isOpen ? "grid-rows-[1fr] opacity-100" : "grid-rows-[0fr] opacity-0",
+      )} data-section-body-collapsed={isOpen ? undefined : "true"}>
+        <div className="overflow-hidden">
+        <div className="space-y-4 px-3.5 pb-3.5">
+          {fields.map((f, idx) => {
+            const name = watch(`projects.${idx}.name` as const);
+            const role = watch(`projects.${idx}.role` as const);
+            return (
+            <ItemWrapper
+              key={f.id}
+              id={f.id}
+              sectionKey="projects"
+              collapsible
+              onDelete={() => remove(idx)}
+              summary={<ItemSummary title={name} parts={[role]} />}
+            >
+              <div className="space-y-2.5">
+                <div className="grid grid-cols-2 gap-x-2 gap-y-[5px]">
+                  <div className="col-span-2 flex flex-col gap-1.5"><Label>项目名</Label><Input {...register(`projects.${idx}.name` as const)} /></div>
                   <div className="flex flex-col gap-1.5"><Label>担任角色</Label><Input {...register(`projects.${idx}.role` as const)} /></div>
                   <div className="flex flex-col gap-1.5"><Label>城市</Label><Input {...register(`projects.${idx}.location` as const)} /></div>
                   <div className="flex flex-col gap-1.5"><Label>开始</Label><Input {...register(`projects.${idx}.start` as const)} /></div>
                   <div className="flex flex-col gap-1.5"><Label>结束</Label><Input {...register(`projects.${idx}.end` as const)} /></div>
                 </div>
-                <div className="grid grid-cols-2 gap-3">
+                <div className="grid grid-cols-2 gap-x-2 gap-y-[5px]">
                   <div className="flex flex-col gap-1.5">
                     <Label>技术栈 (逗号分隔)</Label>
                     <Input
@@ -101,12 +115,13 @@ export function ProjectsEditor({ resumeId }: Props) {
                     placeholder="描述你的项目亮点…"
                   />
                 </div>
-                <Button type="button" variant="ghost" size="sm" className="text-xs text-muted-foreground hover:text-destructive" onClick={() => remove(idx)}>删除此条</Button>
               </div>
             </ItemWrapper>
-          ))}
+            );
+          })}
+          </div>
         </div>
-      )}
+      </div>
     </section>
   );
 }

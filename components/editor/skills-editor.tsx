@@ -4,6 +4,7 @@ import { useFormContext } from "react-hook-form";
 import { RichTextEditor } from "./rich-text-editor";
 import type { ResumeContent } from "@/lib/resume-schema";
 import { SectionEditorHeader } from "./section-editor-header";
+import { cn } from "@/lib/utils";
 import { SectionHelperButton } from "@/components/agent/section-helper-button";
 import { tiptapPlainText } from "@/lib/agent/resume-helper-context";
 import { useCompletenessScore } from "@/hooks/use-completeness-score";
@@ -21,7 +22,7 @@ export function SkillsEditor({ resumeId }: Props) {
 
   return (
     <section>
-      <div className="px-4 pt-2">
+      <div>
         <SectionEditorHeader
           sectionKey="skills"
           itemCount={0}
@@ -41,21 +42,26 @@ export function SkillsEditor({ resumeId }: Props) {
           ) : undefined}
         />
       </div>
-      {isOpen && (
-        <div className="px-4 pb-4">
-          <RichTextEditor
-            key="skills-richtext"
-            content={watch("skills")}
-            onChange={(json) => setValue("skills", json, { shouldDirty: true })}
-            polish={resumeId ? {
-              resumeId,
-              section: "skills",
-              fieldPath: "skills",
-            } : undefined}
-            placeholder="如：编程语言：JavaScript、TypeScript、Python&#10;框架：React、Next.js、Vue&#10;工具：Git、Docker、Linux"
-          />
+      <div className={cn(
+        "grid transition-all duration-300 ease-out",
+        isOpen ? "grid-rows-[1fr] opacity-100" : "grid-rows-[0fr] opacity-0",
+      )} data-section-body-collapsed={isOpen ? undefined : "true"}>
+        <div className="overflow-hidden">
+          <div className="px-3.5 pb-3.5">
+            <RichTextEditor
+              key="skills-richtext"
+              content={watch("skills")}
+              onChange={(json) => setValue("skills", json, { shouldDirty: true })}
+              polish={resumeId ? {
+                resumeId,
+                section: "skills",
+                fieldPath: "skills",
+              } : undefined}
+              placeholder="如：编程语言：JavaScript、TypeScript、Python&#10;框架：React、Next.js、Vue&#10;工具：Git、Docker、Linux"
+            />
+          </div>
         </div>
-      )}
+      </div>
     </section>
   );
 }

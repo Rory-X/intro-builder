@@ -43,6 +43,20 @@ describe("StyleEditor", () => {
     expect(form.getValues("styleSettings")?.bodyLineHeight).toBe(1.8);
   });
 
+  it("uses the solid blue toolbar state while the panel is open", () => {
+    render(<Harness />);
+
+    const trigger = screen.getByRole("button", { name: "排版" });
+    fireEvent.click(trigger);
+
+    expect(trigger.className).toContain("bg-primary/5");
+    expect(trigger.className).toContain("font-semibold");
+    expect(trigger.className).toContain("text-primary");
+    expect(trigger.className).toContain("aria-expanded:!bg-primary/5");
+    expect(trigger.className).toContain("aria-expanded:!text-primary");
+    expect(trigger.className).not.toContain("text-primary-foreground");
+  });
+
   it("heading gap and body line-height are independent", () => {
     let form!: UseFormReturn<ResumeContent>;
     render(<Harness onReady={(readyForm) => { form = readyForm; }} />);
