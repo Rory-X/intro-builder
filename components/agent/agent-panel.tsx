@@ -37,7 +37,6 @@ import {
   useAgentAgUiInterruptSubmit,
   type AgentAgUiInterrupt,
 } from "@/components/agent/agent-ag-ui-runtime-provider";
-import { AgentPresetWorkflows } from "@/components/agent/agent-preset-workflows";
 import { AgentToolCard } from "@/components/agent/agent-tool-card";
 import { Button } from "@/components/ui/button";
 import { buildAgentResumeContext } from "@/lib/agent/chat-context";
@@ -247,6 +246,21 @@ export function AgentPanel({
           setError(null);
           beginAgentTurn(messages);
           setIsLoading(true);
+          // Capture last message for retry
+          const lastMessage = messages[messages.length - 1] as
+            | { role?: string; content?: string | Array<{ type?: string; text?: string }> }
+            | undefined;
+          if (lastMessage?.role === "user") {
+            const content =
+              typeof lastMessage.content === "string"
+                ? lastMessage.content
+                : Array.isArray(lastMessage.content)
+                  ? lastMessage.content.find((c) => c.type === "text")?.text || ""
+                  : "";
+            if (content) {
+              setLastRetryRequest({ content, workflowId: null });
+            }
+          }
         }}
         onTextDelta={() => {
           setAgentTurnStatus(activeTurnIdRef.current, "generating");
@@ -276,14 +290,6 @@ export function AgentPanel({
               切回编辑
             </Button>
           </div>
-          <div className="mt-4">
-            <AgentWorkflowControls
-              disabled={isLoading}
-              onWorkflowStart={(request) => {
-                setLastRetryRequest(request);
-              }}
-            />
-          </div>
         </div>
 
         <AgentThreadArea
@@ -305,30 +311,6 @@ export function AgentPanel({
         <AgentComposer title={title} isLoading={isLoading} />
       </AgentAgUiRuntimeProvider>
     </section>
-  );
-}
-
-function AgentWorkflowControls({
-  disabled,
-  onWorkflowStart,
-}: {
-  disabled: boolean;
-  onWorkflowStart: (request: AgentRetryRequest) => void;
-}) {
-  const threadRuntime = useThreadRuntime();
-
-  return (
-    <AgentPresetWorkflows
-      disabled={disabled}
-      onStart={(workflow) => {
-        onWorkflowStart({ content: workflow.prompt, workflowId: workflow.id });
-        threadRuntime.append({
-          role: "user",
-          content: [{ type: "text", text: workflow.prompt }],
-          runConfig: { custom: { workflowId: workflow.id } },
-        });
-      }}
-    />
   );
 }
 
