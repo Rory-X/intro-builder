@@ -15,7 +15,7 @@
 | `apps/agent/src/errors.ts` | JSON error envelope helpers |
 | `apps/agent/src/rich-text-polish.ts` | Rich text polish request validation, prompt builder, provider parser |
 | `apps/agent/src/resume-helpers.ts` | Resume helper IDs, validation, prompt builder, provider parser |
-| `apps/agent/src/agent-messages.ts` | Phase 3A: Agent Mode message validation, prompt builder, provider parser |
+| `apps/agent/src/agent-messages.ts` | Phase 3B: Agent Mode message validation, prompt builder, provider parser, AG-UI event shaping |
 | `apps/agent/src/agent-tools.ts` | Phase 3B: minimal resume tool names and `ResumeOperation` validation |
 | `apps/agent/tests/config.test.ts` | config behavior |
 | `apps/agent/tests/http.test.ts` | health/ready/404/405 behavior |
@@ -23,8 +23,8 @@
 | `apps/agent/tests/rate-limit.test.ts` | rate limit primitive |
 | `apps/agent/tests/rich-text-polish.test.ts` | rich text polish validation and parser behavior |
 | `apps/agent/tests/resume-helpers.test.ts` | resume helper validation, prompt rules, parser behavior |
-| `apps/agent/tests/agent-messages.test.ts` | Phase 3A: Agent message contract and prompt/parser behavior |
-| `apps/agent/tests/agent-tools.test.ts` | Phase 3A: basic tool and patch validation |
+| `apps/agent/tests/agent-messages.test.ts` | Phase 3B: Agent message contract, prompt/parser behavior, AG-UI event conversion |
+| `apps/agent/tests/agent-tools.test.ts` | Phase 3B: minimal tool and `ResumeOperation` validation |
 | `apps/agent/Dockerfile` | production image |
 | `apps/agent/compose.yaml` | local/server compose shape |
 | `apps/agent/Caddyfile` | reverse proxy template |
@@ -47,20 +47,21 @@ Web side entrypoints:
 | `lib/agent/client.ts` | server-side Agent HTTP client |
 | `lib/agent/token.ts` | short-lived Agent JWT signer |
 | `lib/agent/resume-helper-context.ts` | RHF resume content to capped helper context |
-| `lib/agent/agent-message-contract.ts` | Phase 3A: browser-safe Agent message/tool/patch types |
-| `lib/agent/chat-context.ts` | Phase 3A: RHF resume content to capped Agent chat context |
+| `lib/agent/agent-message-contract.ts` | Phase 3B: browser-safe Agent message/tool/operation types |
+| `lib/agent/ag-ui-stream.ts` | Phase 3B: shared AG-UI SSE encoder/reader and tool result extraction |
+| `lib/agent/chat-context.ts` | Phase 3B: RHF resume content to capped Agent chat context |
 | `app/api/agent/session/route.ts` | protected session smoke route |
 | `app/api/agent/rich-text/polish/route.ts` | Web BFF for rich text polish |
 | `app/api/agent/resume/helpers/[helperId]/route.ts` | Web BFF for Phase 2A resume helpers |
-| `app/api/agent/messages/route.ts` | Phase 3A: assistant-ui Agent Mode BFF JSON route |
+| `app/api/agent/messages/route.ts` | Phase 3B: assistant-ui Agent Mode BFF AG-UI SSE proxy with JSON debug fallback |
 | `tests/unit/agent-token.test.ts` | signer behavior |
 | `tests/unit/agent-client.test.ts` | timeout/error mapping |
 | `tests/unit/agent-session-route.test.ts` | Web BFF smoke route behavior |
 | `tests/unit/agent-rich-text-polish-route.test.ts` | rich text polish BFF behavior |
 | `tests/unit/agent-resume-helper-context.test.ts` | helper context extraction and caps |
 | `tests/unit/agent-resume-helper-route.test.ts` | resume helper BFF auth/ownership/proxy behavior |
-| `tests/unit/agent-chat-context.test.ts` | Phase 3A: Agent chat context extraction and field paths |
-| `tests/unit/agent-messages-route.test.ts` | Phase 3A: Agent message BFF auth/ownership/proxy behavior |
+| `tests/unit/agent-chat-context.test.ts` | Phase 3B: Agent chat context extraction and field paths |
+| `tests/unit/agent-messages-route.test.ts` | Phase 3B: Agent message BFF auth/ownership/proxy behavior |
 
 Rules:
 
@@ -68,8 +69,9 @@ Rules:
 - Do not import provider SDKs into Web client components.
 - Do not scatter raw `fetch(AGENT_BASE_URL)` across UI components.
 - Web BFF must validate Auth.js session and resume ownership before signing `agent:chat`.
-- Browser components must call `/api/agent/messages`, never Agent `/v1/agent/messages` directly in Phase 3A.
-- Current Phase 3A backend contract files exist; do not recreate them under different names.
+- Browser components must call `/api/agent/messages`, never Agent `/v1/agent/messages` directly.
+- Browser Agent Mode must request AG-UI SSE (`Accept: text/event-stream`); JSON is only a non-browser debug fallback.
+- Current Phase 3B backend contract files exist; do not recreate them under different names.
 
 ## Editor Page
 
@@ -119,44 +121,46 @@ Implemented components:
 | `tests/unit/section-helper-button.test.tsx` | 2A | section helper request shape |
 | `tests/unit/resume-helper-card.test.tsx` | 2A | suggestion card rendering |
 
-Phase 3A branch-local components:
+Phase 3B branch-local components:
 
 | File | Phase | Responsibility |
 | --- | --- | --- |
-| `components/agent/agent-mode-toggle.tsx` | 3A | toolbar `Agent 模式` toggle with gradient text/icon |
-| `components/agent/agent-panel.tsx` | 3A | left-column Agent panel shell using assistant-ui thread/composer primitives, workflow calls, tool/patch cards |
-| `components/agent/agent-runtime-provider.tsx` | 3A | assistant-ui LocalRuntime seam isolated from product state |
-| `components/agent/agent-preset-workflows.tsx` | 3A | preset workflow chips |
-| `components/agent/agent-tool-card.tsx` | 3A | visible tool call/result card |
+| `components/agent/agent-mode-toggle.tsx` | 3B | toolbar `Agent 模式` toggle with gradient text/icon |
+| `components/agent/agent-panel.tsx` | 3B | left-column Agent panel shell using assistant-ui thread/composer primitives, AG-UI workflow calls, tool/operation cards |
+| `components/agent/agent-runtime-provider.tsx` | 3B | assistant-ui LocalRuntime seam isolated from product state |
+| `components/agent/agent-preset-workflows.tsx` | 3B | preset workflow chips |
+| `components/agent/agent-tool-card.tsx` | 3B | visible tool call/result card |
 | `components/agent/agent-confirmation-card.tsx` | 3B | `ResumeOperation` apply/ignore card |
-| `lib/agent/assistant-ui-react-compat.ts` | 3A | localized React 19 internals alias for assistant-ui/tap webpack build |
-| `next.config.ts` | 3A | targeted `NormalModuleReplacementPlugin` for tap dispatcher only |
-| `tests/unit/agent-panel.test.tsx` | 3A | Agent panel workflow and confirmation behavior |
-| `tests/unit/agent-panel-assistant-ui.test.tsx` | 3A | assistant-ui composer/thread drives Web BFF messages |
-| `tests/unit/editor-client-live-preview.test.tsx` | 3A | editor mode toggle and preview preservation coverage |
+| `lib/agent/assistant-ui-react-compat.ts` | 3B | localized React 19 internals alias for assistant-ui/tap webpack build |
+| `next.config.ts` | 3B | targeted `NormalModuleReplacementPlugin` for tap dispatcher only |
+| `tests/unit/agent-panel.test.tsx` | 3B | Agent panel workflow and confirmation behavior |
+| `tests/unit/agent-panel-assistant-ui.test.tsx` | 3B | assistant-ui composer/thread drives Web BFF AG-UI messages |
+| `tests/unit/editor-client-live-preview.test.tsx` | 3B | editor mode toggle and preview preservation coverage |
 
 Status note:
 
-- These files are intentionally part of the Phase 3A local development branch until PR/CI/deploy confirms them.
+- These files are intentionally part of the Phase 3B local development branch until PR/CI/deploy confirms them.
 - Do not recreate parallel files such as `agent-chat-panel.tsx` or `editor-client-agent-mode.test.tsx` unless the plan is updated first.
 
 Reuse:
 
 - `components/ui/button.tsx`
-- `components/ui/sheet.tsx` only for later Phase 3B mobile exploration, not Phase 3A desktop
+- `components/ui/sheet.tsx` for Phase 3B mobile Agent Sheet, not desktop Agent Mode
 - `components/ui/popover.tsx`
 - `components/ui/separator.tsx`
 - `sonner`
 - `lucide-react`
 
-Phase 3A UI guardrails:
+Phase 3B UI guardrails:
 
 - `Agent 模式` is a left-column mode switch, not a right drawer or floating chat.
+- Agent message streaming must stay AG-UI-first: `@ag-ui/core` event types, `@ag-ui/encoder` SSE encoding, Web parser validation with `BaseEventSchema`.
 - assistant-ui imports should stay behind Agent panel/runtime files and be lazy-loaded where practical.
 - assistant-ui/tap React compatibility is localized to `lib/agent/assistant-ui-react-compat.ts`; do not alias React globally.
 - `AgentConfirmationCard` calls a Web-owned apply callback; it must not call server actions or mutate persisted content directly.
 - Text/icon gradients are allowed for AI affordance; gradient backgrounds are not part of the approved button treatment.
 - Tool names must match the service contract: `resume_read`、`resume_update_section`、`resume_delete_section`、`resume_reorder_sections`、`resume_insert_section`.
+- Do not add workflow-specific tool names; workflows only change prompts and policy, not the tool set.
 
 ## Dashboard and Templates
 

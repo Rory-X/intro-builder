@@ -4,7 +4,7 @@
 
 ## 当前状态
 
-- 当前规划分支：`codex/agent-phase-3-assistant-ui-design`
+- 当前规划分支：`codex/agent-phase-3b-agui`
 - 微服务目录：`apps/agent`
 - 当前能力：基础 Node/TypeScript HTTP 服务，包含 `/health`、Redis-backed `/ready`、protected `/v1/session`、`POST /v1/rich-text/polish`、`POST /v1/resume/helpers/:helperId`、`POST /v1/agent/messages`、JSON 404/405、统一错误 envelope、request id、Redis readiness、rate limit primitive、短期 Agent JWT 校验、Redis `jti` replay guard、STAR-aware prompt、OpenAI-compatible provider 配置、配置解析、启动日志、Docker/Caddy/compose。
 - Phase 2A 能力：`resume-diagnose` 提供整份简历诊断，`section-next-steps` 提供单个模块下一步建议。Web BFF 为 `POST /api/agent/resume/helpers/[helperId]`，会校验 Auth.js session 与 resume ownership 后签发 `resume:helper` JWT。
@@ -20,9 +20,10 @@
 
 - 如果实现、测试或文档与本节冲突，先回到 Phase 3A spec/plan 修正，不要用局部实现反向改变产品形态。
 - 桌面采用 A 方案：`Agent 模式` 替换左侧编辑列，不做右侧 drawer，不遮挡右侧 `LivePreview`。
-- Browser -> Web BFF `/api/agent/messages` -> Agent `/v1/agent/messages` 是唯一浏览器调用路径；Phase 3B 开始消息流使用 AG-UI SSE，不再维护自定义 NDJSON 或仅 JSON 的聊天流。
+- Browser -> Web BFF `/api/agent/messages` -> Agent `/v1/agent/messages` 是唯一浏览器调用路径；Phase 3B 开始消息流以 AG-UI SSE 为唯一产品协议，不再维护自定义 NDJSON 或 JSON-only 聊天流。JSON response 只作为服务端测试、debug 和非浏览器 fallback。
 - assistant-ui 只负责 thread、composer、tool display；不能拥有 RHF、autosave、模板或 preview 状态。
-- 基础 tools 固定为 `resume_read`、`resume_update_section`、`resume_delete_section`、`resume_reorder_sections`、`resume_insert_section`；它们只能返回待确认 `ResumeOperation`，不能直接写 RHF/Postgres。
+- 基础 tools 固定为 `resume_read`、`resume_update_section`、`resume_delete_section`、`resume_reorder_sections`、`resume_insert_section`；它们是最小简历能力集合，只能返回待确认 `ResumeOperation`，不能直接写 RHF/Postgres。
+- 不新增 prompt-specific tool 名称。`inspect_resume`、`propose_*`、`draft_section_item` 等历史草案名不得进入实现、prompt、测试或 UI，除非先更新 `docs/agent/service-contracts.md`、proto 草案和 Web confirmation 语义。
 - 用户点击 `应用` 前，任何 Agent 输出都不能改变简历内容；点击后也必须走 Web allowlist dispatcher、RHF `setValue` 和 `resume:flush-autosave`。
 - 富文本 `update_section` 必须保持 TipTap JSON 语义；原文是有序/无序列表时，润色结果仍必须是列表结构。
 - 现有 OCR、导入简历、AI 解析不迁移到这个 Agent 微服务。
@@ -35,6 +36,7 @@
 - 右侧 `LivePreview` 在桌面 Agent Mode 中始终可见，并且只由 RHF 驱动。
 - Web BFF 仍是浏览器到 Agent 的唯一入口；浏览器不直连 Agent `/v1/agent/messages`。
 - Agent 返回的是 AG-UI lifecycle/text/tool events；真正写回只能发生在 Web 的确认卡回调里。
+- 对话流相关实现必须优先使用 `@ag-ui/core` 类型和 `@ag-ui/encoder` 编码，不能自定义一套平行事件协议。
 - Phase 3B 已包含 assistant-ui streaming adapter 与移动端 Agent Sheet；旧 OCR、导入简历、AI 解析仍不迁移。
 
 ## 产品边界
@@ -77,6 +79,8 @@ Agent 微服务逐步负责：
 - Phase 2A 实施计划：[docs/superpowers/plans/2026-06-08-agent-resume-helpers-phase-2a.md](../superpowers/plans/2026-06-08-agent-resume-helpers-phase-2a.md)
 - Phase 3A 设计：[docs/superpowers/specs/2026-06-09-agent-mode-assistant-ui-design.md](../superpowers/specs/2026-06-09-agent-mode-assistant-ui-design.md)
 - Phase 3A 实施计划：[docs/superpowers/plans/2026-06-09-agent-mode-assistant-ui-phase-3a.md](../superpowers/plans/2026-06-09-agent-mode-assistant-ui-phase-3a.md)
+- Phase 3B AG-UI 设计：[docs/superpowers/specs/2026-06-09-agent-mode-streaming-phase-3b-design.md](../superpowers/specs/2026-06-09-agent-mode-streaming-phase-3b-design.md)
+- Phase 3B AG-UI 实施计划：[docs/superpowers/plans/2026-06-09-agent-mode-streaming-phase-3b.md](../superpowers/plans/2026-06-09-agent-mode-streaming-phase-3b.md)
 - 基础服务设计：[docs/superpowers/specs/2026-06-05-agent-service-foundation-design.md](../superpowers/specs/2026-06-05-agent-service-foundation-design.md)
 - 当前服务代码：[apps/agent](../../apps/agent)
 

@@ -170,11 +170,12 @@ Business endpoints:
 | `POST /v1/resume/helpers/:helperId` | Phase 2 | 简历模块级增量 helper |
 | `POST /v1/agent/messages` | Phase 3 | assistant-ui Agent panel 消息入口 |
 
-Current Phase 3A branch status:
+Current Phase 3B branch status:
 
-- Implemented locally: shared `AgentMessageRequest`/`AgentMessageResponse` types, capped chat context builder, Agent tool/patch validation, Agent service `POST /v1/agent/messages` route, Web BFF `POST /api/agent/messages`, assistant-ui runtime seam, left-column Agent panel, confirmation cards, and initial RHF writeback dispatcher.
-- Pending in the next slice: broader RHF patch regression coverage, local browser smoke, and production deploy.
-- Phase 3A still uses HTTP JSON as the source of truth. The proto file is an IDL draft to keep naming aligned; it is not a requirement to introduce gRPC.
+- Implemented locally: shared `AgentMessageRequest`/`AgentMessageResponse` types, capped chat context builder, minimal Agent tool validation, Agent service `POST /v1/agent/messages` route, Web BFF `POST /api/agent/messages`, assistant-ui runtime seam, left-column Agent panel, confirmation cards, RHF writeback dispatcher, and mobile Agent Sheet.
+- Implemented locally: Phase 3B message streaming uses AG-UI `text/event-stream` with `@ag-ui/core` event types and `@ag-ui/encoder`; the assistant-ui `LocalRuntime` adapter consumes that stream through an async generator.
+- JSON response is not the product chat protocol after Phase 3B. It remains only as a compatibility/debug fallback for service tests and non-browser smoke.
+- The proto file is an IDL draft to keep naming aligned; it is not a requirement to introduce gRPC and must not override the AG-UI event stream contract.
 
 ## Agent JWT Contract
 
@@ -449,7 +450,7 @@ Phase 3 支持的 preset workflows：
 | `experience-star` | 用 STAR 原则优化经历，但不编造 Result 指标 |
 | `pre-export-check` | 导出前检查内容和格式风险 |
 
-Phase 3B 基础 tools：
+Phase 3B 最小简历能力 tools：
 
 | Tool | Can read | Can return | Direct write? |
 | --- | --- | --- | --- |
@@ -463,6 +464,7 @@ Phase 3B 基础 tools：
 
 - 以上五个 tool 名是 Phase 3B 的 canonical contract，代码、测试、prompt、proto 草案和 UI 文案都应引用同一组名字。
 - 早期草案里出现过的 `inspect_resume`、`propose_*`、`draft_section_item`、`suggest_rewrite`、`draft_section`、`explain_template` 不属于当前 Phase 3B contract；如需恢复，必须先更新本文件、proto、Agent validator 和 Web confirmation 语义。
+- 不按 workflow 新增 tool。`resume-diagnose`、`target-role-match`、`experience-star`、`pre-export-check` 只能改变 starter prompt、tool policy 和输出解释，不改变 tool 名称集合。
 
 Request:
 
@@ -500,7 +502,7 @@ Request:
 }
 ```
 
-Success response when `Accept: application/json` or no SSE is requested:
+Compatibility/debug response when `Accept: application/json` or no SSE is requested:
 
 ```json
 {
@@ -564,7 +566,7 @@ Success response when `Accept: application/json` or no SSE is requested:
 }
 ```
 
-Success response when `Accept: text/event-stream`:
+Product response when `Accept: text/event-stream`:
 
 ```text
 content-type: text/event-stream
