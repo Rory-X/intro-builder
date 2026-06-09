@@ -73,8 +73,10 @@ function migrateSkills(input: unknown): unknown {
 export const Research = z.object({
   name: z.string().default(""),
   role: z.string().default(""),
+  location: z.string().default(""),
   start: z.string().default(""),
   end: z.string().default(""),
+  paperTitle: z.string().optional().default(""),
   link: z.string().optional().default(""),
   content: TipTapJSON.default(() => emptyDoc()),
 });
