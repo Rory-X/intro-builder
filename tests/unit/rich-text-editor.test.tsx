@@ -442,6 +442,80 @@ describe("RichTextEditor", () => {
     );
   });
 
+  it("allows long polish diff rows to wrap inside the panel", async () => {
+    const longInsertedText =
+      "超长连续文本用于验证差异行可以在容器内自动换行而不会撑开编辑区域".repeat(4);
+    const replacementTiptapJson: TipTapJSON = {
+      type: "doc",
+      content: [
+        {
+          type: "paragraph",
+          content: [
+            {
+              type: "text",
+              text: `负责${longInsertedText}系统开发。`,
+            },
+          ],
+        },
+      ],
+    };
+    const fetchMock = vi.fn<
+      (...args: [RequestInfo | URL, RequestInit?]) => Promise<Response>
+    >(async () => {
+      return new Response(
+        JSON.stringify({
+          status: "ok",
+          requestId: "req_polish_long_diff",
+          result: {
+            format: "tiptap_json",
+            polishedText: `负责${longInsertedText}系统开发。`,
+            replacementTiptapJson,
+            changeSummary: "补充长文本上下文。",
+            riskFlags: [],
+          },
+          usage: {
+            provider: "fake-provider",
+            model: "fake-model",
+            inputTokens: 120,
+            outputTokens: 36,
+          },
+        }),
+        { status: 200, headers: { "content-type": "application/json" } },
+      );
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const { container } = render(
+      <RichTextEditor
+        content={{
+          type: "doc",
+          content: [
+            {
+              type: "paragraph",
+              content: [{ type: "text", text: "负责系统开发。" }],
+            },
+          ],
+        }}
+        onChange={() => {}}
+        polish={{
+          resumeId: "resume_abc",
+          section: "projects",
+          fieldPath: "projects.0.content",
+        }}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "AI 润色" }));
+    expect(await screen.findByText("补充长文本上下文。")).toBeInTheDocument();
+
+    const row = container.querySelector("[data-diff-row]");
+    const inserted = row?.querySelector('[data-diff-kind="insert"]');
+    expect(row?.className).not.toContain("whitespace-nowrap");
+    expect(row?.className).toContain("whitespace-normal");
+    expect(row?.className).toContain("[overflow-wrap:anywhere]");
+    expect(inserted?.className).toContain("[overflow-wrap:anywhere]");
+  });
+
   it("does not render whitespace-only polish diff fragments", async () => {
     const fetchMock = vi.fn<
       (...args: [RequestInfo | URL, RequestInit?]) => Promise<Response>
