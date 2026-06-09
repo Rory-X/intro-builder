@@ -1,5 +1,5 @@
 "use client";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useFormContext } from "react-hook-form";
 import { AnimatePresence, Reorder } from "motion/react";
 import { GripVertical, Trash2, Plus, Layers } from "lucide-react";
@@ -10,6 +10,7 @@ import { getSectionMeta } from "@/lib/section-meta";
 import { MODULE_PRESETS, BUILTIN_SECTION_KEYS } from "@/lib/resume-schema";
 import type { ResumeContent } from "@/lib/resume-schema";
 import { emptyDoc } from "@/lib/tiptap-types";
+import { cn } from "@/lib/utils";
 
 type Props = {
   sectionOrder: string[];
@@ -22,12 +23,14 @@ function DraggableModuleItem({
   icon: Icon,
   iconColor,
   onRemove,
+  onDragEndCommit,
 }: {
   sectionKey: string;
   label: string;
   icon: React.ComponentType<{ className?: string }>;
   iconColor: string;
   onRemove: () => void;
+  onDragEndCommit: () => void;
 }) {
   const [dragging, setDragging] = useState(false);
 
@@ -35,7 +38,6 @@ function DraggableModuleItem({
     <Reorder.Item
       value={sectionKey}
       onDragStart={() => setDragging(true)}
-      onDragEnd={() => setDragging(false)}
       style={{
         boxShadow: dragging ? "0 4px 12px rgba(0,0,0,0.12)" : "none",
         scale: dragging ? 1.02 : 1,
@@ -43,6 +45,10 @@ function DraggableModuleItem({
         zIndex: dragging ? 50 : "auto",
       }}
       transition={{ type: "spring", stiffness: 300, damping: 25 }}
+      onDragEnd={() => {
+        setDragging(false);
+        onDragEndCommit();
+      }}
       className="flex items-center gap-1.5 rounded-md border bg-background px-2 py-1.5 cursor-grab active:cursor-grabbing"
     >
       <GripVertical className="h-3.5 w-3.5 text-muted-foreground" />
@@ -62,17 +68,35 @@ function DraggableModuleItem({
 
 export function ModuleManager({ sectionOrder, onOrderChange }: Props) {
   const { getValues, setValue } = useFormContext<ResumeContent>();
+  const [open, setOpen] = useState(false);
   const [customTitle, setCustomTitle] = useState("");
   const [showCustomInput, setShowCustomInput] = useState(false);
 
   const managedSections = sectionOrder.filter((k) => k !== "basics");
+  const managedSectionsKey = managedSections.join("|");
+  const [draftManagedSections, setDraftManagedSections] = useState({
+    key: managedSectionsKey,
+    value: managedSections,
+  });
+  const visibleManagedSections =
+    draftManagedSections.key === managedSectionsKey
+      ? draftManagedSections.value
+      : managedSections;
+  const draftManagedSectionsRef = useRef(managedSections);
 
   const availablePresets = MODULE_PRESETS.filter(
     (p) => !sectionOrder.includes(p.id)
   );
 
   function handleReorder(newManaged: string[]) {
-    onOrderChange(["basics", ...newManaged]);
+    draftManagedSectionsRef.current = newManaged;
+    setDraftManagedSections({ key: managedSectionsKey, value: newManaged });
+  }
+
+  function commitReorder() {
+    const next = draftManagedSectionsRef.current;
+    if (next.join("|") === managedSections.join("|")) return;
+    onOrderChange(["basics", ...next]);
   }
 
   function removeSection(key: string) {
@@ -130,9 +154,19 @@ export function ModuleManager({ sectionOrder, onOrderChange }: Props) {
   }
 
   return (
-    <Popover>
+    <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger
-        render={<Button type="button" variant="ghost" size="sm" className="gap-1.5" />}
+        render={
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            className={cn(
+              "gap-1.5",
+              open && "bg-primary/5 font-semibold text-primary hover:bg-primary/10 hover:text-primary aria-expanded:!bg-primary/5 aria-expanded:!text-primary dark:bg-primary/15 dark:hover:bg-primary/20 dark:aria-expanded:!bg-primary/15",
+            )}
+          />
+        }
       >
         <Layers className="h-3.5 w-3.5" />
         模块管理
@@ -144,12 +178,12 @@ export function ModuleManager({ sectionOrder, onOrderChange }: Props) {
             <h3 className="mb-2 text-sm font-semibold">已有模块</h3>
             <Reorder.Group
               axis="y"
-              values={managedSections}
+              values={visibleManagedSections}
               onReorder={handleReorder}
               className="space-y-1"
             >
               <AnimatePresence>
-                {managedSections.map((key) => {
+                {visibleManagedSections.map((key) => {
                   const meta = getSectionMeta(key);
                   return (
                     <DraggableModuleItem
@@ -159,12 +193,13 @@ export function ModuleManager({ sectionOrder, onOrderChange }: Props) {
                       icon={meta.icon}
                       iconColor={meta.color}
                       onRemove={() => removeSection(key)}
+                      onDragEndCommit={commitReorder}
                     />
                   );
                 })}
               </AnimatePresence>
             </Reorder.Group>
-            {managedSections.length === 0 && (
+            {visibleManagedSections.length === 0 && (
               <p className="py-2 text-center text-xs text-muted-foreground">暂无模块</p>
             )}
           </div>

@@ -1,4 +1,5 @@
 "use client";
+import { useState } from "react";
 import { useFormContext } from "react-hook-form";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
@@ -16,6 +17,7 @@ const PAGE_PADDING_OPTIONS = [20, 25, 30, 35, 40, 45, 50, 55, 60] as const;
 
 export function StyleEditor() {
   const { watch, setValue } = useFormContext<ResumeContent>();
+  const [open, setOpen] = useState(false);
 
   const ss = { ...DEFAULT_STYLE_SETTINGS, ...watch("styleSettings") };
 
@@ -31,10 +33,18 @@ export function StyleEditor() {
   }
 
   return (
-    <Popover>
+    <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger
         render={
-          <Button type="button" size="sm" variant="ghost" className="gap-1.5" />
+          <Button
+            type="button"
+            size="sm"
+            variant="ghost"
+            className={cn(
+              "gap-1.5",
+              open && "bg-primary/5 font-semibold text-primary hover:bg-primary/10 hover:text-primary aria-expanded:!bg-primary/5 aria-expanded:!text-primary dark:bg-primary/15 dark:hover:bg-primary/20 dark:aria-expanded:!bg-primary/15",
+            )}
+          />
         }
       >
         <SlidersHorizontal className="h-3.5 w-3.5" />

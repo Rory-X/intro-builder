@@ -40,7 +40,7 @@ export function SectionEditorHeader({ sectionKey, itemCount, isOpen, onToggle, o
       ref={handleRef ?? undefined}
       onClick={onToggle}
       className={cn(
-        "flex select-none items-center gap-2.5 px-3.5 py-2.5 transition-colors hover:bg-muted/40",
+        "group/section-header flex select-none items-center gap-2.5 px-3.5 py-2.5 transition-colors hover:bg-muted/40",
         isDraggable ? "cursor-grab active:cursor-grabbing" : "cursor-pointer",
       )}
     >
@@ -59,7 +59,7 @@ export function SectionEditorHeader({ sectionKey, itemCount, isOpen, onToggle, o
             size="sm"
             variant="ghost"
             onClick={(e) => { e.stopPropagation(); onAdd(); }}
-            className="h-7 gap-1 px-2.5 text-[12px] font-medium text-muted-foreground hover:text-foreground"
+            className="pointer-events-none h-7 gap-1 px-2.5 text-[12px] font-medium text-muted-foreground opacity-0 transition-all duration-150 hover:text-foreground focus-visible:pointer-events-auto focus-visible:opacity-100 group-hover/section-header:pointer-events-auto group-hover/section-header:opacity-100"
           >
             <Plus className="h-4 w-4" />
             {addLabel}

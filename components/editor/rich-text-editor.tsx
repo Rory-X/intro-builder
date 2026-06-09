@@ -51,6 +51,7 @@ const COLOR_PALETTE = [
 export function RichTextEditor({ content, onChange }: Props) {
   const onChangeRef = useRef(onChange);
   const lastSyncedContentRef = useRef(JSON.stringify(content));
+  const [, setToolbarTick] = useState(0);
 
   useEffect(() => {
     onChangeRef.current = onChange;
@@ -83,6 +84,17 @@ export function RichTextEditor({ content, onChange }: Props) {
       editor.commands.setContent(content, { emitUpdate: false });
     }
   }, [editor, content]);
+
+  useEffect(() => {
+    if (!editor || editor.isDestroyed) return;
+    const refresh = () => setToolbarTick((tick) => tick + 1);
+    editor.on("selectionUpdate", refresh);
+    editor.on("transaction", refresh);
+    return () => {
+      editor.off("selectionUpdate", refresh);
+      editor.off("transaction", refresh);
+    };
+  }, [editor]);
 
   if (!editor) return null;
 
@@ -205,8 +217,8 @@ function FontSizeToolbar({
             className={cn(
               "h-5 min-w-6 rounded-md px-1 text-[11px] tabular-nums transition-colors",
               active
-                ? "bg-muted font-medium text-foreground"
-                : "text-muted-foreground hover:bg-muted/70",
+                ? "bg-blue-500/10 font-bold text-blue-700 shadow-sm ring-1 ring-blue-500/20 dark:bg-blue-400/15 dark:text-blue-300 dark:ring-blue-400/25"
+                : "text-muted-foreground hover:bg-muted/70 hover:text-foreground",
             )}
             onClick={() => {
               applyRichTextFontSize(editor, size);
@@ -232,7 +244,7 @@ function ToolBtn({ active, onClick, icon: Icon, title }: { active: boolean; onCl
       className={cn(
         "flex h-[22px] w-[22px] shrink-0 items-center justify-center rounded-[5px] transition-colors",
         active
-          ? "bg-muted text-foreground shadow-sm"
+          ? "bg-blue-500/10 text-blue-700 shadow-sm ring-1 ring-blue-500/20 dark:bg-blue-400/15 dark:text-blue-300 dark:ring-blue-400/25 [&_svg]:stroke-[2.8]"
           : "text-muted-foreground hover:bg-muted hover:text-foreground",
       )}
       onClick={onClick}

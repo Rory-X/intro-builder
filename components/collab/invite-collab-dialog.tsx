@@ -62,7 +62,7 @@ export function InviteCollabDialog({ resumeId, onSessionCreated, isActive = fals
   return (
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger
-        render={<Button variant="ghost" size="icon" className={cn("h-8 w-8", isActive && "bg-primary/10 text-primary hover:bg-primary/15")} title="邀请协作" aria-label="邀请协作" />}
+        render={<Button variant="ghost" size="icon" className={cn("h-8 w-8", isActive && "bg-primary text-primary-foreground hover:bg-primary/90 hover:text-primary-foreground")} title="邀请协作" aria-label="邀请协作" />}
       >
         <Users className="h-4 w-4" />
       </PopoverTrigger>

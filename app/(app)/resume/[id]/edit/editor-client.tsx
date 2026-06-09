@@ -157,6 +157,7 @@ export default function EditorClient({ id, initialTitle, initialTemplate, initia
   const [pendingTemplateId, setPendingTemplateId] = useState<TemplateId | null>(null);
   const [activeSection, setActiveSection] = useState<string | null>("basics");
   const [showTemplatePanel, setShowTemplatePanel] = useState(false);
+  const [isSharePopoverOpen, setIsSharePopoverOpen] = useState(false);
   const [isTogglingShare, setIsTogglingShare] = useState(false);
   const [isPending, startTransition] = useTransition();
   const previewRootRef = useRef<HTMLDivElement>(null);
@@ -555,7 +556,7 @@ export default function EditorClient({ id, initialTitle, initialTemplate, initia
                     if (e.key === "Enter" || e.key === "Escape") setIsEditingTitle(false);
                   }}
                   aria-label="简历名称"
-                  className="h-8 w-full animate-in fade-in zoom-in-95 duration-150 text-[0.8rem] font-medium md:text-[0.8rem]"
+                  className="h-8 w-full animate-in fade-in zoom-in-95 duration-150 border-primary text-[0.8rem] font-medium focus-visible:border-primary focus-visible:ring-0 md:text-[0.8rem]"
                 />
               ) : (
                 <div className="flex min-w-0 animate-in fade-in slide-in-from-right-1 items-center justify-end gap-2 duration-150">
@@ -612,7 +613,7 @@ export default function EditorClient({ id, initialTitle, initialTemplate, initia
           <div className="h-4 w-[2px] self-center rounded-full bg-border" />
 
           {/* ── 分享：icon + popover(链接可复制) ── */}
-          <Popover>
+          <Popover open={isSharePopoverOpen} onOpenChange={setIsSharePopoverOpen}>
             <PopoverTrigger
               render={
                 <Button
@@ -622,6 +623,7 @@ export default function EditorClient({ id, initialTitle, initialTemplate, initia
                   title="公开分享"
                   className={cn(
                     "h-8 w-8",
+                    isSharePopoverOpen && !isPublic && "bg-primary/5 font-semibold text-primary hover:bg-primary/10 hover:text-primary aria-expanded:!bg-primary/5 aria-expanded:!text-primary dark:bg-primary/15 dark:hover:bg-primary/20 dark:aria-expanded:!bg-primary/15",
                     isPublic && "bg-primary text-primary-foreground hover:bg-primary/90 hover:text-primary-foreground",
                   )}
                 />

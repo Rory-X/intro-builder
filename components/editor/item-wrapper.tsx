@@ -1,7 +1,7 @@
 "use client";
 import { useRef, useEffect, useState } from "react";
 import { draggable, dropTargetForElements } from "@atlaskit/pragmatic-drag-and-drop/element/adapter";
-import { Menu, ChevronRight, X } from "lucide-react";
+import { Menu, ChevronRight, Trash2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 type Props = {
@@ -44,19 +44,21 @@ export function ItemWrapper({
   onDelete,
 }: Props) {
   const ref = useRef<HTMLDivElement>(null);
-  const handleRef = useRef<HTMLButtonElement>(null);
+  const buttonHandleRef = useRef<HTMLButtonElement>(null);
+  const rowHandleRef = useRef<HTMLDivElement>(null);
   const [isDragging, setIsDragging] = useState(false);
   const [isDragOver, setIsDragOver] = useState(false);
   const [isOpen, setIsOpen] = useState(defaultOpen);
 
   useEffect(() => {
     const el = ref.current;
-    const handle = handleRef.current;
-    if (!el || !handle) return;
+    const dragElement = collapsible ? rowHandleRef.current : el;
+    const dragHandle = collapsible ? undefined : buttonHandleRef.current;
+    if (!el || !dragElement || (!collapsible && !dragHandle)) return;
 
     const cleanupDrag = draggable({
-      element: el,
-      dragHandle: handle,
+      element: dragElement,
+      ...(dragHandle ? { dragHandle } : {}),
       getInitialData: () => ({ type: "item", id, sectionKey }),
       onDragStart: () => setIsDragging(true),
       onDrop: () => setIsDragging(false),
@@ -72,7 +74,7 @@ export function ItemWrapper({
     });
 
     return () => { cleanupDrag(); cleanupDrop(); };
-  }, [id, sectionKey]);
+  }, [collapsible, id, sectionKey]);
 
   // 向后兼容:非折叠模式维持旧布局(手柄 + 内容,卡片由子节点自带)
   if (!collapsible) {
@@ -81,7 +83,7 @@ export function ItemWrapper({
         ref={ref}
         className={`flex gap-2 transition-all duration-200 ${isDragging ? "opacity-40 scale-[0.98]" : ""} ${isDragOver ? "rounded-lg shadow-sm ring-2 ring-primary/30" : ""}`}
       >
-        <button ref={handleRef} type="button" className="mt-4 cursor-grab self-start rounded p-0.5 transition-colors duration-200 hover:bg-muted active:cursor-grabbing">
+        <button ref={buttonHandleRef} type="button" className="mt-4 cursor-grab self-start rounded p-0.5 transition-colors duration-200 hover:bg-muted active:cursor-grabbing">
           <Menu className="h-4 w-4 text-muted-foreground" />
         </button>
         <div className="flex-1">{children}</div>
@@ -99,9 +101,11 @@ export function ItemWrapper({
         isDragOver && "ring-2 ring-primary/30 translate-y-0.5",
       )}
     >
-      <div className="group flex min-h-[34px] cursor-grab items-center gap-0.5 pr-2 transition-colors hover:bg-foreground/[0.03] active:cursor-grabbing">
+      <div
+        ref={rowHandleRef}
+        className="group flex min-h-[34px] cursor-grab items-center gap-0.5 pr-2 transition-colors hover:bg-foreground/[0.03] active:cursor-grabbing"
+      >
         <button
-          ref={handleRef}
           type="button"
           aria-label="拖拽排序"
           className="flex w-6 cursor-grab items-center justify-center self-stretch text-muted-foreground transition-colors hover:text-foreground active:cursor-grabbing"
@@ -120,10 +124,11 @@ export function ItemWrapper({
           <button
             type="button"
             onClick={onDelete}
+            onPointerDown={(e) => e.stopPropagation()}
             aria-label="删除此条"
-            className="ml-1 flex h-[26px] w-[26px] shrink-0 items-center justify-center rounded-md text-muted-foreground opacity-0 transition-colors hover:bg-destructive/10 hover:text-destructive group-hover:opacity-100"
+            className="ml-1 flex h-[26px] w-[26px] shrink-0 scale-95 items-center justify-center text-muted-foreground opacity-0 transition-all duration-150 hover:text-destructive group-hover:scale-100 group-hover:opacity-100"
           >
-            <X className="h-3.5 w-3.5" />
+            <Trash2 className="h-3.5 w-3.5" />
           </button>
         )}
       </div>

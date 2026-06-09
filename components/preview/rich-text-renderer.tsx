@@ -26,10 +26,26 @@ function normalizeInlineFontSizes(html: string): string {
   });
 }
 
+function toHexColor(value: number): string {
+  return Math.max(0, Math.min(255, value)).toString(16).padStart(2, "0");
+}
+
+function normalizeInlineColors(html: string): string {
+  return html.replace(
+    /color:\s*rgb\(\s*(\d{1,3})\s*,\s*(\d{1,3})\s*,\s*(\d{1,3})\s*\)/gi,
+    (_, r, g, b) =>
+      `color: #${toHexColor(Number(r))}${toHexColor(Number(g))}${toHexColor(Number(b))}`,
+  );
+}
+
+export function normalizeRichTextHtml(html: string): string {
+  return normalizeInlineColors(normalizeInlineFontSizes(html));
+}
+
 export function RichTextRenderer({ content, className }: { content: TipTapJSON; className?: string }) {
   if (!content || !content.content || content.content.length === 0) return null;
   const rawHtml = generateHTML(content, tiptapExtensions);
-  const html = normalizeInlineFontSizes(rawHtml);
+  const html = normalizeRichTextHtml(rawHtml);
   return (
     <div
       className={className ?? "prose prose-sm max-w-none"}

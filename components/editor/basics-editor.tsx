@@ -37,8 +37,12 @@ export function BasicsEditor({ isActive }: { isActive?: boolean }) {
         onAdd={() => {}}
         addLabel=""
       />
-      {isOpen && (
-        <div className="animate-in fade-in slide-in-from-top-1 duration-300 px-3.5 pb-3.5">
+      <div className={cn(
+        "grid transition-all duration-300 ease-out",
+        isOpen ? "grid-rows-[1fr] opacity-100" : "grid-rows-[0fr] opacity-0",
+      )}>
+        <div className="overflow-hidden">
+        <div className="px-3.5 pb-3.5">
           <div className="mb-4">
             <div className="flex items-start gap-4">
               <div className="flex w-[64px] shrink-0 flex-col items-center">
@@ -80,7 +84,8 @@ export function BasicsEditor({ isActive }: { isActive?: boolean }) {
             <Textarea id="basics-summary" rows={2} {...register("basics.summary")} className="min-h-[60px] resize-vertical rounded-md px-2.5 py-2 text-[13.5px] leading-[1.55]" />
           </div>
         </div>
-      )}
+        </div>
+      </div>
     </section>
   );
 }

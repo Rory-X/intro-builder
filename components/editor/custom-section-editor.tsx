@@ -6,6 +6,7 @@ import { RichTextEditor } from "./rich-text-editor";
 import type { ResumeContent } from "@/lib/resume-schema";
 import { SectionEditorHeader } from "./section-editor-header";
 import { useState } from "react";
+import { cn } from "@/lib/utils";
 
 type Props = {
   sectionId: string;
@@ -33,7 +34,11 @@ export function CustomSectionEditor({ sectionId }: Props) {
           addLabel=""
         />
       </div>
-      {isOpen && (
+      <div className={cn(
+        "grid transition-all duration-300 ease-out",
+        isOpen ? "grid-rows-[1fr] opacity-100" : "grid-rows-[0fr] opacity-0",
+      )} data-section-body-collapsed={isOpen ? undefined : "true"}>
+        <div className="overflow-hidden">
         <div className="space-y-2.5 px-3.5 pb-3.5">
           <div className="flex flex-col gap-1.5">
             <Label>模块标题</Label>
@@ -61,7 +66,8 @@ export function CustomSectionEditor({ sectionId }: Props) {
             />
           </div>
         </div>
-      )}
+        </div>
+      </div>
     </section>
   );
 }

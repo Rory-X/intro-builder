@@ -25,7 +25,7 @@ export function SkillsEditor() {
       <div className={cn(
         "grid transition-all duration-300 ease-out",
         isOpen ? "grid-rows-[1fr] opacity-100" : "grid-rows-[0fr] opacity-0",
-      )}>
+      )} data-section-body-collapsed={isOpen ? undefined : "true"}>
         <div className="overflow-hidden">
           <div className="px-3.5 pb-3.5">
             <RichTextEditor

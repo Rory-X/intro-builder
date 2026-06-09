@@ -30,8 +30,7 @@ export function SectionWrapper({ id, children, isActive }: Props) {
     if (!el || !handle) return;
 
     const cleanupDrag = draggable({
-      element: el,
-      dragHandle: handle,
+      element: handle,
       getInitialData: () => ({ type: "section", id }),
       onDragStart: () => setIsDragging(true),
       onDrop: () => setIsDragging(false),
@@ -56,7 +55,7 @@ export function SectionWrapper({ id, children, isActive }: Props) {
         className={cn(
           "overflow-hidden rounded-xl border bg-card transition-all duration-200",
           isActive ? "border-primary/60" : "border-border/70 hover:border-primary/40",
-          isDragging && "scale-[0.99] opacity-50",
+          isDragging && "scale-[0.99] opacity-50 [&_[data-section-body-collapsed='true']]:hidden",
           isDragOver && "ring-2 ring-primary/40",
         )}
       >

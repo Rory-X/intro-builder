@@ -47,6 +47,7 @@ export default async function EditPage({ params, searchParams }: { params: Promi
       initialIsPublic={row.isPublic}
       initialSlug={row.slug ?? null}
       initialUpdatedAtIso={row.updatedAt.toISOString()}
+      initialNowIso={new Date().toISOString()}
       initialResolvedTemplate={toSerializable(initialResolved)}
       uploadedTemplates={dbUploadedTemplates}
       allTemplates={allTemplates}

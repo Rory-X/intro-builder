@@ -36,4 +36,20 @@ describe("SectionEditorHeader — 未知 sectionKey 回退", () => {
     );
     expect(screen.getByText("技能")).toBeInTheDocument();
   });
+
+  it("新增按钮默认隐藏，悬浮 header 时出现", () => {
+    render(
+      <SectionEditorHeader
+        sectionKey="projects"
+        itemCount={1}
+        isOpen
+        onToggle={vi.fn()}
+        onAdd={vi.fn()}
+      />,
+    );
+
+    const addButton = screen.getByRole("button", { name: "新增" });
+    expect(addButton.className).toContain("opacity-0");
+    expect(addButton.className).toContain("group-hover/section-header:opacity-100");
+  });
 });

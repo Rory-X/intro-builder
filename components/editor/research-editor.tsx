@@ -48,7 +48,7 @@ export function ResearchEditor() {
       <div className={cn(
         "grid transition-all duration-300 ease-out",
         isOpen ? "grid-rows-[1fr] opacity-100" : "grid-rows-[0fr] opacity-0",
-      )}>
+      )} data-section-body-collapsed={isOpen ? undefined : "true"}>
         <div className="overflow-hidden">
         <div className="space-y-4 px-3.5 pb-3.5">
           {fields.map((f, idx) => {
@@ -67,12 +67,9 @@ export function ResearchEditor() {
                 <div className="grid grid-cols-2 gap-x-2 gap-y-[5px]">
                   <div className="col-span-2 flex flex-col gap-1.5"><Label>课题名</Label><Input {...register(`research.${idx}.name` as const)} /></div>
                   <div className="flex flex-col gap-1.5"><Label>角色</Label><Input {...register(`research.${idx}.role` as const)} /></div>
+                  <div className="flex flex-col gap-1.5"><Label>论文链接</Label><Input {...register(`research.${idx}.link` as const)} /></div>
                   <div className="flex flex-col gap-1.5"><Label>开始</Label><Input {...register(`research.${idx}.start` as const)} /></div>
                   <div className="flex flex-col gap-1.5"><Label>结束</Label><Input {...register(`research.${idx}.end` as const)} /></div>
-                </div>
-                <div className="flex flex-col gap-1.5">
-                  <Label>论文链接</Label>
-                  <Input {...register(`research.${idx}.link` as const)} />
                 </div>
                 <div>
                   <Label>研究描述</Label>

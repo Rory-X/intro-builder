@@ -51,7 +51,7 @@ describe("TemplateSwitchPanel", () => {
 
   it("只渲染收藏的模板（无「全部模板」分组）", () => {
     renderPanel();
-    expect(screen.getByText("我收藏的模板")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "收藏" })).toBeInTheDocument();
     expect(screen.queryByText("全部模板")).toBeNull();
     expect(screen.getByRole("button", { name: "套用模板 现代" })).toBeInTheDocument();
   });

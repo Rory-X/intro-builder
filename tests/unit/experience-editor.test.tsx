@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import { FormProvider, useForm } from "react-hook-form";
 import { describe, expect, it, vi } from "vitest";
 import { ExperienceEditor } from "@/components/editor/experience-editor";
@@ -40,5 +40,13 @@ describe("ExperienceEditor", () => {
     render(<Harness />);
 
     expect(screen.getByText("城市")).toBeInTheDocument();
+  });
+
+  it("marks collapsed section content so dragging a collapsed section does not show its body", () => {
+    const { container } = render(<Harness />);
+
+    fireEvent.click(screen.getByText("工作经历"));
+
+    expect(container.querySelector('[data-section-body-collapsed="true"]')).not.toBeNull();
   });
 });

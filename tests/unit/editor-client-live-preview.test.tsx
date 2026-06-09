@@ -134,6 +134,7 @@ describe("EditorClient live preview", () => {
         initialIsPublic={false}
         initialSlug={null}
         initialUpdatedAtIso={new Date().toISOString()}
+        initialNowIso={new Date().toISOString()}
         initialResolvedTemplate={unifiedResolved}
         uploadedTemplates={[]}
         allTemplates={DB_TEMPLATE_ROWS}
@@ -158,6 +159,7 @@ describe("EditorClient live preview", () => {
         initialIsPublic={false}
         initialSlug={null}
         initialUpdatedAtIso={new Date().toISOString()}
+        initialNowIso={new Date().toISOString()}
         initialResolvedTemplate={DB_RESOLVED}
         uploadedTemplates={[]}
         allTemplates={DB_TEMPLATE_ROWS}
@@ -195,6 +197,7 @@ describe("EditorClient live preview", () => {
         initialIsPublic={false}
         initialSlug={null}
         initialUpdatedAtIso={new Date().toISOString()}
+        initialNowIso={new Date().toISOString()}
         initialResolvedTemplate={DB_RESOLVED}
         uploadedTemplates={[]}
         allTemplates={DB_TEMPLATE_ROWS}
@@ -205,6 +208,89 @@ describe("EditorClient live preview", () => {
     const toolbar = screen.getByTestId("editor-toolbar");
     expect(toolbar).toHaveTextContent("排版");
     expect(screen.getAllByRole("button", { name: "排版" })).toHaveLength(1);
+
+    const templateButton = screen.getByRole("button", { name: "模板" });
+    fireEvent.click(templateButton);
+    expect(templateButton.className).toContain("bg-primary/5");
+    expect(templateButton.className).toContain("font-semibold");
+    expect(templateButton.className).toContain("text-primary");
+    expect(templateButton.className).not.toContain("text-primary-foreground");
+  });
+
+  it("uses a solid blue toolbar state when public sharing is enabled", () => {
+    render(
+      <EditorClient
+        id="r1"
+        initialTitle="简历"
+        initialTemplate="professional"
+        initialContent={emptyResumeContent()}
+        initialIsPublic
+        initialSlug="public-slug"
+        initialUpdatedAtIso={new Date().toISOString()}
+        initialNowIso={new Date().toISOString()}
+        initialResolvedTemplate={DB_RESOLVED}
+        uploadedTemplates={[]}
+        allTemplates={DB_TEMPLATE_ROWS}
+        from={null}
+      />,
+    );
+
+    const shareButton = screen.getByRole("button", { name: "公开分享" });
+    expect(shareButton.className).toContain("bg-primary");
+    expect(shareButton.className).toContain("text-primary-foreground");
+  });
+
+  it("uses a light blue toolbar state while the share popover is open but not enabled", () => {
+    render(
+      <EditorClient
+        id="r1"
+        initialTitle="简历"
+        initialTemplate="professional"
+        initialContent={emptyResumeContent()}
+        initialIsPublic={false}
+        initialSlug={null}
+        initialUpdatedAtIso={new Date().toISOString()}
+        initialNowIso={new Date().toISOString()}
+        initialResolvedTemplate={DB_RESOLVED}
+        uploadedTemplates={[]}
+        allTemplates={DB_TEMPLATE_ROWS}
+        from={null}
+      />,
+    );
+
+    const shareButton = screen.getByRole("button", { name: "公开分享" });
+    fireEvent.click(shareButton);
+
+    expect(shareButton.className).toContain("bg-primary/5");
+    expect(shareButton.className).toContain("text-primary");
+    expect(shareButton.className).not.toContain("text-primary-foreground");
+  });
+
+  it("animates title editing without increasing the title input font size", () => {
+    render(
+      <EditorClient
+        id="r1"
+        initialTitle="简历"
+        initialTemplate="professional"
+        initialContent={emptyResumeContent()}
+        initialIsPublic={false}
+        initialSlug={null}
+        initialUpdatedAtIso={new Date().toISOString()}
+        initialNowIso={new Date().toISOString()}
+        initialResolvedTemplate={DB_RESOLVED}
+        uploadedTemplates={[]}
+        allTemplates={DB_TEMPLATE_ROWS}
+        from={null}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "重命名" }));
+
+    const input = screen.getByLabelText("简历名称");
+    expect(input.className).toContain("animate-in");
+    expect(input.className).toContain("text-[0.8rem]");
+    expect(input.className).toContain("md:text-[0.8rem]");
+    expect(input.className).toContain("focus-visible:ring-0");
   });
 
   it("shows autosave status details on the save badge", () => {
@@ -219,6 +305,7 @@ describe("EditorClient live preview", () => {
         initialIsPublic={false}
         initialSlug={null}
         initialUpdatedAtIso="2026-05-19T11:21:00.000Z"
+        initialNowIso="2026-05-19T11:26:00.000Z"
         initialResolvedTemplate={DB_RESOLVED}
         uploadedTemplates={[]}
         allTemplates={DB_TEMPLATE_ROWS}
@@ -243,6 +330,7 @@ describe("EditorClient live preview", () => {
         initialIsPublic={false}
         initialSlug={null}
         initialUpdatedAtIso={new Date().toISOString()}
+        initialNowIso={new Date().toISOString()}
         initialResolvedTemplate={DB_RESOLVED}
         uploadedTemplates={[]}
         allTemplates={DB_TEMPLATE_ROWS}
@@ -250,10 +338,14 @@ describe("EditorClient live preview", () => {
       />,
     );
 
+    expect(screen.getByRole("button", { name: "导出简历" }).className).toContain("font-bold");
+
     // Open the export dropdown then click "导出图片"
     await act(async () => {
       fireEvent.click(screen.getByRole("button", { name: "导出简历" }));
     });
+    expect(screen.getByRole("button", { name: "下载 PDF" }).className).toContain("whitespace-nowrap");
+    expect(screen.getByRole("button", { name: "下载 PDF" }).className).not.toContain("w-full");
     await act(async () => {
       fireEvent.click(screen.getByRole("button", { name: "导出图片" }));
     });
@@ -282,6 +374,7 @@ describe("EditorClient live preview", () => {
           initialIsPublic={false}
           initialSlug={null}
           initialUpdatedAtIso={iso}
+          initialNowIso="2026-05-19T11:26:00.000Z"
           initialResolvedTemplate={DB_RESOLVED}
           uploadedTemplates={[]}
           allTemplates={DB_TEMPLATE_ROWS}
@@ -304,6 +397,7 @@ describe("EditorClient live preview", () => {
         initialIsPublic={false}
         initialSlug={null}
         initialUpdatedAtIso={new Date().toISOString()}
+        initialNowIso={new Date().toISOString()}
         initialResolvedTemplate={DB_RESOLVED}
         uploadedTemplates={[]}
         allTemplates={DB_TEMPLATE_ROWS}

@@ -77,7 +77,7 @@ export function ExportButton({
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger
         className={cn(
-          "inline-flex h-7 items-center gap-1.5 rounded-lg bg-primary px-2.5 text-xs font-semibold text-primary-foreground shadow-sm shadow-primary/20 transition-all duration-200 hover:bg-primary/90 hover:shadow-md hover:shadow-primary/30 disabled:cursor-wait disabled:opacity-80",
+          "inline-flex h-7 items-center gap-1.5 rounded-lg bg-primary px-2.5 text-xs font-bold text-primary-foreground shadow-sm shadow-primary/20 transition-all duration-200 hover:bg-primary/90 hover:shadow-md hover:shadow-primary/30 disabled:cursor-wait disabled:opacity-80 [&_svg]:stroke-[2.4]",
           className,
         )}
         disabled={isBusy}
@@ -89,12 +89,12 @@ export function ExportButton({
         )}
         {isDownloadingPdf ? "生成中…" : isExportingImage ? "导出中…" : "导出简历"}
       </PopoverTrigger>
-      <PopoverContent align="end" sideOffset={6} className="w-40 p-1">
+      <PopoverContent align="end" sideOffset={6} className="w-auto gap-1 p-1">
         <button
           type="button"
           onClick={downloadPdf}
           disabled={isBusy}
-          className="flex w-full items-center gap-2 rounded-md px-2.5 py-2 text-sm transition-colors hover:bg-accent disabled:opacity-50"
+          className="flex whitespace-nowrap items-center gap-2 rounded-md px-2.5 py-1.5 text-sm font-semibold transition-colors hover:bg-accent disabled:opacity-50"
         >
           <FileText className="h-4 w-4 text-muted-foreground" />
           下载 PDF
@@ -103,7 +103,7 @@ export function ExportButton({
           type="button"
           onClick={handleExportImage}
           disabled={isBusy}
-          className="flex w-full items-center gap-2 rounded-md px-2.5 py-2 text-sm transition-colors hover:bg-accent disabled:opacity-50"
+          className="flex whitespace-nowrap items-center gap-2 rounded-md px-2.5 py-1.5 text-sm font-semibold transition-colors hover:bg-accent disabled:opacity-50"
         >
           <FileImage className="h-4 w-4 text-muted-foreground" />
           导出图片
