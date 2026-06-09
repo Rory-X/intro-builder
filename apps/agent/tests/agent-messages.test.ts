@@ -73,6 +73,7 @@ describe("agent messages", () => {
     );
     expect(prompt.developer).toContain("所有简历修改必须作为 proposedOperations 返回");
     expect(prompt.developer).toContain("使用 STAR 原则时，不得编造 Result 指标");
+    expect(prompt.developer).toContain("toolCalls: [] 和 proposedOperations: []");
     expect(prompt.user).toContain("workflowId: resume-diagnose");
     expect(prompt.user).toContain("experience.0.content");
   });
@@ -124,13 +125,40 @@ describe("agent messages", () => {
     });
   });
 
-  it("converts parsed provider output into AG-UI events", () => {
+  it("parses conversational provider responses that omit empty tool arrays", () => {
+    const parsed = parseAgentMessageProviderResponse(
+      JSON.stringify({
+        message: {
+          id: "msg_assistant_followup",
+          role: "assistant",
+          content: "请确认你想优化第 3 段项目经历吗？",
+        },
+      }),
+    );
+
+    expect(parsed).toEqual({
+      ok: true,
+      result: {
+        message: {
+          id: "msg_assistant_followup",
+          role: "assistant",
+          content: "请确认你想优化第 3 段项目经历吗？",
+        },
+        toolCalls: [],
+        proposedOperations: [],
+      },
+    });
+  });
+
+  it("converts parsed provider output into chunked AG-UI text events", () => {
+    const assistantContent =
+      "建议先优化第一段工作经历。我会按 STAR 拆成情境、任务、行动与结果，并标记需要你补充的真实指标。";
     const parsed = parseAgentMessageProviderResponse(
       JSON.stringify({
         message: {
           id: "msg_assistant_1",
           role: "assistant",
-          content: "建议先优化工作经历。",
+          content: assistantContent,
         },
         toolCalls: [
           {
@@ -168,26 +196,20 @@ describe("agent messages", () => {
       result: parsed.result,
     });
 
-    expect(events.map((event) => event.type)).toEqual([
-      EventType.RUN_STARTED,
-      EventType.TEXT_MESSAGE_START,
-      EventType.TEXT_MESSAGE_CONTENT,
-      EventType.TOOL_CALL_START,
-      EventType.TOOL_CALL_ARGS,
-      EventType.TOOL_CALL_END,
-      EventType.TOOL_CALL_RESULT,
-      EventType.TEXT_MESSAGE_END,
-      EventType.RUN_FINISHED,
-    ]);
-    expect(events[2]).toMatchObject({
-      type: EventType.TEXT_MESSAGE_CONTENT,
-      delta: "建议先优化工作经历。",
-    });
-    expect(events[6]).toMatchObject({
+    expect(events[0]?.type).toBe(EventType.RUN_STARTED);
+    expect(events[1]?.type).toBe(EventType.TEXT_MESSAGE_START);
+    expect(events.at(-2)?.type).toBe(EventType.TEXT_MESSAGE_END);
+    expect(events.at(-1)?.type).toBe(EventType.RUN_FINISHED);
+    const textDeltas = events
+      .filter((event) => event.type === EventType.TEXT_MESSAGE_CONTENT)
+      .map((event) => event.delta);
+    expect(textDeltas.length).toBeGreaterThan(1);
+    expect(textDeltas.join("")).toBe(assistantContent);
+    expect(events).toContainEqual(expect.objectContaining({
       type: EventType.TOOL_CALL_RESULT,
       toolCallId: "tool_1",
       content: expect.stringContaining('"proposedOperations"'),
-    });
+    }));
   });
 });
 

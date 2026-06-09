@@ -113,6 +113,7 @@ const MESSAGE_ROLES = new Set<AgentChatMessage["role"]>(["user", "assistant"]);
 const MAX_CONTEXT_PLAIN_TEXT_LENGTH = 12_000;
 const MAX_SECTION_TEXT_LENGTH = 4_000;
 const MAX_MESSAGES = 20;
+const AG_UI_TEXT_DELTA_CHARS = 18;
 
 export function validateAgentMessageRequest(
   body: unknown,
@@ -162,6 +163,7 @@ export function buildAgentMessagePrompt(
       "JSON schema:",
       '{"message":{"id":"string","role":"assistant","content":"string"},"toolCalls":[{"id":"string","name":"resume_read|resume_update_section|resume_delete_section|resume_reorder_sections|resume_insert_section","status":"completed","title":"string","summary":"string","input":{},"result":{}}],"proposedOperations":[]}',
       "可用 tools: resume_read, resume_update_section, resume_delete_section, resume_reorder_sections, resume_insert_section",
+      "即使只是追问用户、澄清选择或闲聊，也必须返回 toolCalls: [] 和 proposedOperations: []，不要省略字段。",
       "所有简历修改必须作为 proposedOperations 返回，不能声称已经保存。",
       "使用 STAR 原则时，不得编造 Result 指标。",
       "原文是无序列表或有序列表时，resume_update_section 必须保持对应 TipTap 列表结构。",
@@ -218,9 +220,17 @@ export function parseAgentMessageProviderResponse(
   const message = parseAssistantMessage(parsed.message);
   if (!message.ok) return message;
 
+  const toolCalls = normalizeOptionalArray(parsed.toolCalls, "toolCalls");
+  if (!toolCalls.ok) return toolCalls;
+  const proposedOperations = normalizeOptionalArray(
+    parsed.proposedOperations,
+    "proposedOperations",
+  );
+  if (!proposedOperations.ok) return proposedOperations;
+
   const output = validateAgentToolOutput({
-    toolCalls: parsed.toolCalls,
-    proposedOperations: parsed.proposedOperations,
+    toolCalls: toolCalls.value,
+    proposedOperations: proposedOperations.value,
   });
   if (!output.ok) return output;
 
@@ -248,12 +258,15 @@ export function toAgUiAgentEvents({
       messageId,
       role: "assistant",
     },
-    {
+  ];
+
+  for (const delta of splitAgUiTextDeltas(result.message.content)) {
+    events.push({
       type: EventType.TEXT_MESSAGE_CONTENT,
       messageId,
-      delta: result.message.content,
-    },
-  ];
+      delta,
+    });
+  }
 
   for (const toolCall of result.toolCalls) {
     const operations = result.proposedOperations.filter(
@@ -302,6 +315,26 @@ export function toAgUiAgentEvents({
   );
 
   return events;
+}
+
+function normalizeOptionalArray(
+  value: unknown,
+  field: "toolCalls" | "proposedOperations",
+): { ok: true; value: unknown[] } | { ok: false; message: string } {
+  if (value === undefined || value === null) return { ok: true, value: [] };
+  if (!Array.isArray(value)) return { ok: false, message: `${field} must be an array` };
+  return { ok: true, value };
+}
+
+function splitAgUiTextDeltas(content: string): string[] {
+  const characters = Array.from(content);
+  if (characters.length <= AG_UI_TEXT_DELTA_CHARS) return [content];
+
+  const deltas: string[] = [];
+  for (let index = 0; index < characters.length; index += AG_UI_TEXT_DELTA_CHARS) {
+    deltas.push(characters.slice(index, index + AG_UI_TEXT_DELTA_CHARS).join(""));
+  }
+  return deltas;
 }
 
 export function createOpenAICompatibleAgentMessageProvider(

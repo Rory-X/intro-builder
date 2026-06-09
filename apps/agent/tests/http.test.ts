@@ -700,13 +700,77 @@ describe("agent HTTP service", () => {
     });
   });
 
+  it("returns conversational Agent messages when provider omits empty tool arrays", async () => {
+    const provider = new FakeAgentMessageProvider(
+      JSON.stringify({
+        message: {
+          id: "msg_assistant_followup",
+          role: "assistant",
+          content: "请确认你想优化第 3 段项目经历吗？",
+        },
+      }),
+    );
+    const server = await listenOnRandomPort({
+      replayStore: new FakeReplayStore(),
+      agentMessageProvider: provider,
+    });
+    const token = await signAgentToken({
+      sub: "user_123",
+      resumeId: "resume_abc",
+      scope: "agent:chat",
+      jti: "jti_agent_message_followup",
+    });
+
+    const response = await fetch(server.url("/v1/agent/messages"), {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${token}`,
+        "content-type": "application/json",
+        "x-request-id": "req-client-agent-followup",
+      },
+      body: JSON.stringify({
+        ...validAgentMessageBody(),
+        messages: [
+          { id: "msg_user_1", role: "user", content: "经历 STAR 优化" },
+          {
+            id: "msg_assistant_1",
+            role: "assistant",
+            content: "请选择要优化的经历：1. 工作经历 2. 项目经历1 3. 项目经历2",
+          },
+          { id: "msg_user_2", role: "user", content: "3" },
+        ],
+      }),
+    });
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual({
+      status: "ok",
+      requestId: "req-client-agent-followup",
+      message: {
+        id: "msg_assistant_followup",
+        role: "assistant",
+        content: "请确认你想优化第 3 段项目经历吗？",
+      },
+      toolCalls: [],
+      proposedOperations: [],
+      usage: {
+        provider: "fake-provider",
+        model: "fake-model",
+        inputTokens: 900,
+        outputTokens: 240,
+      },
+    });
+  });
+
   it("streams AG-UI events from /v1/agent/messages when requested", async () => {
+    const assistantContent =
+      "建议先优化第一段工作经历。我会按 STAR 拆成情境、任务、行动与结果，并标记需要你补充的真实指标。";
     const provider = new FakeAgentMessageProvider(
       JSON.stringify({
         message: {
           id: "msg_assistant_1",
           role: "assistant",
-          content: "建议先优化第一段工作经历。",
+          content: assistantContent,
         },
         toolCalls: [
           {
@@ -770,26 +834,20 @@ describe("agent HTTP service", () => {
     expect(response.headers.get("x-request-id")).toBe(
       "req-client-agent-message-stream",
     );
-    expect(events.map((event) => event.type)).toEqual([
-      EventType.RUN_STARTED,
-      EventType.TEXT_MESSAGE_START,
-      EventType.TEXT_MESSAGE_CONTENT,
-      EventType.TOOL_CALL_START,
-      EventType.TOOL_CALL_ARGS,
-      EventType.TOOL_CALL_END,
-      EventType.TOOL_CALL_RESULT,
-      EventType.TEXT_MESSAGE_END,
-      EventType.RUN_FINISHED,
-    ]);
-    expect(events[2]).toMatchObject({
-      type: EventType.TEXT_MESSAGE_CONTENT,
-      delta: "建议先优化第一段工作经历。",
-    });
-    expect(events[6]).toMatchObject({
+    expect(events[0]?.type).toBe(EventType.RUN_STARTED);
+    expect(events[1]?.type).toBe(EventType.TEXT_MESSAGE_START);
+    expect(events.at(-2)?.type).toBe(EventType.TEXT_MESSAGE_END);
+    expect(events.at(-1)?.type).toBe(EventType.RUN_FINISHED);
+    const textDeltas = events
+      .filter((event) => event.type === EventType.TEXT_MESSAGE_CONTENT)
+      .map((event) => event.delta);
+    expect(textDeltas.length).toBeGreaterThan(1);
+    expect(textDeltas.join("")).toBe(assistantContent);
+    expect(events).toContainEqual(expect.objectContaining({
       type: EventType.TOOL_CALL_RESULT,
       toolCallId: "tool_1",
       content: expect.stringContaining('"proposedOperations"'),
-    });
+    }));
   });
 
   it("rejects Agent message tokens with the wrong scope", async () => {

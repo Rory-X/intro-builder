@@ -100,6 +100,56 @@ describe("AgentPanel", () => {
     expect(screen.getByText("检查简历")).toBeInTheDocument();
   });
 
+  it("shows assistant-side loading while waiting for the first streamed text", async () => {
+    const pendingResponse = deferred<Response>();
+    const fetchMock = vi.fn<
+      (...args: [RequestInfo | URL, RequestInit?]) => Promise<Response>
+    >(() => pendingResponse.promise);
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<AgentPanel {...panelProps()} />);
+    fireEvent.click(screen.getByRole("button", { name: "诊断整份简历" }));
+
+    expect(await screen.findByTestId("agent-loading-indicator")).toHaveTextContent(
+      "AI 正在思考",
+    );
+
+    pendingResponse.resolve(
+      agUiResponse({
+        text: "建议先优化工作经历。",
+        toolCalls: [],
+        proposedOperations: [],
+      }),
+    );
+
+    expect(await screen.findByText("建议先优化工作经历。")).toBeInTheDocument();
+    await waitFor(() => {
+      expect(screen.queryByTestId("agent-loading-indicator")).not.toBeInTheDocument();
+    });
+  });
+
+  it("renders Agent error codes and request ids for easier debugging", async () => {
+    const fetchMock = vi.fn<
+      (...args: [RequestInfo | URL, RequestInit?]) => Promise<Response>
+    >(async () => {
+      return Response.json(
+        {
+          error: "Agent 服务暂不可用",
+          code: "dependency_unavailable",
+          requestId: "req_agent_debug",
+        },
+        { status: 503 },
+      );
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<AgentPanel {...panelProps()} />);
+    fireEvent.click(screen.getByRole("button", { name: "诊断整份简历" }));
+
+    expect(await screen.findByText(/dependency_unavailable/)).toBeInTheDocument();
+    expect(screen.getByText(/req_agent_debug/)).toBeInTheDocument();
+  });
+
   it("applies proposed operation only after user confirms", async () => {
     const applyOperation = vi.fn();
     const fetchMock = vi.fn<
@@ -181,6 +231,16 @@ function agUiResponse({
     status: 200,
     headers: { "content-type": "text/event-stream" },
   });
+}
+
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  let reject!: (reason?: unknown) => void;
+  const promise = new Promise<T>((resolvePromise, rejectPromise) => {
+    resolve = resolvePromise;
+    reject = rejectPromise;
+  });
+  return { promise, resolve, reject };
 }
 
 function panelProps(overrides: Partial<React.ComponentProps<typeof AgentPanel>> = {}) {

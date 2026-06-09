@@ -259,6 +259,22 @@ pnpm agent:build
 
 Expected: all pass. Existing lint warnings may remain if unchanged.
 
+## 2026-06-09 Follow-up: Stream UX Hardening
+
+User-visible Phase 3B acceptance requires more than returning SSE headers. The production feedback after PR #43 showed two regressions to guard against:
+
+- Conversational follow-up turns can be pure clarification, so provider JSON may omit empty `toolCalls` / `proposedOperations`. Agent parsing now normalizes omitted values to `[]` instead of returning `dependency_unavailable`.
+- assistant-ui must show visible assistant-side waiting feedback before the first `TEXT_MESSAGE_CONTENT` arrives. The Web panel now renders an `AI 正在思考` status row and keeps the send button spinner.
+- Agent text is emitted as multiple AG-UI `TEXT_MESSAGE_CONTENT` deltas, then reassembled by the assistant-ui adapter. This is provider-response chunking, not provider token streaming; true provider-token streaming remains a later provider architecture improvement.
+- Error cards include `code` and `requestId` so online failures are diagnosable without exposing provider internals.
+
+Regression coverage:
+
+```bash
+pnpm --filter @intro-builder/agent test -- agent-messages.test.ts http.test.ts
+pnpm vitest run tests/unit/agent-panel.test.tsx tests/unit/agent-panel-assistant-ui.test.tsx
+```
+
 Verified on 2026-06-09:
 
 - `pnpm test`: 69 Web test files / 335 tests passed; 9 Agent test files / 67 tests passed.
