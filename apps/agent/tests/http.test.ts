@@ -7,6 +7,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { AgentReplayStore } from "../src/auth";
 import type { AgentMessageProvider } from "../src/agent-messages";
+import type { AiCacheEntry, AiCacheStore } from "../src/ai-cache";
 import { createAgentServer } from "../src/http";
 import type { RichTextPolishProvider } from "../src/rich-text-polish";
 import type { ResumeHelperProvider } from "../src/resume-helpers";
@@ -273,6 +274,68 @@ describe("agent HTTP service", () => {
     });
   });
 
+  it("serves cached rich text polish results without calling the provider again", async () => {
+    const provider = new FakeRichTextPolishProvider(
+      JSON.stringify({
+        polishedText: "负责业务系统前端开发，围绕页面性能瓶颈持续优化加载与交互体验。",
+        changeSummary: "按 STAR 思路强化职责与行动表达，未新增结果数据。",
+        riskFlags: [],
+      }),
+    );
+    const cacheStore = new FakeAiCacheStore();
+    const server = await listenOnRandomPort({
+      replayStore: new FakeReplayStore(),
+      richTextPolishProvider: provider,
+      aiCacheStore: cacheStore,
+    });
+    const firstToken = await signAgentToken({
+      sub: "user_123",
+      resumeId: "resume_abc",
+      scope: "rich_text:polish",
+      jti: "jti_polish_cache_first",
+    });
+    const secondToken = await signAgentToken({
+      sub: "user_123",
+      resumeId: "resume_abc",
+      scope: "rich_text:polish",
+      jti: "jti_polish_cache_second",
+    });
+
+    const first = await fetch(server.url("/v1/rich-text/polish"), {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${firstToken}`,
+        "content-type": "application/json",
+        "x-request-id": "req-client-polish-cache-1",
+      },
+      body: JSON.stringify(validRichTextPolishBody()),
+    });
+    const second = await fetch(server.url("/v1/rich-text/polish"), {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${secondToken}`,
+        "content-type": "application/json",
+        "x-request-id": "req-client-polish-cache-2",
+      },
+      body: JSON.stringify(validRichTextPolishBody()),
+    });
+
+    expect(first.status).toBe(200);
+    expect(second.status).toBe(200);
+    expect(provider.calls).toHaveLength(1);
+    expect(cacheStore.entries.size).toBe(1);
+    await expect(second.json()).resolves.toMatchObject({
+      status: "ok",
+      requestId: "req-client-polish-cache-2",
+      cached: true,
+      cachedAt: "2026-06-05T00:00:00.000Z",
+      result: {
+        format: "plain_text",
+        polishedText: "负责业务系统前端开发，围绕页面性能瓶颈持续优化加载与交互体验。",
+      },
+    });
+  });
+
   it("rejects rich text polish tokens with the wrong scope", async () => {
     const server = await listenOnRandomPort({
       replayStore: new FakeReplayStore(),
@@ -487,6 +550,68 @@ describe("agent HTTP service", () => {
         model: "fake-model",
         inputTokens: 620,
         outputTokens: 180,
+      },
+    });
+  });
+
+  it("serves cached resume helper suggestions without calling the provider again", async () => {
+    const provider = new FakeResumeHelperProvider(
+      JSON.stringify({
+        summary: "整体内容完整，但工作经历缺少可验证结果。",
+        suggestions: [],
+      }),
+    );
+    const cacheStore = new FakeAiCacheStore();
+    const server = await listenOnRandomPort({
+      replayStore: new FakeReplayStore(),
+      resumeHelperProvider: provider,
+      aiCacheStore: cacheStore,
+    });
+    const firstToken = await signAgentToken({
+      sub: "user_123",
+      resumeId: "resume_abc",
+      scope: "resume:helper",
+      jti: "jti_helper_cache_first",
+    });
+    const secondToken = await signAgentToken({
+      sub: "user_123",
+      resumeId: "resume_abc",
+      scope: "resume:helper",
+      jti: "jti_helper_cache_second",
+    });
+
+    const first = await fetch(server.url("/v1/resume/helpers/resume-diagnose"), {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${firstToken}`,
+        "content-type": "application/json",
+        "x-request-id": "req-client-helper-cache-1",
+      },
+      body: JSON.stringify(validResumeHelperBody()),
+    });
+    const second = await fetch(server.url("/v1/resume/helpers/resume-diagnose"), {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${secondToken}`,
+        "content-type": "application/json",
+        "x-request-id": "req-client-helper-cache-2",
+      },
+      body: JSON.stringify(validResumeHelperBody()),
+    });
+
+    expect(first.status).toBe(200);
+    expect(second.status).toBe(200);
+    expect(provider.calls).toHaveLength(1);
+    expect(cacheStore.entries.size).toBe(1);
+    await expect(second.json()).resolves.toMatchObject({
+      status: "ok",
+      requestId: "req-client-helper-cache-2",
+      cached: true,
+      cachedAt: "2026-06-05T00:00:00.000Z",
+      helperId: "resume-diagnose",
+      result: {
+        summary: "整体内容完整，但工作经历缺少可验证结果。",
+        suggestions: [],
       },
     });
   });
@@ -850,6 +975,75 @@ describe("agent HTTP service", () => {
     }));
   });
 
+  it("serves identical Agent message requests from cache", async () => {
+    const provider = new FakeAgentMessageProvider(
+      JSON.stringify({
+        message: {
+          id: "msg_assistant_1",
+          role: "assistant",
+          content: "建议先优化第一段工作经历。",
+        },
+        toolCalls: [],
+        proposedOperations: [],
+      }),
+    );
+    const cacheStore = new FakeAiCacheStore();
+    const server = await listenOnRandomPort({
+      replayStore: new FakeReplayStore(),
+      agentMessageProvider: provider,
+      aiCacheStore: cacheStore,
+    });
+    const firstToken = await signAgentToken({
+      sub: "user_123",
+      resumeId: "resume_abc",
+      scope: "agent:chat",
+      jti: "jti_agent_message_cache_first",
+    });
+    const secondToken = await signAgentToken({
+      sub: "user_123",
+      resumeId: "resume_abc",
+      scope: "agent:chat",
+      jti: "jti_agent_message_cache_second",
+    });
+
+    const first = await fetch(server.url("/v1/agent/messages"), {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${firstToken}`,
+        "content-type": "application/json",
+        "x-request-id": "req-client-agent-message-cache-1",
+      },
+      body: JSON.stringify(validAgentMessageBody()),
+    });
+    const second = await fetch(server.url("/v1/agent/messages"), {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${secondToken}`,
+        "content-type": "application/json",
+        "x-request-id": "req-client-agent-message-cache-2",
+      },
+      body: JSON.stringify(validAgentMessageBody()),
+    });
+
+    expect(first.status).toBe(200);
+    expect(second.status).toBe(200);
+    expect(provider.calls).toHaveLength(1);
+    expect(cacheStore.entries.size).toBe(1);
+    await expect(second.json()).resolves.toMatchObject({
+      status: "ok",
+      requestId: "req-client-agent-message-cache-2",
+      cached: true,
+      cachedAt: "2026-06-05T00:00:00.000Z",
+      message: {
+        id: "msg_assistant_1",
+        role: "assistant",
+        content: "建议先优化第一段工作经历。",
+      },
+      toolCalls: [],
+      proposedOperations: [],
+    });
+  });
+
   it("rejects Agent message tokens with the wrong scope", async () => {
     const server = await listenOnRandomPort({
       replayStore: new FakeReplayStore(),
@@ -951,6 +1145,7 @@ async function listenOnRandomPort(
     richTextPolishProvider?: RichTextPolishProvider;
     resumeHelperProvider?: ResumeHelperProvider;
     agentMessageProvider?: AgentMessageProvider;
+    aiCacheStore?: AiCacheStore;
   } = {},
 ): Promise<TestAgentServer> {
   const server = createAgentServer({
@@ -981,6 +1176,7 @@ async function listenOnRandomPort(
     richTextPolishProvider: options.richTextPolishProvider,
     resumeHelperProvider: options.resumeHelperProvider,
     agentMessageProvider: options.agentMessageProvider,
+    aiCacheStore: options.aiCacheStore,
     createRequestId: () => "req_test_1",
   });
 
@@ -996,6 +1192,26 @@ async function listenOnRandomPort(
   servers.push(testServer);
 
   return testServer;
+}
+
+function validRichTextPolishBody() {
+  return {
+    resumeId: "resume_abc",
+    section: "experience",
+    fieldPath: "experience.0.content",
+    locale: "zh-CN",
+    content: {
+      format: "tiptap_json",
+      plainText: "负责业务系统前端开发，优化页面性能。",
+      tiptapJson: { type: "doc", content: [] },
+    },
+    intent: {
+      mode: "polish",
+      tone: "professional",
+      length: "same",
+      strategy: "star",
+    },
+  };
 }
 
 function validResumeHelperBody() {
@@ -1101,6 +1317,21 @@ class FakeReplayStore implements AgentReplayStore {
     if (this.keys.has(key)) return null;
     this.keys.add(key);
     return "OK";
+  }
+}
+
+class FakeAiCacheStore implements AiCacheStore {
+  readonly entries = new Map<string, AiCacheEntry>();
+
+  async get<T = unknown>(key: string): Promise<AiCacheEntry<T> | null> {
+    return (this.entries.get(key) as AiCacheEntry<T> | undefined) ?? null;
+  }
+
+  async set<T = unknown>(
+    key: string,
+    entry: AiCacheEntry<T>,
+  ): Promise<void> {
+    this.entries.set(key, entry as AiCacheEntry);
   }
 }
 

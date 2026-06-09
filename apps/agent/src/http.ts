@@ -15,8 +15,17 @@ import {
   parseAgentMessageProviderResponse,
   toAgUiAgentEvents,
   validateAgentMessageRequest,
+  type AgentMessageUsage,
   type AgentMessageProvider,
 } from "./agent-messages.js";
+import {
+  buildAiCacheKey,
+  getAiCacheTtlSeconds,
+  type AiCacheEntry,
+  type AiCacheScope,
+  type AiCacheStore,
+} from "./ai-cache.js";
+import type { AgentToolCall, ResumeOperation } from "./agent-tools.js";
 import type { AgentConfig } from "./config.js";
 import { createErrorEnvelope } from "./errors.js";
 import { checkRateLimit, type RateLimitRedis } from "./rate-limit.js";
@@ -26,12 +35,15 @@ import {
   RichTextPolishProviderError,
   validateRichTextPolishRequest,
   type RichTextPolishProvider,
+  type RichTextPolishRunResult,
 } from "./rich-text-polish.js";
 import {
   buildResumeHelperPrompt,
   parseResumeHelperProviderResponse,
   validateResumeHelperRequest,
   type ResumeHelperProvider,
+  type ResumeHelperResult,
+  type ResumeHelperUsage,
 } from "./resume-helpers.js";
 
 export type CreateAgentServerOptions = {
@@ -41,6 +53,7 @@ export type CreateAgentServerOptions = {
   redisReady?: () => Promise<RedisReadyResult>;
   replayStore?: AgentReplayStore;
   rateLimitStore?: RateLimitRedis;
+  aiCacheStore?: AiCacheStore;
   richTextPolishProvider?: RichTextPolishProvider;
   resumeHelperProvider?: ResumeHelperProvider;
   agentMessageProvider?: AgentMessageProvider;
@@ -51,6 +64,18 @@ type HealthStatus = "ok" | "ready";
 type RequestContext = {
   requestId: string;
 };
+type RichTextPolishCacheValue = RichTextPolishRunResult;
+type ResumeHelperCacheValue = {
+  helperId: string;
+  result: ResumeHelperResult;
+  usage: ResumeHelperUsage;
+};
+type AgentMessageCacheValue = {
+  message: { id: string; role: "assistant"; content: string };
+  toolCalls: AgentToolCall[];
+  proposedOperations: ResumeOperation[];
+  usage: AgentMessageUsage;
+};
 
 export function createAgentServer({
   config,
@@ -59,6 +84,7 @@ export function createAgentServer({
   redisReady = async () => ({ ok: true }),
   replayStore,
   rateLimitStore,
+  aiCacheStore,
   richTextPolishProvider,
   resumeHelperProvider,
   agentMessageProvider,
@@ -74,6 +100,7 @@ export function createAgentServer({
       redisReady,
       replayStore,
       rateLimitStore,
+      aiCacheStore,
       richTextPolishProvider,
       resumeHelperProvider,
       agentMessageProvider,
@@ -104,6 +131,7 @@ async function routeRequest(
   redisReady: () => Promise<RedisReadyResult>,
   replayStore: AgentReplayStore | undefined,
   rateLimitStore: RateLimitRedis | undefined,
+  aiCacheStore: AiCacheStore | undefined,
   richTextPolishProvider: RichTextPolishProvider | undefined,
   resumeHelperProvider: ResumeHelperProvider | undefined,
   agentMessageProvider: AgentMessageProvider | undefined,
@@ -210,6 +238,33 @@ async function routeRequest(
       });
     }
 
+    const cacheKey = buildScopedCacheKey({
+      scope: "rich_text:polish",
+      session: auth.session,
+      resumeId: validation.request.resumeId,
+      config,
+      input: validation.request,
+    });
+    const cached = await readAiCache<RichTextPolishCacheValue>(
+      aiCacheStore,
+      cacheKey,
+    );
+    if (cached) {
+      return sendJson(
+        response,
+        200,
+        {
+          status: "ok",
+          requestId: context.requestId,
+          result: cached.value.result,
+          usage: cached.value.usage,
+          cached: true,
+          cachedAt: cached.createdAt,
+        },
+        context,
+      );
+    }
+
     if (rateLimitStore) {
       try {
         const rateLimit = await checkRateLimit({
@@ -243,6 +298,7 @@ async function routeRequest(
         session: auth.session,
         requestId: context.requestId,
       });
+      await writeAiCache(aiCacheStore, cacheKey, polished, "rich_text:polish", now);
 
       return sendJson(
         response,
@@ -321,6 +377,35 @@ async function routeRequest(
       });
     }
 
+    const cacheKey = buildScopedCacheKey({
+      scope: "agent:chat",
+      session: auth.session,
+      resumeId: validation.request.resumeId,
+      config,
+      input: validation.request,
+    });
+    const cached = await readAiCache<AgentMessageCacheValue>(
+      aiCacheStore,
+      cacheKey,
+    );
+    if (cached) {
+      return sendJson(
+        response,
+        200,
+        {
+          status: "ok",
+          requestId: context.requestId,
+          message: cached.value.message,
+          toolCalls: cached.value.toolCalls,
+          proposedOperations: cached.value.proposedOperations,
+          usage: cached.value.usage,
+          cached: true,
+          cachedAt: cached.createdAt,
+        },
+        context,
+      );
+    }
+
     if (rateLimitStore) {
       try {
         const rateLimit = await checkRateLimit({
@@ -367,6 +452,13 @@ async function routeRequest(
           dependency: "provider",
         });
       }
+      const cacheValue: AgentMessageCacheValue = {
+        message: parsed.result.message,
+        toolCalls: parsed.result.toolCalls,
+        proposedOperations: parsed.result.proposedOperations,
+        usage: providerResult.usage,
+      };
+      await writeAiCache(aiCacheStore, cacheKey, cacheValue, "agent:chat", now);
 
       if (acceptsAgUiSse(request)) {
         return sendAgUiEvents(
@@ -462,6 +554,34 @@ async function routeRequest(
       });
     }
 
+    const cacheKey = buildScopedCacheKey({
+      scope: "resume:helper",
+      session: auth.session,
+      resumeId: validation.request.resumeId,
+      config,
+      input: validation.request,
+    });
+    const cached = await readAiCache<ResumeHelperCacheValue>(
+      aiCacheStore,
+      cacheKey,
+    );
+    if (cached) {
+      return sendJson(
+        response,
+        200,
+        {
+          status: "ok",
+          requestId: context.requestId,
+          helperId: cached.value.helperId,
+          result: cached.value.result,
+          usage: cached.value.usage,
+          cached: true,
+          cachedAt: cached.createdAt,
+        },
+        context,
+      );
+    }
+
     if (rateLimitStore) {
       try {
         const rateLimit = await checkRateLimit({
@@ -508,6 +628,12 @@ async function routeRequest(
           dependency: "provider",
         });
       }
+      const cacheValue: ResumeHelperCacheValue = {
+        helperId: validation.request.helperId,
+        result: parsed.result,
+        usage: providerResult.usage,
+      };
+      await writeAiCache(aiCacheStore, cacheKey, cacheValue, "resume:helper", now);
 
       return sendJson(
         response,
@@ -540,6 +666,64 @@ async function routeRequest(
     error: "not_found",
     message: "Route not found",
   });
+}
+
+function buildScopedCacheKey({
+  scope,
+  session,
+  resumeId,
+  config,
+  input,
+}: {
+  scope: AiCacheScope;
+  session: AuthenticatedAgentSession;
+  resumeId: string;
+  config: AgentConfig;
+  input: unknown;
+}): string {
+  return buildAiCacheKey({
+    scope,
+    userId: session.userId,
+    resumeId,
+    modelName: config.modelName,
+    input,
+  });
+}
+
+async function readAiCache<T>(
+  store: AiCacheStore | undefined,
+  key: string,
+): Promise<AiCacheEntry<T> | null> {
+  if (!store) return null;
+
+  try {
+    return await store.get<T>(key);
+  } catch {
+    return null;
+  }
+}
+
+async function writeAiCache<T>(
+  store: AiCacheStore | undefined,
+  key: string,
+  value: T,
+  scope: AiCacheScope,
+  now: () => Date,
+): Promise<void> {
+  if (!store) return;
+
+  try {
+    await store.set(
+      key,
+      {
+        createdAt: now().toISOString(),
+        value,
+      },
+      getAiCacheTtlSeconds(scope),
+    );
+  } catch {
+    // Cache writes should never turn a successful model call into a failed request.
+  }
 }
 
 function sendStatus(
