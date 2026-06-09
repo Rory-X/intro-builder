@@ -742,6 +742,47 @@ function agUiResponseWithToolResult({
   });
 }
 
+function agUiResponseWithToolResult({
+  text,
+  toolCall,
+  proposedOperation,
+}: {
+  text: string;
+  toolCall: unknown;
+  proposedOperation: unknown;
+}): Response {
+  const events: BaseEvent[] = [
+    { type: EventType.RUN_STARTED, threadId: "resume_1", runId: "req_test" },
+    {
+      type: EventType.TEXT_MESSAGE_START,
+      messageId: "msg_assistant_1",
+      role: "assistant",
+    },
+    {
+      type: EventType.TEXT_MESSAGE_CONTENT,
+      messageId: "msg_assistant_1",
+      delta: text,
+    },
+    { type: EventType.TEXT_MESSAGE_END, messageId: "msg_assistant_1" },
+    {
+      type: EventType.TOOL_CALL_RESULT,
+      messageId: "tool_1_result",
+      toolCallId: "tool_1",
+      role: "tool",
+      content: JSON.stringify({
+        toolCall,
+        proposedOperations: [proposedOperation],
+      }),
+    },
+    { type: EventType.RUN_FINISHED, threadId: "resume_1", runId: "req_test" },
+  ];
+
+  return new Response(events.map((event) => `data: ${JSON.stringify(event)}\n\n`).join(""), {
+    status: 200,
+    headers: { "content-type": "text/event-stream" },
+  });
+}
+
 function deferred<T>() {
   let resolve!: (value: T) => void;
   let reject!: (reason?: unknown) => void;
