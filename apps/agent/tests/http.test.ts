@@ -1022,6 +1022,67 @@ describe("agent HTTP service", () => {
     expect(events.at(-1)?.type).toBe(EventType.RUN_FINISHED);
   });
 
+  it("streams tool results instead of RUN_ERROR when provider operations omit toolCallId", async () => {
+    const providerContent = JSON.stringify({
+      message: {
+        id: "msg_assistant_tool_fix",
+        role: "assistant",
+        content: "以下是我生成的 1 个 proposedOperation，请确认是否应用。",
+      },
+      toolCalls: [],
+      proposedOperations: [
+        {
+          id: "op_1",
+          label: "应用经历改写",
+          section: "experience",
+          fieldPath: "experience.0.content",
+          operation: "update_section",
+          beforePlainText: "Token 调用优化降低 200%。",
+          afterPlainText: "Token 调用优化提升 200% 效率。",
+          replacementTiptapJson: { type: "doc", content: [] },
+          changeSummary: "修正指标表述，保留用户确认写回。",
+          riskFlags: [],
+        },
+      ],
+    });
+    const provider = new StreamingAgentMessageProvider([
+      providerContent.slice(0, 96),
+      providerContent.slice(96),
+    ]);
+    const server = await listenOnRandomPort({
+      replayStore: new FakeReplayStore(),
+      agentMessageProvider: provider,
+    });
+    const token = await signAgentToken({
+      sub: "user_123",
+      resumeId: "resume_abc",
+      scope: "agent:chat",
+      jti: "jti_agent_message_missing_tool_call_id",
+    });
+
+    const response = await fetch(server.url("/v1/agent/messages"), {
+      method: "POST",
+      headers: {
+        accept: "text/event-stream",
+        authorization: `Bearer ${token}`,
+        "content-type": "application/json",
+        "x-request-id": "req-client-agent-message-missing-tool-call-id",
+      },
+      body: JSON.stringify(validAgentMessageBody()),
+    });
+    provider.release();
+    const events = parseSseEvents(await response.text());
+
+    expect(response.status).toBe(200);
+    expect(events.find((event) => event.type === EventType.RUN_ERROR)).toBeUndefined();
+    expect(events.at(-1)?.type).toBe(EventType.RUN_FINISHED);
+    expect(events).toContainEqual(expect.objectContaining({
+      type: EventType.TOOL_CALL_RESULT,
+      toolCallId: "tool_op_1",
+      content: expect.stringContaining('"toolCallId":"tool_op_1"'),
+    }));
+  });
+
   it("streams cached Agent message requests as AG-UI events when requested", async () => {
     const provider = new FakeAgentMessageProvider(
       JSON.stringify({
