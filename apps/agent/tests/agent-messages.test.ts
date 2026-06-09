@@ -152,6 +152,58 @@ describe("agent messages", () => {
     });
   });
 
+  it("normalizes provider operations that omit transport toolCallId linkage", () => {
+    const parsed = parseAgentMessageProviderResponse(
+      JSON.stringify({
+        message: {
+          id: "msg_assistant_tool_fix",
+          role: "assistant",
+          content: "我生成了 1 条待确认修改。",
+        },
+        toolCalls: [],
+        proposedOperations: [
+          {
+            id: "op_1",
+            label: "应用经历改写",
+            section: "experience",
+            fieldPath: "experience.0.content",
+            operation: "update_section",
+            beforePlainText: "Token 调用优化降低 200%。",
+            afterPlainText: "Token 调用优化提升 200% 效率。",
+            replacementTiptapJson: { type: "doc", content: [] },
+            changeSummary: "修正指标表述，保留用户确认写回。",
+            riskFlags: [],
+          },
+        ],
+      }),
+    );
+
+    expect(parsed).toEqual({
+      ok: true,
+      result: {
+        message: {
+          id: "msg_assistant_tool_fix",
+          role: "assistant",
+          content: "我生成了 1 条待确认修改。",
+        },
+        toolCalls: [
+          expect.objectContaining({
+            id: "tool_op_1",
+            name: "resume_update_section",
+            status: "completed",
+          }),
+        ],
+        proposedOperations: [
+          expect.objectContaining({
+            id: "op_1",
+            toolCallId: "tool_op_1",
+            operation: "update_section",
+          }),
+        ],
+      },
+    });
+  });
+
   it("converts parsed provider output into chunked AG-UI text events", () => {
     const assistantContent =
       "建议先优化第一段工作经历。我会按 STAR 拆成情境、任务、行动与结果，并标记需要你补充的真实指标。";
