@@ -44,6 +44,12 @@
 - [x] Render each changed block as a single-line contextual text diff row.
 - [x] Add a regression test proving a row includes surrounding text plus delete/insert spans.
 
+### Task 2.7: Long Row Wrapping
+
+- [x] Remove `whitespace-nowrap` / ellipsis from diff rows.
+- [x] Allow long rows and highlighted spans to wrap with `overflow-wrap:anywhere`.
+- [x] Add a regression test proving long diff rows carry wrapping classes.
+
 ### Task 3: Verification And PR Update
 
 - [x] Run `pnpm test`.
@@ -54,13 +60,13 @@
 
 ## Verification
 
-- `pnpm exec vitest run tests/unit/rich-text-editor.test.tsx`: 12 tests passed.
-- `pnpm test`: 64 app test files / 312 tests passed; 7 agent test files / 52 tests passed.
+- `pnpm exec vitest run tests/unit/rich-text-editor.test.tsx`: 13 tests passed.
+- `pnpm test`: 68 app test files / 328 tests passed; 9 agent test files / 63 tests passed.
 - `pnpm tsc --noEmit`: passed.
 - `pnpm lint`: passed with 10 existing warnings outside this change.
 - `pnpm build`: passed. Build logged the expected local placeholder `DATABASE_URL` warnings while prerendering template pages.
 
 ## Risks
 
-- A character-level diff can be noisy for Chinese text. The panel now scopes diffs to changed text blocks and trims long equal context so users can see where the change happened without rendering the whole field.
+- A character-level diff can be noisy for Chinese text. The panel now scopes diffs to changed text blocks and trims long equal context so users can see where the change happened without rendering the whole field. Very long changed text wraps inside the panel instead of preserving strict visual single-line layout.
 - The diff is display-only. The apply path must continue using `replacementTiptapJson` or the existing plain-text fallback.

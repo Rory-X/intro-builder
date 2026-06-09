@@ -447,7 +447,7 @@ function PolishDiffView({
     return (
       <p
         aria-label="AI 润色差异"
-        className="mt-1 overflow-hidden text-ellipsis whitespace-nowrap text-muted-foreground"
+        className="mt-1 min-w-0 max-w-full whitespace-normal break-words text-muted-foreground [overflow-wrap:anywhere]"
       >
         {normalizeDiffDisplayText(polishedText)}
       </p>
@@ -457,15 +457,15 @@ function PolishDiffView({
   return (
     <div
       aria-label="AI 润色差异"
-      className="mt-1 max-h-36 overflow-y-auto rounded-md border border-border/60 bg-background/80 px-2 py-1.5 shadow-sm dark:bg-background/50"
+      className="mt-1 min-w-0 max-w-full overflow-x-hidden rounded-md border border-border/60 bg-background/80 px-2 py-1.5 shadow-sm dark:bg-background/50"
     >
-      <div className="space-y-1">
+      <div className="max-h-36 min-w-0 max-w-full space-y-1 overflow-y-auto">
         {visibleRows.map((row, rowIndex) => (
           <p
             key={rowIndex}
             data-diff-row
             title={getDiffRowText(row)}
-            className="overflow-hidden text-ellipsis whitespace-nowrap leading-6 text-foreground"
+            className="min-w-0 max-w-full whitespace-normal break-words leading-6 text-foreground [overflow-wrap:anywhere]"
           >
             {row.parts.map((part, partIndex) => (
               <DiffTextPart
@@ -494,7 +494,7 @@ function DiffTextPart({ part }: { part: DiffPart }) {
     <span
       data-diff-kind={part.kind}
       className={cn(
-        "mx-0.5 rounded px-1 py-0.5",
+        "mx-0.5 rounded px-1 py-0.5 break-words [overflow-wrap:anywhere]",
         part.kind === "delete"
           ? "bg-red-100 text-red-800 line-through decoration-red-500 dark:bg-red-950/45 dark:text-red-200"
           : "bg-emerald-100 text-emerald-900 dark:bg-emerald-950/45 dark:text-emerald-100",

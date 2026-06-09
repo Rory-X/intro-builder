@@ -13,6 +13,7 @@ Show AI polish suggestions as compact single-line text diffs in the existing can
 - Display meaningful original and polished text differences before the user applies the suggestion.
 - Display real surrounding text so users can see where each change happened.
 - Use single-line diff rows with inline deleted and inserted spans.
+- Long rows and long highlighted spans must wrap inside the suggestion panel instead of widening the editor.
 - Filter whitespace-only and punctuation-only diff fragments so TipTap list spacing does not create visual noise.
 - Keep the existing "应用润色" and "放弃" actions unchanged.
 - Do not change Agent, BFF, autosave, TipTap apply semantics, database schema, or PDF rendering.
@@ -23,11 +24,12 @@ Show AI polish suggestions as compact single-line text diffs in the existing can
 
 `RichTextEditor` captures both the focused editor's plain text and original TipTap JSON when the polish request starts, then stores them in the candidate once the response returns. `PolishCandidatePanel` renders a small `PolishDiffView` instead of raw `polishedText`.
 
-When the Agent returns `replacementTiptapJson`, the display compares original and replacement TipTap text blocks one by one, so list structure and blank lines do not become visible diff noise. Each changed block renders as one single-line row with short surrounding context, deleted text in red strikethrough, and inserted text in green. If structured replacement data is unavailable or mismatched, the display falls back to a single normalized plain-text diff row.
+When the Agent returns `replacementTiptapJson`, the display compares original and replacement TipTap text blocks one by one, so list structure and blank lines do not become visible diff noise. Each changed block renders as one contextual diff row with short surrounding text, deleted text in red strikethrough, and inserted text in green. Rows are allowed to wrap within the panel for very long text, but they must never create horizontal page growth. If structured replacement data is unavailable or mismatched, the display falls back to a single normalized plain-text diff row.
 
 ## Acceptance Criteria
 
 - The panel shows single-line diff rows with context, deleted original text, and inserted polished text.
+- Long diff rows wrap within the suggestion panel and do not force horizontal overflow.
 - The panel does not render whitespace-only fragments.
 - The panel keeps showing the final polished text behaviorally available through the existing apply path.
 - Existing polish apply tests continue to pass.
