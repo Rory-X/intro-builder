@@ -153,7 +153,8 @@ Recommended desktop layout:
 Recommended mobile layout:
 
 - Phase 3A 不解决移动端 Agent panel。
-- Phase 3B 可评估现有 `Sheet`，但不能牺牲保存反馈和主要返回入口。
+- Phase 3B 已采用 Sheet-like Agent panel；后续只做体验微调，不再重新设计成右侧 drawer 或全屏 workspace。
+- 移动端 Agent panel 不能牺牲保存反馈和主要返回入口。
 
 ## 不用于 Phase 1 的原因
 
@@ -185,12 +186,12 @@ assistant-ui 提供的是：
 - 如果 Agent panel 直接写 RHF，容易破坏 autosave 队列和用户确认语义。
 - 如果 tool calling 直接执行写操作，用户会失去对简历内容的控制。
 
-## 接入前验收清单
+## 后续变更验收清单
 
-Phase 3A 开发或评审时，用这份清单防止偏离设计：
+Phase 3 后续开发或评审时，用这份清单防止偏离设计：
 
-- Phase 0B Redis ready/rate limit 和 Phase 0C Agent JWT 已完成，Phase 3A 不重写这些基础层。
-- Phase 3A 只使用 JSON message/tool/patch contract；如果做 streaming，必须进入 Phase 3B plan 并确认 stream protocol 与后端一致。
+- Phase 0B Redis ready/rate limit 和 Phase 0C Agent JWT 已完成，后续 Agent Mode 不重写这些基础层。
+- Phase 3B 对话流使用 AG-UI `text/event-stream`；JSON 只保留为服务端测试和 debug fallback。
 - Agent Mode 是左侧替换，不是右侧 drawer、浮窗或全屏 workspace。
 - assistant-ui 不接管 RHF、autosave、模板、preview 或简历持久化。
 - 基础简历修改 tools 只返回 `ResumeOperation`，所有写回都经过确认卡。

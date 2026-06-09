@@ -94,7 +94,7 @@ AGENT_JWT_SECRET=<same value as Web production env>
 
 The Agent process still starts without `AGENT_JWT_SECRET` so `/health` and `/ready` stay deployable, but protected routes fail closed until the secret is present.
 
-Model-backed Agent endpoints need an OpenAI-compatible chat-completions provider before they can return real AI output. This includes `/v1/rich-text/polish`, `/v1/resume/helpers/:helperId`, and Phase 3A `/v1/agent/messages`:
+Model-backed Agent endpoints need an OpenAI-compatible chat-completions provider before they can return real AI output. This includes `/v1/rich-text/polish`, `/v1/resume/helpers/:helperId`, and Phase 3B `/v1/agent/messages`:
 
 ```bash
 AGENT_MODEL_BASE_URL=<provider-or-relay /v1 base URL>

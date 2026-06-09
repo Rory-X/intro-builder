@@ -4,21 +4,21 @@
 
 ## 当前状态
 
-- 当前规划分支：`codex/agent-phase-3b-agui`
+- 当前落地状态：Phase 3B 已通过 PR #43 合入 `main`，并已部署到 Web 与 Agent 生产链路。
 - 微服务目录：`apps/agent`
 - 当前能力：基础 Node/TypeScript HTTP 服务，包含 `/health`、Redis-backed `/ready`、protected `/v1/session`、`POST /v1/rich-text/polish`、`POST /v1/resume/helpers/:helperId`、`POST /v1/agent/messages`、JSON 404/405、统一错误 envelope、request id、Redis readiness、rate limit primitive、短期 Agent JWT 校验、Redis `jti` replay guard、STAR-aware prompt、OpenAI-compatible provider 配置、配置解析、启动日志、Docker/Caddy/compose。
 - Phase 2A 能力：`resume-diagnose` 提供整份简历诊断，`section-next-steps` 提供单个模块下一步建议。Web BFF 为 `POST /api/agent/resume/helpers/[helperId]`，会校验 Auth.js session 与 resume ownership 后签发 `resume:helper` JWT。
 - Phase 2A UI：编辑器顶部有 `AI 诊断` 入口，工作经历、项目经历、教育经历、研究经历、技能、自定义模块 header 有 `AI 建议` 入口。按钮使用文字与图标渐变，不使用渐变背景。
-- Phase 3B 规划：在 Phase 3A 左侧 Agent Mode 基础上，Agent `/v1/agent/messages` 与 Web BFF `/api/agent/messages` 已升级为 AG-UI `text/event-stream`。assistant-ui 继续使用 `LocalRuntime` + custom adapter，但 adapter 返回 async generator，逐步消费 AG-UI `TEXT_MESSAGE_CONTENT`，并从 `TOOL_CALL_RESULT` 渲染 tool card 与确认卡。
+- Phase 3B 能力：在 Phase 3A 左侧 Agent Mode 基础上，Agent `/v1/agent/messages` 与 Web BFF `/api/agent/messages` 已升级为 AG-UI `text/event-stream`。assistant-ui 继续使用 `LocalRuntime` + custom adapter，但 adapter 返回 async generator，逐步消费 AG-UI `TEXT_MESSAGE_CONTENT`，并从 `TOOL_CALL_RESULT` 渲染 tool card 与确认卡。
 - 本地 Redis：已安装并启动 Homebrew `redis 8.8.0`，连接串为 `redis://127.0.0.1:6379`。
-- 服务器部署：`101.36.117.253` 已安装 Docker/Compose，`/opt/intro-agent` 已运行 `agent + redis + caddy`。公网入口 `https://api.rory-x.me/intro-builder/agent` 已通过 Cloudflare -> Caddy -> Agent 的 `/health` 与 `/ready` 冒烟。
-- 当前生产不包含：Phase 3B assistant-ui Agent Mode、AG-UI streaming 与可确认写回的 `ResumeOperation` UI；这些仍在当前开发分支本地验证中。
+- 服务器部署：`101.36.117.253` 已安装 Docker/Compose，`/opt/intro-agent` 已运行 `agent + redis + caddy`。公网入口 `https://api.rory-x.me/intro-builder/agent` 已通过 Cloudflare -> Caddy -> Agent 的 `/health` 与 `/ready` 冒烟，当前 Agent 生产版本为 `github-c36362c33239`。
+- 当前生产包含：Phase 3B assistant-ui Agent Mode、AG-UI streaming、移动端 Agent Sheet，以及可确认写回的 `ResumeOperation` UI。Web 生产部署、Agent CD 和公网 Agent `/health`/`/ready` 已在 2026-06-09 验证通过。
 
 ## Phase 3 Agent Mode 设计锚点
 
 后续实现只要碰 Agent Mode，都必须和这些锚点一致：
 
-- 如果实现、测试或文档与本节冲突，先回到 Phase 3A spec/plan 修正，不要用局部实现反向改变产品形态。
+- 如果实现、测试或文档与本节冲突，先回到 Phase 3A/3B spec/plan 修正，不要用局部实现反向改变产品形态。
 - 桌面采用 A 方案：`Agent 模式` 替换左侧编辑列，不做右侧 drawer，不遮挡右侧 `LivePreview`。
 - Browser -> Web BFF `/api/agent/messages` -> Agent `/v1/agent/messages` 是唯一浏览器调用路径；Phase 3B 开始消息流以 AG-UI SSE 为唯一产品协议，不再维护自定义 NDJSON 或 JSON-only 聊天流。JSON response 只作为服务端测试、debug 和非浏览器 fallback。
 - assistant-ui 只负责 thread、composer、tool display；不能拥有 RHF、autosave、模板或 preview 状态。
@@ -30,7 +30,7 @@
 
 ## 防偏离检查清单
 
-进入下一步 Phase 3A 开发前，先确认：
+进入后续 Agent Mode 开发前，先确认：
 
 - `Agent 模式` 是左侧编辑列模式切换，不是右侧抽屉、浮窗聊天或全屏 Agent workspace。
 - 右侧 `LivePreview` 在桌面 Agent Mode 中始终可见，并且只由 RHF 驱动。
