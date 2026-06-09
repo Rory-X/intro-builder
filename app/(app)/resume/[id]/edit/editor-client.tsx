@@ -22,6 +22,7 @@ import { EducationEditor } from "@/components/editor/education-editor";
 import { ProjectsEditor } from "@/components/editor/projects-editor";
 import { ResearchEditor } from "@/components/editor/research-editor";
 import { SkillsEditor } from "@/components/editor/skills-editor";
+import { BlockSectionEditor } from "@/components/editor/block-section-editor";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Loader2, Share2, PanelRightClose, PanelRightOpen, MessageSquare, LayoutTemplate, ChevronLeft, PencilLine, CloudCheck, Copy, CircleAlert } from "lucide-react";
@@ -67,6 +68,9 @@ type Props = {
   // serializer has dropped Date through the SC → CC boundary in dev, which
   // would crash `lastSavedAt.getTime()` on first render. Strings are safe.
   initialUpdatedAtIso: string;
+  // Server-rendered relative time labels must use the same "now" on the
+  // client hydration pass; otherwise crossing a minute boundary changes text.
+  initialNowIso: string;
   // Pre-resolved template + the full set of uploaded templates so the
   // client preview can dispatch built-in vs uploaded without a round
   // trip on each template switch. Required because every code path that
@@ -119,7 +123,13 @@ function formatRelativeSaveTime(savedAt: Date, now: Date): string {
   return `${days}天前保存`;
 }
 
-export default function EditorClient({ id, initialTitle, initialTemplate, initialContent, initialIsPublic, initialSlug, initialUpdatedAtIso, initialResolvedTemplate, uploadedTemplates, allTemplates, favoritedTemplateIds = [], from }: Props) {
+function parseIsoDate(value: string): Date | null {
+  if (!value) return null;
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? null : date;
+}
+
+export default function EditorClient({ id, initialTitle, initialTemplate, initialContent, initialIsPublic, initialSlug, initialUpdatedAtIso, initialNowIso, initialResolvedTemplate, uploadedTemplates, allTemplates, favoritedTemplateIds = [], from }: Props) {
   const backHref = from === "templates" ? "/templates" : "/dashboard";
   const backLabel = from === "templates" ? "模板库" : "我的简历";
   const isDesktop = useSyncExternalStore(
@@ -137,11 +147,11 @@ export default function EditorClient({ id, initialTitle, initialTemplate, initia
   const [isPublic, setIsPublic] = useState(initialIsPublic);
   const [publicSlug, setPublicSlug] = useState<string | null>(initialSlug);
   const [saveError, setSaveError] = useState<string | null>(null);
+  const initialNow = parseIsoDate(initialNowIso) ?? parseIsoDate(initialUpdatedAtIso) ?? new Date(0);
   const [lastSavedAt, setLastSavedAt] = useState<Date>(() => {
-    const parsed = initialUpdatedAtIso ? new Date(initialUpdatedAtIso) : null;
-    return parsed && !Number.isNaN(parsed.getTime()) ? parsed : new Date();
+    return parseIsoDate(initialUpdatedAtIso) ?? initialNow;
   });
-  const [now, setNow] = useState(() => new Date());
+  const [now, setNow] = useState(() => initialNow);
   const [isExportingImage, setIsExportingImage] = useState(false);
   const [paginationData, setPaginationData] = useState<{ pageBreaks: number[]; totalHeight: number } | null>(null);
   const [pendingTemplateId, setPendingTemplateId] = useState<TemplateId | null>(null);
@@ -508,7 +518,7 @@ export default function EditorClient({ id, initialTitle, initialTemplate, initia
             aria-pressed={showTemplatePanel}
             className={cn(
               "gap-1.5",
-              showTemplatePanel && "bg-primary/5 text-primary",
+              showTemplatePanel && "bg-primary/5 font-semibold text-primary hover:bg-primary/10 hover:text-primary dark:bg-primary/15 dark:hover:bg-primary/20",
             )}
           >
             <LayoutTemplate className="h-3.5 w-3.5" />
@@ -534,33 +544,35 @@ export default function EditorClient({ id, initialTitle, initialTemplate, initia
 
           {/* ── 右组：简历名(铅笔编辑) + 保存图标 ── */}
           <div className="flex shrink-0 items-center gap-2.5">
-            {isEditingTitle ? (
-              <Input
-                ref={titleInputRef}
-                value={title}
-                onChange={(e) => setTitleState(e.target.value)}
-                onBlur={() => setIsEditingTitle(false)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter" || e.key === "Escape") setIsEditingTitle(false);
-                }}
-                aria-label="简历名称"
-                className="h-8 w-48 text-sm font-medium"
-              />
-            ) : (
-              <>
-                <button
-                  type="button"
-                  onClick={() => setIsEditingTitle(true)}
-                  aria-label="重命名"
-                  className="rounded p-1 text-muted-foreground/70 transition-colors hover:bg-accent hover:text-muted-foreground"
-                >
-                  <PencilLine className="h-3 w-3" />
-                </button>
-                <span className="max-w-[200px] truncate text-[0.8rem] font-medium text-foreground">
-                  {title || "未命名简历"}
-                </span>
-              </>
-            )}
+            <div className="relative flex h-8 w-56 shrink-0 items-center justify-end overflow-hidden">
+              {isEditingTitle ? (
+                <Input
+                  ref={titleInputRef}
+                  value={title}
+                  onChange={(e) => setTitleState(e.target.value)}
+                  onBlur={() => setIsEditingTitle(false)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" || e.key === "Escape") setIsEditingTitle(false);
+                  }}
+                  aria-label="简历名称"
+                  className="h-8 w-full animate-in fade-in zoom-in-95 duration-150 text-[0.8rem] font-medium md:text-[0.8rem]"
+                />
+              ) : (
+                <div className="flex min-w-0 animate-in fade-in slide-in-from-right-1 items-center justify-end gap-2 duration-150">
+                  <button
+                    type="button"
+                    onClick={() => setIsEditingTitle(true)}
+                    aria-label="重命名"
+                    className="rounded p-1 text-muted-foreground/70 transition-colors hover:bg-accent hover:text-muted-foreground"
+                  >
+                    <PencilLine className="h-3 w-3" />
+                  </button>
+                  <span className="max-w-[200px] truncate text-[0.8rem] font-medium text-foreground">
+                    {title || "未命名简历"}
+                  </span>
+                </div>
+              )}
+            </div>
             <Tooltip>
               <TooltipTrigger
                 render={
@@ -610,7 +622,7 @@ export default function EditorClient({ id, initialTitle, initialTemplate, initia
                   title="公开分享"
                   className={cn(
                     "h-8 w-8",
-                    isPublic && "bg-primary/10 text-primary hover:bg-primary/15",
+                    isPublic && "bg-primary text-primary-foreground hover:bg-primary/90 hover:text-primary-foreground",
                   )}
                 />
               }
@@ -730,6 +742,9 @@ export default function EditorClient({ id, initialTitle, initialTemplate, initia
                       {key === "projects" && <ProjectsEditor />}
                       {key === "research" && <ResearchEditor />}
                       {key === "skills" && <SkillsEditor />}
+                      {key === "summary" && <BlockSectionEditor field="summary" placeholder="一段话概括你的背景、优势与求职意向…" />}
+                      {key === "awards" && <BlockSectionEditor field="awards" placeholder="如：2024 年国家奖学金&#10;ACM 区域赛银奖" />}
+                      {key === "portfolio" && <BlockSectionEditor field="portfolio" placeholder="放作品名称 + 链接 + 一句话说明…" />}
                       {isCustomSection(key) && <CustomSectionEditor sectionId={key} />}
                     </SectionWrapper>
                   </div>

@@ -78,6 +78,9 @@ function fullResume(): ResumeContent {
         ]},
       ],
     },
+    summary: emptyDoc(),
+    awards: emptyDoc(),
+    portfolio: emptyDoc(),
     custom: [],
     sectionOrder: ["basics", "experience", "education", "projects", "skills"],
   };

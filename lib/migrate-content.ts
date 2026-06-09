@@ -125,6 +125,50 @@ function sanitizeStyleSettings(obj: Record<string, unknown>): void {
 }
 
 /**
+ * Promote the named preset modules (个人总结/荣誉奖项/作品集) out of the legacy
+ * `custom[]` array into first-class top-level fields (content.summary/awards/
+ * portfolio), mirroring how `skills` is stored. Old resumes kept these inside
+ * custom[] (id = "summary"/"awards"/"portfolio"); now that those ids are
+ * BUILTIN_SECTION_KEYS the renderer/editor route to the top-level fields, so
+ * the data must move or it would be orphaned.
+ *
+ * - Read-time + idempotent: once moved, custom[] no longer carries them, so a
+ *   second pass is a no-op. Never writes the DB — the row updates only when the
+ *   user next saves (autosave).
+ * - sectionOrder keeps the ids (they're builtin section keys now), so position
+ *   is preserved.
+ * - If a top-level field already holds content (new data), it wins; we don't
+ *   clobber it with a stale custom[] copy.
+ */
+const PROMOTED_SECTION_IDS = ["summary", "awards", "portfolio"] as const;
+
+function promoteNamedSections(migrated: Record<string, unknown>): void {
+  const custom = Array.isArray(migrated.custom)
+    ? (migrated.custom as Record<string, unknown>[])
+    : [];
+  const remaining: Record<string, unknown>[] = [];
+  for (const c of custom) {
+    const cid = c.id as string;
+    if ((PROMOTED_SECTION_IDS as readonly string[]).includes(cid)) {
+      const existing = migrated[cid];
+      const existingHasContent =
+        existing &&
+        typeof existing === "object" &&
+        Array.isArray((existing as Record<string, unknown>).content) &&
+        ((existing as Record<string, unknown>).content as unknown[]).length > 0;
+      // Only hoist when the top-level field isn't already populated.
+      if (!existingHasContent && c.content && typeof c.content === "object") {
+        migrated[cid] = c.content;
+      }
+      // drop the custom[] entry either way (it's now a first-class section)
+    } else {
+      remaining.push(c);
+    }
+  }
+  migrated.custom = remaining;
+}
+
+/**
  * Transparently upgrade legacy content to current schema.
  * Handles: v1 bullets→TipTapJSON, old custom string→TipTapJSON, missing fields.
  * Pure function — no side effects.
@@ -208,6 +252,11 @@ export function migrateContent(raw: unknown): ResumeContent {
 
   // Migrate any px font sizes in rich text to em (relative) units
   migrateAllFontSizes(migrated);
+
+  // Promote 个人总结/荣誉奖项/作品集 from legacy custom[] to first-class fields.
+  // Runs after font migration so their rich text is migrated while still in
+  // custom[]; runs before parse so the schema sees the top-level fields.
+  promoteNamedSections(migrated);
 
   // Clamp legacy styleSettings numeric fields to current schema bounds
   sanitizeStyleSettings(migrated);

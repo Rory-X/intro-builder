@@ -555,8 +555,8 @@ describe("SlotRenderer — section fixture integration", () => {
       photo: "",
     },
     skills: richDoc("Python、Go、Rust"),
-    custom: [{ id: "summary", title: "个人总结", content: richDoc("热爱技术") }],
-    sectionOrder: ["experience", "education", "skills", "summary"],
+    custom: [{ id: "custom_hobby", title: "兴趣爱好", content: richDoc("热爱技术") }],
+    sectionOrder: ["experience", "education", "skills", "custom_hobby"],
   });
 
   it("renders name and contact info", () => {
@@ -595,6 +595,27 @@ describe("SlotRenderer — section fixture integration", () => {
     const text = container.textContent ?? "";
     expect(text).toContain("Python、Go、Rust");
     expect(text).toContain("热爱技术");
+  });
+
+  it("renders promoted first-class block modules (summary/awards/portfolio) once each", () => {
+    const promoted = makeContent({
+      summary: richDoc("六年全栈经验"),
+      awards: richDoc("国家奖学金"),
+      portfolio: richDoc("开源项目 Foo"),
+      sectionOrder: ["summary", "awards", "portfolio"],
+    });
+    const { container } = render_({
+      html: SECTION_FIXTURE_HTML,
+      css: ".fixture-resume { color: black; }",
+      content: promoted,
+      templateId: "fixture",
+    });
+    const text = container.textContent ?? "";
+    expect(text).toContain("六年全栈经验");
+    expect(text).toContain("国家奖学金");
+    expect(text).toContain("开源项目 Foo");
+    // 标题来自 section-meta（固定），各渲染一次
+    expect(container.querySelectorAll(".fixture-section").length).toBe(3);
   });
 
   it("renders list sections with item details", () => {

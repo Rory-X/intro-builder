@@ -61,3 +61,60 @@ describe("migrateContent", () => {
     expect(result.basics.photo).toBe("https://example.com/pic.jpg");
   });
 });
+
+describe("migrateContent — 个人总结/荣誉奖项/作品集 提升为一等公民", () => {
+  const doc = (text: string) => ({
+    type: "doc",
+    content: [{ type: "paragraph", content: [{ type: "text", text }] }],
+  });
+
+  it("把 custom[] 里的 summary/awards/portfolio 搬到顶层字段并从 custom 移除", () => {
+    const legacy = {
+      basics: { name: "张三" },
+      custom: [
+        { id: "summary", title: "个人总结", content: doc("六年经验") },
+        { id: "awards", title: "荣誉奖项", content: doc("国奖") },
+        { id: "portfolio", title: "作品集", content: doc("作品X") },
+        { id: "custom_123", title: "到那时", content: doc("自建内容") },
+      ],
+      sectionOrder: ["basics", "summary", "awards", "portfolio", "custom_123"],
+    };
+    const r = migrateContent(legacy);
+    // 三个搬到顶层
+    expect(r.summary).toEqual(doc("六年经验"));
+    expect(r.awards).toEqual(doc("国奖"));
+    expect(r.portfolio).toEqual(doc("作品X"));
+    // 从 custom[] 移除，但用户自建的保留
+    expect(r.custom.map((c) => c.id)).toEqual(["custom_123"]);
+    // sectionOrder 原样保留（含三个 id + 自建）
+    expect(r.sectionOrder).toEqual(["basics", "summary", "awards", "portfolio", "custom_123"]);
+  });
+
+  it("幂等：已是顶层字段的新数据不被 custom 旧值覆盖，再跑一次不变", () => {
+    const migrated = {
+      basics: { name: "李四" },
+      summary: doc("新版总结"),
+      custom: [],
+      sectionOrder: ["basics", "summary"],
+    };
+    const once = migrateContent(migrated);
+    expect(once.summary).toEqual(doc("新版总结"));
+    expect(once.custom).toEqual([]);
+    // 再跑一次（幂等）
+    const twice = migrateContent(once);
+    expect(twice.summary).toEqual(doc("新版总结"));
+    expect(twice.custom).toEqual([]);
+  });
+
+  it("顶层已有内容时，不被 custom[] 里的同 id 旧值覆盖", () => {
+    const conflict = {
+      basics: { name: "王五" },
+      summary: doc("顶层优先"),
+      custom: [{ id: "summary", title: "个人总结", content: doc("旧的custom") }],
+      sectionOrder: ["basics", "summary"],
+    };
+    const r = migrateContent(conflict);
+    expect(r.summary).toEqual(doc("顶层优先"));
+    expect(r.custom).toEqual([]);
+  });
+});
