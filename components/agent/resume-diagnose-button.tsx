@@ -3,15 +3,8 @@
 import { useId, useState } from "react";
 import { useFormContext } from "react-hook-form";
 
-import { ResumeHelperCard } from "@/components/agent/resume-helper-card";
+import { ResumeHelperDialog, type HelperState } from "@/components/agent/resume-helper-dialog";
 import { Button } from "@/components/ui/button";
-import {
-  Popover,
-  PopoverContent,
-  PopoverHeader,
-  PopoverTitle,
-  PopoverTrigger,
-} from "@/components/ui/popover";
 import { useCompletenessScore } from "@/hooks/use-completeness-score";
 import {
   buildResumeHelperContext,
@@ -20,20 +13,16 @@ import {
 import type { ResumeHelperResponse } from "@/lib/agent/client";
 import type { ResumeContent } from "@/lib/resume-schema";
 
-type HelperState =
-  | { status: "idle" }
-  | { status: "loading" }
-  | { status: "ready"; result: ResumeHelperResponse["result"] }
-  | { status: "error"; message: string };
-
 export function ResumeDiagnoseButton({ resumeId }: { resumeId: string }) {
   const form = useFormContext<ResumeContent>();
   const completeness = useCompletenessScore();
   const [state, setState] = useState<HelperState>({ status: "idle" });
+  const [dialogOpen, setDialogOpen] = useState(false);
   const gradientId = `resume-diagnose-gradient-${useId().replace(/:/g, "")}`;
 
   async function requestDiagnosis() {
     const context = buildResumeHelperContext(form.getValues(), completeness);
+    setDialogOpen(true);
     await requestResumeHelper({
       resumeId,
       path: "/api/agent/resume/helpers/resume-diagnose",
@@ -49,26 +38,29 @@ export function ResumeDiagnoseButton({ resumeId }: { resumeId: string }) {
   }
 
   return (
-    <Popover>
-      <PopoverTrigger
-        render={
-          <Button
-            type="button"
-            size="sm"
-            variant="outline"
-            className="gap-1.5 rounded-full border-fuchsia-300/50 bg-background/90 px-3 text-xs font-semibold shadow-sm shadow-fuchsia-500/10 hover:bg-muted/70 dark:border-fuchsia-400/40 dark:bg-muted/40"
-            disabled={state.status === "loading"}
-            onClick={() => void requestDiagnosis()}
-          />
-        }
+    <>
+      <Button
+        type="button"
+        size="sm"
+        variant="outline"
+        className="gap-1.5 rounded-full border-fuchsia-300/50 bg-background/90 px-3 text-xs font-semibold shadow-sm shadow-fuchsia-500/10 hover:bg-muted/70 dark:border-fuchsia-400/40 dark:bg-muted/40"
+        disabled={state.status === "loading"}
+        onClick={() => void requestDiagnosis()}
       >
         <GradientSparklesIcon gradientId={gradientId} />
         <span className="bg-gradient-to-r from-sky-500 via-fuchsia-500 to-amber-400 bg-clip-text text-transparent">
           {state.status === "loading" ? "诊断中" : "AI 诊断"}
         </span>
-      </PopoverTrigger>
-      <ResumeHelperPopoverContent state={state} title="AI 简历诊断" />
-    </Popover>
+      </Button>
+
+      <ResumeHelperDialog
+        open={dialogOpen}
+        onOpenChange={setDialogOpen}
+        title="AI 简历诊断"
+        state={state}
+        maxWidth="2xl"
+      />
+    </>
   );
 }
 
@@ -118,41 +110,6 @@ export async function requestResumeHelper({
   } catch {
     setState({ status: "error", message: "Agent 服务暂不可用，请稍后再试" });
   }
-}
-
-export function ResumeHelperPopoverContent({
-  state,
-  title,
-}: {
-  state: HelperState;
-  title: string;
-}) {
-  return (
-    <PopoverContent align="end" sideOffset={8} className="w-96">
-      <PopoverHeader>
-        <PopoverTitle>{title}</PopoverTitle>
-      </PopoverHeader>
-      {state.status === "idle" && (
-        <p className="text-xs leading-5 text-muted-foreground">
-          点击按钮后，AI 会基于当前表单内容给出建议，不会自动修改简历。
-        </p>
-      )}
-      {state.status === "loading" && (
-        <p className="text-xs leading-5 text-muted-foreground">正在分析当前简历...</p>
-      )}
-      {state.status === "error" && (
-        <p className="text-xs leading-5 text-destructive">{state.message}</p>
-      )}
-      {state.status === "ready" && (
-        <div className="space-y-2">
-          <p className="text-xs leading-5 text-muted-foreground">{state.result.summary}</p>
-          {state.result.suggestions.map((suggestion) => (
-            <ResumeHelperCard key={suggestion.id} suggestion={suggestion} />
-          ))}
-        </div>
-      )}
-    </PopoverContent>
-  );
 }
 
 export function GradientSparklesIcon({ gradientId }: { gradientId: string }) {

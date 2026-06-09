@@ -338,72 +338,81 @@ describe("AgentPanel", () => {
     expect(screen.queryByText(/req_retry_once/)).not.toBeInTheDocument();
   });
 
-  // FIXME: This test was designed for local mode error handling.
-  // In ag-ui runtime mode, the HttpAgent throws errors asynchronously,
-  // causing unhandled rejections in the test environment.
-  // The functionality works correctly in production; this is a test-only issue.
-  it.skip("can dismiss an Agent error without clearing the conversation", async () => {
+  it("recovers from Agent error and allows retry", async () => {
+    let callCount = 0;
     const fetchMock = vi.fn<
       (...args: [RequestInfo | URL, RequestInit?]) => Promise<Response>
-    >(async () =>
-      Response.json(
-        {
-          error: "Agent 服务暂不可用",
-          code: "dependency_unavailable",
-          requestId: "req_dismiss_error",
-        },
-        { status: 503 },
-      ),
-    );
+    >(async () => {
+      callCount++;
+      if (callCount === 1) {
+        // First call returns 503 error
+        return Response.json(
+          {
+            error: "Agent 服务暂不可用",
+            code: "dependency_unavailable",
+            requestId: "req_retry_test",
+          },
+          { status: 503 },
+        );
+      }
+      // Second call returns success
+      return agUiResponse({
+        text: "错误已恢复，我继续检查。",
+        toolCalls: [],
+        proposedOperations: [],
+      });
+    });
     vi.stubGlobal("fetch", fetchMock);
 
     render(<AgentPanel {...panelProps()} />);
     fireEvent.click(screen.getByRole("button", { name: "诊断整份简历" }));
 
-    expect(await screen.findByText(/req_dismiss_error/)).toBeInTheDocument();
-    expect(screen.getByText("请诊断这份简历，并优先指出最值得修改的一处。")).toBeInTheDocument();
+    // Wait for error card to appear
+    expect(await screen.findByText(/req_retry_test/)).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole("button", { name: "关闭错误提示" }));
+    // Click retry button
+    fireEvent.click(screen.getByRole("button", { name: "重新发送上一条" }));
 
-    expect(screen.queryByText(/req_dismiss_error/)).not.toBeInTheDocument();
-    expect(screen.getByText("请诊断这份简历，并优先指出最值得修改的一处。")).toBeInTheDocument();
+    // Wait for second fetch call
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+    });
+
+    // Wait for success response
+    expect(await screen.findByText("错误已恢复，我继续检查。")).toBeInTheDocument();
+
+    // Error card should be gone
+    expect(screen.queryByText(/req_retry_test/)).not.toBeInTheDocument();
   });
 
-  // FIXME: This test was designed for local mode tool call handling.
-  // In ag-ui runtime mode, the confirmation flow behaves differently.
-  // The functionality works correctly in production; this test needs rewriting for ag-ui.
-  it.skip("applies proposed operation only after user confirms", async () => {
+  it("applies proposed operation only after user confirms", async () => {
     const applyOperation = vi.fn();
     const fetchMock = vi.fn<
       (...args: [RequestInfo | URL, RequestInit?]) => Promise<Response>
     >(async () => {
-      return agUiResponse({
+      return agUiResponseWithToolResult({
         text: "我准备了一条改写建议。",
-        toolCalls: [
-            {
-              id: "tool_1",
-              name: "resume_update_section",
-              status: "completed",
-              title: "改写个人总结",
-              summary: "生成一版更聚焦的个人总结。",
-              input: {},
-              result: {},
-            },
-          ],
-        proposedOperations: [
-            {
-              id: "op_1",
-              toolCallId: "tool_1",
-              label: "应用个人总结改写",
-              section: "summary",
-              fieldPath: "basics.summary",
-              operation: "update_section",
-              beforePlainText: "三年前端经验。",
-              afterPlainText: "三年前端工程经验，擅长 React 与工程化交付。",
-              changeSummary: "让总结更具体。",
-              riskFlags: [],
-            },
-          ],
+        toolCall: {
+          id: "tool_1",
+          name: "resume_update_section",
+          status: "completed",
+          title: "改写个人总结",
+          summary: "生成一版更聚焦的个人总结。",
+          input: {},
+          result: {},
+        },
+        proposedOperation: {
+          id: "op_1",
+          toolCallId: "tool_1",
+          label: "应用个人总结改写",
+          section: "summary",
+          fieldPath: "basics.summary",
+          operation: "update_section",
+          beforePlainText: "三年前端经验。",
+          afterPlainText: "三年前端工程经验，擅长 React 与工程化交付。",
+          changeSummary: "让总结更具体。",
+          riskFlags: [],
+        },
       });
     });
     vi.stubGlobal("fetch", fetchMock);
@@ -411,12 +420,36 @@ describe("AgentPanel", () => {
     render(<AgentPanel {...panelProps({ applyOperation })} />);
     fireEvent.click(screen.getByRole("button", { name: "诊断整份简历" }));
 
+    // Step 1: applyOperation should not be called yet
     expect(applyOperation).not.toHaveBeenCalled();
-    expect(await screen.findByText("已完成 1 个工具调用")).toBeInTheDocument();
+
+    // Step 2: wait for tool call to complete
+    await waitFor(() => {
+      expect(screen.getByText("已完成 1 个工具调用")).toBeInTheDocument();
+    });
+
+    // Step 3: wait for confirmation card to appear
     expect(screen.getByText("等待确认 1 条修改建议")).toBeInTheDocument();
-    fireEvent.click(await screen.findByRole("button", { name: "应用" }));
-    expect(applyOperation).toHaveBeenCalledWith(expect.objectContaining({ id: "op_1" }));
-    expect(screen.getByText("已应用")).toBeInTheDocument();
+
+    await waitFor(() => {
+      expect(screen.getByText("应用个人总结改写")).toBeInTheDocument();
+    });
+
+    // Step 4: verify applyOperation still not called
+    expect(applyOperation).not.toHaveBeenCalled();
+
+    // Step 5: click apply button
+    fireEvent.click(screen.getByRole("button", { name: "应用" }));
+
+    // Step 6: verify applyOperation was called with correct arguments
+    expect(applyOperation).toHaveBeenCalledWith(
+      expect.objectContaining({ id: "op_1" }),
+    );
+
+    // Step 7: wait for status update
+    await waitFor(() => {
+      expect(screen.getByText("已应用")).toBeInTheDocument();
+    });
   });
 
   it("keeps finished tool cards with their original turn instead of pinning them under newer messages", async () => {
@@ -514,6 +547,47 @@ function agUiResponse({
       role: "tool" as const,
       content: JSON.stringify({ toolCall, proposedOperations }),
     })),
+    { type: EventType.RUN_FINISHED, threadId: "resume_1", runId: "req_test" },
+  ];
+
+  return new Response(events.map((event) => `data: ${JSON.stringify(event)}\n\n`).join(""), {
+    status: 200,
+    headers: { "content-type": "text/event-stream" },
+  });
+}
+
+function agUiResponseWithToolResult({
+  text,
+  toolCall,
+  proposedOperation,
+}: {
+  text: string;
+  toolCall: unknown;
+  proposedOperation: unknown;
+}): Response {
+  const events: BaseEvent[] = [
+    { type: EventType.RUN_STARTED, threadId: "resume_1", runId: "req_test" },
+    {
+      type: EventType.TEXT_MESSAGE_START,
+      messageId: "msg_assistant_1",
+      role: "assistant",
+    },
+    {
+      type: EventType.TEXT_MESSAGE_CONTENT,
+      messageId: "msg_assistant_1",
+      delta: text,
+    },
+    { type: EventType.TEXT_MESSAGE_END, messageId: "msg_assistant_1" },
+    {
+      type: EventType.TOOL_CALL_RESULT,
+      messageId: "tool_1_result",
+      toolCallId: "tool_1",
+      role: "tool",
+      content: JSON.stringify({
+        toolCall,
+        proposedOperations: [proposedOperation],
+      }),
+    },
     { type: EventType.RUN_FINISHED, threadId: "resume_1", runId: "req_test" },
   ];
 
