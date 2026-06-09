@@ -1,6 +1,11 @@
 import { redirect } from "next/navigation";
 import { auth } from "@/lib/auth";
-import { sendLoginLink, loginWithPassword } from "./actions";
+import {
+  loginWithEmailCode,
+  loginWithPassword,
+  sendLoginCode,
+  sendLoginLink,
+} from "./actions";
 import { Card, CardContent } from "@/components/ui/card";
 import { LoginTabs } from "./login-tabs";
 import type { Metadata } from "next";
@@ -24,6 +29,8 @@ export default async function LoginPage() {
         <Card className="shadow-lg shadow-black/5">
           <CardContent className="pt-6">
             <LoginTabs
+              sendLoginCode={sendLoginCode}
+              loginWithEmailCode={loginWithEmailCode}
               sendLoginLink={sendLoginLink}
               loginWithPassword={loginWithPassword}
             />
