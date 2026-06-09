@@ -67,7 +67,20 @@ Phase 3A 已确认的产品形态是 **Agent Mode replaces left editor**：
 
 Phase 3B runtime 继续采用 LocalRuntime/custom adapter，但 adapter 已改为 async generator。Web BFF 代理 Agent 的 AG-UI `text/event-stream`，adapter 消费 `TEXT_MESSAGE_CONTENT` 增量来更新 assistant-ui 消息，并从 `TOOL_CALL_RESULT` 中解析 tool card 与待确认操作。
 
-Phase 3C 已新增 SDK-compatible Web BFF route：`POST /api/agent/runs` 接收 AG-UI `RunAgentInput`，从 `forwardedProps.introBuilder` 或 `forwardedProps.runConfig.introBuilder` 映射到现有 `AgentMessageRequest`。这让后续 `@ag-ui/client` `HttpAgent` + `@assistant-ui/react-ag-ui` 的 `useAgUiRuntime` 可以接入 Web BFF，而不是让浏览器直连 Agent。
+Phase 3C 已新增 SDK-compatible Web BFF route：`POST /api/agent/runs` 接收 AG-UI `RunAgentInput`，从 `forwardedProps.introBuilder` 或 `forwardedProps.runConfig.introBuilder` 映射到现有 `AgentMessageRequest`。这让 `@ag-ui/client` `HttpAgent` + `@assistant-ui/react-ag-ui` 的 `useAgUiRuntime` 可以接入 Web BFF，而不是让浏览器直连 Agent。
+
+Phase 3D 当前采用 **可回退 runtime seam**：
+
+- 默认仍为 `LocalRuntime/custom adapter`，不改变线上行为。
+- `runtimeMode="ag-ui"` 或 `NEXT_PUBLIC_AGENT_RUNTIME=ag-ui` 时启用 `useAgUiRuntime` canary。
+- canary 通过包装 `HttpAgent.runAgent()` 注入最新 `forwardedProps.introBuilder`，并保留 assistant-ui 生成的 `forwardedProps.runConfig`。
+- Web 仍从 AG-UI stream clone 中提取 `TOOL_CALL_RESULT`，渲染现有 `AgentToolCard` / `AgentConfirmationCard`；确认写回仍由 Web 执行。
+- assistant-ui 原生 `tool-call` message part 只用于渲染运行中工具状态，例如 `正在执行工具 resume_read`；工具完成后的业务摘要和简历修改确认仍走 Web-owned cards，避免双轨写回。
+- Agent panel 复用 assistant-ui 官方 Thread UE primitives：welcome suggestions、scroll-to-bottom、message action bar、copy、reload、user message edit 和 ToolGroup running UI；视觉按 intro-builder 左侧面板重做，不引入 assistant-ui 默认主题。
+- Agent panel 额外渲染 `Agent 活动` 时间线，显示读取上下文、工具调用完成、等待确认等过程状态，减少“发送后没反馈”的不稳定感。
+- Agent 错误必须是可恢复的 UI：保留对话与简历状态，展示 code/requestId，并在有明确上一条用户请求时提供 `重新发送上一条`；不能只显示 `Agent 服务暂不可用` 后让用户猜下一步。
+- Composer 运行中必须提供 `停止生成`，优先复用 `ComposerPrimitive.Cancel`；用户主动停止不显示错误卡，Web/AG-UI runtime 都应释放 loading 状态。
+- `RUN_FINISHED outcome: { type: "interrupt" }` 会渲染 `Agent 需要补充信息` 问题卡；用户回答后通过 `unstable_submitInterruptResponses()` 走标准 AG-UI `resume` 字段继续同一轮 run。
 
 Preferred first integration:
 
@@ -102,7 +115,7 @@ Browser AgentPanel
 | 方案 | 适用阶段 | 推荐度 | 说明 |
 | --- | --- | --- | --- |
 | LocalRuntime/custom adapter + async generator | Phase 3B/3C current | 高 | 适配 AG-UI SSE，同时保留 human-confirmed operation 写回 |
-| `@ag-ui/client` HttpAgent + `useAgUiRuntime` | Phase 3C+ candidate | 中高 | 通过 `/api/agent/runs` 接入标准 `RunAgentInput`，但必须先证明 tool-call part 仍能渲染确认卡 |
+| `@ag-ui/client` HttpAgent + `useAgUiRuntime` | Phase 3D canary | 中高 | 通过 `/api/agent/runs` 接入标准 `RunAgentInput`；默认不开启，确认卡继续走 Web-owned 提取和确认 |
 | DataStream runtime | 后续可评估 | 中 | 若 assistant-ui 官方 runtime 与 AG-UI adapter 成熟，再考虑替换当前薄适配 |
 | AssistantTransport | Phase 3B+ | 中 | 适合后端有更丰富状态同步需求 |
 | AI SDK runtime | 待评估 | 中 | 若 Agent 服务采用 AI SDK v6，可复用更多适配 |
@@ -115,9 +128,12 @@ assistant-ui DataStream 有协议选项。当前实现不直接使用 DataStream
 当前约束：
 
 - Agent 输出 AG-UI `text/event-stream`，事件至少包括 `RUN_STARTED`、`TEXT_MESSAGE_*`、`TOOL_CALL_*`、`TOOL_CALL_RESULT`、`RUN_FINISHED`/`RUN_ERROR`。
+- 工具调用事件必须保持标准序列：`TOOL_CALL_START` -> `TOOL_CALL_ARGS`/`TOOL_CALL_CHUNK` -> `TOOL_CALL_END` -> `TOOL_CALL_RESULT` -> `RUN_FINISHED`；缺少 `TOOL_CALL_END` 会让 AG-UI client 认为工具仍 active。
+- 主动取消 AG-UI run 时，Web runtime seam 应把 abort 转成标准空 SSE 收尾，而不是把 `AbortError` 暴露给用户；合成流仍必须包含 `RUN_STARTED` 和 `RUN_FINISHED`。
 - Web BFF 不解析 stream body，只做 Auth.js、resume ownership、短期 JWT 签发、AG-UI run metadata 映射和 SSE headers 透传。
 - assistant-ui 不直接消费自定义 NDJSON；所有事件先通过 `readAgUiSseStream()` 校验。
-- 真正的 SDK runtime 替换必须以 `/api/agent/runs` 为 URL，不能绕过 Web BFF；`forwardedProps.introBuilder` 承载 Web-owned resume snapshot。
+- SDK runtime 必须以 `/api/agent/runs` 为 URL，不能绕过 Web BFF；`forwardedProps.introBuilder` 承载 Web-owned resume snapshot，`forwardedProps.runConfig` 保留 assistant-ui 的 workflow/custom metadata。
+- 需要用户补充信息时，Agent 应使用 AG-UI interrupt，而不是把问题伪装成普通 assistant 文本；Web question card 提交 `resume: [{ interruptId, status, payload }]`。
 
 ## Tool calling 策略
 
@@ -187,6 +203,7 @@ assistant-ui 提供的是：
 - assistant-ui/tap 与 Next.js 16 / React 19 的兼容层必须保持局部化；如果 `@assistant-ui/react` 升级后不再需要 shim，应删除 `lib/agent/assistant-ui-react-compat.ts` 和 `next.config.ts` 中对应替换。
 - 错选 stream protocol 会导致前端收到 chunk 但 runtime 无法完成消息。
 - 如果直接切 `useAgUiRuntime` 而不处理 assistant-ui `tool-call` message part，现有 `AgentToolCard` / `AgentConfirmationCard` 可能消失或重复。
+- 如果复用 assistant-ui 官方 Thread 示例时照搬默认主题或默认工具审批，容易绕开 intro-builder 的确认卡；只能复用 primitives 和交互模式，不能复用写回语义。
 - 如果把 assistant-ui 放进 editor-client 主树，可能增加编辑器首屏 bundle。
 - 如果 Agent panel 直接写 RHF，容易破坏 autosave 队列和用户确认语义。
 - 如果 tool calling 直接执行写操作，用户会失去对简历内容的控制。
@@ -199,6 +216,7 @@ Phase 3 后续开发或评审时，用这份清单防止偏离设计：
 - Phase 3B 对话流使用 AG-UI `text/event-stream`；JSON 只保留为服务端测试和 debug fallback。
 - Agent Mode 是左侧替换，不是右侧 drawer、浮窗或全屏 workspace。
 - assistant-ui 不接管 RHF、autosave、模板、preview 或简历持久化。
+- assistant-ui Thread UE 可以复用 welcome suggestions、scroll-to-bottom、message action bar、copy/reload/edit 和 ToolGroup，但简历操作结果仍必须走 Web-owned cards。
 - 基础简历修改 tools 只返回 `ResumeOperation`，所有写回都经过确认卡。
 - 富文本列表 patch 必须保留 TipTap 列表结构。
 - assistant-ui 只在 panel 打开后加载；bundle 和 lazy loading 策略不能倒退。
