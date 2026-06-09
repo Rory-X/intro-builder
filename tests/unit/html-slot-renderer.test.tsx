@@ -169,6 +169,62 @@ describe("SlotRenderer — value slots", () => {
   });
 });
 
+describe("SlotRenderer — 联系字段自动 linkify（直绑路径）", () => {
+  function renderBasics(field: string, basics: Partial<ResumeContent["basics"]>) {
+    return render_({
+      content: makeContent({ basics }),
+      html: `<article><span class="c"><slot data-bind="${field}" /></span></article>`,
+    });
+  }
+
+  it("email 直绑包成 mailto 链接，文本不变", () => {
+    const { container } = renderBasics("basics.email", { email: "z@example.com" });
+    const a = container.querySelector("span.c a");
+    expect(a?.getAttribute("href")).toBe("mailto:z@example.com");
+    expect(a?.textContent).toBe("z@example.com");
+  });
+
+  it("phone 直绑包成 tel 链接，并去掉空格", () => {
+    const { container } = renderBasics("basics.phone", { phone: "138 0000 0000" });
+    const a = container.querySelector("span.c a");
+    expect(a?.getAttribute("href")).toBe("tel:13800000000");
+    expect(a?.textContent).toBe("138 0000 0000");
+  });
+
+  it("website 缺协议头时补 https", () => {
+    const { container } = renderBasics("basics.website", { website: "github.com/z" });
+    const a = container.querySelector("span.c a");
+    expect(a?.getAttribute("href")).toBe("https://github.com/z");
+  });
+
+  it("website 已带协议头则原样保留", () => {
+    const { container } = renderBasics("basics.website", { website: "https://me.dev" });
+    expect(container.querySelector("span.c a")?.getAttribute("href")).toBe("https://me.dev");
+  });
+
+  it("location 无可点目标，保持纯文本不包链接", () => {
+    const { container } = renderBasics("basics.location", { location: "北京" });
+    expect(container.querySelector("span.c a")).toBeNull();
+    expect(container.querySelector("span.c")?.textContent).toBe("北京");
+  });
+
+  it("name 等非联系字段不 linkify", () => {
+    const { container } = renderBasics("basics.name", { name: "张三" });
+    expect(container.querySelector("span.c a")).toBeNull();
+    expect(container.querySelector("span.c")?.textContent).toBe("张三");
+  });
+
+  it("profile.* 同名字段同样 linkify", () => {
+    const { container } = renderBasics("profile.email", { email: "z@example.com" });
+    expect(container.querySelector("span.c a")?.getAttribute("href")).toBe("mailto:z@example.com");
+  });
+
+  it("空值不渲染空链接", () => {
+    const { container } = renderBasics("basics.website", { website: "" });
+    expect(container.querySelector("span.c a")).toBeNull();
+  });
+});
+
 describe("SlotRenderer — sectionOrder loop", () => {
   it("uses section kind templates for block and list sections", () => {
     const { container } = render_({

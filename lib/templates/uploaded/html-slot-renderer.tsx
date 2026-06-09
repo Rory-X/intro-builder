@@ -25,6 +25,8 @@ import {
   resolveSection,
   deriveItems,
   deriveContacts,
+  contactHref,
+  type LinkableContactType,
   type IterationContext,
 } from "./slot-bindings";
 import { scopeCss, CssScopeError } from "./css-scope";
@@ -74,6 +76,22 @@ const SAFE_ATTRS: Record<string, sanitizeHtml.AllowedAttribute[]> = {
 
 /** 嵌套深度上限 —— spec §6.3 #5 */
 const MAX_NEST_DEPTH = 3;
+
+/**
+ * 直绑路径里有可点目标的联系字段 → 联系类型。模板作者按 SKILL.md 惯例写
+ * `<slot data-bind="basics.email">` 当纯文本，引擎在这里把 email/phone/website
+ * 自动包成 `<a href>`（mailto/tel/https），一处生效覆盖全部模板，PDF（Puppeteer
+ * 保留链接注释）/在线分享/预览三处都可点。location 无可点目标、name/title 等
+ * 非联系字段不在表内，照常渲染纯文本。
+ */
+const LINKABLE_BINDINGS: Record<string, LinkableContactType> = {
+  "basics.email": "email",
+  "profile.email": "email",
+  "basics.phone": "phone",
+  "profile.phone": "phone",
+  "basics.website": "website",
+  "profile.website": "website",
+};
 
 export function SlotRenderer({
   html,
@@ -237,12 +255,12 @@ function renderSlotElement(
   // Value slot — context-aware resolution
   if (binding in BASICS_BINDINGS) {
     const fn = BASICS_BINDINGS[binding as keyof typeof BASICS_BINDINGS];
-    return <>{fn(p.content)}</>;
+    return renderContactValue(binding, fn(p.content));
   }
 
   if (binding in PROFILE_BINDINGS) {
     const fn = PROFILE_BINDINGS[binding as keyof typeof PROFILE_BINDINGS];
-    return <>{fn(p.content)}</>;
+    return renderContactValue(binding, fn(p.content));
   }
 
   if (binding in ICON_BINDINGS) {
@@ -298,6 +316,23 @@ function renderSlotElement(
 
   // Should be unreachable — isValidBinding covered all categories
   return placeholder(`unhandled binding: ${binding}`);
+}
+
+/**
+ * 渲染 basics.* / profile.* 直绑值。email/phone/website 包成可点 `<a href>`
+ * （见 LINKABLE_BINDINGS）；inline 样式 color:inherit + 去下划线，外观与原纯文本
+ * 一致，只是可点——不破坏任何模板的联系栏视觉。空值不包链接。
+ */
+function renderContactValue(binding: string, value: string): ReactElement {
+  const linkType = LINKABLE_BINDINGS[binding];
+  if (linkType && value) {
+    return (
+      <a href={contactHref(linkType, value)} style={{ color: "inherit", textDecoration: "none" }}>
+        {value}
+      </a>
+    );
+  }
+  return <>{value}</>;
 }
 
 /**

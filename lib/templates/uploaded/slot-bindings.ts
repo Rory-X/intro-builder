@@ -339,25 +339,37 @@ export function deriveItems(
   return derivePresetItems(id, content);
 }
 
+/** 有可点目标的联系字段类型。location 无可点目标，不在内。 */
+export type LinkableContactType = "email" | "phone" | "website";
+
+/**
+ * 把联系字段值转成可点 href —— email→mailto、phone→tel（去空格，空格在 tel
+ * URI 里非法、部分客户端会断）、website→https（缺协议头自动补）。
+ *
+ * 单一信源：deriveContacts（loop 路径 contact.href）与 html-slot-renderer 的
+ * 直绑路径（basics.email/phone/website 自动 linkify）共用这一处，避免两份
+ * href 计算逻辑漂移。
+ */
+export function contactHref(type: LinkableContactType, value: string): string {
+  if (type === "email") return `mailto:${value.trim()}`;
+  if (type === "phone") return `tel:${value.replace(/\s+/g, "")}`;
+  return /^https?:\/\//i.test(value) ? value : `https://${value}`;
+}
+
 export function deriveContacts(content: ResumeContent): ContactView[] {
   const { basics } = content;
   const contacts: Array<ContactView | null> = [
     basics.phone
-      ? { type: "phone", icon: "Phone", label: basics.phone, href: `tel:${basics.phone}` }
+      ? { type: "phone", icon: "Phone", label: basics.phone, href: contactHref("phone", basics.phone) }
       : null,
     basics.email
-      ? { type: "email", icon: "Mail", label: basics.email, href: `mailto:${basics.email}` }
+      ? { type: "email", icon: "Mail", label: basics.email, href: contactHref("email", basics.email) }
       : null,
     basics.location
       ? { type: "location", icon: "MapPin", label: basics.location, href: "" }
       : null,
     basics.website
-      ? {
-          type: "website",
-          icon: "Monitor",
-          label: basics.website,
-          href: /^https?:\/\//i.test(basics.website) ? basics.website : `https://${basics.website}`,
-        }
+      ? { type: "website", icon: "Monitor", label: basics.website, href: contactHref("website", basics.website) }
       : null,
   ];
   return contacts.filter((item): item is ContactView => item !== null);
