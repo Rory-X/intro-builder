@@ -23,6 +23,9 @@ importers:
       '@assistant-ui/react-ag-ui':
         specifier: 0.0.36
         version: 0.0.36(@assistant-ui/store@0.2.14(@assistant-ui/tap@0.6.0(@types/react@19.2.14)(react@19.2.4))(@types/react@19.2.14)(react@19.2.4))(@assistant-ui/tap@0.6.0(@types/react@19.2.14)(react@19.2.4))(@types/react@19.2.14)(assistant-cloud@0.1.32)(react@19.2.4)(zustand@5.0.14(@types/react@19.2.14)(react@19.2.4)(use-sync-external-store@1.6.0(react@19.2.4)))
+      '@assistant-ui/react-markdown':
+        specifier: 0.14.2
+        version: 0.14.2(@assistant-ui/react@0.14.15(@types/react-dom@19.2.3(@types/react@19.2.14))(@types/react@19.2.14)(react-dom@19.2.4(react@19.2.4))(react@19.2.4)(use-sync-external-store@1.6.0(react@19.2.4)))(@types/react-dom@19.2.3(@types/react@19.2.14))(@types/react@19.2.14)(react-dom@19.2.4(react@19.2.4))(react@19.2.4)
       '@atlaskit/pragmatic-drag-and-drop':
         specifier: ^1.8.1
         version: 1.8.1
@@ -351,6 +354,16 @@ packages:
   '@assistant-ui/react-ag-ui@0.0.36':
     resolution: {integrity: sha512-cBOlzOypLZYvPla1En7A9NXS17Rh4FqO7SxITMgWbyCUrJsc+UGn97iTMda4jYyVxXMJcKEiu8m2icwQZ+KIXg==}
     peerDependencies:
+      '@types/react': '*'
+      react: ^18 || ^19
+    peerDependenciesMeta:
+      '@types/react':
+        optional: true
+
+  '@assistant-ui/react-markdown@0.14.2':
+    resolution: {integrity: sha512-IHwo5nj5mmdX2CjPFoMfxRcW2NRUXColA/YkQwd8kEUQHiFadrQ5BzVY7wii3sSWyxRcJNlt0ya0OSxLunmTRw==}
+    peerDependencies:
+      '@assistant-ui/react': ^0.14.14
       '@types/react': '*'
       react: ^18 || ^19
     peerDependenciesMeta:
@@ -3780,6 +3793,9 @@ packages:
   class-variance-authority@0.7.1:
     resolution: {integrity: sha512-Ka+9Trutv7G8M6WT6SeiRWz792K5qEqIGEGzXKhAE6xOWAY6pPH8U+9IY3oCMv6kqTmLsv7Xh/2w2RigkePMsg==}
 
+  classnames@2.5.1:
+    resolution: {integrity: sha512-saHYOzhIQs6wy2sVxTM6bUDsQO4F50V9RQ22qBpEdCW+I+/Wmke2HOl6lS6dTpdxVhb88/I6+Hs+438c3lfUow==}
+
   cli-cursor@5.0.0:
     resolution: {integrity: sha512-aCj4O5wKyszjMmDT4tZj93kxyydN/K5zPWSCe6/0AV/AA1pqe5ZBIw0a2ZfPQV7lL5/yb5HsUreJ6UFAF1tEQw==}
     engines: {node: '>=18'}
@@ -4915,6 +4931,9 @@ packages:
 
   html-to-image@1.11.13:
     resolution: {integrity: sha512-cuOPoI7WApyhBElTTb9oqsawRvZ0rHhaHwghRLlTuffoD1B2aDemlCruLeZrUIIdvG7gs9xeELEPm6PhuASqrg==}
+
+  html-url-attributes@3.0.1:
+    resolution: {integrity: sha512-ol6UPyBWqsrO6EJySPz2O7ZSr856WDrEzM5zMqp+FJJLGMW35cLYmmZnl0vztAZxRUoNZJFTCohfjuIJ8I4QBQ==}
 
   html-void-elements@3.0.0:
     resolution: {integrity: sha512-bEqo66MRXsUGxWHV5IP0PUiAWwoEjba4VCzg0LjFJBpchPaTfyfCKTG6bc5F8ucKec3q5y6qOdGyYTSBEvhCrg==}
@@ -6169,6 +6188,12 @@ packages:
   react-is@17.0.2:
     resolution: {integrity: sha512-w2GsyukL62IJnlaff/nRegPQR94C/XXamvMWmSHRJ4y7Ts/4ocGRmTHvOs8PSE6pB3dWOrD/nueuU5sduBsQ4w==}
 
+  react-markdown@10.1.0:
+    resolution: {integrity: sha512-qKxVopLT/TyA6BX3Ue5NwabOsAzm0Q7kAPwq6L+wWDwisYs7R8vZ0nRXqq6rkueboxpkjvLGU9fWifiX/ZZFxQ==}
+    peerDependencies:
+      '@types/react': '>=18'
+      react: '>=18'
+
   react-property@2.0.2:
     resolution: {integrity: sha512-+PbtI3VuDV0l6CleQMsx2gtK0JZbZKbpdu5ynr+lbsuvtmgbNcS3VM0tuY2QjFNOcWxvXeHjDpy42RO+4U2rug==}
 
@@ -7375,6 +7400,21 @@ snapshots:
       - ioredis
       - redis
       - zustand
+
+  '@assistant-ui/react-markdown@0.14.2(@assistant-ui/react@0.14.15(@types/react-dom@19.2.3(@types/react@19.2.14))(@types/react@19.2.14)(react-dom@19.2.4(react@19.2.4))(react@19.2.4)(use-sync-external-store@1.6.0(react@19.2.4)))(@types/react-dom@19.2.3(@types/react@19.2.14))(@types/react@19.2.14)(react-dom@19.2.4(react@19.2.4))(react@19.2.4)':
+    dependencies:
+      '@assistant-ui/react': 0.14.15(@types/react-dom@19.2.3(@types/react@19.2.14))(@types/react@19.2.14)(react-dom@19.2.4(react@19.2.4))(react@19.2.4)(use-sync-external-store@1.6.0(react@19.2.4))
+      '@radix-ui/react-primitive': 2.1.5(@types/react-dom@19.2.3(@types/react@19.2.14))(@types/react@19.2.14)(react-dom@19.2.4(react@19.2.4))(react@19.2.4)
+      '@radix-ui/react-use-callback-ref': 1.1.2(@types/react@19.2.14)(react@19.2.4)
+      classnames: 2.5.1
+      react: 19.2.4
+      react-markdown: 10.1.0(@types/react@19.2.14)(react@19.2.4)
+    optionalDependencies:
+      '@types/react': 19.2.14
+    transitivePeerDependencies:
+      - '@types/react-dom'
+      - react-dom
+      - supports-color
 
   '@assistant-ui/react@0.14.15(@types/react-dom@19.2.3(@types/react@19.2.14))(@types/react@19.2.14)(react-dom@19.2.4(react@19.2.4))(react@19.2.4)(use-sync-external-store@1.6.0(react@19.2.4))':
     dependencies:
@@ -10549,6 +10589,8 @@ snapshots:
     dependencies:
       clsx: 2.1.1
 
+  classnames@2.5.1: {}
+
   cli-cursor@5.0.0:
     dependencies:
       restore-cursor: 5.1.0
@@ -11895,6 +11937,8 @@ snapshots:
       '@types/react': 19.2.14
 
   html-to-image@1.11.13: {}
+
+  html-url-attributes@3.0.1: {}
 
   html-void-elements@3.0.0: {}
 
@@ -13456,6 +13500,24 @@ snapshots:
   react-is@16.13.1: {}
 
   react-is@17.0.2: {}
+
+  react-markdown@10.1.0(@types/react@19.2.14)(react@19.2.4):
+    dependencies:
+      '@types/hast': 3.0.4
+      '@types/mdast': 4.0.4
+      '@types/react': 19.2.14
+      devlop: 1.1.0
+      hast-util-to-jsx-runtime: 2.3.6
+      html-url-attributes: 3.0.1
+      mdast-util-to-hast: 13.2.1
+      react: 19.2.4
+      remark-parse: 11.0.0
+      remark-rehype: 11.1.2
+      unified: 11.0.5
+      unist-util-visit: 5.1.0
+      vfile: 6.0.3
+    transitivePeerDependencies:
+      - supports-color
 
   react-property@2.0.2: {}
 
