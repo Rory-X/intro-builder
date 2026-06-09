@@ -3,7 +3,7 @@
     <img src="{{assets[0].url}}" class="banner-img" alt="" />
   </div>
   <img data-bind="basics.photo" class="avatar" />
-  <h1 data-bind="basics.name" class="name"></h1>
+  <h1 class="name"><slot data-bind="basics.name"></slot></h1>
 </header>
 
 <div class="tpl-body">
@@ -27,7 +27,7 @@
 
   <template id="section-tpl">
     <section class="resume-section" data-pagination-section>
-      <h2 class="section-title"><slot data-bind="section.title"></slot></h2>
+      <h2 class="section-title"><slot data-bind="section.icon"></slot><slot data-bind="section.title"></slot></h2>
       <div class="section-content">
         <slot data-bind="section.items" data-template="item-tpl"></slot>
       </div>

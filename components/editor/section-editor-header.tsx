@@ -1,4 +1,5 @@
 "use client";
+import type { ReactNode } from "react";
 import { ChevronDown, Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { getSectionMeta } from "@/lib/section-meta";
@@ -12,6 +13,7 @@ type Props = {
   onToggle: () => void;
   onAdd: () => void;
   addLabel?: string;
+  helper?: ReactNode;
 };
 
 // 字面 class 映射(Tailwind 不能识别动态拼接的类名,必须写全)
@@ -28,7 +30,7 @@ const SECTION_COLOR: Record<string, { accent: string; iconBg: string; icon: stri
   custom: { accent: "bg-gray-500", iconBg: "bg-gray-500/10", icon: "text-gray-500" },
 };
 
-export function SectionEditorHeader({ sectionKey, itemCount, isOpen, onToggle, onAdd, addLabel = "新增" }: Props) {
+export function SectionEditorHeader({ sectionKey, itemCount, isOpen, onToggle, onAdd, addLabel = "新增", helper }: Props) {
   const meta = getSectionMeta(sectionKey);
   const handleRef = useSectionDragHandle();
   const Icon = meta.icon;
@@ -53,6 +55,7 @@ export function SectionEditorHeader({ sectionKey, itemCount, isOpen, onToggle, o
         <span className="rounded-full bg-muted px-2 py-1 text-[11px] font-semibold leading-none text-muted-foreground">{itemCount}</span>
       )}
       <span className="ml-auto flex items-center gap-0.5">
+        {helper}
         {addLabel && (
           <Button
             type="button"

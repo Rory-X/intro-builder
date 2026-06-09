@@ -6,6 +6,7 @@ import { db } from "@/db";
 import { users, accounts, sessions, verificationTokens } from "@/db/schema";
 import { eq } from "drizzle-orm";
 import bcrypt from "bcryptjs";
+import { authorizeEmailCodeLogin } from "@/lib/email-code-login";
 
 export const { handlers, auth, signIn, signOut } = NextAuth({
   adapter: DrizzleAdapter(db, {
@@ -22,6 +23,21 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
     Resend({
       apiKey: process.env.AUTH_RESEND_KEY!,
       from: process.env.AUTH_EMAIL_FROM!,
+    }),
+    Credentials({
+      id: "email-code",
+      name: "Email Code",
+      credentials: {
+        email: { label: "邮箱", type: "email" },
+        code: { label: "验证码", type: "text" },
+      },
+      async authorize(credentials) {
+        if (!credentials?.email || !credentials?.code) return null;
+        return authorizeEmailCodeLogin({
+          email: String(credentials.email),
+          code: String(credentials.code),
+        });
+      },
     }),
     Credentials({
       credentials: {

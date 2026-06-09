@@ -10,11 +10,21 @@ import { monitorForElements } from "@atlaskit/pragmatic-drag-and-drop/element/ad
 import { ItemWrapper, ItemSummary } from "./item-wrapper";
 import { SectionEditorHeader } from "./section-editor-header";
 import { cn } from "@/lib/utils";
+import { SectionHelperButton } from "@/components/agent/section-helper-button";
+import { tiptapPlainText } from "@/lib/agent/resume-helper-context";
+import { useCompletenessScore } from "@/hooks/use-completeness-score";
 
-export function ResearchEditor() {
+type Props = {
+  resumeId?: string;
+};
+
+export function ResearchEditor({ resumeId }: Props) {
   const { register, control, watch, setValue } = useFormContext<ResumeContent>();
   const { fields, append, remove, move } = useFieldArray({ control, name: "research" });
   const [isOpen, setIsOpen] = useState(true);
+  const completeness = useCompletenessScore();
+  const research = watch("research") ?? [];
+  const helperText = research.map((item) => tiptapPlainText(item.content)).filter(Boolean).join("\n");
 
   useEffect(() => {
     return monitorForElements({
@@ -43,6 +53,16 @@ export function ResearchEditor() {
           isOpen={isOpen}
           onToggle={() => setIsOpen(!isOpen)}
           onAdd={() => { append({ name: "", role: "", location: "", start: "", end: "", paperTitle: "", link: "", content: emptyDoc() }); setIsOpen(true); }}
+          helper={resumeId ? (
+            <SectionHelperButton
+              resumeId={resumeId}
+              section="research"
+              fieldPath="research"
+              label="研究经历"
+              plainText={helperText}
+              completeness={completeness}
+            />
+          ) : undefined}
         />
       </div>
       <div className={cn(
@@ -70,8 +90,8 @@ export function ResearchEditor() {
                   <div className="flex flex-col gap-1.5"><Label>城市</Label><Input {...register(`research.${idx}.location` as const)} /></div>
                   <div className="flex flex-col gap-1.5"><Label>开始</Label><Input {...register(`research.${idx}.start` as const)} /></div>
                   <div className="flex flex-col gap-1.5"><Label>结束</Label><Input {...register(`research.${idx}.end` as const)} /></div>
-                  <div className="col-span-2 flex flex-col gap-1.5"><Label>论文名称</Label><Input {...register(`research.${idx}.paperTitle` as const)} /></div>
-                  <div className="col-span-2 flex flex-col gap-1.5"><Label>论文链接</Label><Input {...register(`research.${idx}.link` as const)} /></div>
+                  <div className="flex flex-col gap-1.5"><Label>论文名称</Label><Input {...register(`research.${idx}.paperTitle` as const)} /></div>
+                  <div className="flex flex-col gap-1.5"><Label>论文链接</Label><Input {...register(`research.${idx}.link` as const)} /></div>
                 </div>
                 <div>
                   <Label>研究描述</Label>
@@ -79,6 +99,11 @@ export function ResearchEditor() {
                     key={`research-content-${f.id}`}
                     content={watch(`research.${idx}.content` as const)}
                     onChange={(json) => setValue(`research.${idx}.content` as const, json, { shouldDirty: true })}
+                    polish={resumeId ? {
+                      resumeId,
+                      section: "research",
+                      fieldPath: `research.${idx}.content`,
+                    } : undefined}
                     placeholder="描述你的研究内容和成果…"
                   />
                 </div>

@@ -21,7 +21,12 @@ const emptyRect: RectFn = () =>
   }) as DOMRect;
 const emptyRects: RectsFn = () => [] as unknown as DOMRectList;
 
-for (const proto of [Text.prototype, Range.prototype]) {
+const geometryTargets = [
+  typeof Text === "undefined" ? null : Text.prototype,
+  typeof Range === "undefined" ? null : Range.prototype,
+].filter(Boolean);
+
+for (const proto of geometryTargets) {
   const p = proto as unknown as {
     getClientRects?: RectsFn;
     getBoundingClientRect?: RectFn;

@@ -88,13 +88,17 @@ export type BasicsBinding = keyof typeof BASICS_BINDINGS;
 // ─── Icon slots (basics.icon.*) ──────────────────────────────────
 // 为联系信息提供 icon 支持，例如 <slot data-bind="basics.icon.Mail">
 // 渲染为对应的 lucide 图标。兼容批量生成模板的写法。
-export const ICON_BINDINGS: Record<string, string> = {
+export const BASICS_ICON_BINDINGS = {
   "basics.icon.Mail": "Mail",
   "basics.icon.Phone": "Phone",
   "basics.icon.MapPin": "MapPin",
   "basics.icon.Globe": "Globe",
   "basics.icon.Clock": "Clock",
 } as const;
+
+export type BasicsIconBinding = keyof typeof BASICS_ICON_BINDINGS;
+
+export const ICON_BINDINGS: Record<string, string> = BASICS_ICON_BINDINGS;
 
 // ─── Profile value slots ─────────────────────────────────────────
 
@@ -175,6 +179,7 @@ export type LoopBinding = (typeof LOOP_BINDINGS)[number];
 
 export type SlotBinding =
   | BasicsBinding
+  | BasicsIconBinding
   | ProfileBinding
   | ImageBinding
   | SectionBinding
@@ -185,6 +190,7 @@ export type SlotBinding =
 export function isValidBinding(name: string): name is SlotBinding {
   return (
     name in BASICS_BINDINGS ||
+    name in BASICS_ICON_BINDINGS ||
     name in PROFILE_BINDINGS ||
     name in ICON_BINDINGS ||
     name in IMAGE_BINDINGS ||
@@ -369,7 +375,7 @@ export function deriveContacts(content: ResumeContent): ContactView[] {
       ? { type: "location", icon: "MapPin", label: basics.location, href: "" }
       : null,
     basics.website
-      ? { type: "website", icon: "Monitor", label: basics.website, href: contactHref("website", basics.website) }
+      ? { type: "website", icon: "Globe", label: basics.website, href: contactHref("website", basics.website) }
       : null,
   ];
   return contacts.filter((item): item is ContactView => item !== null);

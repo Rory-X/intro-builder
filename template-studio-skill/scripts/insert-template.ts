@@ -4,19 +4,25 @@
  *
  * Usage:
  *   pnpm exec tsx --env-file=.env.local template-studio-skill/scripts/insert-template.ts \
- *        --id <id> --name "<name>" \
- *        --custom-html path/to/template.html \
- *        --custom-css  path/to/template.css \
- *        --section-icons '<sectionIcons JSON, e.g. {"experience":{"icon":"Briefcase","color":"#3b82f6"}}>'
+ *        --id <id> --name "<name>" --description "<desc>" \
+ *        --category <enum> --features '["...","...","..."]' \
+ *        --html path/to/template.html \
+ *        --css  path/to/template.css \
+ *        --default-style-settings '<styleSettings JSON>'
  *
- * --section-icons is optional — defaults to {} (no icons).
+ * Optional flags:
+ *   --section-icons '<json>'   section icon declarations (default {})
+ *   --thumbnail-url <url>      static thumbnail URL
+ *   --publish                  set status=published (default: draft)
+ *
+ * Aliases: --custom-html → --html, --custom-css → --css (backward compat).
  *
  * --env-file=.env.local must be passed so DATABASE_URL is in process.env
  * before this module runs (no in-file dotenv — ESM imports evaluate before
  * top-level statements).
  *
  * Exit codes:
- *   0  inserted (or already existed and we leave it)
+ *   0  inserted (upserted as draft or published)
  *   1  caller error (missing args, bad JSON, missing DATABASE_URL)
  *   2  DB error
  */
@@ -71,9 +77,15 @@ function checkDualConstraint(css: string): string[] {
   while ((m = re.exec(css)) !== null) {
     const prop = m[1];
     const value = m[2].trim();
-    if (!/^var\(/.test(value)) {
-      violations.push(`${prop}: ${value}`);
-    }
+    // Allow: var(--*) references
+    if (/^var\(/.test(value)) continue;
+    // Allow: relative units that scale with parent (em, rem, %, ch, ex)
+    if (/\d\.?\d*\s*(em|rem|%|ch|ex)\b/.test(value)) continue;
+    // Allow: unitless line-height (e.g. line-height: 1.3)
+    if (prop === "line-height" && /^[\d.]+$/.test(value)) continue;
+    // Allow: CSS-wide keywords
+    if (/^(inherit|initial|unset|revert)$/i.test(value)) continue;
+    violations.push(`${prop}: ${value}`);
   }
   return violations;
 }
@@ -115,10 +127,17 @@ async function main() {
       description: { type: "string" },
       "thumbnail-url": { type: "string" },
       "section-icons": { type: "string" },
+      // Primary flags (SKILL.md canonical names)
+      html: { type: "string" },
+      css: { type: "string" },
+      // Backward-compat aliases
       "custom-html": { type: "string" },
       "custom-css": { type: "string" },
-      "skip-css-check": { type: "boolean" },  // escape hatch for advanced cases
-      "created-by": { type: "string" },
+      "skip-css-check": { type: "boolean" },
+      // Publish control: absent → draft, present → published
+      publish: { type: "boolean" },
+      // Default style settings — applied when user first picks this template
+      "default-style-settings": { type: "string" },
       // 用户视角分类（必填）：academic / tech / business / creative / general
       category: { type: "string" },
       // per-template "模板特点"，3 条文案，JSON 数组字符串
@@ -126,6 +145,10 @@ async function main() {
     },
     strict: true,
   });
+
+  // Normalize aliases: --html wins over --custom-html, --css wins over --custom-css
+  const htmlPath = values.html ?? values["custom-html"];
+  const cssPath = values.css ?? values["custom-css"];
 
   if (!values.id) fail(1, "--id required");
   if (!values.name) fail(1, "--name required");
@@ -157,6 +180,16 @@ async function main() {
     fail(1, `--features invalid: ${(e as Error).message}. Expected JSON array of 3 strings, each ≤ 60 chars.`);
   }
 
+  // Parse defaultStyleSettings if provided, otherwise null (DB stays null)
+  let defaultStyleSettings: unknown = null;
+  if (values["default-style-settings"]) {
+    try {
+      defaultStyleSettings = JSON.parse(values["default-style-settings"]);
+    } catch (e) {
+      fail(1, `--default-style-settings is not valid JSON: ${(e as Error).message}`);
+    }
+  }
+
   // Validates sectionIcons against the same Zod schema fetch.ts uses to read.
   const sectionIcons = values["section-icons"]
     ? parseConfig("--section-icons", values["section-icons"], SectionIconsSchema)
@@ -165,18 +198,18 @@ async function main() {
   // v2 path: read HTML/CSS files.
   let customHtml: string | null = null;
   let customCss: string | null = null;
-  if (values["custom-html"]) {
+  if (htmlPath) {
     try {
-      customHtml = readFileSync(values["custom-html"], "utf-8");
+      customHtml = readFileSync(htmlPath, "utf-8");
     } catch (e) {
-      fail(1, `--custom-html: cannot read ${values["custom-html"]}: ${(e as Error).message}`);
+      fail(1, `--html: cannot read ${htmlPath}: ${(e as Error).message}`);
     }
   }
-  if (values["custom-css"]) {
+  if (cssPath) {
     try {
-      customCss = readFileSync(values["custom-css"], "utf-8");
+      customCss = readFileSync(cssPath, "utf-8");
     } catch (e) {
-      fail(1, `--custom-css: cannot read ${values["custom-css"]}: ${(e as Error).message}`);
+      fail(1, `--css: cannot read ${cssPath}: ${(e as Error).message}`);
     }
   }
 
@@ -252,6 +285,8 @@ async function main() {
 
   const sql = neon(dbUrl);
 
+  const status = values.publish ? "published" : "draft";
+
   // Idempotent upsert: ON CONFLICT DO UPDATE so re-running the skill (e.g. after
   // tweaking the prompt or layout) refreshes the row instead of erroring.
   // RETURNING avoids a second round-trip — Neon HTTP fetches are independent
@@ -262,7 +297,8 @@ async function main() {
         id, name, description, "thumbnailUrl",
         "sectionIcons", html, css,
         category, features,
-        status, "createdBy"
+        "defaultStyleSettings",
+        status
       ) VALUES (
         ${values.id},
         ${values.name},
@@ -273,8 +309,8 @@ async function main() {
         ${customCss},
         ${values.category},
         ${JSON.stringify(features)}::jsonb,
-        'published',
-        ${values["created-by"] ?? "template-studio-skill"}
+        ${defaultStyleSettings ? JSON.stringify(defaultStyleSettings) : null}::jsonb,
+        ${status}
       )
       ON CONFLICT (id) DO UPDATE SET
         name = EXCLUDED.name,
@@ -283,6 +319,7 @@ async function main() {
         "sectionIcons" = EXCLUDED."sectionIcons",
         html = EXCLUDED.html,
         css = EXCLUDED.css,
+        "defaultStyleSettings" = EXCLUDED."defaultStyleSettings",
         category = EXCLUDED.category,
         features = EXCLUDED.features,
         status = EXCLUDED.status,
@@ -291,9 +328,13 @@ async function main() {
     `) as Array<{ id: string; name: string; status: string; updatedAt: string }>;
     if (rows.length === 0) fail(2, "no row returned from upsert");
     const r = rows[0];
-    console.log(
-      `upserted: ${r.id} (${r.name})  status=${r.status}`,
-    );
+
+    const label = r.status === "published" ? "PUBLISHED" : "upserted as DRAFT";
+    console.log(`${label}: ${r.id} (${r.name})`);
+    if (r.status === "draft") {
+      console.log(`  preview: http://localhost:3000/dev-preview/template/${r.id}`);
+      console.log(`  确认无误后用 --publish 重跑同一命令切换到 published`);
+    }
   } catch (e) {
     fail(2, `DB error: ${(e as Error).message}`);
   }

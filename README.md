@@ -1,145 +1,114 @@
 # intro-builder
 
-[![CI](https://github.com/Rory-X/intro-builder/actions/workflows/ci.yml/badge.svg)](https://github.com/Rory-X/intro-builder/actions/workflows/ci.yml)
+<p align="center">
+  <img src="./public/logo.png" alt="intro-builder logo" width="96" />
+</p>
 
-面向中文互联网求职者的在线简历排版工具。结构化编辑 → 实时预览 → 一键导出 A4 PDF → 可选公开只读分享链接。
+<p align="center">
+  面向中文互联网求职者的在线简历工作台。
+  <br />
+  结构化编辑、实时 A4 预览、智能导入、AI 润色、协同批注、PDF 导出与公开分享，一站完成从撰写到投递。
+</p>
 
-## 技术栈
+<p align="center">
+  <a href="https://github.com/Rory-X/intro-builder/actions/workflows/ci.yml">
+    <img src="https://github.com/Rory-X/intro-builder/actions/workflows/ci.yml/badge.svg" alt="CI status" />
+  </a>
+</p>
 
-Next.js 16 App Router · React 19 · Drizzle ORM + Neon Postgres / 本地 Postgres · Auth.js v5 · TipTap 富文本 · Puppeteer PDF · PartyKit 协同编辑 · Vercel Blob · Tailwind v4
+## 产品定位
 
-## 功能
+intro-builder 不是“填表后下载”的简历模板站，而是一个围绕中文互联网求职流程设计的在线工作台。用户可以把经历拆成结构化模块，在右侧实时看到 A4 纸张效果，并在同一份内容上切换模板、调整排版、邀请导师批注，最后导出与预览一致的 PDF，或生成公开只读链接发给 HR。
 
-### 编辑与排版
+它关注三个问题：
 
-- 结构化分区编辑：基础信息 / 教育 / 工作经历 / 项目 / 技能 / 自定义模块
-- TipTap 富文本编辑器，支持格式化、链接、对齐、字号调节
-- 模板库（`/templates`）：三套内置（专业 / 经典 / 现代）+ DB 上传模板，预览抽屉直接套用到当前简历
-- 分区与条目拖拽排序（Pragmatic Drag & Drop）
-- 头像上传（Vercel Blob）
-- 2 秒防抖自动保存，串行队列防丢失
-- 可调密度 / 行高 / 页边距样式预设
-- 可缩放 editor / preview 分屏面板
+- **内容怎么写清楚**：用基础信息、教育经历、工作经历、项目经历、技能、自定义模块组织简历，减少空白页焦虑。
+- **版式怎么保持专业**：实时 A4 预览、模板库、密度/行高/边距预设、智能排版，让内容变化不会把格式带崩。
+- **投递前怎么反复打磨**：AI 润色、完成度评分、导师协同批注、公开分享链接，支持从初稿到可投递版本的多轮迭代。
 
-### 导入与导出
+## 适合谁
 
-- **简历导入**：支持 PDF / Word / 图片文件，OCR 识别 + DeepSeek AI 结构化解析，SSE 流式反馈进度
-- **PDF 导出**：Puppeteer 逐页截图 + pdf-lib 合成，确保与屏幕预览像素级一致
-- **公开分享**：一键生成只读链接 `/r/[slug]`
+- 正在准备暑期实习、秋招、社招跳槽的中文互联网求职者。
+- 需要把旧 PDF / Word / 图片简历迁移成可持续编辑版本的人。
+- 希望导师、学长学姐或同伴直接在简历上提修改建议的人。
+- 想保留完整控制权，不希望 PDF 导出时出现字体丢失、排版偏移或模板水印的人。
 
-### 协同编辑
+## 核心流程
 
-- PartyKit + Y.js 实时协同，导师可通过邀请链接加入
-- WebRTC P2P 语音通话（PartyKit 信令）
-- 批注系统：导师可高亮标注 + 评论，求职者即时查看
+```text
+导入或新建简历
+  -> 结构化编辑内容
+  -> 实时查看 A4 预览
+  -> 切换模板与排版
+  -> AI 润色 / 完成度检查 / 导师批注
+  -> 导出 PDF 或生成公开链接
+```
 
-### 账号与安全
+## 产品能力
 
-- 邮箱 Magic Link 登录（Resend）
-- 密码登录 + 邮箱验证码修改密码
-- 简历完成度评分，Dashboard 卡片总览
-- 移动端检测提示（编辑器仅支持 PC）
+### 写作与编辑
 
-## 本地开发
+- 结构化分区编辑：基础信息、教育、工作经历、项目、技能、自定义模块。
+- 富文本内容编辑：支持链接、对齐、颜色、下划线、字号等常见格式。
+- AI 润色：在经历、项目、教育、自定义模块中生成更适合简历语境的表达建议，确认后再应用。
+- 完成度评分：在编辑器和 Dashboard 中提示简历内容完整度。
+- 拖拽排序：分区和条目都可以按投递重点重新排列。
+- 自动保存：2 秒防抖保存，串行队列避免在途保存覆盖新内容。
+
+### 预览与排版
+
+- 实时 A4 预览：编辑时同步看到最终纸张效果。
+- 模板库：支持按互联网、商务、创意、学术、通用等类别浏览模板。
+- 一键试穿：把自己的简历内容直接套进模板预览，再决定是否应用。
+- 收藏模板：常用模板可以收藏，编辑器内快速切换。
+- 智能排版：在内容溢出时自动尝试压缩字号、行高和间距，让简历更接近一页可投递状态。
+- 头像上传：支持带照片的简历模板与公开分享展示。
+
+### 导入、导出与分享
+
+- 智能解析导入：支持 PDF、Word、图片文件，通过 OCR 与 AI 解析为结构化字段。
+- 像素级 PDF 导出：服务端复用预览页面生成 A4 PDF，尽量保证导出与屏幕预览一致。
+- 公开只读链接：可生成 `/r/[slug]` 分享页，随时开启或关闭。
+- 预览图导出：用于 Dashboard 卡片和分享场景中的简历视觉预览。
+
+### 协同打磨
+
+- 邀请导师协作：生成 24 小时有效的邀请链接。
+- 两种协作模式：导师可直接帮改，或只在简历上批注评论。
+- 实时在线状态：作者和导师可以看到彼此在线与修改记录。
+- 语音沟通：协作场景内支持 WebRTC 语音通话。
+
+## 设计原则
+
+- **中文优先**：产品文案、模板排版和简历结构都围绕中文互联网求职场景设计。
+- **预览即交付物**：编辑器预览、公开分享和 PDF 导出尽量复用同一套渲染路径。
+- **内容与样式分离**：用户专注写经历，模板和排版设置负责呈现。
+- **每一步都可回退**：AI 润色先给候选结果，模板应用前可预览，分享链接可随时关闭。
+
+## 当前状态
+
+项目处于 v0.3 之后的持续迭代阶段，已上线三套内置模板，并在推进模板库、富文本润色、导入解析、协同批注、智能排版与 Agent 能力等产品切片。更多过程文档在 [docs/superpowers](./docs/superpowers) 与 [docs/agent](./docs/agent) 中。
+
+## 开发者入口
+
+README 以产品介绍为主。需要本地运行或参与开发时，可以从这些入口开始：
 
 ```bash
 pnpm install
 cp .env.example .env.local
-# 填入必需的环境变量（见下方说明）
-pnpm drizzle-kit migrate
 pnpm dev
 ```
 
-### 环境变量
-
-| 变量 | 必需 | 说明 |
-|---|---|---|
-| `DATABASE_URL` | ✅ | Postgres 连接串。`*.neon.tech` 走 Neon HTTP driver，`localhost` 走 `postgres.js` TCP |
-| `DATABASE_URL_UNPOOLED` | | 直连地址，`drizzle-kit migrate` 优先使用 |
-| `AUTH_SECRET` | ✅ | `openssl rand -base64 32` |
-| `AUTH_URL` | ✅ | 应用 URL，本地为 `http://localhost:3000` |
-| `AUTH_RESEND_KEY` | ✅ | [Resend](https://resend.com) API Key |
-| `AUTH_EMAIL_FROM` | ✅ | 发件地址，如 `login@your-domain.com` |
-| `BLOB_READ_WRITE_TOKEN` | | Vercel Blob token，头像上传需要 |
-| `DEEPSEEK_API_KEY` | | DeepSeek API Key，简历导入功能需要 |
-| `OCR_SPACE_API_KEY` | | OCR.space API Key，图片/扫描件导入需要 |
-| `NEXT_PUBLIC_PARTYKIT_HOST` | | PartyKit 服务地址，协同编辑需要 |
-
-### 协同编辑服务（可选）
+常用验证命令：
 
 ```bash
-cd partykit
-pnpm install
-pnpm dev    # 启动本地 PartyKit 服务
+pnpm test
+pnpm tsc --noEmit
+pnpm lint
+pnpm build
 ```
 
-## 测试与验证
-
-```bash
-pnpm test             # Vitest 单测
-pnpm tsc --noEmit     # 类型检查
-pnpm lint             # ESLint
-pnpm build            # 生产构建
-pnpm verify           # 一键运行以上全部
-```
-
-## 部署
-
-### Vercel（主应用）
-
-1. 推到 GitHub → Vercel Dashboard → Import Project
-2. Vercel Storage → 添加 **Neon Postgres**（`DATABASE_URL` 自动注入）
-3. Settings → Environment Variables 添加上述必需变量
-4. 本地用生产 `DATABASE_URL_UNPOOLED` 跑 `pnpm drizzle-kit migrate` 初始化表
-5. 触发部署
-
-### PartyKit（协同编辑服务）
-
-```bash
-cd partykit
-pnpm deploy
-```
-
-## 项目结构
-
-```
-app/
-  (marketing)/          公开落地页
-  (auth)/               登录、验证
-  (app)/                Dashboard、编辑器、server actions
-  api/pdf/[id]/         Puppeteer PDF 导出
-  api/import-resume/    AI 简历导入
-  api/upload-photo/     头像上传
-  collab/[token]/       协同编辑页
-  r/[slug]/             公开只读简历
-components/
-  editor/               各分区编辑器
-  preview/              实时预览面板
-  collab/               协同编辑 UI（批注、语音）
-  ui/                   shadcn/ui 原语
-lib/
-  templates/            professional / classic / modern + 共享原语
-  resume-schema.ts      Zod schema（简历数据契约）
-  auth.ts               Auth.js 配置
-  pdf-route-helpers.ts  Puppeteer 启动与字体等待
-db/                     Drizzle schema + migrations
-hooks/                  autosave、collab provider 等
-partykit/               PartyKit 协同服务（独立部署）
-proxy.ts                鉴权拦截（Next.js 16 的 middleware）
-tests/unit/             Vitest 单测
-docs/superpowers/       设计 spec 与实施 plan
-```
-
-## 容量估算（Vercel Hobby 免费档）
-
-| 资源 | 免费额度 | 百人规模估算 |
-|---|---|---|
-| Vercel 带宽 | 100 GB | ~2 GB |
-| Neon 存储 | 0.5 GB | ~10 MB |
-| Resend 邮件 | 3000/月 | ~500 |
-| Vercel Blob | 1 GB | 头像约数十 MB |
-| PartyKit | 免费档 | 低并发场景足够 |
-| DeepSeek API | 按量计费 | ~¥0.01/次导入 |
+关键开发约定见 [AGENTS.md](./AGENTS.md)。环境变量示例见 [.env.example](./.env.example)。Agent 微服务说明见 [docs/agent/README.md](./docs/agent/README.md)。
 
 ## License
 

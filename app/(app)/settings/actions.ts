@@ -15,7 +15,7 @@ export async function sendCode(): Promise<{ success: boolean; error?: string }> 
   if (!session?.user?.email) return { success: false, error: "未登录" };
 
   try {
-    await sendVerificationCode(session.user.email);
+    await sendVerificationCode(session.user.email, "password");
     return { success: true };
   } catch (e) {
     console.error("[sendCode]", e);

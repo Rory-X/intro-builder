@@ -10,7 +10,7 @@ import {
 type Props = {
   /**
    * 真正的模板渲染。父级（Gallery）负责 dispatch，thumbnail 只负责"装进
-   * A4 框 + 缩放 + 懒挂载"。解耦让它能承载任何未来的渲染源。
+   * A4 框 + 自适应缩放 + 懒挂载"。解耦让它能承载任何未来的渲染源。
    */
   children: React.ReactNode;
   /**

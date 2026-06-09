@@ -796,3 +796,35 @@ describe("SlotRenderer — basics 头部自动补 data-pagination-header", () =>
     expect(container.textContent).toContain("张三");
   });
 });
+
+describe("SlotRenderer — basics 头部自动补 data-pagination-header", () => {
+  // 回归：除 professional 外的模板用裸 <header>，PDF 导出
+  // `header:not([data-pagination-header]){display:none}` 会把整块个人信息隐藏。
+  // 引擎层自动补标记，所有模板的 basics 头部都能在导出时保留。
+  it("裸 <header> 渲染后带 data-pagination-header", () => {
+    const { container } = render_({
+      html: '<article><header><h1><slot data-bind="basics.name" /></h1></header></article>',
+    });
+    const header = container.querySelector("header");
+    expect(header).not.toBeNull();
+    expect(header!.hasAttribute("data-pagination-header")).toBe(true);
+  });
+
+  it("已手写 data-pagination-header 时不重复（幂等）", () => {
+    const { container } = render_({
+      html: '<article><header data-pagination-header class="pro"><h1><slot data-bind="basics.name" /></h1></header></article>',
+    });
+    const header = container.querySelector("header");
+    expect(header).not.toBeNull();
+    expect(header!.getAttribute("class")).toBe("pro");
+    expect(header!.hasAttribute("data-pagination-header")).toBe(true);
+  });
+
+  it("basics 用 <div>（无 <header>）时不报错且正常渲染", () => {
+    const { container } = render_({
+      html: '<article><div class="basics"><h1><slot data-bind="basics.name" /></h1></div></article>',
+    });
+    expect(container.querySelector("header")).toBeNull();
+    expect(container.textContent).toContain("张三");
+  });
+});

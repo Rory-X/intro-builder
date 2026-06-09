@@ -10,11 +10,21 @@ import { monitorForElements } from "@atlaskit/pragmatic-drag-and-drop/element/ad
 import { ItemWrapper, ItemSummary } from "./item-wrapper";
 import { cn } from "@/lib/utils";
 import { SectionEditorHeader } from "./section-editor-header";
+import { SectionHelperButton } from "@/components/agent/section-helper-button";
+import { tiptapPlainText } from "@/lib/agent/resume-helper-context";
+import { useCompletenessScore } from "@/hooks/use-completeness-score";
 
-export function ExperienceEditor() {
+type Props = {
+  resumeId?: string;
+};
+
+export function ExperienceEditor({ resumeId }: Props) {
   const { register, control, watch, setValue } = useFormContext<ResumeContent>();
   const { fields, append, remove, move } = useFieldArray({ control, name: "experience" });
   const [isOpen, setIsOpen] = useState(true);
+  const completeness = useCompletenessScore();
+  const experience = watch("experience") ?? [];
+  const helperText = experience.map((item) => tiptapPlainText(item.content)).filter(Boolean).join("\n");
 
   useEffect(() => {
     return monitorForElements({
@@ -43,6 +53,16 @@ export function ExperienceEditor() {
           isOpen={isOpen}
           onToggle={() => setIsOpen(!isOpen)}
           onAdd={() => { append({ company: "", title: "", start: "", end: "", location: "", content: emptyDoc() }); setIsOpen(true); }}
+          helper={resumeId ? (
+            <SectionHelperButton
+              resumeId={resumeId}
+              section="experience"
+              fieldPath="experience"
+              label="工作经历"
+              plainText={helperText}
+              completeness={completeness}
+            />
+          ) : undefined}
         />
       </div>
       <div className={cn(
@@ -78,6 +98,11 @@ export function ExperienceEditor() {
                     key={`experience-content-${f.id}`}
                     content={watch(`experience.${idx}.content` as const)}
                     onChange={(json) => setValue(`experience.${idx}.content` as const, json, { shouldDirty: true })}
+                    polish={resumeId ? {
+                      resumeId,
+                      section: "experience",
+                      fieldPath: `experience.${idx}.content`,
+                    } : undefined}
                     placeholder="描述你的工作成果…"
                   />
                 </div>

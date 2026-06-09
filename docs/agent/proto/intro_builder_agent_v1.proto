@@ -1,0 +1,333 @@
+syntax = "proto3";
+
+package intro_builder.agent.v1;
+
+import "google/protobuf/struct.proto";
+
+// IDL draft for keeping HTTP JSON contracts aligned.
+// This is a contract alignment draft, not a generated runtime dependency.
+// Phase 3B uses HTTP + AG-UI text/event-stream for Agent messages; JSON
+// fallback mirrors these message fields for tests and debugging.
+
+service RichTextService {
+  rpc PolishRichText(PolishRichTextRequest) returns (PolishRichTextResponse);
+}
+
+service ResumeHelperService {
+  rpc RunResumeHelper(RunResumeHelperRequest) returns (RunResumeHelperResponse);
+}
+
+service AgentMessageService {
+  rpc SendAgentMessage(SendAgentMessageRequest) returns (SendAgentMessageResponse);
+}
+
+message PolishRichTextRequest {
+  string request_id = 1;
+  string resume_id = 2;
+  ResumeSection section = 3;
+  string field_path = 4;
+  string locale = 5;
+  RichTextContent content = 6;
+  PolishIntent intent = 7;
+}
+
+message RichTextContent {
+  RichTextFormat format = 1;
+  string plain_text = 2;
+  google.protobuf.Struct tiptap_json = 3;
+}
+
+message PolishIntent {
+  PolishMode mode = 1;
+  PolishTone tone = 2;
+  LengthMode length = 3;
+  PolishStrategy strategy = 4;
+}
+
+message PolishRichTextResponse {
+  string status = 1;
+  string request_id = 2;
+  PolishResult result = 3;
+  Usage usage = 4;
+}
+
+message PolishResult {
+  RichTextFormat format = 1;
+  string polished_text = 2;
+  string change_summary = 3;
+  repeated RiskFlag risk_flags = 4;
+  google.protobuf.Struct replacement_tiptap_json = 5;
+}
+
+message RiskFlag {
+  RiskFlagType type = 1;
+  string message = 2;
+}
+
+message Usage {
+  string provider = 1;
+  string model = 2;
+  uint32 input_tokens = 3;
+  uint32 output_tokens = 4;
+}
+
+message RunResumeHelperRequest {
+  string request_id = 1;
+  string helper_id = 2;
+  string resume_id = 3;
+  string locale = 4;
+  ResumeHelperTarget target = 5;
+  ResumeHelperContext context = 6;
+  ResumeHelperIntent intent = 7;
+}
+
+message ResumeHelperTarget {
+  ResumeHelperTargetKind kind = 1;
+  ResumeSection section = 2;
+  string field_path = 3;
+}
+
+message ResumeHelperContext {
+  string resume_title = 1;
+  CompletenessSnapshot completeness = 2;
+  repeated ResumeHelperSection sections = 3;
+}
+
+message CompletenessSnapshot {
+  uint32 overall = 1;
+  repeated CompletenessSection sections = 2;
+}
+
+message CompletenessSection {
+  string key = 1;
+  string label = 2;
+  uint32 score = 3;
+  uint32 max = 4;
+}
+
+message ResumeHelperSection {
+  string key = 1;
+  string label = 2;
+  string plain_text = 3;
+}
+
+message ResumeHelperIntent {
+  ResumeHelperMode mode = 1;
+  uint32 max_suggestions = 2;
+  PolishStrategy strategy = 3;
+}
+
+message RunResumeHelperResponse {
+  string status = 1;
+  string request_id = 2;
+  string helper_id = 3;
+  ResumeHelperResult result = 4;
+  Usage usage = 5;
+}
+
+message ResumeHelperResult {
+  string summary = 1;
+  repeated ResumeHelperSuggestion suggestions = 2;
+}
+
+message ResumeHelperSuggestion {
+  string id = 1;
+  string section = 2;
+  string field_path = 3;
+  ResumeHelperSeverity severity = 4;
+  string title = 5;
+  string rationale = 6;
+  string action_label = 7;
+  string example = 8;
+  repeated ResumeHelperRiskFlag risk_flags = 9;
+}
+
+message ResumeHelperRiskFlag {
+  ResumeHelperRiskFlagType type = 1;
+  string message = 2;
+}
+
+message SendAgentMessageRequest {
+  string request_id = 1;
+  string resume_id = 2;
+  string locale = 3;
+  AgentWorkflowId workflow_id = 4;
+  repeated AgentChatMessage messages = 5;
+  AgentResumeContext context = 6;
+}
+
+message AgentChatMessage {
+  string id = 1;
+  AgentChatRole role = 2;
+  string content = 3;
+}
+
+message AgentResumeContext {
+  string resume_title = 1;
+  string template_id = 2;
+  string active_section = 3;
+  CompletenessSnapshot completeness = 4;
+  repeated AgentResumeSection sections = 5;
+}
+
+message AgentResumeSection {
+  string key = 1;
+  string label = 2;
+  string field_path = 3;
+  string plain_text = 4;
+}
+
+message SendAgentMessageResponse {
+  string status = 1;
+  string request_id = 2;
+  AgentChatMessage message = 3;
+  repeated AgentToolCall tool_calls = 4;
+  repeated ResumeOperation proposed_operations = 5;
+  Usage usage = 6;
+}
+
+message AgentToolCall {
+  string id = 1;
+  AgentToolName name = 2;
+  string status = 3;
+  string title = 4;
+  string summary = 5;
+  google.protobuf.Struct input = 6;
+  google.protobuf.Struct result = 7;
+}
+
+message ResumeOperation {
+  string id = 1;
+  string tool_call_id = 2;
+  string label = 3;
+  ResumeSection section = 4;
+  string field_path = 5;
+  ResumeOperationKind operation = 6;
+  string before_plain_text = 7;
+  string after_plain_text = 8;
+  google.protobuf.Struct replacement_tiptap_json = 9;
+  string change_summary = 10;
+  repeated AgentOperationRiskFlag risk_flags = 11;
+  repeated string section_order = 12;
+}
+
+message AgentOperationRiskFlag {
+  AgentPatchRiskFlagType type = 1;
+  string message = 2;
+}
+
+enum RichTextFormat {
+  RICH_TEXT_FORMAT_UNSPECIFIED = 0;
+  RICH_TEXT_FORMAT_PLAIN_TEXT = 1;
+  RICH_TEXT_FORMAT_TIPTAP_JSON = 2;
+}
+
+enum ResumeSection {
+  RESUME_SECTION_UNSPECIFIED = 0;
+  RESUME_SECTION_SUMMARY = 1;
+  RESUME_SECTION_EXPERIENCE = 2;
+  RESUME_SECTION_PROJECTS = 3;
+  RESUME_SECTION_EDUCATION = 4;
+  RESUME_SECTION_SKILLS = 5;
+  RESUME_SECTION_RESEARCH = 6;
+  RESUME_SECTION_CUSTOM = 7;
+}
+
+enum PolishMode {
+  POLISH_MODE_UNSPECIFIED = 0;
+  POLISH_MODE_POLISH = 1;
+}
+
+enum PolishTone {
+  POLISH_TONE_UNSPECIFIED = 0;
+  POLISH_TONE_PROFESSIONAL = 1;
+  POLISH_TONE_CONFIDENT = 2;
+  POLISH_TONE_CONCISE = 3;
+}
+
+enum LengthMode {
+  LENGTH_MODE_UNSPECIFIED = 0;
+  LENGTH_MODE_SAME = 1;
+  LENGTH_MODE_SHORTER = 2;
+  LENGTH_MODE_LONGER = 3;
+}
+
+enum PolishStrategy {
+  POLISH_STRATEGY_UNSPECIFIED = 0;
+  POLISH_STRATEGY_PLAIN = 1;
+  POLISH_STRATEGY_STAR = 2;
+}
+
+enum RiskFlagType {
+  RISK_FLAG_TYPE_UNSPECIFIED = 0;
+  RISK_FLAG_TYPE_POSSIBLE_FABRICATION = 1;
+  RISK_FLAG_TYPE_CHANGED_ENTITY = 2;
+  RISK_FLAG_TYPE_TOO_LITTLE_CONTEXT = 3;
+  RISK_FLAG_TYPE_UNSAFE_CLAIM = 4;
+}
+
+enum ResumeHelperTargetKind {
+  RESUME_HELPER_TARGET_KIND_UNSPECIFIED = 0;
+  RESUME_HELPER_TARGET_KIND_RESUME = 1;
+  RESUME_HELPER_TARGET_KIND_SECTION = 2;
+}
+
+enum ResumeHelperMode {
+  RESUME_HELPER_MODE_UNSPECIFIED = 0;
+  RESUME_HELPER_MODE_DIAGNOSE = 1;
+  RESUME_HELPER_MODE_NEXT_STEPS = 2;
+}
+
+enum ResumeHelperSeverity {
+  RESUME_HELPER_SEVERITY_UNSPECIFIED = 0;
+  RESUME_HELPER_SEVERITY_HIGH = 1;
+  RESUME_HELPER_SEVERITY_MEDIUM = 2;
+  RESUME_HELPER_SEVERITY_LOW = 3;
+}
+
+enum ResumeHelperRiskFlagType {
+  RESUME_HELPER_RISK_FLAG_TYPE_UNSPECIFIED = 0;
+  RESUME_HELPER_RISK_FLAG_TYPE_NEEDS_USER_FACT = 1;
+  RESUME_HELPER_RISK_FLAG_TYPE_POSSIBLE_FABRICATION = 2;
+  RESUME_HELPER_RISK_FLAG_TYPE_TOO_LITTLE_CONTEXT = 3;
+  RESUME_HELPER_RISK_FLAG_TYPE_FORMATTING_RISK = 4;
+}
+
+enum AgentWorkflowId {
+  AGENT_WORKFLOW_ID_UNSPECIFIED = 0;
+  AGENT_WORKFLOW_ID_RESUME_DIAGNOSE = 1;
+  AGENT_WORKFLOW_ID_TARGET_ROLE_MATCH = 2;
+  AGENT_WORKFLOW_ID_EXPERIENCE_STAR = 3;
+  AGENT_WORKFLOW_ID_PRE_EXPORT_CHECK = 4;
+}
+
+enum AgentChatRole {
+  AGENT_CHAT_ROLE_UNSPECIFIED = 0;
+  AGENT_CHAT_ROLE_USER = 1;
+  AGENT_CHAT_ROLE_ASSISTANT = 2;
+}
+
+enum AgentToolName {
+  AGENT_TOOL_NAME_UNSPECIFIED = 0;
+  AGENT_TOOL_NAME_RESUME_READ = 1;
+  AGENT_TOOL_NAME_RESUME_UPDATE_SECTION = 2;
+  AGENT_TOOL_NAME_RESUME_DELETE_SECTION = 3;
+  AGENT_TOOL_NAME_RESUME_REORDER_SECTIONS = 4;
+  AGENT_TOOL_NAME_RESUME_INSERT_SECTION = 5;
+}
+
+enum ResumeOperationKind {
+  RESUME_OPERATION_KIND_UNSPECIFIED = 0;
+  RESUME_OPERATION_KIND_UPDATE_SECTION = 1;
+  RESUME_OPERATION_KIND_DELETE_SECTION = 2;
+  RESUME_OPERATION_KIND_REORDER_SECTIONS = 3;
+  RESUME_OPERATION_KIND_INSERT_SECTION = 4;
+}
+
+enum AgentPatchRiskFlagType {
+  AGENT_PATCH_RISK_FLAG_TYPE_UNSPECIFIED = 0;
+  AGENT_PATCH_RISK_FLAG_TYPE_NEEDS_USER_FACT = 1;
+  AGENT_PATCH_RISK_FLAG_TYPE_POSSIBLE_FABRICATION = 2;
+  AGENT_PATCH_RISK_FLAG_TYPE_FORMATTING_RISK = 3;
+  AGENT_PATCH_RISK_FLAG_TYPE_UNSAFE_CLAIM = 4;
+}

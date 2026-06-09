@@ -10,11 +10,21 @@ import { monitorForElements } from "@atlaskit/pragmatic-drag-and-drop/element/ad
 import { ItemWrapper, ItemSummary } from "./item-wrapper";
 import { SectionEditorHeader } from "./section-editor-header";
 import { cn } from "@/lib/utils";
+import { SectionHelperButton } from "@/components/agent/section-helper-button";
+import { tiptapPlainText } from "@/lib/agent/resume-helper-context";
+import { useCompletenessScore } from "@/hooks/use-completeness-score";
 
-export function ProjectsEditor() {
+type Props = {
+  resumeId?: string;
+};
+
+export function ProjectsEditor({ resumeId }: Props) {
   const { register, control, watch, setValue } = useFormContext<ResumeContent>();
   const { fields, append, remove, move } = useFieldArray({ control, name: "projects" });
   const [isOpen, setIsOpen] = useState(true);
+  const completeness = useCompletenessScore();
+  const projects = watch("projects") ?? [];
+  const helperText = projects.map((item) => tiptapPlainText(item.content)).filter(Boolean).join("\n");
 
   useEffect(() => {
     return monitorForElements({
@@ -43,6 +53,16 @@ export function ProjectsEditor() {
           isOpen={isOpen}
           onToggle={() => setIsOpen(!isOpen)}
           onAdd={() => { append({ name: "", role: "", location: "", start: "", end: "", stack: [], link: "", content: emptyDoc() }); setIsOpen(true); }}
+          helper={resumeId ? (
+            <SectionHelperButton
+              resumeId={resumeId}
+              section="projects"
+              fieldPath="projects"
+              label="项目经历"
+              plainText={helperText}
+              completeness={completeness}
+            />
+          ) : undefined}
         />
       </div>
       <div className={cn(
@@ -87,6 +107,11 @@ export function ProjectsEditor() {
                     key={`projects-content-${f.id}`}
                     content={watch(`projects.${idx}.content` as const)}
                     onChange={(json) => setValue(`projects.${idx}.content` as const, json, { shouldDirty: true })}
+                    polish={resumeId ? {
+                      resumeId,
+                      section: "projects",
+                      fieldPath: `projects.${idx}.content`,
+                    } : undefined}
                     placeholder="描述你的项目亮点…"
                   />
                 </div>

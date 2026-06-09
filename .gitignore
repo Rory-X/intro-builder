@@ -2,6 +2,7 @@
 
 # dependencies
 /node_modules
+node_modules/
 /partykit/node_modules
 /.pnp
 .pnp.*
@@ -20,6 +21,7 @@
 
 # production
 /build
+/apps/agent/dist/
 
 # misc
 .DS_Store
@@ -57,6 +59,7 @@ modern-initial-template.png
 .cursor/
 
 # PoC artifacts and tool caches (never shared)
+.superpowers/
 .playwright-cli/
 .playwright-mcp/
 prototypes/

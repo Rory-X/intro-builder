@@ -12,6 +12,7 @@ import { useForm, FormProvider } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { toast } from "sonner";
 import { ResumeContent } from "@/lib/resume-schema";
+import { computeCompletenessScore } from "@/lib/completeness-score";
 import { saveResume, setTemplate, toggleShare } from "./actions";
 import { useResumeAutosave } from "@/hooks/use-resume-autosave";
 import { formatSaveError } from "@/lib/format-save-error";
@@ -25,6 +26,13 @@ import { SkillsEditor } from "@/components/editor/skills-editor";
 import { BlockSectionEditor } from "@/components/editor/block-section-editor";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
+import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetHeader,
+  SheetTitle,
+} from "@/components/ui/sheet";
 import { Loader2, Share2, PanelRightClose, PanelRightOpen, MessageSquare, LayoutTemplate, ChevronLeft, PencilLine, CloudCheck, Copy, CircleAlert } from "lucide-react";
 import { Popover, PopoverContent, PopoverDescription, PopoverHeader, PopoverTitle, PopoverTrigger } from "@/components/ui/popover";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
@@ -56,6 +64,10 @@ import { PresenceBar } from "@/components/collab/presence-bar";
 import { VoiceChatControls } from "@/components/collab/voice-chat-controls";
 import { AnnotationHighlights, flashAnnotation } from "@/components/collab/annotation-highlights";
 import { AnnotationList } from "@/components/collab/annotation-list";
+import { ResumeDiagnoseButton } from "@/components/agent/resume-diagnose-button";
+import { AgentModeToggle } from "@/components/agent/agent-mode-toggle";
+import { AgentPanel } from "@/components/agent/agent-panel";
+import type { ResumeOperation } from "@/lib/agent/agent-message-contract";
 
 type Props = {
   id: string;
@@ -112,6 +124,17 @@ function getServerDesktopSnapshot() {
   return true; // Assume desktop for SSR (this page is desktop-only)
 }
 
+function isAllowedAgentTipTapFieldPath(fieldPath: string): boolean {
+  return (
+    fieldPath === "skills" ||
+    /^experience\.\d+\.content$/.test(fieldPath) ||
+    /^projects\.\d+\.content$/.test(fieldPath) ||
+    /^education\.\d+\.highlights$/.test(fieldPath) ||
+    /^research\.\d+\.content$/.test(fieldPath) ||
+    /^custom\.\d+\.content$/.test(fieldPath)
+  );
+}
+
 function formatRelativeSaveTime(savedAt: Date, now: Date): string {
   const diffMs = Math.max(0, now.getTime() - savedAt.getTime());
   const minutes = Math.floor(diffMs / 60_000);
@@ -157,6 +180,7 @@ export default function EditorClient({ id, initialTitle, initialTemplate, initia
   const [pendingTemplateId, setPendingTemplateId] = useState<TemplateId | null>(null);
   const [activeSection, setActiveSection] = useState<string | null>("basics");
   const [showTemplatePanel, setShowTemplatePanel] = useState(false);
+  const [isAgentMode, setIsAgentMode] = useState(false);
   const [isSharePopoverOpen, setIsSharePopoverOpen] = useState(false);
   const [isTogglingShare, setIsTogglingShare] = useState(false);
   const [isPending, startTransition] = useTransition();
@@ -400,6 +424,48 @@ export default function EditorClient({ id, initialTitle, initialTemplate, initia
     form.setValue("sectionOrder", newOrder, { shouldDirty: true });
   }
 
+  function applyAgentOperation(operation: ResumeOperation) {
+    if (operation.operation === "update_section" && operation.fieldPath === "basics.summary") {
+      form.setValue("basics.summary", operation.afterPlainText, {
+        shouldDirty: true,
+        shouldValidate: true,
+      });
+      toast.success("已应用 Agent 建议");
+      return;
+    }
+
+    if (
+      operation.operation === "update_section" &&
+      operation.replacementTiptapJson !== undefined &&
+      isAllowedAgentTipTapFieldPath(operation.fieldPath)
+    ) {
+      type SetValueArgs = Parameters<typeof form.setValue>;
+      form.setValue(
+        operation.fieldPath as SetValueArgs[0],
+        operation.replacementTiptapJson as SetValueArgs[1],
+        { shouldDirty: true, shouldValidate: true },
+      );
+      toast.success("已应用 Agent 建议");
+      return;
+    }
+
+    if (operation.operation === "reorder_sections" && operation.sectionOrder) {
+      setSectionOrder(operation.sectionOrder);
+      form.setValue("sectionOrder", operation.sectionOrder, {
+        shouldDirty: true,
+        shouldValidate: true,
+      });
+      toast.success("已应用 Agent 建议");
+      return;
+    }
+
+    toast.error("这条 Agent 建议暂不支持自动应用");
+  }
+
+  function flushAgentAutosave() {
+    window.dispatchEvent(new Event("resume:flush-autosave"));
+  }
+
   /** Check if a section key is a custom (non-built-in) section */
   function isCustomSection(key: string): boolean {
     return !BUILTIN_SECTION_KEYS.has(key);
@@ -492,6 +558,7 @@ export default function EditorClient({ id, initialTitle, initialTemplate, initia
   const saveStatusDescription = saveError
     ? `当前自动保存状态：保存失败（${saveError}）`
     : `当前自动保存状态：${saveStatusLabel}`;
+  const agentCompleteness = computeCompletenessScore(form.getValues() as ResumeContent);
 
   return (
     <FormProvider {...form}>
@@ -515,7 +582,10 @@ export default function EditorClient({ id, initialTitle, initialTemplate, initia
           <Button
             size="sm"
             variant="ghost"
-            onClick={() => setShowTemplatePanel((v) => !v)}
+            onClick={() => {
+              setIsAgentMode(false);
+              setShowTemplatePanel((v) => !v);
+            }}
             aria-pressed={showTemplatePanel}
             className={cn(
               "gap-1.5",
@@ -528,6 +598,14 @@ export default function EditorClient({ id, initialTitle, initialTemplate, initia
           <StyleEditor />
           <SmartLayoutButton templateId={template} measureRef={previewRootRef} />
           <ModuleManager sectionOrder={sectionOrder} onOrderChange={handleOrderChange} />
+          <ResumeDiagnoseButton resumeId={id} />
+          <AgentModeToggle
+            active={isAgentMode}
+            onClick={() => {
+              setShowTemplatePanel(false);
+              setIsAgentMode((value) => !value);
+            }}
+          />
 
           {collabState?.isConnected && (
             <>
@@ -724,8 +802,23 @@ export default function EditorClient({ id, initialTitle, initialTemplate, initia
           <div className="relative min-w-0 border-r" style={{ flex: `0 0 ${splitPercent}%` }}>
             <div
               ref={editorPanelRef}
-              className="thin-scrollbar editor-panel h-full overflow-y-auto overflow-x-hidden bg-background p-3.5"
+              className={cn(
+                "thin-scrollbar editor-panel h-full overflow-y-auto overflow-x-hidden bg-background",
+                isAgentMode ? "p-0" : "p-3.5",
+              )}
             >
+              {isAgentMode ? (
+                <AgentPanel
+                  resumeId={id}
+                  title={title}
+                  templateId={template}
+                  getResumeContent={() => form.getValues() as ResumeContent}
+                  completeness={agentCompleteness}
+                  applyOperation={applyAgentOperation}
+                  flushAutosave={flushAgentAutosave}
+                  onBackToEdit={() => setIsAgentMode(false)}
+                />
+              ) : (
               <div className="space-y-4">
                 <div className={cn(
                   "rounded-lg transition-all duration-500",
@@ -739,24 +832,25 @@ export default function EditorClient({ id, initialTitle, initialTemplate, initia
                     collabSync.highlightedFields.has(key) && "ring-2 ring-violet-400/60 bg-violet-50/30 dark:bg-violet-950/20"
                   )} onClick={() => setActiveSection(key)}>
                     <SectionWrapper id={key} isActive={activeSection === key}>
-                      {key === "experience" && <ExperienceEditor />}
-                      {key === "education" && <EducationEditor />}
-                      {key === "projects" && <ProjectsEditor />}
-                      {key === "research" && <ResearchEditor />}
-                      {key === "skills" && <SkillsEditor />}
+                      {key === "experience" && <ExperienceEditor resumeId={id} />}
+                      {key === "education" && <EducationEditor resumeId={id} />}
+                      {key === "projects" && <ProjectsEditor resumeId={id} />}
+                      {key === "research" && <ResearchEditor resumeId={id} />}
+                      {key === "skills" && <SkillsEditor resumeId={id} />}
                       {key === "summary" && <BlockSectionEditor field="summary" placeholder="一段话概括你的背景、优势与求职意向…" />}
                       {key === "awards" && <BlockSectionEditor field="awards" placeholder="如：2024 年国家奖学金&#10;ACM 区域赛银奖" />}
                       {key === "portfolio" && <BlockSectionEditor field="portfolio" placeholder="放作品名称 + 链接 + 一句话说明…" />}
-                      {isCustomSection(key) && <CustomSectionEditor sectionId={key} />}
+                      {isCustomSection(key) && <CustomSectionEditor sectionId={key} resumeId={id} />}
                     </SectionWrapper>
                   </div>
                 ))}
               </div>
+              )}
             </div>
             {/* 模板面板：覆盖左侧表单列（右侧预览常驻可见，换模板实时看效果）。
                 表单不卸载（仅被遮住），保留编辑状态与滚动位置。
                 点击右侧预览区域(backdrop)关闭面板。 */}
-            {showTemplatePanel && (
+            {showTemplatePanel && !isAgentMode && (
               <>
                 <TemplateSwitchPanel
                   className="absolute inset-0 z-20"
@@ -772,12 +866,14 @@ export default function EditorClient({ id, initialTitle, initialTemplate, initia
             )}
           </div>
           {/* Resize handle */}
-          <div
-            className="group flex w-2 shrink-0 cursor-col-resize items-center justify-center"
-            onMouseDown={handleMouseDown}
-          >
-            <div className="h-8 w-1 rounded-full bg-border transition-all duration-200 group-hover:h-12 group-hover:bg-muted-foreground/50 group-active:bg-primary/60" />
-          </div>
+          {!isAgentMode && (
+            <div
+              className="group flex w-2 shrink-0 cursor-col-resize items-center justify-center"
+              onMouseDown={handleMouseDown}
+            >
+              <div className="h-8 w-1 rounded-full bg-border transition-all duration-200 group-hover:h-12 group-hover:bg-muted-foreground/50 group-active:bg-primary/60" />
+            </div>
+          )}
           <div
             data-preview-scroll-pane=""
             className="thin-scrollbar min-w-0 overflow-auto overscroll-contain bg-muted p-6"
@@ -817,6 +913,29 @@ export default function EditorClient({ id, initialTitle, initialTemplate, initia
           <a href="/dashboard" className="mt-2 text-sm font-medium text-primary hover:underline">
             返回我的简历
           </a>
+          <Button type="button" onClick={() => setIsAgentMode(true)}>
+            打开 Agent
+          </Button>
+          <Sheet open={isAgentMode} onOpenChange={setIsAgentMode}>
+            <SheetContent side="bottom" className="h-[88vh] gap-0 p-0" showCloseButton={false}>
+              <SheetHeader className="sr-only">
+                <SheetTitle>简历 Agent</SheetTitle>
+                <SheetDescription>
+                  移动端 Agent 面板，修改简历前仍需确认。
+                </SheetDescription>
+              </SheetHeader>
+              <AgentPanel
+                resumeId={id}
+                title={title}
+                templateId={template}
+                getResumeContent={() => form.getValues() as ResumeContent}
+                completeness={agentCompleteness}
+                applyOperation={applyAgentOperation}
+                flushAutosave={flushAgentAutosave}
+                onBackToEdit={() => setIsAgentMode(false)}
+              />
+            </SheetContent>
+          </Sheet>
         </div>
       )}
     </FormProvider>

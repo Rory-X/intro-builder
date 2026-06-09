@@ -39,11 +39,11 @@ function Harness() {
 
 describe("ResearchEditor", () => {
   it("renders research fields in correct order: role, location, dates, paper title, paper link", () => {
-    const { container } = render(<Harness />);
+    render(<Harness />);
 
     const labels = screen.getAllByText(/^(角色|城市|开始|结束|论文名称|论文链接)$/).map((el) => el.textContent);
     expect(labels).toEqual(["角色", "城市", "开始", "结束", "论文名称", "论文链接"]);
-    expect(screen.getByText("论文名称").closest("div")?.className).toContain("col-span-2");
-    expect(screen.getByText("论文链接").closest("div")?.className).toContain("col-span-2");
+    expect(screen.getByText("论文名称").closest("div")?.className).not.toContain("col-span-2");
+    expect(screen.getByText("论文链接").closest("div")?.className).not.toContain("col-span-2");
   });
 });

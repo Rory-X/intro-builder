@@ -5,6 +5,7 @@ import { Resend } from "resend";
 
 const EMAIL_FROM = process.env.AUTH_EMAIL_FROM ?? "noreply@example.com";
 let resendClient: Resend | null = null;
+export type VerificationCodePurpose = "login" | "password";
 
 function getResendClient(): Resend {
   const apiKey = process.env.AUTH_RESEND_KEY;
@@ -61,21 +62,41 @@ export async function verifyCode(email: string, code: string): Promise<boolean> 
   return true;
 }
 
+function getVerificationEmailCopy(purpose: VerificationCodePurpose) {
+  if (purpose === "login") {
+    return {
+      subject: "intro-builder 登录验证码",
+      title: "登录验证码",
+      body: "你正在登录 intro-builder，请使用以下验证码完成登录或注册：",
+    };
+  }
+
+  return {
+    subject: "intro-builder 验证码",
+    title: "验证码",
+    body: "你正在设置或修改密码，请使用以下验证码完成验证：",
+  };
+}
+
 /** Send a verification code email via Resend */
-export async function sendVerificationCode(email: string): Promise<void> {
+export async function sendVerificationCode(
+  email: string,
+  purpose: VerificationCodePurpose = "password",
+): Promise<void> {
   const code = generateCode();
   await saveVerificationCode(email, code);
   const resend = getResendClient();
+  const copy = getVerificationEmailCopy(purpose);
 
   await resend.emails.send({
     from: EMAIL_FROM,
     to: email,
-    subject: "intro-builder 验证码",
+    subject: copy.subject,
     html: `
       <div style="font-family: sans-serif; max-width: 400px; margin: 0 auto; padding: 20px;">
-        <h2 style="color: #111; margin-bottom: 16px;">验证码</h2>
+        <h2 style="color: #111; margin-bottom: 16px;">${copy.title}</h2>
         <p style="color: #555; font-size: 14px; margin-bottom: 20px;">
-          你正在设置或修改密码，请使用以下验证码完成验证：
+          ${copy.body}
         </p>
         <div style="background: #f4f4f5; border-radius: 8px; padding: 16px; text-align: center; margin-bottom: 20px;">
           <span style="font-size: 32px; font-weight: bold; letter-spacing: 4px; color: #111;">${code}</span>

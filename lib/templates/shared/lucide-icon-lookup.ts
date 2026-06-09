@@ -40,6 +40,8 @@ import {
   Plane,
   Rocket,
   Smartphone,
+  FileText,
+  Image,
   type LucideIcon,
 } from "lucide-react";
 
@@ -52,7 +54,7 @@ import {
  *
  * 这里**只 import whitelist**而不是动态拉所有 lucide icon —— bundle size
  * 是关键考量（lucide-react 完整包 ~700KB，单独 import 每个 icon 只 ~2KB）。
- * 35 个 whitelist 覆盖 90% 简历用途；运营 Skill 输出 whitelist 外的 name
+ * 37 个 whitelist 覆盖 90% 简历用途；运营 Skill 输出 whitelist 外的 name
  * 时返回 null，调用方 fallback 到 section-meta 默认 icon——优雅降级，
  * 不抛错也不空缺图标。
  *
@@ -102,6 +104,8 @@ const ICON_REGISTRY: Record<string, LucideIcon> = {
   Plane,
   Rocket,
   Smartphone,
+  FileText,
+  Image,
 };
 
 /**

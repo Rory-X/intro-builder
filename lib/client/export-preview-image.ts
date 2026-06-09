@@ -5,6 +5,9 @@ type ExportPreviewImageOptions = {
   filename: string;
 };
 
+const TRANSPARENT_IMAGE_PLACEHOLDER =
+  "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/p9sAAAAASUVORK5CYII=";
+
 export function sanitizeImageFilename(filename: string): string {
   const sanitized = filename
     .trim()
@@ -31,16 +34,18 @@ function downloadDataUrl(dataUrl: string, filename: string) {
 }
 
 export async function exportPreviewImage({ root, filename }: ExportPreviewImageOptions) {
-  const article = root.querySelector("article");
-  if (!(article instanceof HTMLElement)) {
+  const resumeEl = root.querySelector("[data-resume-page]");
+  if (!(resumeEl instanceof HTMLElement)) {
     throw new Error("未找到可导出的简历内容");
   }
 
   await waitForFonts();
 
-  const dataUrl = await toPng(article, {
+  const dataUrl = await toPng(resumeEl, {
     backgroundColor: "#ffffff",
     cacheBust: true,
+    imagePlaceholder: TRANSPARENT_IMAGE_PLACEHOLDER,
+    onImageErrorHandler: () => undefined,
     pixelRatio: 2,
   });
 
