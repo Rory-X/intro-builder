@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { EventType, type BaseEvent } from "@ag-ui/core";
+import { EventType, type BaseEvent, type RunAgentInput } from "@ag-ui/core";
 import {
   ComposerPrimitive,
   type ChatModelRunOptions,
@@ -76,24 +76,20 @@ export function AgentPanel({
     setIsAwaitingAssistant(true);
 
     try {
-      const response = await fetch("/api/agent/messages", {
+      const response = await fetch("/api/agent/runs", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
           Accept: "text/event-stream",
         },
-        body: JSON.stringify({
+        body: JSON.stringify(buildAgUiRunInput({
           resumeId,
-          locale: "zh-CN",
           workflowId: readWorkflowId(runConfig),
-          messages: toAgentChatMessages(messages),
-          context: buildAgentResumeContext({
-            content: getResumeContent(),
-            templateId,
-            activeSection: null,
-            completeness,
-          }),
-        }),
+          messages,
+          content: getResumeContent(),
+          templateId,
+          completeness,
+        })),
         signal: abortSignal,
       });
       if (!response.ok) {
@@ -163,6 +159,44 @@ export function AgentPanel({
       </AgentRuntimeProvider>
     </section>
   );
+}
+
+function buildAgUiRunInput({
+  resumeId,
+  workflowId,
+  messages,
+  content,
+  templateId,
+  completeness,
+}: {
+  resumeId: string;
+  workflowId: AgentWorkflowId | null;
+  messages: readonly ThreadMessage[];
+  content: ResumeContent;
+  templateId: string;
+  completeness: AgentResumeContext["completeness"];
+}): RunAgentInput {
+  return {
+    threadId: resumeId,
+    runId: createRunId(),
+    state: null,
+    messages: toAgentChatMessages(messages),
+    tools: [],
+    context: [],
+    forwardedProps: {
+      introBuilder: {
+        resumeId,
+        locale: "zh-CN",
+        workflowId,
+        context: buildAgentResumeContext({
+          content,
+          templateId,
+          activeSection: null,
+          completeness,
+        }),
+      },
+    },
+  };
 }
 
 function AgentWorkflowControls({ disabled }: { disabled: boolean }) {
@@ -288,6 +322,13 @@ function AgentComposer({ title, isLoading }: { title: string; isLoading: boolean
       </div>
     </ComposerPrimitive.Root>
   );
+}
+
+function createRunId(): string {
+  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+    return `run_${crypto.randomUUID()}`;
+  }
+  return `run_${Math.random().toString(36).slice(2)}`;
 }
 
 function toAgentChatMessages(messages: readonly ThreadMessage[]): AgentChatMessage[] {

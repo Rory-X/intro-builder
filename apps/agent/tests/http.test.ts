@@ -975,6 +975,188 @@ describe("agent HTTP service", () => {
     }));
   });
 
+  it("streams visible Agent message text before the provider stream finishes", async () => {
+    const provider = new StreamingAgentMessageProvider([
+      '{"message":{"id":"msg_assistant_1","role":"assistant","content":"实时',
+      '吐字。"},"toolCalls":[],"proposedOperations":[]}',
+    ]);
+    const server = await listenOnRandomPort({
+      replayStore: new FakeReplayStore(),
+      agentMessageProvider: provider,
+    });
+    const token = await signAgentToken({
+      sub: "user_123",
+      resumeId: "resume_abc",
+      scope: "agent:chat",
+      jti: "jti_agent_message_realtime_stream",
+    });
+
+    const response = await fetch(server.url("/v1/agent/messages"), {
+      method: "POST",
+      headers: {
+        accept: "text/event-stream",
+        authorization: `Bearer ${token}`,
+        "content-type": "application/json",
+        "x-request-id": "req-client-agent-message-realtime-stream",
+      },
+      body: JSON.stringify(validAgentMessageBody()),
+    });
+    const reader = response.body?.getReader();
+    if (!reader) throw new Error("expected stream reader");
+
+    const prefix = await readStreamUntil(reader, "实时");
+    expect(prefix).toContain("实时");
+    expect(provider.finished).toBe(false);
+    expect(provider.runCalls).toBe(0);
+
+    provider.release();
+    const text = prefix + await readRemainingStream(reader);
+    const events = parseSseEvents(text);
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get("content-type")).toContain("text/event-stream");
+    expect(events
+      .filter((event) => event.type === EventType.TEXT_MESSAGE_CONTENT)
+      .map((event) => event.delta)
+      .join("")).toBe("实时吐字。");
+    expect(events.at(-1)?.type).toBe(EventType.RUN_FINISHED);
+  });
+
+  it("streams cached Agent message requests as AG-UI events when requested", async () => {
+    const provider = new FakeAgentMessageProvider(
+      JSON.stringify({
+        message: {
+          id: "msg_assistant_cached",
+          role: "assistant",
+          content: "缓存命中也应该继续走 AG-UI SSE。",
+        },
+        toolCalls: [],
+        proposedOperations: [],
+      }),
+    );
+    const cacheStore = new FakeAiCacheStore();
+    const server = await listenOnRandomPort({
+      replayStore: new FakeReplayStore(),
+      agentMessageProvider: provider,
+      aiCacheStore: cacheStore,
+    });
+    const firstToken = await signAgentToken({
+      sub: "user_123",
+      resumeId: "resume_abc",
+      scope: "agent:chat",
+      jti: "jti_agent_message_sse_cache_first",
+    });
+    const secondToken = await signAgentToken({
+      sub: "user_123",
+      resumeId: "resume_abc",
+      scope: "agent:chat",
+      jti: "jti_agent_message_sse_cache_second",
+    });
+
+    const first = await fetch(server.url("/v1/agent/messages"), {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${firstToken}`,
+        "content-type": "application/json",
+        "x-request-id": "req-client-agent-message-sse-cache-1",
+      },
+      body: JSON.stringify(validAgentMessageBody()),
+    });
+    const second = await fetch(server.url("/v1/agent/messages"), {
+      method: "POST",
+      headers: {
+        accept: "text/event-stream",
+        authorization: `Bearer ${secondToken}`,
+        "content-type": "application/json",
+        "x-request-id": "req-client-agent-message-sse-cache-2",
+      },
+      body: JSON.stringify(validAgentMessageBody()),
+    });
+    const text = await second.text();
+    const events = parseSseEvents(text);
+
+    expect(first.status).toBe(200);
+    expect(second.status).toBe(200);
+    expect(second.headers.get("content-type")).toContain("text/event-stream");
+    expect(second.headers.get("content-type")).not.toContain("application/json");
+    expect(text).toContain("data:");
+    expect(provider.calls).toHaveLength(1);
+    expect(events[0]?.type).toBe(EventType.RUN_STARTED);
+    expect(events.at(-1)?.type).toBe(EventType.RUN_FINISHED);
+    expect(events
+      .filter((event) => event.type === EventType.TEXT_MESSAGE_CONTENT)
+      .map((event) => event.delta)
+      .join("")).toBe("缓存命中也应该继续走 AG-UI SSE。");
+  });
+
+  it("streams AG-UI RUN_ERROR when an SSE provider response cannot be parsed", async () => {
+    const server = await listenOnRandomPort({
+      replayStore: new FakeReplayStore(),
+      agentMessageProvider: new FakeAgentMessageProvider("not-json"),
+    });
+    const token = await signAgentToken({
+      sub: "user_123",
+      resumeId: "resume_abc",
+      scope: "agent:chat",
+      jti: "jti_agent_message_stream_parse_error",
+    });
+
+    const response = await fetch(server.url("/v1/agent/messages"), {
+      method: "POST",
+      headers: {
+        accept: "text/event-stream",
+        authorization: `Bearer ${token}`,
+        "content-type": "application/json",
+        "x-request-id": "req-client-agent-message-stream-parse-error",
+      },
+      body: JSON.stringify(validAgentMessageBody()),
+    });
+    const events = parseSseEvents(await response.text());
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get("content-type")).toContain("text/event-stream");
+    expect(events[0]?.type).toBe(EventType.RUN_STARTED);
+    expect(events.at(-1)).toMatchObject({
+      type: EventType.RUN_ERROR,
+      message: "Provider returned invalid JSON",
+      code: "dependency_unavailable",
+    });
+  });
+
+  it("streams AG-UI RUN_ERROR when an SSE provider throws", async () => {
+    const server = await listenOnRandomPort({
+      replayStore: new FakeReplayStore(),
+      agentMessageProvider: new ThrowingAgentMessageProvider("Provider exploded"),
+    });
+    const token = await signAgentToken({
+      sub: "user_123",
+      resumeId: "resume_abc",
+      scope: "agent:chat",
+      jti: "jti_agent_message_stream_throw",
+    });
+
+    const response = await fetch(server.url("/v1/agent/messages"), {
+      method: "POST",
+      headers: {
+        accept: "text/event-stream",
+        authorization: `Bearer ${token}`,
+        "content-type": "application/json",
+        "x-request-id": "req-client-agent-message-stream-throw",
+      },
+      body: JSON.stringify(validAgentMessageBody()),
+    });
+    const events = parseSseEvents(await response.text());
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get("content-type")).toContain("text/event-stream");
+    expect(events[0]?.type).toBe(EventType.RUN_STARTED);
+    expect(events.at(-1)).toMatchObject({
+      type: EventType.RUN_ERROR,
+      message: "Provider exploded",
+      code: "dependency_unavailable",
+    });
+  });
+
   it("serves identical Agent message requests from cache", async () => {
     const provider = new FakeAgentMessageProvider(
       JSON.stringify({
@@ -1398,6 +1580,96 @@ class FakeAgentMessageProvider implements AgentMessageProvider {
         outputTokens: 240,
       },
     };
+  }
+}
+
+class ThrowingAgentMessageProvider implements AgentMessageProvider {
+  readonly calls: Array<{
+    request: Parameters<AgentMessageProvider["run"]>[0]["request"];
+    prompt: Parameters<AgentMessageProvider["run"]>[0]["prompt"];
+  }> = [];
+
+  constructor(private readonly message: string) {}
+
+  run(
+    options: Parameters<AgentMessageProvider["run"]>[0],
+  ): ReturnType<AgentMessageProvider["run"]> {
+    this.calls.push({ request: options.request, prompt: options.prompt });
+    return Promise.reject(new Error(this.message));
+  }
+}
+
+class StreamingAgentMessageProvider implements AgentMessageProvider {
+  runCalls = 0;
+  finished = false;
+  private releaseStream!: () => void;
+  private readonly releasePromise = new Promise<void>((resolve) => {
+    this.releaseStream = resolve;
+  });
+
+  constructor(private readonly chunks: string[]) {}
+
+  async run(): ReturnType<AgentMessageProvider["run"]> {
+    this.runCalls += 1;
+    throw new Error("run should not be used for SSE streaming providers");
+  }
+
+  async *stream(): AsyncIterable<
+    | { type: "content_delta"; delta: string }
+    | {
+        type: "usage";
+        usage: {
+          provider: string;
+          model: string;
+          inputTokens: number;
+          outputTokens: number;
+        };
+      }
+  > {
+    yield { type: "content_delta", delta: this.chunks[0] ?? "" };
+    await this.releasePromise;
+    yield { type: "content_delta", delta: this.chunks[1] ?? "" };
+    yield {
+      type: "usage",
+      usage: {
+        provider: "fake-provider",
+        model: "fake-model",
+        inputTokens: 900,
+        outputTokens: 240,
+      },
+    };
+    this.finished = true;
+  }
+
+  release(): void {
+    this.releaseStream();
+  }
+}
+
+async function readStreamUntil(
+  reader: ReadableStreamDefaultReader<Uint8Array>,
+  text: string,
+): Promise<string> {
+  const decoder = new TextDecoder();
+  let output = "";
+  for (let index = 0; index < 20; index += 1) {
+    const { done, value } = await reader.read();
+    if (done) return output;
+    output += decoder.decode(value, { stream: true });
+    if (output.includes(text)) return output;
+  }
+  throw new Error(`Stream did not include ${text}`);
+}
+
+async function readRemainingStream(
+  reader: ReadableStreamDefaultReader<Uint8Array>,
+): Promise<string> {
+  const decoder = new TextDecoder();
+  let output = "";
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) return output + decoder.decode();
+    output += decoder.decode(value, { stream: true });
   }
 }
 

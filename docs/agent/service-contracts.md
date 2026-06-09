@@ -434,6 +434,7 @@ Phase 3 已新增聊天式 Agent Mode。该能力使用 assistant-ui 承载多�
 - Web 只有在用户点击 `应用` 后才把 `ResumeOperation` 写入 React Hook Form 并触发 autosave。
 - Agent 不连接 Postgres，不发布简历，不删除 section，不自动切模板。
 - Phase 3B 使用 AG-UI `text/event-stream`；JSON response 仅保留为兼容和调试 fallback。
+- Phase 3C 后，Agent panel 浏览器入口是 Web BFF `/api/agent/runs`。该 route 接收标准 AG-UI `RunAgentInput`，从 `forwardedProps.introBuilder` 或 `forwardedProps.runConfig.introBuilder` 映射到本节的 `AgentMessageRequest`，再签发短期 `agent:chat` JWT 并代理 Agent SSE。
 
 ### `POST /v1/agent/messages`
 
@@ -501,6 +502,67 @@ Request:
   }
 }
 ```
+
+### Web BFF `POST /api/agent/runs`
+
+用途：assistant-ui / AG-UI SDK 兼容入口。浏览器只调用 Web BFF；Web BFF 校验 Auth.js session、resume ownership，再签发 `agent:chat` token 调 Agent `/v1/agent/messages`。
+
+Request 是 AG-UI `RunAgentInput`，必须包含 intro-builder metadata：
+
+```json
+{
+  "threadId": "resume_abc",
+  "runId": "run_123",
+  "state": null,
+  "messages": [
+    {
+      "id": "msg_user_1",
+      "role": "user",
+      "content": "请诊断这份简历"
+    }
+  ],
+  "tools": [],
+  "context": [],
+  "forwardedProps": {
+    "introBuilder": {
+      "resumeId": "resume_abc",
+      "locale": "zh-CN",
+      "workflowId": "resume-diagnose",
+      "context": {
+        "resumeTitle": "前端工程师",
+        "templateId": "professional",
+        "activeSection": null,
+        "completeness": { "overall": 76, "sections": [] },
+        "sections": []
+      }
+    }
+  }
+}
+```
+
+兼容 assistant-ui `useAgUiRuntime` 的 `runConfig.custom` 注入方式时，也允许：
+
+```json
+{
+  "forwardedProps": {
+    "runConfig": {
+      "introBuilder": {
+        "resumeId": "resume_abc",
+        "locale": "zh-CN",
+        "workflowId": "resume-diagnose",
+        "context": {}
+      }
+    }
+  }
+}
+```
+
+Rules:
+
+- `forwardedProps.introBuilder.context` 必须来自 Web 当前 RHF 快照的 capped context，不能由 assistant-ui thread state 伪造完整简历内容。
+- Web BFF 必须先校验 `resumeId` 属于当前用户，再签发 Agent JWT。
+- Response 透传 Agent AG-UI `text/event-stream`，headers 包含 `cache-control: no-cache, no-transform` 和 `x-request-id`。
+- `/api/agent/messages` 仍可用于旧 JSON/SSE contract 的兼容测试，但 Agent panel 新请求应走 `/api/agent/runs`。
 
 Compatibility/debug response when `Accept: application/json` or no SSE is requested:
 

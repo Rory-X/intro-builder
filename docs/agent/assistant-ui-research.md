@@ -67,6 +67,8 @@ Phase 3A 已确认的产品形态是 **Agent Mode replaces left editor**：
 
 Phase 3B runtime 继续采用 LocalRuntime/custom adapter，但 adapter 已改为 async generator。Web BFF 代理 Agent 的 AG-UI `text/event-stream`，adapter 消费 `TEXT_MESSAGE_CONTENT` 增量来更新 assistant-ui 消息，并从 `TOOL_CALL_RESULT` 中解析 tool card 与待确认操作。
 
+Phase 3C 已新增 SDK-compatible Web BFF route：`POST /api/agent/runs` 接收 AG-UI `RunAgentInput`，从 `forwardedProps.introBuilder` 或 `forwardedProps.runConfig.introBuilder` 映射到现有 `AgentMessageRequest`。这让后续 `@ag-ui/client` `HttpAgent` + `@assistant-ui/react-ag-ui` 的 `useAgUiRuntime` 可以接入 Web BFF，而不是让浏览器直连 Agent。
+
 Preferred first integration:
 
 ```text
@@ -99,7 +101,8 @@ Browser AgentPanel
 
 | 方案 | 适用阶段 | 推荐度 | 说明 |
 | --- | --- | --- | --- |
-| LocalRuntime/custom adapter + async generator | Phase 3B | 高 | 适配 AG-UI SSE，同时保留 human-confirmed operation 写回 |
+| LocalRuntime/custom adapter + async generator | Phase 3B/3C current | 高 | 适配 AG-UI SSE，同时保留 human-confirmed operation 写回 |
+| `@ag-ui/client` HttpAgent + `useAgUiRuntime` | Phase 3C+ candidate | 中高 | 通过 `/api/agent/runs` 接入标准 `RunAgentInput`，但必须先证明 tool-call part 仍能渲染确认卡 |
 | DataStream runtime | 后续可评估 | 中 | 若 assistant-ui 官方 runtime 与 AG-UI adapter 成熟，再考虑替换当前薄适配 |
 | AssistantTransport | Phase 3B+ | 中 | 适合后端有更丰富状态同步需求 |
 | AI SDK runtime | 待评估 | 中 | 若 Agent 服务采用 AI SDK v6，可复用更多适配 |
@@ -112,8 +115,9 @@ assistant-ui DataStream 有协议选项。当前实现不直接使用 DataStream
 当前约束：
 
 - Agent 输出 AG-UI `text/event-stream`，事件至少包括 `RUN_STARTED`、`TEXT_MESSAGE_*`、`TOOL_CALL_*`、`TOOL_CALL_RESULT`、`RUN_FINISHED`/`RUN_ERROR`。
-- Web BFF 不解析 stream body，只做 Auth.js、resume ownership、短期 JWT 签发和 SSE headers 透传。
+- Web BFF 不解析 stream body，只做 Auth.js、resume ownership、短期 JWT 签发、AG-UI run metadata 映射和 SSE headers 透传。
 - assistant-ui 不直接消费自定义 NDJSON；所有事件先通过 `readAgUiSseStream()` 校验。
+- 真正的 SDK runtime 替换必须以 `/api/agent/runs` 为 URL，不能绕过 Web BFF；`forwardedProps.introBuilder` 承载 Web-owned resume snapshot。
 
 ## Tool calling 策略
 
@@ -182,6 +186,7 @@ assistant-ui 提供的是：
 - assistant-ui 的协议和 AI SDK 版本演进快，接入前要重新确认文档。
 - assistant-ui/tap 与 Next.js 16 / React 19 的兼容层必须保持局部化；如果 `@assistant-ui/react` 升级后不再需要 shim，应删除 `lib/agent/assistant-ui-react-compat.ts` 和 `next.config.ts` 中对应替换。
 - 错选 stream protocol 会导致前端收到 chunk 但 runtime 无法完成消息。
+- 如果直接切 `useAgUiRuntime` 而不处理 assistant-ui `tool-call` message part，现有 `AgentToolCard` / `AgentConfirmationCard` 可能消失或重复。
 - 如果把 assistant-ui 放进 editor-client 主树，可能增加编辑器首屏 bundle。
 - 如果 Agent panel 直接写 RHF，容易破坏 autosave 队列和用户确认语义。
 - 如果 tool calling 直接执行写操作，用户会失去对简历内容的控制。

@@ -236,6 +236,39 @@ describe("POST /api/agent/messages", () => {
       retryAfterSeconds: 30,
     });
   });
+
+  it("returns Agent SSE errors with code and request id", async () => {
+    (currentUserId as unknown as Mock).mockResolvedValue("user_123");
+    (db.query.resumes.findFirst as unknown as Mock).mockResolvedValue({
+      id: "resume_abc",
+    });
+    (signAgentToken as unknown as Mock).mockResolvedValue({
+      token: "signed-chat-token",
+      expiresAt: new Date("2026-06-08T08:02:00.000Z"),
+    });
+    const streamAgentMessage = vi.fn().mockRejectedValue(
+      new AgentClientError("Provider timed out", {
+        statusCode: 504,
+        error: "provider_timeout",
+        requestId: "req_sse_timeout",
+      }),
+    );
+    const sendAgentMessage = vi.fn();
+    (createAgentClient as unknown as Mock).mockReturnValue({
+      sendAgentMessage,
+      streamAgentMessage,
+    });
+
+    const response = await POST(sseRequest(validBody()));
+
+    expect(response.status).toBe(504);
+    expect(sendAgentMessage).not.toHaveBeenCalled();
+    await expect(response.json()).resolves.toEqual({
+      error: "Agent 服务暂不可用",
+      code: "provider_timeout",
+      requestId: "req_sse_timeout",
+    });
+  });
 });
 
 function validBody() {

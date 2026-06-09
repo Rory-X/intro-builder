@@ -80,7 +80,7 @@ describe("AgentPanel", () => {
 
     await waitFor(() => {
       expect(fetchMock).toHaveBeenCalledWith(
-        "/api/agent/messages",
+        "/api/agent/runs",
         expect.objectContaining({
           method: "POST",
           headers: expect.objectContaining({ Accept: "text/event-stream" }),
@@ -89,7 +89,8 @@ describe("AgentPanel", () => {
     });
     const [, init] = fetchMock.mock.calls[0];
     const body = JSON.parse(String(init?.body));
-    expect(body.workflowId).toBe("resume-diagnose");
+    expect(body.forwardedProps.introBuilder.workflowId).toBe("resume-diagnose");
+    expect(body.forwardedProps.introBuilder.resumeId).toBe("resume_1");
     expect(body.messages.at(-1)).toEqual(
       expect.objectContaining({
         role: "user",

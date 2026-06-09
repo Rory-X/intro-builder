@@ -3,6 +3,8 @@ import { describe, expect, it } from "vitest";
 
 import {
   buildAgentMessagePrompt,
+  createOpenAICompatibleAgentMessageProvider,
+  extractStreamingAgentMessageContent,
   parseAgentMessageProviderResponse,
   toAgUiAgentEvents,
   validateAgentMessageRequest,
@@ -211,14 +213,82 @@ describe("agent messages", () => {
       content: expect.stringContaining('"proposedOperations"'),
     }));
   });
+
+  it("extracts partial assistant content from streaming provider JSON", () => {
+    const partialJson =
+      '{"message":{"id":"msg_assistant_1","role":"assistant","content":"先优化第一段经历\\n补充真实结果';
+
+    expect(extractStreamingAgentMessageContent(partialJson)).toBe(
+      "先优化第一段经历\n补充真实结果",
+    );
+    expect(extractStreamingAgentMessageContent('{"message":{"content":"')).toBe("");
+    expect(extractStreamingAgentMessageContent('{"toolCalls":[{"input":{"content":"不要吐工具参数"}}]}')).toBe("");
+  });
+
+  it("streams raw provider JSON deltas from OpenAI-compatible chat completions", async () => {
+    const providerJson = JSON.stringify({
+      message: {
+        id: "msg_assistant_1",
+        role: "assistant",
+        content: "像 ChatGPT 一样逐字输出。",
+      },
+      toolCalls: [],
+      proposedOperations: [],
+    });
+    const fetchMock = async (_url: string | URL | Request, init?: RequestInit) => {
+      const requestBody = JSON.parse(String(init?.body));
+      expect(requestBody.stream).toBe(true);
+      return new Response(
+        [
+          `data: ${JSON.stringify({ choices: [{ delta: { content: providerJson.slice(0, 24) } }] })}\n\n`,
+          `data: ${JSON.stringify({ choices: [{ delta: { content: providerJson.slice(24) } }] })}\n\n`,
+          "data: [DONE]\n\n",
+        ].join(""),
+        {
+          status: 200,
+          headers: { "content-type": "text/event-stream" },
+        },
+      );
+    };
+    const provider = createOpenAICompatibleAgentMessageProvider(
+      agentConfig(),
+      fetchMock as unknown as typeof fetch,
+    );
+    if (!provider?.stream) throw new Error("expected streaming provider");
+
+    const chunks = [];
+    for await (const chunk of provider.stream({
+      request: validBody(),
+      prompt: buildAgentMessagePrompt(validBody()),
+      session: {
+        userId: "user_123",
+        resumeId: "resume_abc",
+        scope: "agent:chat",
+        jti: "jti_stream",
+        expiresAt: new Date("2026-06-08T08:02:00.000Z"),
+      },
+      requestId: "req_stream",
+    })) {
+      chunks.push(chunk);
+    }
+
+    expect(chunks.filter((chunk) => chunk.type === "content_delta").map((chunk) => chunk.delta).join("")).toBe(providerJson);
+    expect(chunks.at(-1)).toMatchObject({
+      type: "usage",
+      usage: {
+        provider: "openai-compatible",
+        model: "deepseek-chat",
+      },
+    });
+  });
 });
 
 function validBody(overrides: Record<string, unknown> = {}) {
   return {
     resumeId: "resume_abc",
-    locale: "zh-CN",
-    workflowId: "resume-diagnose",
-    messages: [{ id: "msg_user_1", role: "user", content: "诊断整份简历" }],
+    locale: "zh-CN" as const,
+    workflowId: "resume-diagnose" as const,
+    messages: [{ id: "msg_user_1", role: "user" as const, content: "诊断整份简历" }],
     context: {
       resumeTitle: "前端开发工程师",
       templateId: "professional",
@@ -237,5 +307,28 @@ function validBody(overrides: Record<string, unknown> = {}) {
       ],
     },
     ...overrides,
+  };
+}
+
+function agentConfig() {
+  return {
+    host: "127.0.0.1",
+    port: 0,
+    serviceName: "intro-agent-test",
+    version: "test-version",
+    nodeEnv: "test",
+    shutdownTimeoutMs: 100,
+    redisUrl: "redis://127.0.0.1:6379",
+    redisConnectTimeoutMs: 100,
+    rateLimitWindowSeconds: 60,
+    rateLimitMaxRequests: 30,
+    jwtIssuer: "intro-builder-web",
+    jwtAudience: "intro-builder-agent",
+    jwtSecret: "test-agent-secret",
+    jwtReplayTtlSeconds: 180,
+    modelBaseUrl: "https://provider.test/v1",
+    modelApiKey: "provider-key",
+    modelName: "deepseek-chat",
+    modelTimeoutMs: 20_000,
   };
 }
