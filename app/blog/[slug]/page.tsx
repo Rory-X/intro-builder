@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { blogSource } from "@/lib/source";
+import { SEO_CONFIG } from "@/lib/seo-config";
 
 interface PageProps {
   params: Promise<{ slug: string }>;
@@ -47,10 +48,30 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
   const { slug } = await params;
   const post = blogSource.getPage([slug]);
 
-  if (!post) return {};
+  if (!post || post.data.draft) return {};
+
+  const url = `${SEO_CONFIG.siteUrl}${post.url}`;
 
   return {
     title: post.data.title,
     description: post.data.description,
+    keywords: post.data.tags,
+    openGraph: {
+      title: post.data.title,
+      description: post.data.description,
+      url,
+      type: 'article',
+      publishedTime: post.data.date?.toISOString(),
+      authors: [post.data.author],
+      locale: 'zh_CN',
+    },
+    twitter: {
+      card: 'summary_large_image',
+      title: post.data.title,
+      description: post.data.description,
+    },
+    alternates: {
+      canonical: url,
+    },
   };
 }
