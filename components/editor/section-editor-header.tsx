@@ -1,7 +1,7 @@
 "use client";
 import { ChevronDown, Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { SECTION_META } from "@/lib/section-meta";
+import { getSectionMeta } from "@/lib/section-meta";
 import { cn } from "@/lib/utils";
 import { useSectionDragHandle } from "./section-wrapper";
 
@@ -29,9 +29,8 @@ const SECTION_COLOR: Record<string, { accent: string; iconBg: string; icon: stri
 };
 
 export function SectionEditorHeader({ sectionKey, itemCount, isOpen, onToggle, onAdd, addLabel = "新增" }: Props) {
-  const meta = SECTION_META[sectionKey];
+  const meta = getSectionMeta(sectionKey);
   const handleRef = useSectionDragHandle();
-  if (!meta) return null;
   const Icon = meta.icon;
   const c = SECTION_COLOR[sectionKey] ?? SECTION_COLOR.custom;
   const isDraggable = Boolean(handleRef);
