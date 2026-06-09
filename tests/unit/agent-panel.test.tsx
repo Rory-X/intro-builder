@@ -51,6 +51,38 @@ describe("AgentPanel", () => {
 
     expect(screen.getByTestId("agent-assistant-ui-thread")).toBeInTheDocument();
     expect(screen.getByTestId("agent-assistant-ui-composer-input")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "滚动到底部" })).toBeInTheDocument();
+  });
+
+  it("renders welcome suggestions and sends them through the thread runtime", async () => {
+    const fetchMock = vi.fn<
+      (...args: [RequestInfo | URL, RequestInit?]) => Promise<Response>
+    >(async () => {
+      return agUiResponse({
+        text: "我会先找最值得修改的一处。",
+        toolCalls: [],
+        proposedOperations: [],
+      });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<AgentPanel {...panelProps()} />);
+
+    expect(screen.getByText("从这些问题开始")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "帮我找最值得改的一处" }));
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+    });
+    const [, init] = fetchMock.mock.calls[0];
+    const body = JSON.parse(String(init?.body));
+    expect(body.messages.at(-1)).toEqual(
+      expect.objectContaining({
+        role: "user",
+        content: "帮我找出这份简历里最值得优先修改的一处，并说明原因。",
+      }),
+    );
+    expect(await screen.findByText("我会先找最值得修改的一处。")).toBeInTheDocument();
   });
 
   it("starts resume diagnosis workflow through the Web BFF", async () => {
@@ -101,6 +133,81 @@ describe("AgentPanel", () => {
     expect(screen.getByText("检查简历")).toBeInTheDocument();
   });
 
+  it("renders assistant copy and retry actions without touching resume state", async () => {
+    const writeText = vi.fn<(text: string) => Promise<void>>(() => Promise.resolve());
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: { writeText },
+    });
+    const applyOperation = vi.fn();
+    const fetchMock = vi.fn<
+      (...args: [RequestInfo | URL, RequestInit?]) => Promise<Response>
+    >(async () => {
+      return agUiResponse({
+        text: "建议先优化工作经历。",
+        toolCalls: [],
+        proposedOperations: [],
+      });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<AgentPanel {...panelProps({ applyOperation })} />);
+    fireEvent.click(screen.getByRole("button", { name: "诊断整份简历" }));
+
+    expect(await screen.findByText("建议先优化工作经历。")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "复制回答" }));
+    await waitFor(() => {
+      expect(writeText).toHaveBeenCalledWith("建议先优化工作经历。");
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "重新生成回答" }));
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+    });
+    expect(applyOperation).not.toHaveBeenCalled();
+  });
+
+  it("lets the user edit a sent message and rerun the Agent", async () => {
+    const fetchMock = vi.fn<
+      (...args: [RequestInfo | URL, RequestInit?]) => Promise<Response>
+    >(async () => {
+      return agUiResponse({
+        text: "我会按新的问题重新检查。",
+        toolCalls: [],
+        proposedOperations: [],
+      });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<AgentPanel {...panelProps()} />);
+
+    const input = screen.getByTestId("agent-assistant-ui-composer-input");
+    fireEvent.change(input, { target: { value: "请检查格式风险" } });
+    fireEvent.click(screen.getByRole("button", { name: "发送" }));
+
+    expect(await screen.findByText("我会按新的问题重新检查。")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "编辑消息" }));
+
+    const editInput = await screen.findByTestId("agent-edit-message-input");
+    expect(editInput).toHaveValue("请检查格式风险");
+    fireEvent.change(editInput, {
+      target: { value: "请重新检查内容结构和格式风险" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "保存并重新发送" }));
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+    });
+    const [, editInit] = fetchMock.mock.calls[1];
+    const editBody = JSON.parse(String(editInit?.body));
+    expect(editBody.messages.at(-1)).toEqual(
+      expect.objectContaining({
+        role: "user",
+        content: "请重新检查内容结构和格式风险",
+      }),
+    );
+  });
+
   it("shows assistant-side loading while waiting for the first streamed text", async () => {
     const pendingResponse = deferred<Response>();
     const fetchMock = vi.fn<
@@ -114,6 +221,8 @@ describe("AgentPanel", () => {
     expect(await screen.findByTestId("agent-loading-indicator")).toHaveTextContent(
       "AI 正在思考",
     );
+    expect(screen.getByText("Agent 活动")).toBeInTheDocument();
+    expect(screen.getByText("正在读取简历上下文")).toBeInTheDocument();
 
     pendingResponse.resolve(
       agUiResponse({
@@ -127,6 +236,39 @@ describe("AgentPanel", () => {
     await waitFor(() => {
       expect(screen.queryByTestId("agent-loading-indicator")).not.toBeInTheDocument();
     });
+  });
+
+  it("lets the user stop a pending Agent response without showing an error", async () => {
+    let capturedSignal: AbortSignal | null = null;
+    const fetchMock = vi.fn<
+      (...args: [RequestInfo | URL, RequestInit?]) => Promise<Response>
+    >(async (_url, init) => {
+      capturedSignal = init?.signal instanceof AbortSignal ? init.signal : null;
+      return new Promise<Response>((_resolve, reject) => {
+        capturedSignal?.addEventListener(
+          "abort",
+          () => reject(new DOMException("Aborted", "AbortError")),
+          { once: true },
+        );
+      });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<AgentPanel {...panelProps()} />);
+    fireEvent.click(screen.getByRole("button", { name: "诊断整份简历" }));
+
+    expect(await screen.findByRole("button", { name: "停止生成" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "停止生成" }));
+
+    await waitFor(() => {
+      expect(capturedSignal?.aborted).toBe(true);
+    });
+    await waitFor(() => {
+      expect(screen.queryByTestId("agent-loading-indicator")).not.toBeInTheDocument();
+    });
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "停止生成" })).not.toBeInTheDocument();
+    expect(screen.getByTestId("agent-assistant-ui-composer-input")).toBeEnabled();
   });
 
   it("renders Agent error codes and request ids for easier debugging", async () => {
@@ -149,6 +291,78 @@ describe("AgentPanel", () => {
 
     expect(await screen.findByText(/dependency_unavailable/)).toBeInTheDocument();
     expect(screen.getByText(/req_agent_debug/)).toBeInTheDocument();
+  });
+
+  it("lets the user retry the last Agent request after a transient error", async () => {
+    const fetchMock = vi.fn<
+      (...args: [RequestInfo | URL, RequestInit?]) => Promise<Response>
+    >()
+      .mockResolvedValueOnce(
+        Response.json(
+          {
+            error: "Agent 服务暂不可用",
+            code: "dependency_unavailable",
+            requestId: "req_retry_once",
+          },
+          { status: 503 },
+        ),
+      )
+      .mockResolvedValueOnce(
+        agUiResponse({
+          text: "重试成功，我继续检查。",
+          toolCalls: [],
+          proposedOperations: [],
+        }),
+      );
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<AgentPanel {...panelProps()} />);
+    fireEvent.click(screen.getByRole("button", { name: "诊断整份简历" }));
+
+    expect(await screen.findByText(/req_retry_once/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "重新发送上一条" }));
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+    });
+    const [, retryInit] = fetchMock.mock.calls[1];
+    const retryBody = JSON.parse(String(retryInit?.body));
+    expect(retryBody.forwardedProps.introBuilder.workflowId).toBe("resume-diagnose");
+    expect(retryBody.messages.at(-1)).toEqual(
+      expect.objectContaining({
+        role: "user",
+        content: "请诊断这份简历，并优先指出最值得修改的一处。",
+      }),
+    );
+    expect(await screen.findByText("重试成功，我继续检查。")).toBeInTheDocument();
+    expect(screen.queryByText(/req_retry_once/)).not.toBeInTheDocument();
+  });
+
+  it("can dismiss an Agent error without clearing the conversation", async () => {
+    const fetchMock = vi.fn<
+      (...args: [RequestInfo | URL, RequestInit?]) => Promise<Response>
+    >(async () =>
+      Response.json(
+        {
+          error: "Agent 服务暂不可用",
+          code: "dependency_unavailable",
+          requestId: "req_dismiss_error",
+        },
+        { status: 503 },
+      ),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<AgentPanel {...panelProps()} />);
+    fireEvent.click(screen.getByRole("button", { name: "诊断整份简历" }));
+
+    expect(await screen.findByText(/req_dismiss_error/)).toBeInTheDocument();
+    expect(screen.getByText("请诊断这份简历，并优先指出最值得修改的一处。")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "关闭错误提示" }));
+
+    expect(screen.queryByText(/req_dismiss_error/)).not.toBeInTheDocument();
+    expect(screen.getByText("请诊断这份简历，并优先指出最值得修改的一处。")).toBeInTheDocument();
   });
 
   it("applies proposed operation only after user confirms", async () => {
@@ -191,6 +405,8 @@ describe("AgentPanel", () => {
     fireEvent.click(screen.getByRole("button", { name: "诊断整份简历" }));
 
     expect(applyOperation).not.toHaveBeenCalled();
+    expect(await screen.findByText("已完成 1 个工具调用")).toBeInTheDocument();
+    expect(screen.getByText("等待确认 1 条修改建议")).toBeInTheDocument();
     fireEvent.click(await screen.findByRole("button", { name: "应用" }));
     expect(applyOperation).toHaveBeenCalledWith(expect.objectContaining({ id: "op_1" }));
   });

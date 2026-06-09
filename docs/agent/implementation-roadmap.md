@@ -307,10 +307,18 @@ Delivered locally:
 - AgentPanel 当前仍使用 LocalRuntime/custom adapter 以保留确认卡体验，但浏览器请求已切到 `/api/agent/runs` 的 SDK-compatible body。
 - 新增依赖 `@ag-ui/client@0.0.56`、`@assistant-ui/react-ag-ui@0.0.36`，版本与 `@ag-ui/core` / `@ag-ui/encoder` 对齐。
 
-Next candidate slice:
+Phase 3D current slice:
 
-- 用 `HttpAgent({ url: "/api/agent/runs" })` + `useAgUiRuntime({ agent })` 替换 LocalRuntime。
-- 替换前必须先证明 assistant-ui `tool-call` parts 能继续驱动 `AgentToolCard` 与 `AgentConfirmationCard`，且不会直接写 RHF。
+- 新增可开关 `useAgUiRuntime` canary；默认仍使用 LocalRuntime/custom adapter。
+- `HttpAgent` 通过 `/api/agent/runs` 走 Web BFF，不允许浏览器直连 Agent public URL。
+- 包装层每次 run 注入最新 `forwardedProps.introBuilder`，并保留 assistant-ui 的 `forwardedProps.runConfig`。
+- canary 阶段仍从 AG-UI `TOOL_CALL_RESULT` 提取 Web-owned tool card / confirmation card，确认前不写 RHF。
+- assistant-ui `tool-call` message part 已接入运行中工具状态；`TOOL_CALL_START` 到达后立即显示 `正在执行工具 ...`，完成后由现有 Web-owned tool card / confirmation card 承接业务结果。
+- assistant-ui 官方 Thread UE primitives 已按 intro-builder 视觉改造进 Agent panel：welcome suggestions、scroll-to-bottom、assistant copy/reload action bar、user copy/edit action bar、message edit composer 和 ToolGroup running UI。
+- Agent panel 增加 `Agent 活动` 时间线，覆盖读取上下文、工具调用运行中、工具调用完成、等待确认修改建议等关键反馈。
+- Agent error card 增加可恢复动作：显示 code/requestId，保留对话与表单状态，支持 `重新发送上一条` 和关闭提示。
+- Composer 已复用 `ComposerPrimitive.Cancel` 增加 `停止生成`；LocalRuntime 和 AG-UI canary 都会 abort 当前请求，主动停止不会展示错误卡。
+- AG-UI interrupt 渲染为 `Agent 需要补充信息` question card；用户回答后通过 `resume` 继续同一轮 run。
 
 ## Phase 4: BYO Key, Credits, and Limits
 
