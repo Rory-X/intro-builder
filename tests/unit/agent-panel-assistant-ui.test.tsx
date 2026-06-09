@@ -161,7 +161,7 @@ describe("AgentPanel assistant-ui runtime", () => {
 
     expect(await screen.findByText("Agent 正在使用工具")).toBeInTheDocument();
     expect(await screen.findByText("正在执行工具 resume_read")).toBeInTheDocument();
-    expect(screen.getByText("正在读取简历上下文")).toBeInTheDocument();
+    expect(screen.getByText(/正在读取简历上下文/)).toBeInTheDocument();
     expect(screen.queryByText("读取简历上下文")).not.toBeInTheDocument();
 
     const finishToolCall = toolStream.finish;
@@ -240,9 +240,14 @@ describe("AgentPanel assistant-ui runtime", () => {
     render(<AgentPanel {...panelProps({ applyOperation, runtimeMode: "ag-ui" })} />);
     fireEvent.click(screen.getByRole("button", { name: "诊断整份简历" }));
 
-    expect(await screen.findByText("已完成 1 个工具调用")).toBeInTheDocument();
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+    });
+    await waitFor(() => {
+      expect(screen.getByText("已完成 1 个工具调用")).toBeInTheDocument();
+    });
     expect(screen.getByText("等待确认 1 条修改建议")).toBeInTheDocument();
-    expect(await screen.findByText("改写个人总结")).toBeInTheDocument();
+    expect(await screen.findByText(/改写个人总结/)).toBeInTheDocument();
     expect(screen.getByText("应用个人总结改写")).toBeInTheDocument();
     expect(applyOperation).not.toHaveBeenCalled();
 
@@ -271,7 +276,12 @@ describe("AgentPanel assistant-ui runtime", () => {
     render(<AgentPanel {...panelProps({ runtimeMode: "ag-ui" })} />);
     fireEvent.click(screen.getByRole("button", { name: "目标岗位匹配" }));
 
-    expect(await screen.findByText("Agent 需要补充信息")).toBeInTheDocument();
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+    });
+    await waitFor(() => {
+      expect(screen.getByText(/Agent 需要补充信息/)).toBeInTheDocument();
+    });
     expect(
       screen.getByText("你这次主要投递哪个岗位？我需要用它判断经历重点。"),
     ).toBeInTheDocument();
