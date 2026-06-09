@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { EventType, type BaseEvent } from "@ag-ui/core";
 import {
   ComposerPrimitive,
   type ChatModelRunOptions,
@@ -16,13 +17,17 @@ import { AgentPresetWorkflows } from "@/components/agent/agent-preset-workflows"
 import { AgentRuntimeProvider } from "@/components/agent/agent-runtime-provider";
 import { AgentToolCard } from "@/components/agent/agent-tool-card";
 import { Button } from "@/components/ui/button";
+import {
+  extractAgUiResumeToolResult,
+  readAgUiSseStream,
+} from "@/lib/agent/ag-ui-stream";
 import { buildAgentResumeContext } from "@/lib/agent/chat-context";
 import type {
   AgentChatMessage,
   AgentMessageResponse,
   AgentResumeContext,
   AgentWorkflowId,
-  ResumePatch,
+  ResumeOperation,
 } from "@/lib/agent/agent-message-contract";
 import type { ResumeContent } from "@/lib/resume-schema";
 
@@ -32,7 +37,7 @@ export function AgentPanel({
   templateId,
   getResumeContent,
   completeness,
-  applyPatch,
+  applyOperation,
   flushAutosave,
   onBackToEdit,
 }: {
@@ -41,16 +46,16 @@ export function AgentPanel({
   templateId: string;
   getResumeContent: () => ResumeContent;
   completeness: AgentResumeContext["completeness"];
-  applyPatch: (patch: ResumePatch) => void;
+  applyOperation: (operation: ResumeOperation) => void;
   flushAutosave: () => void;
   onBackToEdit: () => void;
 }) {
   const [toolCalls, setToolCalls] = useState<AgentMessageResponse["toolCalls"]>([]);
-  const [patches, setPatches] = useState<ResumePatch[]>([]);
+  const [operations, setOperations] = useState<ResumeOperation[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
 
-  async function sendRuntimeMessage(
+  async function* sendRuntimeMessage(
     content: string,
     {
       abortSignal,
@@ -61,9 +66,9 @@ export function AgentPanel({
       messages: readonly ThreadMessage[];
       runConfig: ChatModelRunOptions["runConfig"];
     },
-  ): Promise<string> {
+  ): AsyncGenerator<string> {
     const trimmedContent = content.trim();
-    if (!trimmedContent || isLoading || abortSignal.aborted) return "";
+    if (!trimmedContent || isLoading || abortSignal.aborted) return;
 
     setError(null);
     setIsLoading(true);
@@ -71,7 +76,10 @@ export function AgentPanel({
     try {
       const response = await fetch("/api/agent/messages", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          Accept: "text/event-stream",
+        },
         body: JSON.stringify({
           resumeId,
           locale: "zh-CN",
@@ -84,18 +92,31 @@ export function AgentPanel({
             completeness,
           }),
         }),
+        signal: abortSignal,
       });
-      const data = await response.json();
       if (!response.ok) {
-        throw new Error(readAgentError(data));
+        throw new Error(readAgentError(await readErrorBody(response)));
       }
-      const result = data as AgentMessageResponse;
-      setToolCalls((current) => [...current, ...result.toolCalls]);
-      setPatches((current) => [...current, ...result.proposedPatches]);
-      return result.message.content;
+
+      let assistantText = "";
+      for await (const event of readAgUiSseStream(response)) {
+        if (abortSignal.aborted) return;
+
+        const delta = readTextDelta(event);
+        if (delta !== null) {
+          assistantText += delta;
+          yield assistantText;
+          continue;
+        }
+
+        const toolResult = extractAgUiResumeToolResult(event);
+        if (toolResult) {
+          setToolCalls((current) => [...current, toolResult.toolCall]);
+          setOperations((current) => [...current, ...toolResult.proposedOperations]);
+        }
+      }
     } catch (sendError) {
       setError(sendError instanceof Error ? sendError.message : "Agent 服务暂不可用");
-      return "";
     } finally {
       setIsLoading(false);
     }
@@ -126,9 +147,9 @@ export function AgentPanel({
 
         <AgentThreadArea
           toolCalls={toolCalls}
-          patches={patches}
+          operations={operations}
           error={error}
-          applyPatch={applyPatch}
+          applyOperation={applyOperation}
           flushAutosave={flushAutosave}
         />
         <AgentComposer title={title} isLoading={isLoading} />
@@ -156,19 +177,19 @@ function AgentWorkflowControls({ disabled }: { disabled: boolean }) {
 
 function AgentThreadArea({
   toolCalls,
-  patches,
+  operations,
   error,
-  applyPatch,
+  applyOperation,
   flushAutosave,
 }: {
   toolCalls: AgentMessageResponse["toolCalls"];
-  patches: ResumePatch[];
+  operations: ResumeOperation[];
   error: string | null;
-  applyPatch: (patch: ResumePatch) => void;
+  applyOperation: (operation: ResumeOperation) => void;
   flushAutosave: () => void;
 }) {
   const messageCount = useAuiState((state) => state.thread.messages.length);
-  const isEmpty = messageCount === 0 && toolCalls.length === 0 && patches.length === 0;
+  const isEmpty = messageCount === 0 && toolCalls.length === 0 && operations.length === 0;
 
   return (
     <ThreadPrimitive.Root className="min-h-0 flex-1">
@@ -188,12 +209,12 @@ function AgentThreadArea({
         {toolCalls.map((toolCall) => (
           <AgentToolCard key={toolCall.id} toolCall={toolCall} />
         ))}
-        {patches.map((patch) => (
+        {operations.map((operation) => (
           <AgentConfirmationCard
-            key={patch.id}
-            patch={patch}
-            onApply={(nextPatch) => {
-              applyPatch(nextPatch);
+            key={operation.id}
+            operation={operation}
+            onApply={(nextOperation) => {
+              applyOperation(nextOperation);
               flushAutosave();
             }}
           />
@@ -286,4 +307,18 @@ function readAgentError(value: unknown): string {
     if (typeof error === "string" && error.trim()) return error;
   }
   return "Agent 服务暂不可用";
+}
+
+async function readErrorBody(response: Response): Promise<unknown> {
+  try {
+    return await response.json();
+  } catch {
+    return null;
+  }
+}
+
+function readTextDelta(event: BaseEvent): string | null {
+  if (event.type !== EventType.TEXT_MESSAGE_CONTENT) return null;
+  const delta = event.delta;
+  return typeof delta === "string" ? delta : null;
 }

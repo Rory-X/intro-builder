@@ -5,8 +5,9 @@ package intro_builder.agent.v1;
 import "google/protobuf/struct.proto";
 
 // IDL draft for keeping HTTP JSON contracts aligned.
-// Phase 3A does not introduce gRPC or streaming; Web still calls the Agent
-// service through POST /api/agent/messages -> POST /v1/agent/messages.
+// This is a contract alignment draft, not a generated runtime dependency.
+// Phase 3B uses HTTP + AG-UI text/event-stream for Agent messages; JSON
+// fallback mirrors these message fields for tests and debugging.
 
 service RichTextService {
   rpc PolishRichText(PolishRichTextRequest) returns (PolishRichTextResponse);
@@ -181,7 +182,7 @@ message SendAgentMessageResponse {
   string request_id = 2;
   AgentChatMessage message = 3;
   repeated AgentToolCall tool_calls = 4;
-  repeated ResumePatch proposed_patches = 5;
+  repeated ResumeOperation proposed_operations = 5;
   Usage usage = 6;
 }
 
@@ -195,21 +196,22 @@ message AgentToolCall {
   google.protobuf.Struct result = 7;
 }
 
-message ResumePatch {
+message ResumeOperation {
   string id = 1;
   string tool_call_id = 2;
   string label = 3;
   ResumeSection section = 4;
   string field_path = 5;
-  ResumePatchOperation operation = 6;
+  ResumeOperationKind operation = 6;
   string before_plain_text = 7;
   string after_plain_text = 8;
   google.protobuf.Struct replacement_tiptap_json = 9;
   string change_summary = 10;
-  repeated AgentPatchRiskFlag risk_flags = 11;
+  repeated AgentOperationRiskFlag risk_flags = 11;
+  repeated string section_order = 12;
 }
 
-message AgentPatchRiskFlag {
+message AgentOperationRiskFlag {
   AgentPatchRiskFlagType type = 1;
   string message = 2;
 }
@@ -307,17 +309,19 @@ enum AgentChatRole {
 
 enum AgentToolName {
   AGENT_TOOL_NAME_UNSPECIFIED = 0;
-  AGENT_TOOL_NAME_INSPECT_RESUME = 1;
-  AGENT_TOOL_NAME_PROPOSE_RICH_TEXT_REWRITE = 2;
-  AGENT_TOOL_NAME_PROPOSE_SUMMARY_REWRITE = 3;
-  AGENT_TOOL_NAME_PROPOSE_BULLET_REWRITE = 4;
-  AGENT_TOOL_NAME_DRAFT_SECTION_ITEM = 5;
+  AGENT_TOOL_NAME_RESUME_READ = 1;
+  AGENT_TOOL_NAME_RESUME_UPDATE_SECTION = 2;
+  AGENT_TOOL_NAME_RESUME_DELETE_SECTION = 3;
+  AGENT_TOOL_NAME_RESUME_REORDER_SECTIONS = 4;
+  AGENT_TOOL_NAME_RESUME_INSERT_SECTION = 5;
 }
 
-enum ResumePatchOperation {
-  RESUME_PATCH_OPERATION_UNSPECIFIED = 0;
-  RESUME_PATCH_OPERATION_REPLACE_PLAIN_TEXT = 1;
-  RESUME_PATCH_OPERATION_REPLACE_TIPTAP_JSON = 2;
+enum ResumeOperationKind {
+  RESUME_OPERATION_KIND_UNSPECIFIED = 0;
+  RESUME_OPERATION_KIND_UPDATE_SECTION = 1;
+  RESUME_OPERATION_KIND_DELETE_SECTION = 2;
+  RESUME_OPERATION_KIND_REORDER_SECTIONS = 3;
+  RESUME_OPERATION_KIND_INSERT_SECTION = 4;
 }
 
 enum AgentPatchRiskFlagType {

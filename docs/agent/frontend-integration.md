@@ -148,7 +148,7 @@ app/api/agent/messages/route.ts
 assistant-ui 复用方式：
 
 - 使用 assistant-ui runtime 管理 chat thread/composer/tool display，但不让 assistant-ui 拥有简历状态。
-- Phase 3A 优先 LocalRuntime/custom adapter + JSON BFF；DataStream/SSE 等协议稳定后进入 Phase 3B。
+- Phase 3B 使用 LocalRuntime/custom adapter + AG-UI SSE BFF；adapter 返回 async generator，逐步 yield assistant text。
 - 使用本项目 `Button`、`Input`/`Textarea`、`Separator` 包装视觉。
 - message bubble 和 tool result 样式使用现有 `bg-muted`、`text-muted-foreground`、`border` token。
 - 不直接使用 assistant-ui 默认主题覆盖全局设计。
@@ -163,32 +163,32 @@ flowchart LR
   Agent --> Tools["basic resume tools"]
   Agent --> Redis["Redis memory / rate limit"]
   Agent --> Model["Model provider"]
-  Agent --> WebRoute
+  Agent -- "AG-UI SSE" --> WebRoute
   WebRoute --> Panel
-  Panel --> Confirm["用户确认 ResumePatch"]
+  Panel --> Confirm["用户确认 ResumeOperation"]
   Confirm --> RHF["RHF setValue"]
   RHF --> Autosave["resume:flush-autosave"]
   RHF --> Preview["LivePreview"]
 ```
 
-Phase 3A 基础简历修改 tools：
+Phase 3B 基础简历修改 tools：
 
 | Tool | 用途 | 写入边界 |
 | --- | --- | --- |
-| `inspect_resume` | 读取 Web 提供的简历快照，诊断结构和风险 | 只读 |
-| `propose_rich_text_rewrite` | 针对富文本 field 生成候选改写 | 返回 `ResumePatch`，不写回 |
-| `propose_summary_rewrite` | 针对 `basics.summary` 生成纯文本改写 | 返回 `ResumePatch`，不写回 |
-| `propose_bullet_rewrite` | 针对列表型富文本进行保格式润色 | 返回保持列表结构的 `ResumePatch` |
-| `draft_section_item` | 生成待确认 section/item 草稿 | 返回待确认草稿，不直接插入 |
+| `resume_read` | 读取 Web 提供的简历快照，诊断结构和风险 | 只读 |
+| `resume_update_section` | 更新 summary 或 allowlist 富文本 section | 返回 `update_section`，确认后由 Web 写回 |
+| `resume_delete_section` | 删除 section/item target | 返回 `delete_section`，当前只展示不自动执行 |
+| `resume_reorder_sections` | 调整模块顺序 | 返回 `reorder_sections`，确认后由 Web 写回 |
+| `resume_insert_section` | 插入 section/item 草稿 | 返回 `insert_section`，当前只展示不自动执行 |
 
-所有 `ResumePatch` 都必须经过 `AgentConfirmationCard`，用户点击 `应用` 后才进入 RHF。
+所有 `ResumeOperation` 都必须经过 `AgentConfirmationCard`，用户点击 `应用` 后才进入 RHF。
 
 ## 与现有页面的复用点
 
 | Existing piece | Reuse plan |
 | --- | --- |
 | `Button` | Agent trigger、toolbar action、apply/cancel |
-| `Sheet` | Phase 3B 移动端候选，不用于 Phase 3A 桌面 A 方案 |
+| `Sheet` | Phase 3B 移动端 Agent panel |
 | `Popover` | Phase 1 polish suggestion |
 | `sonner` | 错误、成功、rate limit 提示 |
 | `lucide-react` | `Sparkles`、`MessageSquare`、`StopCircle`、`RotateCcw` |
@@ -226,7 +226,7 @@ Agent UI 不能直接写：
 
 - Phase 1：`RichTextEditor.onChange(nextJson)`。
 - Phase 2：section editor 的现有 RHF field array / controller。
-- Phase 3A：Agent 返回 `ResumePatch`，用户确认后由 `EditorClient` 的 allowlisted dispatcher 调用 `form.setValue(...)`，再 dispatch `resume:flush-autosave`。
+- Phase 3B：Agent 返回 `ResumeOperation`，用户确认后由 `EditorClient` 的 allowlisted dispatcher 调用 `form.setValue(...)`，再 dispatch `resume:flush-autosave`。
 
 Phase 3A allowlist：
 

@@ -162,6 +162,11 @@ export type AgentClientResult<T> = {
   requestId: string;
 };
 
+export type AgentStreamResponse = {
+  body: ReadableStream<Uint8Array>;
+  contentType: string;
+};
+
 export type CreateAgentClientOptions = {
   baseUrl?: string;
   timeoutMs?: number;
@@ -217,6 +222,11 @@ export type AgentClient = {
     request: AgentMessageRequest;
     requestId?: string;
   }) => Promise<AgentClientResult<AgentMessageResponse>>;
+  streamAgentMessage: (options: {
+    token: string;
+    request: AgentMessageRequest;
+    requestId?: string;
+  }) => Promise<AgentClientResult<AgentStreamResponse>>;
 };
 
 const DEFAULT_AGENT_BASE_URL = "http://127.0.0.1:8787";
@@ -269,6 +279,17 @@ export function createAgentClient({
         baseUrl,
         path: "/v1/agent/messages",
         method: "POST",
+        token,
+        requestId,
+        body: request,
+        timeoutMs,
+        fetchFn,
+      });
+    },
+    streamAgentMessage({ token, request, requestId = createRequestId() }) {
+      return requestStream({
+        baseUrl,
+        path: "/v1/agent/messages",
         token,
         requestId,
         body: request,
@@ -353,6 +374,105 @@ async function readJson(response: Response): Promise<unknown> {
   } catch {
     return null;
   }
+}
+
+async function requestStream({
+  baseUrl,
+  path,
+  token,
+  requestId,
+  body,
+  timeoutMs,
+  fetchFn,
+}: {
+  baseUrl: string;
+  path: string;
+  token: string;
+  requestId: string;
+  body: unknown;
+  timeoutMs: number;
+  fetchFn: typeof fetch;
+}): Promise<AgentClientResult<AgentStreamResponse>> {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+
+  try {
+    const response = await fetchFn(joinUrl(baseUrl, path), {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "X-Request-Id": requestId,
+        "Content-Type": "application/json",
+        Accept: "text/event-stream",
+      },
+      body: JSON.stringify(body),
+      signal: controller.signal,
+    });
+    const responseRequestId = response.headers.get("x-request-id") ?? requestId;
+
+    if (!response.ok) {
+      const responseBody = await readJson(response);
+      clearTimeout(timeout);
+      throw errorFromEnvelope(response.status, responseRequestId, responseBody);
+    }
+
+    if (!response.body) {
+      clearTimeout(timeout);
+      throw new AgentClientError("Agent stream response body is empty", {
+        statusCode: 503,
+        error: "agent_unavailable",
+        requestId: responseRequestId,
+      });
+    }
+
+    return {
+      data: {
+        body: withStreamCleanup(response.body, () => clearTimeout(timeout)),
+        contentType: response.headers.get("content-type") ?? "text/event-stream",
+      },
+      requestId: responseRequestId,
+    };
+  } catch (error) {
+    clearTimeout(timeout);
+    if (error instanceof AgentClientError) throw error;
+
+    if (isAbortError(error)) {
+      throw new AgentClientError("Agent request timed out", {
+        statusCode: 504,
+        error: "agent_timeout",
+        requestId,
+      });
+    }
+
+    throw new AgentClientError("Agent request failed", {
+      statusCode: 503,
+      error: "agent_unavailable",
+      requestId,
+    });
+  }
+}
+
+function withStreamCleanup(
+  stream: ReadableStream<Uint8Array>,
+  cleanup: () => void,
+): ReadableStream<Uint8Array> {
+  const reader = stream.getReader();
+
+  return new ReadableStream<Uint8Array>({
+    async pull(controller) {
+      const { done, value } = await reader.read();
+      if (done) {
+        cleanup();
+        controller.close();
+        return;
+      }
+      controller.enqueue(value);
+    },
+    async cancel(reason) {
+      cleanup();
+      await reader.cancel(reason);
+    },
+  });
 }
 
 function errorFromEnvelope(

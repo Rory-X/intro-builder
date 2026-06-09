@@ -16,7 +16,7 @@
 | `apps/agent/src/rich-text-polish.ts` | Rich text polish request validation, prompt builder, provider parser |
 | `apps/agent/src/resume-helpers.ts` | Resume helper IDs, validation, prompt builder, provider parser |
 | `apps/agent/src/agent-messages.ts` | Phase 3A: Agent Mode message validation, prompt builder, provider parser |
-| `apps/agent/src/agent-tools.ts` | Phase 3A: basic resume tool names and `ResumePatch` validation |
+| `apps/agent/src/agent-tools.ts` | Phase 3B: minimal resume tool names and `ResumeOperation` validation |
 | `apps/agent/tests/config.test.ts` | config behavior |
 | `apps/agent/tests/http.test.ts` | health/ready/404/405 behavior |
 | `apps/agent/tests/redis.test.ts` | Redis dependency behavior |
@@ -128,7 +128,7 @@ Phase 3A branch-local components:
 | `components/agent/agent-runtime-provider.tsx` | 3A | assistant-ui LocalRuntime seam isolated from product state |
 | `components/agent/agent-preset-workflows.tsx` | 3A | preset workflow chips |
 | `components/agent/agent-tool-card.tsx` | 3A | visible tool call/result card |
-| `components/agent/agent-confirmation-card.tsx` | 3A | `ResumePatch` apply/ignore card |
+| `components/agent/agent-confirmation-card.tsx` | 3B | `ResumeOperation` apply/ignore card |
 | `lib/agent/assistant-ui-react-compat.ts` | 3A | localized React 19 internals alias for assistant-ui/tap webpack build |
 | `next.config.ts` | 3A | targeted `NormalModuleReplacementPlugin` for tap dispatcher only |
 | `tests/unit/agent-panel.test.tsx` | 3A | Agent panel workflow and confirmation behavior |
@@ -156,7 +156,7 @@ Phase 3A UI guardrails:
 - assistant-ui/tap React compatibility is localized to `lib/agent/assistant-ui-react-compat.ts`; do not alias React globally.
 - `AgentConfirmationCard` calls a Web-owned apply callback; it must not call server actions or mutate persisted content directly.
 - Text/icon gradients are allowed for AI affordance; gradient backgrounds are not part of the approved button treatment.
-- Tool names must match the service contract: `inspect_resume`、`propose_rich_text_rewrite`、`propose_summary_rewrite`、`propose_bullet_rewrite`、`draft_section_item`.
+- Tool names must match the service contract: `resume_read`、`resume_update_section`、`resume_delete_section`、`resume_reorder_sections`、`resume_insert_section`.
 
 ## Dashboard and Templates
 

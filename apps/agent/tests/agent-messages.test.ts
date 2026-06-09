@@ -1,8 +1,10 @@
+import { EventType } from "@ag-ui/core";
 import { describe, expect, it } from "vitest";
 
 import {
   buildAgentMessagePrompt,
   parseAgentMessageProviderResponse,
+  toAgUiAgentEvents,
   validateAgentMessageRequest,
 } from "../src/agent-messages";
 
@@ -56,7 +58,7 @@ describe("agent messages", () => {
     });
   });
 
-  it("builds a prompt that exposes tool names and STAR safety rules", () => {
+  it("builds a prompt that exposes AG-UI-aligned minimal tool names and STAR safety rules", () => {
     const result = validateAgentMessageRequest(validBody());
     if (!result.ok) throw new Error("expected valid request");
 
@@ -67,15 +69,15 @@ describe("agent messages", () => {
 
     expect(prompt.system).toContain("intro-builder 的简历 Agent");
     expect(prompt.developer).toContain(
-      "可用 tools: inspect_resume, propose_rich_text_rewrite, propose_summary_rewrite, propose_bullet_rewrite, draft_section_item",
+      "可用 tools: resume_read, resume_update_section, resume_delete_section, resume_reorder_sections, resume_insert_section",
     );
-    expect(prompt.developer).toContain("所有简历修改必须作为 proposedPatches 返回");
+    expect(prompt.developer).toContain("所有简历修改必须作为 proposedOperations 返回");
     expect(prompt.developer).toContain("使用 STAR 原则时，不得编造 Result 指标");
     expect(prompt.user).toContain("workflowId: resume-diagnose");
     expect(prompt.user).toContain("experience.0.content");
   });
 
-  it("parses provider response with tool calls and proposed patches", () => {
+  it("parses provider response with tool calls and proposed operations", () => {
     const parsed = parseAgentMessageProviderResponse(
       JSON.stringify({
         message: {
@@ -86,7 +88,7 @@ describe("agent messages", () => {
         toolCalls: [
           {
             id: "tool_1",
-            name: "inspect_resume",
+            name: "resume_read",
             status: "completed",
             title: "检查简历",
             summary: "发现工作经历缺少结果。",
@@ -94,7 +96,7 @@ describe("agent messages", () => {
             result: { topIssue: "缺少结果" },
           },
         ],
-        proposedPatches: [],
+        proposedOperations: [],
       }),
     );
 
@@ -109,7 +111,7 @@ describe("agent messages", () => {
         toolCalls: [
           {
             id: "tool_1",
-            name: "inspect_resume",
+            name: "resume_read",
             status: "completed",
             title: "检查简历",
             summary: "发现工作经历缺少结果。",
@@ -117,8 +119,74 @@ describe("agent messages", () => {
             result: { topIssue: "缺少结果" },
           },
         ],
-        proposedPatches: [],
+        proposedOperations: [],
       },
+    });
+  });
+
+  it("converts parsed provider output into AG-UI events", () => {
+    const parsed = parseAgentMessageProviderResponse(
+      JSON.stringify({
+        message: {
+          id: "msg_assistant_1",
+          role: "assistant",
+          content: "建议先优化工作经历。",
+        },
+        toolCalls: [
+          {
+            id: "tool_1",
+            name: "resume_update_section",
+            status: "completed",
+            title: "更新经历",
+            summary: "改写工作经历。",
+            input: { fieldPath: "experience.0.content" },
+            result: { operationIds: ["op_1"] },
+          },
+        ],
+        proposedOperations: [
+          {
+            id: "op_1",
+            toolCallId: "tool_1",
+            label: "应用经历改写",
+            section: "experience",
+            fieldPath: "experience.0.content",
+            operation: "update_section",
+            beforePlainText: "负责开发。",
+            afterPlainText: "围绕稳定性目标推进前端优化；结果指标需要补充。",
+            replacementTiptapJson: { type: "doc", content: [] },
+            changeSummary: "补足任务与行动。",
+            riskFlags: [{ type: "needs_user_fact", message: "请补充结果指标。" }],
+          },
+        ],
+      }),
+    );
+    if (!parsed.ok) throw new Error("expected parse success");
+
+    const events = toAgUiAgentEvents({
+      requestId: "req_agent",
+      threadId: "resume_abc",
+      result: parsed.result,
+    });
+
+    expect(events.map((event) => event.type)).toEqual([
+      EventType.RUN_STARTED,
+      EventType.TEXT_MESSAGE_START,
+      EventType.TEXT_MESSAGE_CONTENT,
+      EventType.TOOL_CALL_START,
+      EventType.TOOL_CALL_ARGS,
+      EventType.TOOL_CALL_END,
+      EventType.TOOL_CALL_RESULT,
+      EventType.TEXT_MESSAGE_END,
+      EventType.RUN_FINISHED,
+    ]);
+    expect(events[2]).toMatchObject({
+      type: EventType.TEXT_MESSAGE_CONTENT,
+      delta: "建议先优化工作经历。",
+    });
+    expect(events[6]).toMatchObject({
+      type: EventType.TOOL_CALL_RESULT,
+      toolCallId: "tool_1",
+      content: expect.stringContaining('"proposedOperations"'),
     });
   });
 });

@@ -1,9 +1,9 @@
 export type AgentToolName =
-  | "inspect_resume"
-  | "propose_rich_text_rewrite"
-  | "propose_summary_rewrite"
-  | "propose_bullet_rewrite"
-  | "draft_section_item";
+  | "resume_read"
+  | "resume_update_section"
+  | "resume_delete_section"
+  | "resume_reorder_sections"
+  | "resume_insert_section";
 
 export type AgentToolCall = {
   id: string;
@@ -15,7 +15,7 @@ export type AgentToolCall = {
   result: Record<string, unknown>;
 };
 
-export type ResumePatch = {
+export type ResumeOperation = {
   id: string;
   toolCallId: string;
   label: string;
@@ -28,10 +28,15 @@ export type ResumePatch = {
     | "research"
     | "custom";
   fieldPath: string;
-  operation: "replace_plain_text" | "replace_tiptap_json";
+  operation:
+    | "update_section"
+    | "delete_section"
+    | "reorder_sections"
+    | "insert_section";
   beforePlainText: string;
   afterPlainText: string;
   replacementTiptapJson?: unknown;
+  sectionOrder?: string[];
   changeSummary: string;
   riskFlags: Array<{
     type:
@@ -45,18 +50,18 @@ export type ResumePatch = {
 
 export type AgentToolOutput = {
   toolCalls: AgentToolCall[];
-  proposedPatches: ResumePatch[];
+  proposedOperations: ResumeOperation[];
 };
 
 const TOOL_NAMES = new Set<AgentToolName>([
-  "inspect_resume",
-  "propose_rich_text_rewrite",
-  "propose_summary_rewrite",
-  "propose_bullet_rewrite",
-  "draft_section_item",
+  "resume_read",
+  "resume_update_section",
+  "resume_delete_section",
+  "resume_reorder_sections",
+  "resume_insert_section",
 ]);
 
-const SECTIONS = new Set<ResumePatch["section"]>([
+const SECTIONS = new Set<ResumeOperation["section"]>([
   "summary",
   "experience",
   "projects",
@@ -66,22 +71,25 @@ const SECTIONS = new Set<ResumePatch["section"]>([
   "custom",
 ]);
 
-const PATCH_OPERATIONS = new Set<ResumePatch["operation"]>([
-  "replace_plain_text",
-  "replace_tiptap_json",
+const OPERATION_NAMES = new Set<ResumeOperation["operation"]>([
+  "update_section",
+  "delete_section",
+  "reorder_sections",
+  "insert_section",
 ]);
 
-const RISK_TYPES = new Set<ResumePatch["riskFlags"][number]["type"]>([
+const RISK_TYPES = new Set<ResumeOperation["riskFlags"][number]["type"]>([
   "needs_user_fact",
   "possible_fabrication",
   "formatting_risk",
   "unsafe_claim",
 ]);
 
-export function isAllowedPatchFieldPath(fieldPath: string): boolean {
+export function isAllowedOperationFieldPath(fieldPath: string): boolean {
   return (
     fieldPath === "basics.summary" ||
     fieldPath === "skills" ||
+    fieldPath === "sectionOrder" ||
     /^experience\.\d+\.content$/.test(fieldPath) ||
     /^projects\.\d+\.content$/.test(fieldPath) ||
     /^education\.\d+\.highlights$/.test(fieldPath) ||
@@ -89,6 +97,8 @@ export function isAllowedPatchFieldPath(fieldPath: string): boolean {
     /^custom\.\d+\.content$/.test(fieldPath)
   );
 }
+
+export const isAllowedPatchFieldPath = isAllowedOperationFieldPath;
 
 export function validateAgentToolOutput(
   value: unknown,
@@ -99,8 +109,8 @@ export function validateAgentToolOutput(
   if (!Array.isArray(value.toolCalls)) {
     return { ok: false, message: "toolCalls must be an array" };
   }
-  if (!Array.isArray(value.proposedPatches)) {
-    return { ok: false, message: "proposedPatches must be an array" };
+  if (!Array.isArray(value.proposedOperations)) {
+    return { ok: false, message: "proposedOperations must be an array" };
   }
 
   const toolCalls: AgentToolCall[] = [];
@@ -112,14 +122,14 @@ export function validateAgentToolOutput(
     toolCalls.push(parsed.toolCall);
   }
 
-  const proposedPatches: ResumePatch[] = [];
-  for (const item of value.proposedPatches) {
-    const parsed = parsePatch(item, toolIds);
+  const proposedOperations: ResumeOperation[] = [];
+  for (const item of value.proposedOperations) {
+    const parsed = parseOperation(item, toolIds);
     if (!parsed.ok) return parsed;
-    proposedPatches.push(parsed.patch);
+    proposedOperations.push(parsed.operation);
   }
 
-  return { ok: true, output: { toolCalls, proposedPatches } };
+  return { ok: true, output: { toolCalls, proposedOperations } };
 }
 
 function parseToolCall(
@@ -158,84 +168,107 @@ function parseToolCall(
   };
 }
 
-function parsePatch(
+function parseOperation(
   value: unknown,
   toolIds: Set<string>,
-): { ok: true; patch: ResumePatch } | { ok: false; message: string } {
-  if (!isRecord(value)) return { ok: false, message: "patch must be an object" };
-  const id = requiredString(value.id, "patch.id");
+): { ok: true; operation: ResumeOperation } | { ok: false; message: string } {
+  if (!isRecord(value)) return { ok: false, message: "operation must be an object" };
+  const id = requiredString(value.id, "operation.id");
   if (!id.ok) return id;
-  const toolCallId = requiredString(value.toolCallId, "patch.toolCallId");
+  const toolCallId = requiredString(value.toolCallId, "operation.toolCallId");
   if (!toolCallId.ok) return toolCallId;
   if (!toolIds.has(toolCallId.value)) {
-    return { ok: false, message: "patch.toolCallId must reference a tool call" };
+    return { ok: false, message: "operation.toolCallId must reference a tool call" };
   }
-  const label = requiredString(value.label, "patch.label");
+  const label = requiredString(value.label, "operation.label");
   if (!label.ok) return label;
-  if (!SECTIONS.has(value.section as ResumePatch["section"])) {
-    return { ok: false, message: "patch.section is invalid" };
+  if (!SECTIONS.has(value.section as ResumeOperation["section"])) {
+    return { ok: false, message: "operation.section is invalid" };
   }
-  const fieldPath = requiredString(value.fieldPath, "patch.fieldPath");
+  const fieldPath = requiredString(value.fieldPath, "operation.fieldPath");
   if (!fieldPath.ok) return fieldPath;
-  if (!isAllowedPatchFieldPath(fieldPath.value)) {
-    return { ok: false, message: "patch.fieldPath is not allowed" };
+  if (!isAllowedOperationFieldPath(fieldPath.value)) {
+    return { ok: false, message: "operation.fieldPath is not allowed" };
   }
-  if (!PATCH_OPERATIONS.has(value.operation as ResumePatch["operation"])) {
-    return { ok: false, message: "patch.operation is invalid" };
+  if (!OPERATION_NAMES.has(value.operation as ResumeOperation["operation"])) {
+    return { ok: false, message: "operation.operation is invalid" };
   }
   const beforePlainText = requiredString(
     value.beforePlainText,
-    "patch.beforePlainText",
+    "operation.beforePlainText",
   );
   if (!beforePlainText.ok) return beforePlainText;
   const afterPlainText = requiredString(
     value.afterPlainText,
-    "patch.afterPlainText",
+    "operation.afterPlainText",
   );
   if (!afterPlainText.ok) return afterPlainText;
   const changeSummary = requiredString(
     value.changeSummary,
-    "patch.changeSummary",
+    "operation.changeSummary",
   );
   if (!changeSummary.ok) return changeSummary;
   if (!Array.isArray(value.riskFlags)) {
-    return { ok: false, message: "patch.riskFlags must be an array" };
+    return { ok: false, message: "operation.riskFlags must be an array" };
   }
 
-  const riskFlags: ResumePatch["riskFlags"] = [];
+  const operationName = value.operation as ResumeOperation["operation"];
+  const sectionOrder = parseSectionOrder(value.sectionOrder, operationName);
+  if (!sectionOrder.ok) return sectionOrder;
+
+  const riskFlags: ResumeOperation["riskFlags"] = [];
   for (const flag of value.riskFlags) {
     if (!isRecord(flag)) {
-      return { ok: false, message: "patch risk flag must be an object" };
+      return { ok: false, message: "operation risk flag must be an object" };
     }
-    if (!RISK_TYPES.has(flag.type as ResumePatch["riskFlags"][number]["type"])) {
-      return { ok: false, message: "patch risk flag type is invalid" };
+    if (!RISK_TYPES.has(flag.type as ResumeOperation["riskFlags"][number]["type"])) {
+      return { ok: false, message: "operation risk flag type is invalid" };
     }
-    const message = requiredString(flag.message, "patch.riskFlags.message");
+    const message = requiredString(flag.message, "operation.riskFlags.message");
     if (!message.ok) return message;
     riskFlags.push({
-      type: flag.type as ResumePatch["riskFlags"][number]["type"],
+      type: flag.type as ResumeOperation["riskFlags"][number]["type"],
       message: message.value,
     });
   }
 
   return {
     ok: true,
-    patch: {
+    operation: {
       id: id.value,
       toolCallId: toolCallId.value,
       label: label.value,
-      section: value.section as ResumePatch["section"],
+      section: value.section as ResumeOperation["section"],
       fieldPath: fieldPath.value,
-      operation: value.operation as ResumePatch["operation"],
+      operation: operationName,
       beforePlainText: beforePlainText.value,
       afterPlainText: afterPlainText.value,
       ...(value.replacementTiptapJson === undefined
         ? {}
         : { replacementTiptapJson: value.replacementTiptapJson }),
+      ...(sectionOrder.value === undefined
+        ? {}
+        : { sectionOrder: sectionOrder.value }),
       changeSummary: changeSummary.value,
       riskFlags,
     },
   };
+}
+
+function parseSectionOrder(
+  value: unknown,
+  operation: ResumeOperation["operation"],
+):
+  | { ok: true; value?: string[] }
+  | { ok: false; message: string } {
+  if (operation !== "reorder_sections") return { ok: true };
+  if (!Array.isArray(value) || !value.every((item) => typeof item === "string")) {
+    return { ok: false, message: "operation.sectionOrder must be a string array" };
+  }
+  if (!value.includes("basics")) {
+    return { ok: false, message: "operation.sectionOrder must include basics" };
+  }
+  return { ok: true, value };
 }
 
 function requiredString(

@@ -207,7 +207,7 @@ Rules:
 
 - Agent suggestions require user confirmation。
 - Phase 3A Agent Mode replaces the left editor column; the right `LivePreview` must remain visible on desktop。
-- Agent tools may only return `ResumePatch` envelopes; Web owns patch application。
+- Agent tools may only return `ResumeOperation` envelopes; Web owns operation application。
 - Do not write partial stream chunks into RHF。
 - Do not call `saveResume` directly from Agent UI components。
 - After confirmed writeback, use existing RHF callbacks and autosave flush。

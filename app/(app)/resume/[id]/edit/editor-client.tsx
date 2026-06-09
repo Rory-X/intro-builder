@@ -26,6 +26,13 @@ import { SkillsEditor } from "@/components/editor/skills-editor";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
+import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetHeader,
+  SheetTitle,
+} from "@/components/ui/sheet";
 import { Loader2, Share2, PanelRightClose, PanelRightOpen, MessageSquare, LayoutTemplate, ChevronLeft } from "lucide-react";
 import type { AllTemplatesItem, TemplateId } from "@/lib/templates/registry";
 import {
@@ -58,7 +65,7 @@ import { AnnotationList } from "@/components/collab/annotation-list";
 import { ResumeDiagnoseButton } from "@/components/agent/resume-diagnose-button";
 import { AgentModeToggle } from "@/components/agent/agent-mode-toggle";
 import { AgentPanel } from "@/components/agent/agent-panel";
-import type { ResumePatch } from "@/lib/agent/agent-message-contract";
+import type { ResumeOperation } from "@/lib/agent/agent-message-contract";
 
 type Props = {
   id: string;
@@ -391,9 +398,9 @@ export default function EditorClient({ id, initialTitle, initialTemplate, initia
     form.setValue("sectionOrder", newOrder, { shouldDirty: true });
   }
 
-  function applyAgentPatch(patch: ResumePatch) {
-    if (patch.operation === "replace_plain_text" && patch.fieldPath === "basics.summary") {
-      form.setValue("basics.summary", patch.afterPlainText, {
+  function applyAgentOperation(operation: ResumeOperation) {
+    if (operation.operation === "update_section" && operation.fieldPath === "basics.summary") {
+      form.setValue("basics.summary", operation.afterPlainText, {
         shouldDirty: true,
         shouldValidate: true,
       });
@@ -402,16 +409,26 @@ export default function EditorClient({ id, initialTitle, initialTemplate, initia
     }
 
     if (
-      patch.operation === "replace_tiptap_json" &&
-      patch.replacementTiptapJson !== undefined &&
-      isAllowedAgentTipTapFieldPath(patch.fieldPath)
+      operation.operation === "update_section" &&
+      operation.replacementTiptapJson !== undefined &&
+      isAllowedAgentTipTapFieldPath(operation.fieldPath)
     ) {
       type SetValueArgs = Parameters<typeof form.setValue>;
       form.setValue(
-        patch.fieldPath as SetValueArgs[0],
-        patch.replacementTiptapJson as SetValueArgs[1],
+        operation.fieldPath as SetValueArgs[0],
+        operation.replacementTiptapJson as SetValueArgs[1],
         { shouldDirty: true, shouldValidate: true },
       );
+      toast.success("已应用 Agent 建议");
+      return;
+    }
+
+    if (operation.operation === "reorder_sections" && operation.sectionOrder) {
+      setSectionOrder(operation.sectionOrder);
+      form.setValue("sectionOrder", operation.sectionOrder, {
+        shouldDirty: true,
+        shouldValidate: true,
+      });
       toast.success("已应用 Agent 建议");
       return;
     }
@@ -672,7 +689,7 @@ export default function EditorClient({ id, initialTitle, initialTemplate, initia
                   templateId={template}
                   getResumeContent={() => form.getValues() as ResumeContent}
                   completeness={agentCompleteness}
-                  applyPatch={applyAgentPatch}
+                  applyOperation={applyAgentOperation}
                   flushAutosave={flushAgentAutosave}
                   onBackToEdit={() => setIsAgentMode(false)}
                 />
@@ -759,9 +776,34 @@ export default function EditorClient({ id, initialTitle, initialTemplate, initia
           <p className="max-w-sm text-sm text-muted-foreground">
             简历编辑与排版需要较大屏幕以获得最佳体验，请使用电脑浏览器打开此页面。
           </p>
-          <a href="/dashboard" className="mt-2 text-sm font-medium text-primary hover:underline">
-            返回我的简历
-          </a>
+          <div className="mt-2 flex flex-wrap items-center justify-center gap-3">
+            <Button type="button" onClick={() => setIsAgentMode(true)}>
+              打开 Agent
+            </Button>
+            <a href="/dashboard" className="text-sm font-medium text-primary hover:underline">
+              返回我的简历
+            </a>
+          </div>
+          <Sheet open={isAgentMode} onOpenChange={setIsAgentMode}>
+            <SheetContent side="bottom" className="h-[88vh] gap-0 p-0" showCloseButton={false}>
+              <SheetHeader className="sr-only">
+                <SheetTitle>简历 Agent</SheetTitle>
+                <SheetDescription>
+                  移动端 Agent 面板，修改简历前仍需确认。
+                </SheetDescription>
+              </SheetHeader>
+              <AgentPanel
+                resumeId={id}
+                title={title}
+                templateId={template}
+                getResumeContent={() => form.getValues() as ResumeContent}
+                completeness={agentCompleteness}
+                applyOperation={applyAgentOperation}
+                flushAutosave={flushAgentAutosave}
+                onBackToEdit={() => setIsAgentMode(false)}
+              />
+            </SheetContent>
+          </Sheet>
         </div>
       )}
     </FormProvider>

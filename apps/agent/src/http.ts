@@ -2,6 +2,9 @@ import { createServer, type IncomingMessage, type Server, type ServerResponse } 
 import { randomUUID } from "node:crypto";
 import { createHash } from "node:crypto";
 
+import type { BaseEvent } from "@ag-ui/core";
+import { EventEncoder } from "@ag-ui/encoder";
+
 import {
   authenticateAgentRequest,
   type AgentReplayStore,
@@ -10,6 +13,7 @@ import {
 import {
   buildAgentMessagePrompt,
   parseAgentMessageProviderResponse,
+  toAgUiAgentEvents,
   validateAgentMessageRequest,
   type AgentMessageProvider,
 } from "./agent-messages.js";
@@ -364,6 +368,19 @@ async function routeRequest(
         });
       }
 
+      if (acceptsAgUiSse(request)) {
+        return sendAgUiEvents(
+          response,
+          toAgUiAgentEvents({
+            requestId: context.requestId,
+            threadId: validation.request.resumeId,
+            result: parsed.result,
+          }),
+          context,
+          headerValue(request.headers.accept),
+        );
+      }
+
       return sendJson(
         response,
         200,
@@ -372,7 +389,7 @@ async function routeRequest(
           requestId: context.requestId,
           message: parsed.result.message,
           toolCalls: parsed.result.toolCalls,
-          proposedPatches: parsed.result.proposedPatches,
+          proposedOperations: parsed.result.proposedOperations,
           usage: providerResult.usage,
         },
         context,
@@ -653,6 +670,25 @@ function sendJson(
   response.end(payload);
 }
 
+function sendAgUiEvents(
+  response: ServerResponse,
+  events: BaseEvent[],
+  context: RequestContext,
+  accept?: string,
+): void {
+  const encoder = new EventEncoder({ accept });
+
+  response.statusCode = 200;
+  response.setHeader("X-Request-Id", context.requestId);
+  response.setHeader("Content-Type", encoder.getContentType());
+  response.setHeader("Cache-Control", "no-cache, no-transform");
+
+  for (const event of events) {
+    response.write(encoder.encodeBinary(event));
+  }
+  response.end();
+}
+
 function resolveRequestId(
   request: IncomingMessage,
   createRequestId: () => string,
@@ -669,6 +705,14 @@ function resolveRequestId(
 
 function headerValue(header: string | string[] | undefined): string | undefined {
   return Array.isArray(header) ? header[0] : header;
+}
+
+function acceptsAgUiSse(request: IncomingMessage): boolean {
+  const accept = headerValue(request.headers.accept);
+  return Boolean(accept?.split(",").some((value) => {
+    const mediaType = value.split(";")[0]?.trim().toLowerCase();
+    return mediaType === "text/event-stream";
+  }));
 }
 
 function defaultCreateRequestId(): string {

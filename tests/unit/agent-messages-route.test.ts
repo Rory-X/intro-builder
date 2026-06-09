@@ -91,7 +91,7 @@ describe("POST /api/agent/messages", () => {
         toolCalls: [
           {
             id: "tool_1",
-            name: "inspect_resume",
+            name: "resume_read",
             status: "completed",
             title: "检查简历",
             summary: "发现工作经历缺少结果。",
@@ -99,7 +99,7 @@ describe("POST /api/agent/messages", () => {
             result: { topIssue: "缺少结果" },
           },
         ],
-        proposedPatches: [],
+        proposedOperations: [],
         usage: {
           provider: "fake-provider",
           model: "fake-model",
@@ -135,7 +135,7 @@ describe("POST /api/agent/messages", () => {
       toolCalls: [
         {
           id: "tool_1",
-          name: "inspect_resume",
+          name: "resume_read",
           status: "completed",
           title: "检查简历",
           summary: "发现工作经历缺少结果。",
@@ -143,7 +143,7 @@ describe("POST /api/agent/messages", () => {
           result: { topIssue: "缺少结果" },
         },
       ],
-      proposedPatches: [],
+      proposedOperations: [],
       usage: {
         provider: "fake-provider",
         model: "fake-model",
@@ -151,6 +151,56 @@ describe("POST /api/agent/messages", () => {
         outputTokens: 240,
       },
     });
+  });
+
+  it("proxies AG-UI SSE streams when the browser requests text/event-stream", async () => {
+    (currentUserId as unknown as Mock).mockResolvedValue("user_123");
+    (db.query.resumes.findFirst as unknown as Mock).mockResolvedValue({
+      id: "resume_abc",
+    });
+    (signAgentToken as unknown as Mock).mockResolvedValue({
+      token: "signed-chat-token",
+      expiresAt: new Date("2026-06-08T08:02:00.000Z"),
+    });
+    const stream = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(
+          new TextEncoder().encode('data: {"type":"RUN_STARTED"}\n\n'),
+        );
+        controller.close();
+      },
+    });
+    const streamAgentMessage = vi.fn().mockResolvedValue({
+      requestId: "req_agent_stream",
+      data: {
+        body: stream,
+        contentType: "text/event-stream",
+      },
+    });
+    const sendAgentMessage = vi.fn();
+    (createAgentClient as unknown as Mock).mockReturnValue({
+      sendAgentMessage,
+      streamAgentMessage,
+    });
+    const body = validBody();
+
+    const response = await POST(sseRequest(body));
+
+    expect(response.status).toBe(200);
+    expect(signAgentToken).toHaveBeenCalledWith({
+      userId: "user_123",
+      resumeId: "resume_abc",
+      scope: "agent:chat",
+    });
+    expect(sendAgentMessage).not.toHaveBeenCalled();
+    expect(streamAgentMessage).toHaveBeenCalledWith({
+      token: "signed-chat-token",
+      request: body,
+    });
+    expect(response.headers.get("content-type")).toContain("text/event-stream");
+    expect(response.headers.get("cache-control")).toBe("no-cache, no-transform");
+    expect(response.headers.get("x-request-id")).toBe("req_agent_stream");
+    await expect(response.text()).resolves.toContain("RUN_STARTED");
   });
 
   it("returns Agent errors without exposing provider internals", async () => {
@@ -214,6 +264,17 @@ function jsonRequest(body: unknown): Request {
   return new Request("https://intro.test/api/agent/messages", {
     method: "POST",
     headers: { "content-type": "application/json" },
+    body: JSON.stringify(body),
+  });
+}
+
+function sseRequest(body: unknown): Request {
+  return new Request("https://intro.test/api/agent/messages", {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      accept: "text/event-stream",
+    },
     body: JSON.stringify(body),
   });
 }

@@ -1,4 +1,5 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { EventType, type BaseEvent } from "@ag-ui/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { AgentPanel } from "@/components/agent/agent-panel";
@@ -40,21 +41,7 @@ describe("AgentPanel assistant-ui runtime", () => {
     const fetchMock = vi.fn<
       (...args: [RequestInfo | URL, RequestInit?]) => Promise<Response>
     >(async () => {
-      return new Response(
-        JSON.stringify({
-          status: "ok",
-          requestId: "req_test",
-          message: {
-            id: "msg_assistant_1",
-            role: "assistant",
-            content: "我会先检查内容结构。",
-          },
-          toolCalls: [],
-          proposedPatches: [],
-          usage: { provider: "test", model: "fake", inputTokens: 1, outputTokens: 1 },
-        }),
-        { status: 200, headers: { "content-type": "application/json" } },
-      );
+      return agUiResponse(["我会先", "检查内容结构。"]);
     });
     vi.stubGlobal("fetch", fetchMock);
 
@@ -67,13 +54,39 @@ describe("AgentPanel assistant-ui runtime", () => {
     await waitFor(() => {
       expect(fetchMock).toHaveBeenCalledWith(
         "/api/agent/messages",
-        expect.objectContaining({ method: "POST" }),
+        expect.objectContaining({
+          method: "POST",
+          headers: expect.objectContaining({ Accept: "text/event-stream" }),
+        }),
       );
     });
     expect(await screen.findByText("我会先检查内容结构。")).toBeInTheDocument();
     expect(screen.getByTestId("agent-assistant-ui-thread")).toBeInTheDocument();
   });
 });
+
+function agUiResponse(chunks: string[]): Response {
+  const events: BaseEvent[] = [
+    { type: EventType.RUN_STARTED, threadId: "resume_1", runId: "req_test" },
+    {
+      type: EventType.TEXT_MESSAGE_START,
+      messageId: "msg_assistant_1",
+      role: "assistant",
+    },
+    ...chunks.map((delta) => ({
+      type: EventType.TEXT_MESSAGE_CONTENT,
+      messageId: "msg_assistant_1",
+      delta,
+    })),
+    { type: EventType.TEXT_MESSAGE_END, messageId: "msg_assistant_1" },
+    { type: EventType.RUN_FINISHED, threadId: "resume_1", runId: "req_test" },
+  ];
+
+  return new Response(events.map((event) => `data: ${JSON.stringify(event)}\n\n`).join(""), {
+    status: 200,
+    headers: { "content-type": "text/event-stream" },
+  });
+}
 
 function panelProps(overrides: Partial<React.ComponentProps<typeof AgentPanel>> = {}) {
   return {
@@ -82,7 +95,7 @@ function panelProps(overrides: Partial<React.ComponentProps<typeof AgentPanel>> 
     templateId: "professional",
     getResumeContent: () => emptyResumeContent(),
     completeness: { overall: 80, sections: [] },
-    applyPatch: vi.fn(),
+    applyOperation: vi.fn(),
     flushAutosave: vi.fn(),
     onBackToEdit: vi.fn(),
     ...overrides,
