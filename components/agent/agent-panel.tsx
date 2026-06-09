@@ -54,6 +54,7 @@ export function AgentPanel({
   const [operations, setOperations] = useState<ResumeOperation[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
+  const [isAwaitingAssistant, setIsAwaitingAssistant] = useState(false);
 
   async function* sendRuntimeMessage(
     content: string,
@@ -72,6 +73,7 @@ export function AgentPanel({
 
     setError(null);
     setIsLoading(true);
+    setIsAwaitingAssistant(true);
 
     try {
       const response = await fetch("/api/agent/messages", {
@@ -105,6 +107,9 @@ export function AgentPanel({
         const delta = readTextDelta(event);
         if (delta !== null) {
           assistantText += delta;
+          if (assistantText.trim() !== "") {
+            setIsAwaitingAssistant(false);
+          }
           yield assistantText;
           continue;
         }
@@ -118,6 +123,7 @@ export function AgentPanel({
     } catch (sendError) {
       setError(sendError instanceof Error ? sendError.message : "Agent 服务暂不可用");
     } finally {
+      setIsAwaitingAssistant(false);
       setIsLoading(false);
     }
   }
@@ -149,6 +155,7 @@ export function AgentPanel({
           toolCalls={toolCalls}
           operations={operations}
           error={error}
+          isAwaitingAssistant={isAwaitingAssistant}
           applyOperation={applyOperation}
           flushAutosave={flushAutosave}
         />
@@ -179,12 +186,14 @@ function AgentThreadArea({
   toolCalls,
   operations,
   error,
+  isAwaitingAssistant,
   applyOperation,
   flushAutosave,
 }: {
   toolCalls: AgentMessageResponse["toolCalls"];
   operations: ResumeOperation[];
   error: string | null;
+  isAwaitingAssistant: boolean;
   applyOperation: (operation: ResumeOperation) => void;
   flushAutosave: () => void;
 }) {
@@ -206,6 +215,17 @@ function AgentThreadArea({
         <ThreadPrimitive.Messages>
           {({ message }) => <AgentThreadMessage message={message} />}
         </ThreadPrimitive.Messages>
+        {isAwaitingAssistant ? (
+          <div
+            role="status"
+            aria-live="polite"
+            data-testid="agent-loading-indicator"
+            className="inline-flex max-w-[85%] items-center gap-2 rounded-xl border border-sky-200/70 bg-sky-50 px-3 py-2 text-sm text-sky-800 shadow-sm dark:border-sky-400/20 dark:bg-sky-950/30 dark:text-sky-200"
+          >
+            <Loader2 className="h-4 w-4 animate-spin" />
+            AI 正在思考，回答会流式展开…
+          </div>
+        ) : null}
         {toolCalls.map((toolCall) => (
           <AgentToolCard key={toolCall.id} toolCall={toolCall} />
         ))}
@@ -302,11 +322,36 @@ function isAgentWorkflowId(value: unknown): value is AgentWorkflowId {
 }
 
 function readAgentError(value: unknown): string {
-  if (value && typeof value === "object" && "error" in value) {
-    const error = (value as { error?: unknown }).error;
-    if (typeof error === "string" && error.trim()) return error;
+  if (value && typeof value === "object") {
+    const body = value as {
+      error?: unknown;
+      code?: unknown;
+      requestId?: unknown;
+      retryAfterSeconds?: unknown;
+    };
+    const error = readNonEmptyString(body.error) ?? "Agent 服务暂不可用";
+    const code = readNonEmptyString(body.code);
+    const requestId = readNonEmptyString(body.requestId);
+    const retryAfterSeconds =
+      typeof body.retryAfterSeconds === "number" ? body.retryAfterSeconds : null;
+    const diagnostics = [
+      code ? `code: ${code}` : null,
+      requestId ? `requestId: ${requestId}` : null,
+      retryAfterSeconds ? `${retryAfterSeconds} 秒后可重试` : null,
+    ].filter(Boolean);
+
+    if (diagnostics.length > 0) {
+      return `${error}（${diagnostics.join("，")}）`;
+    }
+    return error;
   }
   return "Agent 服务暂不可用";
+}
+
+function readNonEmptyString(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  return trimmed === "" ? null : trimmed;
 }
 
 async function readErrorBody(response: Response): Promise<unknown> {

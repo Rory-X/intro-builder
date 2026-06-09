@@ -2,7 +2,7 @@ import { createServer, type IncomingMessage, type Server, type ServerResponse } 
 import { randomUUID } from "node:crypto";
 import { createHash } from "node:crypto";
 
-import type { BaseEvent } from "@ag-ui/core";
+import { EventType, type BaseEvent } from "@ag-ui/core";
 import { EventEncoder } from "@ag-ui/encoder";
 
 import {
@@ -854,23 +854,31 @@ function sendJson(
   response.end(payload);
 }
 
-function sendAgUiEvents(
+async function sendAgUiEvents(
   response: ServerResponse,
   events: BaseEvent[],
   context: RequestContext,
   accept?: string,
-): void {
+): Promise<void> {
   const encoder = new EventEncoder({ accept });
 
   response.statusCode = 200;
   response.setHeader("X-Request-Id", context.requestId);
   response.setHeader("Content-Type", encoder.getContentType());
   response.setHeader("Cache-Control", "no-cache, no-transform");
+  response.flushHeaders();
 
   for (const event of events) {
     response.write(encoder.encodeBinary(event));
+    if (event.type === EventType.TEXT_MESSAGE_CONTENT) {
+      await delay(12);
+    }
   }
   response.end();
+}
+
+function delay(milliseconds: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, milliseconds));
 }
 
 function resolveRequestId(
