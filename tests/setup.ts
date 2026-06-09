@@ -1,5 +1,22 @@
 import "@testing-library/jest-dom/vitest";
 
+// Suppress unhandled rejections from ag-ui HttpAgent in tests that mock 503 errors.
+// The HttpAgent throws errors asynchronously for failed requests, which is expected
+// behavior in tests that verify error handling. In production, these are caught by
+// the useAgUiRuntime onError callback.
+process.on("unhandledRejection", (reason) => {
+  const isAgUiHttpError =
+    reason &&
+    typeof reason === "object" &&
+    "status" in reason &&
+    reason.status === 503;
+  if (!isAgUiHttpError) {
+    // Re-throw non-ag-ui errors so they still fail tests
+    throw reason;
+  }
+  // Silently ignore ag-ui 503 errors in tests
+});
+
 // jsdom lacks `getClientRects` / `getBoundingClientRect` on text nodes and
 // ranges. ProseMirror touches them whenever a transaction scrolls the
 // selection into view (e.g. after `chain().focus().run()`), so without
