@@ -174,6 +174,7 @@ export type AgentStreamResponse = {
 export type CreateAgentClientOptions = {
   baseUrl?: string;
   timeoutMs?: number;
+  streamTimeoutMs?: number;
   fetchFn?: typeof fetch;
   createRequestId?: () => string;
 };
@@ -235,6 +236,7 @@ export type AgentClient = {
 
 const DEFAULT_AGENT_BASE_URL = "http://127.0.0.1:8787";
 const DEFAULT_TIMEOUT_MS = 10_000;
+const DEFAULT_STREAM_TIMEOUT_MS = 90_000; // Stream requests need longer timeout (AI generation can take time)
 const AGENT_ERROR_CODES = new Set<string>([
   "bad_request",
   "unauthorized",
@@ -252,7 +254,12 @@ const AGENT_ERROR_CODES = new Set<string>([
 
 export function createAgentClient({
   baseUrl = process.env.AGENT_BASE_URL ?? DEFAULT_AGENT_BASE_URL,
-  timeoutMs = DEFAULT_TIMEOUT_MS,
+  timeoutMs = process.env.AGENT_TIMEOUT_MS
+    ? Number(process.env.AGENT_TIMEOUT_MS)
+    : DEFAULT_TIMEOUT_MS,
+  streamTimeoutMs = process.env.AGENT_STREAM_TIMEOUT_MS
+    ? Number(process.env.AGENT_STREAM_TIMEOUT_MS)
+    : DEFAULT_STREAM_TIMEOUT_MS,
   fetchFn = fetch,
   createRequestId = () => `req_${randomUUID()}`,
 }: CreateAgentClientOptions = {}): AgentClient {
@@ -311,7 +318,7 @@ export function createAgentClient({
         token,
         requestId,
         body: request,
-        timeoutMs,
+        timeoutMs: streamTimeoutMs,
         fetchFn,
       });
     },
@@ -446,15 +453,17 @@ async function requestStream({
       body: JSON.stringify(body),
       signal: controller.signal,
     });
-    clearTimeout(timeout);
+
     const responseRequestId = response.headers.get("x-request-id") ?? requestId;
 
     if (!response.ok) {
+      clearTimeout(timeout);
       const responseBody = await readJson(response);
       throw errorFromEnvelope(response.status, responseRequestId, responseBody);
     }
 
     if (!response.body) {
+      clearTimeout(timeout);
       throw new AgentClientError("Agent stream response body is empty", {
         statusCode: 503,
         error: "agent_unavailable",
@@ -462,6 +471,7 @@ async function requestStream({
       });
     }
 
+    // Keep timeout active until first chunk arrives or stream ends
     return {
       data: {
         body: withStreamCleanup(response.body, () => clearTimeout(timeout)),
