@@ -8,6 +8,12 @@ importers:
 
   .:
     dependencies:
+      '@ag-ui/core':
+        specifier: 0.0.56
+        version: 0.0.56
+      '@ag-ui/encoder':
+        specifier: 0.0.56
+        version: 0.0.56
       '@assistant-ui/react':
         specifier: ^0.14.15
         version: 0.14.15(@types/react-dom@19.2.3(@types/react@19.2.14))(@types/react@19.2.14)(react-dom@19.2.4(react@19.2.4))(react@19.2.4)(use-sync-external-store@1.6.0(react@19.2.4))
@@ -243,6 +249,12 @@ importers:
 
   apps/agent:
     dependencies:
+      '@ag-ui/core':
+        specifier: 0.0.56
+        version: 0.0.56
+      '@ag-ui/encoder':
+        specifier: 0.0.56
+        version: 0.0.56
       jose:
         specifier: ^6.2.3
         version: 6.2.3
@@ -267,6 +279,15 @@ packages:
 
   '@adobe/css-tools@4.4.4':
     resolution: {integrity: sha512-Elp+iwUx5rN5+Y8xLt5/GRoG20WGoDCQ/1Fb+1LiGtvwbDavuSk0jhD/eZdckHAuzcDzccnkv+rEjyWfRx18gg==}
+
+  '@ag-ui/core@0.0.56':
+    resolution: {integrity: sha512-PD26s7qk8dG6/TOGmOv23ByTaGwJs2Wzm53OwsM40jSjio3xmswGZzDaFpjMNP6FsASNGovCPB8xICAyWhYx8A==}
+
+  '@ag-ui/encoder@0.0.56':
+    resolution: {integrity: sha512-JkR7OGby8hBUOOlrvli0bArM5qvfCoavj3ajUp8324n20wYMrfN+/TR3GUm7wW1japrV+2dS7JEVX5dylrPF1A==}
+
+  '@ag-ui/proto@0.0.56':
+    resolution: {integrity: sha512-D72l/Xa3vHRBJtlxa+gG3VcycrEwDCHwCTh8BGkyrnRdraYPFl92eeWSV0tnF9+i7xLyNqCdww+NgCoPlrdhZQ==}
 
   '@alloc/quick-lru@5.2.0':
     resolution: {integrity: sha512-UrcABB+4bUrFABwbluTIBErXwvbsU/V7TZWfmbgJfbkwiBuziS9gxdODUyuiecfdGQ85jglMW6juS3+z5TsKLw==}
@@ -524,6 +545,9 @@ packages:
   '@bramus/specificity@2.4.2':
     resolution: {integrity: sha512-ctxtJ/eA+t+6q2++vj5j7FYX3nRu311q1wfYH3xjlLOsczhlhxAg2FWNUXhpGvAw3BWo1xBcvOV6/YLc2r5FJw==}
     hasBin: true
+
+  '@bufbuild/protobuf@2.12.0':
+    resolution: {integrity: sha512-B/XlCaFIP8LOwzo+bz5uFzATYokcwCKQcghqnlfwSmM5eX/qTkvDBnDPs+gXtX/RyjxJ4DRikECcPJbyALA8FA==}
 
   '@csstools/color-helpers@6.0.2':
     resolution: {integrity: sha512-LMGQLS9EuADloEFkcTBR3BwV/CGHV7zyDxVRtVDTwdI2Ca4it0CCVTT9wCkxSgokjE5Ho41hEPgb8OEUwoXr6Q==}
@@ -1486,6 +1510,10 @@ packages:
 
   '@pdf-lib/upng@1.0.1':
     resolution: {integrity: sha512-dQK2FUMQtowVP00mtIksrlZhdFXQZPC+taih1q4CvPZ5vqdxR/LKBaFg0oAfzd1GlHZXXSPdQfzQnt+ViGvEIQ==}
+
+  '@protobuf-ts/protoc@2.11.1':
+    resolution: {integrity: sha512-mUZJaV0daGO6HUX90o/atzQ6A7bbN2RSuHtdwo8SSF2Qoe3zHwa4IHyCN1evftTeHfLmdz+45qo47sL+5P8nyg==}
+    hasBin: true
 
   '@puppeteer/browsers@2.13.0':
     resolution: {integrity: sha512-46BZJYJjc/WwmKjsvDFykHtXrtomsCIrwYQPOP7VfMJoZY2bsDF9oROBABR3paDjDcmkUye1Pb1BqdcdiipaWA==}
@@ -7189,6 +7217,21 @@ snapshots:
 
   '@adobe/css-tools@4.4.4': {}
 
+  '@ag-ui/core@0.0.56':
+    dependencies:
+      zod: 3.25.76
+
+  '@ag-ui/encoder@0.0.56':
+    dependencies:
+      '@ag-ui/core': 0.0.56
+      '@ag-ui/proto': 0.0.56
+
+  '@ag-ui/proto@0.0.56':
+    dependencies:
+      '@ag-ui/core': 0.0.56
+      '@bufbuild/protobuf': 2.12.0
+      '@protobuf-ts/protoc': 2.11.1
+
   '@alloc/quick-lru@5.2.0': {}
 
   '@asamuzakjp/css-color@5.1.11':
@@ -7511,6 +7554,8 @@ snapshots:
   '@bramus/specificity@2.4.2':
     dependencies:
       css-tree: 3.2.1
+
+  '@bufbuild/protobuf@2.12.0': {}
 
   '@csstools/color-helpers@6.0.2': {}
 
@@ -8196,6 +8241,8 @@ snapshots:
   '@pdf-lib/upng@1.0.1':
     dependencies:
       pako: 1.0.11
+
+  '@protobuf-ts/protoc@2.11.1': {}
 
   '@puppeteer/browsers@2.13.0':
     dependencies:

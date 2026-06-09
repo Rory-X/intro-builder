@@ -2,29 +2,29 @@
 
 import { useState } from "react";
 
-import type { ResumePatch } from "@/lib/agent/agent-message-contract";
+import type { ResumeOperation } from "@/lib/agent/agent-message-contract";
 import { Button } from "@/components/ui/button";
 
 export function AgentConfirmationCard({
-  patch,
+  operation,
   onApply,
 }: {
-  patch: ResumePatch;
-  onApply: (patch: ResumePatch) => void;
+  operation: ResumeOperation;
+  onApply: (operation: ResumeOperation) => void;
 }) {
   const [resolved, setResolved] = useState<"applied" | "ignored" | null>(null);
 
   return (
     <div className="rounded-lg border bg-background p-3 text-sm shadow-sm">
-      <div className="font-medium">{patch.label}</div>
-      <p className="mt-1 text-muted-foreground">{patch.changeSummary}</p>
+      <div className="font-medium">{operation.label}</div>
+      <p className="mt-1 text-muted-foreground">{operation.changeSummary}</p>
       <div className="mt-3 rounded-md bg-muted p-2 text-xs">
         <div className="text-muted-foreground">修改后</div>
-        <div className="mt-1 whitespace-pre-wrap">{patch.afterPlainText}</div>
+        <div className="mt-1 whitespace-pre-wrap">{operation.afterPlainText}</div>
       </div>
-      {patch.riskFlags.length > 0 ? (
+      {operation.riskFlags.length > 0 ? (
         <div className="mt-2 text-xs text-amber-600 dark:text-amber-400">
-          {patch.riskFlags.map((flag) => flag.message).join("；")}
+          {operation.riskFlags.map((flag) => flag.message).join("；")}
         </div>
       ) : null}
       <div className="mt-3 flex gap-2">
@@ -33,7 +33,7 @@ export function AgentConfirmationCard({
           size="sm"
           disabled={resolved !== null}
           onClick={() => {
-            onApply(patch);
+            onApply(operation);
             setResolved("applied");
           }}
         >

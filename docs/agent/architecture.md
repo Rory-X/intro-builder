@@ -40,7 +40,7 @@ flowchart LR
 - `apps/agent/src/auth.ts` 校验短期 Agent JWT，并通过 Redis `jti` replay guard 防重放。
 - `apps/agent/src/redis.ts` 与 `apps/agent/src/rate-limit.ts` 提供 readiness、rate limit 和后续短期 memory 基础。
 - `apps/agent/src/rich-text-polish.ts`、`apps/agent/src/resume-helpers.ts`、`apps/agent/src/agent-messages.ts` 分别承载 Phase 1、Phase 2A、Phase 3A 的新增 Agent 能力。
-- `apps/agent/src/agent-tools.ts` 定义 Phase 3A 基础简历修改 tools 和 `ResumePatch` 校验；这些 tools 只返回建议，不写 Web 状态或 Postgres。
+- `apps/agent/src/agent-tools.ts` 定义 Phase 3B 最小简历操作 tools 和 `ResumeOperation` 校验；这些 tools 只返回待确认操作，不写 Web 状态或 Postgres。
 - `apps/agent/Dockerfile`、`apps/agent/compose.yaml`、`apps/agent/Caddyfile` 是服务器部署骨架。
 
 ## 内部模块形态
@@ -76,7 +76,7 @@ flowchart TB
 
 ### 生成请求
 
-适合富文本润色、模块建议、聊天式 Agent panel。Phase 3A Agent panel 首版走 HTTP JSON message contract；streaming/DataStream 只属于 Phase 3B 或后续单独 plan。
+适合富文本润色、模块建议、聊天式 Agent panel。Phase 3B Agent panel 走 AG-UI `text/event-stream`，Web BFF 透传 Agent SSE body，assistant-ui 通过 `LocalRuntime` async generator 逐步渲染文本。
 
 要求：
 
@@ -86,9 +86,9 @@ flowchart TB
 - 如果是 streaming，每个 chunk 必须有类型，不能让前端猜字符串语义。
 - Web 端仍负责确认写回和 autosave。
 
-### Phase 3A Agent Mode 请求
+### Phase 3B Agent Mode 请求
 
-Phase 3A 的首版 Agent panel 先走 JSON message contract，不强行做 streaming。目标是先稳定 message、tool call、`ResumePatch` 和用户确认写回语义。
+Phase 3B 的 Agent panel 使用 AG-UI event stream。目标是稳定 lifecycle、assistant text、tool call/result、`ResumeOperation` 和用户确认写回语义。
 
 ```mermaid
 flowchart LR
@@ -97,7 +97,7 @@ flowchart LR
   WebBff --> AgentRoute["Agent /v1/agent/messages"]
   AgentRoute --> Tools["basic resume tools"]
   AgentRoute --> Provider["Model Provider"]
-  AgentRoute --> WebBff
+  AgentRoute -- "AG-UI SSE" --> WebBff
   WebBff --> Confirm["Web confirmation card"]
   Confirm --> RHF["RHF setValue"]
   RHF --> Autosave["resume:flush-autosave"]
@@ -108,9 +108,9 @@ Rules:
 
 - 右侧 `LivePreview` 在桌面 Agent Mode 中保持可见。
 - assistant-ui 只负责 thread、composer、tool display，不拥有简历状态。
-- 基础 tools 可以推理和生成 `ResumePatch`，但不能直接写 RHF 或 Postgres。
-- 富文本 patch 必须保持 TipTap JSON 语义；列表不能被压成无结构段落。
-- Phase 3A 基础 tools 固定为 `inspect_resume`、`propose_rich_text_rewrite`、`propose_summary_rewrite`、`propose_bullet_rewrite`、`draft_section_item`；新增 tool 必须先更新 `service-contracts.md` 与测试。
+- 基础 tools 可以推理并生成待确认 `ResumeOperation`，但不能直接写 RHF 或 Postgres。
+- 富文本 `resume_update_section` 必须保持 TipTap JSON 语义；列表不能被压成无结构段落。
+- Phase 3B 基础 tools 固定为 `resume_read`、`resume_update_section`、`resume_delete_section`、`resume_reorder_sections`、`resume_insert_section`；新增 tool 必须先更新 `service-contracts.md` 与测试。
 
 ## 稳定性原则
 

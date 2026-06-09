@@ -35,11 +35,11 @@ export type AgentMessageRequest = {
 };
 
 export type AgentToolName =
-  | "inspect_resume"
-  | "propose_rich_text_rewrite"
-  | "propose_summary_rewrite"
-  | "propose_bullet_rewrite"
-  | "draft_section_item";
+  | "resume_read"
+  | "resume_update_section"
+  | "resume_delete_section"
+  | "resume_reorder_sections"
+  | "resume_insert_section";
 
 export type AgentToolCall = {
   id: string;
@@ -51,7 +51,7 @@ export type AgentToolCall = {
   result: Record<string, unknown>;
 };
 
-export type ResumePatch = {
+export type ResumeOperation = {
   id: string;
   toolCallId: string;
   label: string;
@@ -64,10 +64,15 @@ export type ResumePatch = {
     | "research"
     | "custom";
   fieldPath: string;
-  operation: "replace_plain_text" | "replace_tiptap_json";
+  operation:
+    | "update_section"
+    | "delete_section"
+    | "reorder_sections"
+    | "insert_section";
   beforePlainText: string;
   afterPlainText: string;
   replacementTiptapJson?: unknown;
+  sectionOrder?: string[];
   changeSummary: string;
   riskFlags: Array<{
     type:
@@ -88,7 +93,7 @@ export type AgentMessageResponse = {
     content: string;
   };
   toolCalls: AgentToolCall[];
-  proposedPatches: ResumePatch[];
+  proposedOperations: ResumeOperation[];
   usage: {
     provider: string;
     model: string;

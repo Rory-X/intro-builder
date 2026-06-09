@@ -1,4 +1,5 @@
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { EventType, type BaseEvent } from "@ag-ui/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import EditorClient from "@/app/(app)/resume/[id]/edit/editor-client";
 import { DEFAULT_STYLE_SETTINGS, emptyResumeContent } from "@/lib/resume-schema";
@@ -246,7 +247,7 @@ describe("EditorClient live preview", () => {
       fireEvent.click(screen.getByRole("button", { name: "Agent 模式" }));
     });
 
-    expect(screen.getByText("简历 Agent")).toBeInTheDocument();
+    expect(screen.getAllByText("简历 Agent").length).toBeGreaterThan(0);
     expect(screen.getByRole("button", { name: "切回编辑" })).toBeInTheDocument();
     expect(screen.getByTestId("resume-export-preview")).toBeInTheDocument();
   });
@@ -301,44 +302,34 @@ describe("EditorClient live preview", () => {
     const fetchMock = vi.fn<
       (...args: [RequestInfo | URL, RequestInit?]) => Promise<Response>
     >(async () => {
-      return new Response(
-        JSON.stringify({
-          status: "ok",
-          requestId: "req_agent_editor",
-          message: {
-            id: "msg_assistant_1",
-            role: "assistant",
-            content: "我准备了一条个人总结改写建议。",
+      return agUiResponse({
+        text: "我准备了一条个人总结改写建议。",
+        toolCalls: [
+          {
+            id: "tool_1",
+            name: "resume_update_section",
+            status: "completed",
+            title: "改写个人总结",
+            summary: "生成一版更聚焦的个人总结。",
+            input: {},
+            result: {},
           },
-          toolCalls: [
-            {
-              id: "tool_1",
-              name: "propose_summary_rewrite",
-              status: "completed",
-              title: "改写个人总结",
-              summary: "生成一版更聚焦的个人总结。",
-              input: {},
-              result: {},
-            },
-          ],
-          proposedPatches: [
-            {
-              id: "patch_1",
-              toolCallId: "tool_1",
-              label: "应用个人总结改写",
-              section: "summary",
-              fieldPath: "basics.summary",
-              operation: "replace_plain_text",
-              beforePlainText: "三年前端经验。",
-              afterPlainText: "三年前端工程经验，擅长 React 与工程化交付。",
-              changeSummary: "让总结更具体。",
-              riskFlags: [],
-            },
-          ],
-          usage: { provider: "test", model: "fake", inputTokens: 1, outputTokens: 1 },
-        }),
-        { status: 200, headers: { "content-type": "application/json" } },
-      );
+        ],
+        proposedOperations: [
+          {
+            id: "op_1",
+            toolCallId: "tool_1",
+            label: "应用个人总结改写",
+            section: "summary",
+            fieldPath: "basics.summary",
+            operation: "update_section",
+            beforePlainText: "三年前端经验。",
+            afterPlainText: "三年前端工程经验，擅长 React 与工程化交付。",
+            changeSummary: "让总结更具体。",
+            riskFlags: [],
+          },
+        ],
+      });
     });
     vi.stubGlobal("fetch", fetchMock);
 
@@ -369,7 +360,10 @@ describe("EditorClient live preview", () => {
       await waitFor(() => {
         expect(fetchMock).toHaveBeenCalledWith(
           "/api/agent/messages",
-          expect.objectContaining({ method: "POST" }),
+          expect.objectContaining({
+            method: "POST",
+            headers: expect.objectContaining({ Accept: "text/event-stream" }),
+          }),
         );
       });
 
@@ -389,6 +383,43 @@ describe("EditorClient live preview", () => {
     } finally {
       window.removeEventListener("resume:flush-autosave", flushListener);
     }
+  });
+
+  it("opens Agent as a mobile sheet entry", async () => {
+    Object.defineProperty(window, "matchMedia", {
+      configurable: true,
+      value: vi.fn().mockImplementation((query: string) => ({
+        matches: query !== "(min-width: 1024px)",
+        media: query,
+        addEventListener: vi.fn(),
+        removeEventListener: vi.fn(),
+      })),
+    });
+
+    render(
+      <EditorClient
+        id="r1"
+        initialTitle="简历"
+        initialTemplate="professional"
+        initialContent={emptyResumeContent()}
+        initialIsPublic={false}
+        initialSlug={null}
+        initialUpdatedAtIso={new Date().toISOString()}
+        initialResolvedTemplate={DB_RESOLVED}
+        uploadedTemplates={[]}
+        allTemplates={DB_TEMPLATE_ROWS}
+        from={null}
+      />,
+    );
+
+    expect(screen.getByText("请在电脑端使用简历排版功能")).toBeInTheDocument();
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "打开 Agent" }));
+    });
+
+    expect(screen.getAllByText("简历 Agent").length).toBeGreaterThan(0);
+    expect(screen.getByRole("button", { name: "切回编辑" })).toBeInTheDocument();
   });
 
   it("shows autosave status details on the save badge", () => {
@@ -505,3 +536,41 @@ describe("EditorClient live preview", () => {
     expect(screen.getByRole("button", { name: "导出简历" })).toBeEnabled();
   });
 });
+
+function agUiResponse({
+  text,
+  toolCalls,
+  proposedOperations,
+}: {
+  text: string;
+  toolCalls: unknown[];
+  proposedOperations: unknown[];
+}): Response {
+  const events: BaseEvent[] = [
+    { type: EventType.RUN_STARTED, threadId: "resume_1", runId: "req_test" },
+    {
+      type: EventType.TEXT_MESSAGE_START,
+      messageId: "msg_assistant_1",
+      role: "assistant",
+    },
+    {
+      type: EventType.TEXT_MESSAGE_CONTENT,
+      messageId: "msg_assistant_1",
+      delta: text,
+    },
+    { type: EventType.TEXT_MESSAGE_END, messageId: "msg_assistant_1" },
+    ...toolCalls.map((toolCall) => ({
+      type: EventType.TOOL_CALL_RESULT,
+      messageId: `${(toolCall as { id: string }).id}_result`,
+      toolCallId: (toolCall as { id: string }).id,
+      role: "tool" as const,
+      content: JSON.stringify({ toolCall, proposedOperations }),
+    })),
+    { type: EventType.RUN_FINISHED, threadId: "resume_1", runId: "req_test" },
+  ];
+
+  return new Response(events.map((event) => `data: ${JSON.stringify(event)}\n\n`).join(""), {
+    status: 200,
+    headers: { "content-type": "text/event-stream" },
+  });
+}

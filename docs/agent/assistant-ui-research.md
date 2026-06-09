@@ -65,7 +65,7 @@ Phase 3A 已确认的产品形态是 **Agent Mode replaces left editor**：
 - RHF、autosave、模板状态、preview 仍由 Web 编辑器掌管。
 - 所有写回都必须经过 Web UI 的 `应用` / `忽略` 确认。
 
-Phase 3A runtime 首选 LocalRuntime/custom adapter 或等价薄适配层，先跑通稳定 JSON contract；DataStream/SSE 在 Phase 3B 再升级。原因是当前产品需要 human-confirmed writeback，直接追求 streaming protocol 容易把协议稳定性和 UI 状态一起放大。
+Phase 3B runtime 继续采用 LocalRuntime/custom adapter，但 adapter 已改为 async generator。Web BFF 代理 Agent 的 AG-UI `text/event-stream`，adapter 消费 `TEXT_MESSAGE_CONTENT` 增量来更新 assistant-ui 消息，并从 `TOOL_CALL_RESULT` 中解析 tool card 与待确认操作。
 
 Preferred first integration:
 
@@ -99,33 +99,33 @@ Browser AgentPanel
 
 | 方案 | 适用阶段 | 推荐度 | 说明 |
 | --- | --- | --- | --- |
-| LocalRuntime/custom adapter | Phase 3A | 高 | 先适配现有 Web BFF JSON contract，最适合 human-confirmed patch 写回 |
-| DataStream runtime | Phase 3B | 中 | 后端输出标准 stream 后再接入，避免首版协议漂移 |
+| LocalRuntime/custom adapter + async generator | Phase 3B | 高 | 适配 AG-UI SSE，同时保留 human-confirmed operation 写回 |
+| DataStream runtime | 后续可评估 | 中 | 若 assistant-ui 官方 runtime 与 AG-UI adapter 成熟，再考虑替换当前薄适配 |
 | AssistantTransport | Phase 3B+ | 中 | 适合后端有更丰富状态同步需求 |
 | AI SDK runtime | 待评估 | 中 | 若 Agent 服务采用 AI SDK v6，可复用更多适配 |
 | LocalRuntime 直连 provider | 不推荐 | 低 | 会让模型调用回到浏览器或 Web client 边界，破坏微服务目标 |
 
 ## 对 streaming protocol 的要求
 
-assistant-ui DataStream 有协议选项。默认是 `ui-message-stream`，legacy data stream 要显式设置 `protocol: "data-stream"`。如果 backend 与 decoder 不匹配，会出现 stream flush 失败。
+assistant-ui DataStream 有协议选项。当前实现不直接使用 DataStream runtime，而是让 LocalRuntime async generator 消费 AG-UI SSE，避免 assistant-ui stream decoder 与 Agent 协议不匹配。
 
-因此 Phase 3B 开始前必须先确定 Agent 输出哪一种 streaming 协议：
+当前约束：
 
-- Phase 3A 不强行做 streaming；先用 JSON contract 证明 message/tool/patch 语义。
-- Phase 3B 再优先评估 `ui-message-stream`，贴近 assistant-ui 当前默认。
-- 如果 Phase 1/2 已经沉淀自定义 line-delimited JSON stream，Phase 3 需要写 adapter，不要让 assistant-ui 直接消费不兼容流。
+- Agent 输出 AG-UI `text/event-stream`，事件至少包括 `RUN_STARTED`、`TEXT_MESSAGE_*`、`TOOL_CALL_*`、`TOOL_CALL_RESULT`、`RUN_FINISHED`/`RUN_ERROR`。
+- Web BFF 不解析 stream body，只做 Auth.js、resume ownership、短期 JWT 签发和 SSE headers 透传。
+- assistant-ui 不直接消费自定义 NDJSON；所有事件先通过 `readAgUiSseStream()` 校验。
 
 ## Tool calling 策略
 
 Agent panel 可以展示工具调用状态，但简历写入类工具必须 human-confirmed。
 
-Phase 3A 允许的基础 tools 固定为：
+Phase 3B 允许的基础 tools 固定为：
 
-- `inspect_resume`: 读取当前简历摘要和完成度。
-- `propose_rich_text_rewrite`: 针对富文本 field 生成候选 `replace_tiptap_json` patch，不写回。
-- `propose_summary_rewrite`: 针对 `basics.summary` 生成候选 `replace_plain_text` patch，不写回。
-- `propose_bullet_rewrite`: 针对列表型 TipTap 内容做保格式润色，不把列表压成一整段文本。
-- `draft_section_item`: 生成一个待用户确认的 section/item draft。
+- `resume_read`: 读取当前简历摘要和完成度。
+- `resume_update_section`: 针对 summary 或 allowlist 富文本 field 生成 `update_section` operation。
+- `resume_delete_section`: 生成待确认删除 operation，当前 Web 不自动执行。
+- `resume_reorder_sections`: 生成待确认排序 operation，确认后 Web 写回 `sectionOrder`。
+- `resume_insert_section`: 生成待确认插入 operation，当前 Web 不自动执行。
 
 禁止的直接执行 tools：
 
@@ -136,7 +136,7 @@ Phase 3A 允许的基础 tools 固定为：
 - `save_to_postgres`
 - `apply_patch_without_user_confirmation`
 
-工具调用结果应该回到 Web UI。Agent 只能返回 `ResumePatch`，用户点击确认后才进入 RHF 和 autosave。STAR 优化必须保守：缺 Result 指标就提示用户补事实，不能编造数字或业务结果。
+工具调用结果应该回到 Web UI。Agent 只能返回 `ResumeOperation`，用户点击确认后才进入 RHF 和 autosave。STAR 优化必须保守：缺 Result 指标就提示用户补事实，不能编造数字或业务结果。
 
 ## Phase 3 UI 形态
 
@@ -193,6 +193,6 @@ Phase 3A 开发或评审时，用这份清单防止偏离设计：
 - Phase 3A 只使用 JSON message/tool/patch contract；如果做 streaming，必须进入 Phase 3B plan 并确认 stream protocol 与后端一致。
 - Agent Mode 是左侧替换，不是右侧 drawer、浮窗或全屏 workspace。
 - assistant-ui 不接管 RHF、autosave、模板、preview 或简历持久化。
-- 基础简历修改 tools 只返回 `ResumePatch`，所有写回都经过确认卡。
+- 基础简历修改 tools 只返回 `ResumeOperation`，所有写回都经过确认卡。
 - 富文本列表 patch 必须保留 TipTap 列表结构。
 - assistant-ui 只在 panel 打开后加载；bundle 和 lazy loading 策略不能倒退。

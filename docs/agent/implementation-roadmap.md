@@ -228,21 +228,22 @@ Use assistant-ui here, not earlier.
 
 Current Phase 3A branch status:
 
-- Implemented locally: browser-safe message/tool/patch types, capped chat context, Agent service tool validation, Agent message prompt/parser, and Agent `/v1/agent/messages` route.
-- Implemented locally: Web client/BFF `POST /api/agent/messages` with Auth.js/dev-bypass user lookup, resume ownership check, `agent:chat` token signing, Agent proxying, and structured error mapping.
-- Implemented locally: assistant-ui LocalRuntime seam, left-column Agent panel, preset workflow call to Web BFF, tool cards, confirmation cards, toolbar `Agent 模式` toggle, and preview-preserving editor switch.
-- In progress next: richer RHF patch dispatcher regression coverage and local browser smoke.
-- Not implemented yet: production deploy of Phase 3A behavior and Phase 3B streaming/mobile Sheet.
+- Implemented locally: browser-safe message/tool/operation types, capped chat context, Agent service tool validation, Agent message prompt/parser, and Agent `/v1/agent/messages` route.
+- Implemented locally: Web client/BFF `POST /api/agent/messages` with Auth.js/dev-bypass user lookup, resume ownership check, `agent:chat` token signing, JSON fallback, AG-UI SSE proxying, and structured error mapping.
+- Implemented locally: assistant-ui LocalRuntime async generator, left-column Agent panel, preset workflow call to Web BFF, streamed text rendering, tool cards, confirmation cards, toolbar `Agent 模式` toggle, preview-preserving editor switch, and mobile Agent Sheet.
+- Implemented locally: Web-owned confirmed writeback for `update_section` and `reorder_sections`; `delete_section`/`insert_section` remain displayed operations until array item identity and module manager tests are added.
+- In progress next: full local gates and browser smoke.
 
 Recommended architecture:
 
 ```text
 Editor toolbar Agent 模式
   -> left editor column AgentPanel
-  -> assistant-ui LocalRuntime/custom adapter
+  -> assistant-ui LocalRuntime/custom async generator
   -> Next /api/agent/messages
   -> Agent /v1/agent/messages
-  -> basic resume tools
+  -> AG-UI SSE
+  -> minimal resume operation tools
   -> provider
 ```
 
@@ -252,27 +253,28 @@ Deliverables:
 - `Agent 模式` toolbar toggle，文字和 icon 渐变，背景不渐变。
 - Left-column Agent panel shell，替换编辑表单视觉但不接管 RHF。
 - Preset workflows: `诊断整份简历`、`目标岗位匹配`、`经历 STAR 优化`、`终检导出前检查`。
-- JSON message adapter for Phase 3A; streaming/DataStream deferred to Phase 3B。
+- AG-UI `text/event-stream` message adapter for Phase 3B。
 - `POST /v1/agent/messages` with scope `agent:chat`。
 - Web BFF `POST /api/agent/messages` with Auth.js session and resume ownership check。
 - Tool call display。
 - Basic resume modification tools:
-  - `inspect_resume`
-  - `propose_rich_text_rewrite`
-  - `propose_summary_rewrite`
-  - `propose_bullet_rewrite`
-  - `draft_section_item`
-- `ResumePatch` confirmation cards with `应用` / `忽略`。
+  - `resume_read`
+  - `resume_update_section`
+  - `resume_delete_section`
+  - `resume_reorder_sections`
+  - `resume_insert_section`
+- `ResumeOperation` confirmation cards with `应用` / `忽略`。
 - Human-confirmed writeback via RHF `setValue` and `resume:flush-autosave`。
 - Lazy loading to protect editor initial bundle。
+- Mobile Agent Sheet。
 
 Exit gates:
 
 - `Agent 模式` opens from desktop editor toolbar。
 - Left panel switches to Agent panel while right `LivePreview` remains visible。
 - FormProvider/RHF state, section order, template state, and autosave queue are not reset。
-- First e2e smoke: click `诊断整份简历` and see user message, assistant message, at least one tool card。
-- At least one proposed `ResumePatch` can render as a confirmation card。
+- First e2e smoke: click `诊断整份简历` and see user message, streamed assistant message, at least one tool card。
+- At least one proposed `ResumeOperation` can render as a confirmation card。
 - Patch does not mutate resume content before `应用`。
 - Confirmed patch writes through existing RHF path and triggers autosave flush。
 - Rich text list patches preserve ordered/unordered list structure instead of collapsing to one paragraph。
