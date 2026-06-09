@@ -1,11 +1,9 @@
 "use client";
 
-import { useRef, useState, type ComponentProps, type ReactNode } from "react";
-import { EventType, type BaseEvent, type RunAgentInput } from "@ag-ui/core";
+import { useRef, useState, type ReactNode } from "react";
 import {
   ActionBarPrimitive,
   ComposerPrimitive,
-  type ChatModelRunOptions,
   MessagePrimitive,
   ThreadPrimitive,
   type ThreadMessage,
@@ -40,27 +38,16 @@ import {
   type AgentAgUiInterrupt,
 } from "@/components/agent/agent-ag-ui-runtime-provider";
 import { AgentPresetWorkflows } from "@/components/agent/agent-preset-workflows";
-import {
-  AgentRuntimeProvider,
-  type AgentRuntimeProviderProps,
-} from "@/components/agent/agent-runtime-provider";
 import { AgentToolCard } from "@/components/agent/agent-tool-card";
 import { Button } from "@/components/ui/button";
-import {
-  extractAgUiResumeToolResult,
-  readAgUiSseStream,
-} from "@/lib/agent/ag-ui-stream";
 import { buildAgentResumeContext } from "@/lib/agent/chat-context";
 import type {
-  AgentChatMessage,
   AgentMessageResponse,
   AgentResumeContext,
   AgentWorkflowId,
   ResumeOperation,
 } from "@/lib/agent/agent-message-contract";
 import type { ResumeContent } from "@/lib/resume-schema";
-
-export type AgentRuntimeMode = "local" | "ag-ui";
 
 type AgentRetryRequest = {
   content: string;
@@ -109,7 +96,6 @@ export function AgentPanel({
   applyOperation,
   flushAutosave,
   onBackToEdit,
-  runtimeMode,
 }: {
   resumeId: string;
   title: string;
@@ -119,7 +105,6 @@ export function AgentPanel({
   applyOperation: (operation: ResumeOperation) => void;
   flushAutosave: () => void;
   onBackToEdit: () => void;
-  runtimeMode?: AgentRuntimeMode;
 }) {
   const [turnArtifacts, setTurnArtifacts] = useState<AgentTurnArtifacts[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -128,7 +113,6 @@ export function AgentPanel({
     null,
   );
   const activeTurnIdRef = useRef<string | null>(null);
-  const resolvedRuntimeMode = resolveAgentRuntimeMode(runtimeMode);
 
   function beginAgentTurn(messages: readonly { role?: unknown }[]) {
     const turnId = createTurnId();
@@ -242,89 +226,12 @@ export function AgentPanel({
     });
   }
 
-  async function* sendRuntimeMessage(
-    content: string,
-    {
-      abortSignal,
-      messages,
-      runConfig,
-    }: {
-      abortSignal: AbortSignal;
-      messages: readonly ThreadMessage[];
-      runConfig: ChatModelRunOptions["runConfig"];
-    },
-  ): AsyncGenerator<string> {
-    const trimmedContent = content.trim();
-    if (!trimmedContent || isLoading || abortSignal.aborted) return;
-    const workflowId = readWorkflowId(runConfig);
-    const turnId = beginAgentTurn(messages);
-
-    setLastRetryRequest({ content: trimmedContent, workflowId });
-    setError(null);
-    setIsLoading(true);
-
-    try {
-      const response = await fetch("/api/agent/runs", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Accept: "text/event-stream",
-        },
-        body: JSON.stringify(buildAgUiRunInput({
-          resumeId,
-          workflowId,
-          messages,
-          content: getResumeContent(),
-          templateId,
-          completeness,
-        })),
-        signal: abortSignal,
-      });
-      if (!response.ok) {
-        throw new Error(readAgentError(await readErrorBody(response)));
-      }
-
-      let assistantText = "";
-      for await (const event of readAgUiSseStream(response)) {
-        if (abortSignal.aborted) return;
-
-        const delta = readTextDelta(event);
-        if (delta !== null) {
-          assistantText += delta;
-          if (assistantText.trim() !== "") {
-            setAgentTurnStatus(turnId, "generating");
-          }
-          yield assistantText;
-          continue;
-        }
-
-        const toolResult = extractAgUiResumeToolResult(event);
-        if (toolResult) {
-          appendToolResult(toolResult, turnId);
-        }
-
-        const nextInterrupts = extractAgUiInterrupts(event);
-        if (nextInterrupts.length > 0) {
-          setAgentTurnInterrupts(nextInterrupts, turnId);
-        }
-      }
-    } catch (sendError) {
-      if (abortSignal.aborted || isAbortError(sendError)) return;
-      setError(sendError instanceof Error ? sendError.message : "Agent 服务暂不可用");
-    } finally {
-      settleAgentTurn(turnId);
-      setIsLoading(false);
-    }
-  }
-
   return (
     <section
-      data-agent-runtime-mode={resolvedRuntimeMode}
+      data-agent-runtime-mode="ag-ui"
       className="flex h-full min-h-[480px] flex-col bg-background"
     >
-      <AgentRuntimeBoundary
-        mode={resolvedRuntimeMode}
-        sendMessage={sendRuntimeMessage}
+      <AgentAgUiRuntimeProvider
         getIntroBuilderForwardedProps={(workflowId) => ({
           resumeId,
           locale: "zh-CN",
@@ -396,95 +303,9 @@ export function AgentPanel({
           flushAutosave={flushAutosave}
         />
         <AgentComposer title={title} isLoading={isLoading} />
-      </AgentRuntimeBoundary>
+      </AgentAgUiRuntimeProvider>
     </section>
   );
-}
-
-function AgentRuntimeBoundary({
-  mode,
-  sendMessage,
-  getIntroBuilderForwardedProps,
-  onRunStart,
-  onTextDelta,
-  onRunSettled,
-  onError,
-  onToolResult,
-  onInterrupts,
-  children,
-}: {
-  mode: AgentRuntimeMode;
-  sendMessage: AgentRuntimeProviderProps["sendMessage"];
-  getIntroBuilderForwardedProps: ComponentProps<
-    typeof AgentAgUiRuntimeProvider
-  >["getIntroBuilderForwardedProps"];
-  onRunStart: (messages: readonly { role?: unknown }[]) => void;
-  onTextDelta: () => void;
-  onRunSettled: () => void;
-  onError: (message: string) => void;
-  onToolResult: ComponentProps<typeof AgentAgUiRuntimeProvider>["onToolResult"];
-  onInterrupts: ComponentProps<typeof AgentAgUiRuntimeProvider>["onInterrupts"];
-  children: ReactNode;
-}) {
-  if (mode === "ag-ui") {
-    return (
-      <AgentAgUiRuntimeProvider
-        getIntroBuilderForwardedProps={getIntroBuilderForwardedProps}
-        onRunStart={onRunStart}
-        onTextDelta={onTextDelta}
-        onRunSettled={onRunSettled}
-        onError={onError}
-        onToolResult={onToolResult}
-        onInterrupts={onInterrupts}
-      >
-        {children}
-      </AgentAgUiRuntimeProvider>
-    );
-  }
-
-  return (
-    <AgentRuntimeProvider sendMessage={sendMessage}>
-      {children}
-    </AgentRuntimeProvider>
-  );
-}
-
-function buildAgUiRunInput({
-  resumeId,
-  workflowId,
-  messages,
-  content,
-  templateId,
-  completeness,
-}: {
-  resumeId: string;
-  workflowId: AgentWorkflowId | null;
-  messages: readonly ThreadMessage[];
-  content: ResumeContent;
-  templateId: string;
-  completeness: AgentResumeContext["completeness"];
-}): RunAgentInput {
-  return {
-    threadId: resumeId,
-    runId: createRunId(),
-    state: null,
-    messages: toAgentChatMessages(messages),
-    tools: [],
-    context: [],
-    forwardedProps: {
-      introBuilder: {
-        resumeId,
-        locale: "zh-CN",
-        workflowId,
-        context: buildAgentResumeContext({
-          content,
-          templateId,
-          activeSection: null,
-          completeness,
-        }),
-      },
-    },
-  };
 }
 
 function AgentWorkflowControls({
@@ -1192,22 +1013,6 @@ function createTurnId(): string {
   return `turn_${Math.random().toString(36).slice(2)}`;
 }
 
-function createRunId(): string {
-  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
-    return `run_${crypto.randomUUID()}`;
-  }
-  return `run_${Math.random().toString(36).slice(2)}`;
-}
-
-function toAgentChatMessages(messages: readonly ThreadMessage[]): AgentChatMessage[] {
-  return messages.flatMap((message) => {
-    if (message.role !== "user" && message.role !== "assistant") return [];
-    const content = readThreadMessageText(message);
-    if (!content) return [];
-    return [{ id: message.id, role: message.role, content }];
-  });
-}
-
 function readThreadMessageText(message: ThreadMessage): string {
   return message.content
     .map((part) => (part.type === "text" ? part.text : ""))
@@ -1219,107 +1024,4 @@ function hasRunningAssistantToolCall(message: ThreadMessage): boolean {
   return message.content.some(
     (part) => part.type === "tool-call" && part.result === undefined,
   );
-}
-
-function readWorkflowId(runConfig: ChatModelRunOptions["runConfig"]): AgentWorkflowId | null {
-  const workflowId = runConfig.custom?.workflowId;
-  if (isAgentWorkflowId(workflowId)) return workflowId;
-  return null;
-}
-
-function isAgentWorkflowId(value: unknown): value is AgentWorkflowId {
-  return (
-    value === "resume-diagnose" ||
-    value === "target-role-match" ||
-    value === "experience-star" ||
-    value === "pre-export-check"
-  );
-}
-
-function readAgentError(value: unknown): string {
-  if (value && typeof value === "object") {
-    const body = value as {
-      error?: unknown;
-      code?: unknown;
-      requestId?: unknown;
-      retryAfterSeconds?: unknown;
-    };
-    const error = readNonEmptyString(body.error) ?? "Agent 服务暂不可用";
-    const code = readNonEmptyString(body.code);
-    const requestId = readNonEmptyString(body.requestId);
-    const retryAfterSeconds =
-      typeof body.retryAfterSeconds === "number" ? body.retryAfterSeconds : null;
-    const diagnostics = [
-      code ? `code: ${code}` : null,
-      requestId ? `requestId: ${requestId}` : null,
-      retryAfterSeconds ? `${retryAfterSeconds} 秒后可重试` : null,
-    ].filter(Boolean);
-
-    if (diagnostics.length > 0) {
-      return `${error}（${diagnostics.join("，")}）`;
-    }
-    return error;
-  }
-  return "Agent 服务暂不可用";
-}
-
-function readNonEmptyString(value: unknown): string | null {
-  if (typeof value !== "string") return null;
-  const trimmed = value.trim();
-  return trimmed === "" ? null : trimmed;
-}
-
-async function readErrorBody(response: Response): Promise<unknown> {
-  try {
-    return await response.json();
-  } catch {
-    return null;
-  }
-}
-
-function readTextDelta(event: BaseEvent): string | null {
-  if (event.type !== EventType.TEXT_MESSAGE_CONTENT) return null;
-  const delta = event.delta;
-  return typeof delta === "string" ? delta : null;
-}
-
-function isAbortError(value: unknown): boolean {
-  return (
-    value instanceof DOMException && value.name === "AbortError"
-  ) || (
-    value instanceof Error && value.name === "AbortError"
-  );
-}
-
-function extractAgUiInterrupts(event: BaseEvent): AgentAgUiInterrupt[] {
-  if (event.type !== EventType.RUN_FINISHED) return [];
-  const outcome = (event as { outcome?: unknown }).outcome;
-  if (!isRecord(outcome) || outcome.type !== "interrupt") return [];
-  if (!Array.isArray(outcome.interrupts)) return [];
-
-  return outcome.interrupts.filter(isAgentAgUiInterrupt);
-}
-
-function isAgentAgUiInterrupt(value: unknown): value is AgentAgUiInterrupt {
-  return (
-    isRecord(value) &&
-    typeof value.id === "string" &&
-    value.id.trim() !== "" &&
-    typeof value.reason === "string" &&
-    value.reason.trim() !== "" &&
-    (value.message === undefined || typeof value.message === "string") &&
-    (value.toolCallId === undefined || typeof value.toolCallId === "string") &&
-    (value.responseSchema === undefined || isRecord(value.responseSchema)) &&
-    (value.expiresAt === undefined || typeof value.expiresAt === "string") &&
-    (value.metadata === undefined || isRecord(value.metadata))
-  );
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
-}
-
-function resolveAgentRuntimeMode(runtimeMode?: AgentRuntimeMode): AgentRuntimeMode {
-  if (runtimeMode) return runtimeMode;
-  return process.env.NEXT_PUBLIC_AGENT_RUNTIME === "ag-ui" ? "ag-ui" : "local";
 }

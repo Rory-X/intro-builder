@@ -97,7 +97,7 @@ describe("AgentPanel assistant-ui runtime", () => {
     });
     vi.stubGlobal("fetch", fetchMock);
 
-    render(<AgentPanel {...panelProps({ runtimeMode: "ag-ui" })} />);
+    render(<AgentPanel {...panelProps({})} />);
 
     fireEvent.click(screen.getByRole("button", { name: "诊断整份简历" }));
 
@@ -156,7 +156,7 @@ describe("AgentPanel assistant-ui runtime", () => {
     });
     vi.stubGlobal("fetch", fetchMock);
 
-    render(<AgentPanel {...panelProps({ runtimeMode: "ag-ui" })} />);
+    render(<AgentPanel {...panelProps({})} />);
     fireEvent.click(screen.getByRole("button", { name: "诊断整份简历" }));
 
     expect(await screen.findByText("Agent 正在使用工具")).toBeInTheDocument();
@@ -190,7 +190,7 @@ describe("AgentPanel assistant-ui runtime", () => {
     });
     vi.stubGlobal("fetch", fetchMock);
 
-    render(<AgentPanel {...panelProps({ runtimeMode: "ag-ui" })} />);
+    render(<AgentPanel {...panelProps({})} />);
     fireEvent.click(screen.getByRole("button", { name: "诊断整份简历" }));
 
     expect(await screen.findByRole("button", { name: "停止生成" })).toBeInTheDocument();
@@ -237,7 +237,7 @@ describe("AgentPanel assistant-ui runtime", () => {
     });
     vi.stubGlobal("fetch", fetchMock);
 
-    render(<AgentPanel {...panelProps({ applyOperation, runtimeMode: "ag-ui" })} />);
+    render(<AgentPanel {...panelProps({ applyOperation })} />);
     fireEvent.click(screen.getByRole("button", { name: "诊断整份简历" }));
 
     await waitFor(() => {
@@ -273,7 +273,7 @@ describe("AgentPanel assistant-ui runtime", () => {
     });
     vi.stubGlobal("fetch", fetchMock);
 
-    render(<AgentPanel {...panelProps({ runtimeMode: "ag-ui" })} />);
+    render(<AgentPanel {...panelProps({})} />);
     fireEvent.click(screen.getByRole("button", { name: "目标岗位匹配" }));
 
     await waitFor(() => {
