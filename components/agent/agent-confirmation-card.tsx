@@ -8,9 +8,11 @@ import { Button } from "@/components/ui/button";
 export function AgentConfirmationCard({
   operation,
   onApply,
+  onReject,
 }: {
   operation: ResumeOperation;
   onApply: (operation: ResumeOperation) => void;
+  onReject: (operationId: string) => void;
 }) {
   const [resolved, setResolved] = useState<"applied" | "ignored" | null>(null);
 
@@ -44,7 +46,10 @@ export function AgentConfirmationCard({
           size="sm"
           variant="ghost"
           disabled={resolved !== null}
-          onClick={() => setResolved("ignored")}
+          onClick={() => {
+            onReject(operation.id);
+            setResolved("ignored");
+          }}
         >
           忽略
         </Button>
