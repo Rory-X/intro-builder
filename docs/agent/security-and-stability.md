@@ -100,6 +100,7 @@ Recommended timeouts:
 | --- | --- |
 | Web -> Agent connect | 2 seconds |
 | Web -> Agent total non-stream | 10 seconds |
+| Web -> Agent stream connection/first response | 10 seconds |
 | Rich text polish stream | 45 seconds |
 | Provider first token | 15 seconds |
 | Redis connect | 1 second |
@@ -107,6 +108,7 @@ Recommended timeouts:
 
 Rules:
 
+- Stream response headers/body 开始后，Web client 不应继续使用 non-stream total timeout 误杀长对话流。
 - Browser cancellation must abort Web request。
 - Web cancellation must abort Agent request。
 - Agent cancellation must abort provider stream when supported。
@@ -139,6 +141,8 @@ Rules:
 - Logs include provider error class and request id。
 - Web maps errors to Chinese UI messages。
 - Rate limit and timeout errors should give a next action。
+- AG-UI SSE 请求中，cache hit 也必须返回 SSE，而不是 JSON。
+- SSE path 中 provider parse/throw failure 必须返回 AG-UI `RUN_ERROR`，并携带 request id 可用于排查。
 
 Required codes:
 

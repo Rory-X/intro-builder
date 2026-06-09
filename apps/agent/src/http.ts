@@ -12,11 +12,15 @@ import {
 } from "./auth.js";
 import {
   buildAgentMessagePrompt,
+  extractStreamingAgentMessageContent,
   parseAgentMessageProviderResponse,
   toAgUiAgentEvents,
+  toAgUiAgentToolEvents,
   validateAgentMessageRequest,
   type AgentMessageUsage,
+  type AgentMessagePrompt,
   type AgentMessageProvider,
+  type AgentMessageRequest,
 } from "./agent-messages.js";
 import {
   buildAiCacheKey,
@@ -389,6 +393,23 @@ async function routeRequest(
       cacheKey,
     );
     if (cached) {
+      if (acceptsAgUiSse(request)) {
+        return sendAgUiEvents(
+          response,
+          toAgUiAgentEvents({
+            requestId: context.requestId,
+            threadId: validation.request.resumeId,
+            result: {
+              message: cached.value.message,
+              toolCalls: cached.value.toolCalls,
+              proposedOperations: cached.value.proposedOperations,
+            },
+          }),
+          context,
+          headerValue(request.headers.accept),
+        );
+      }
+
       return sendJson(
         response,
         200,
@@ -438,6 +459,21 @@ async function routeRequest(
     });
 
     try {
+      if (acceptsAgUiSse(request) && agentMessageProvider.stream) {
+        return streamAgentMessageEvents({
+          response,
+          provider: agentMessageProvider,
+          request: validation.request,
+          prompt,
+          session: auth.session,
+          requestId: context.requestId,
+          cacheKey,
+          aiCacheStore,
+          now,
+          accept: headerValue(request.headers.accept),
+        });
+      }
+
       const providerResult = await agentMessageProvider.run({
         request: validation.request,
         prompt,
@@ -446,6 +482,20 @@ async function routeRequest(
       });
       const parsed = parseAgentMessageProviderResponse(providerResult.content);
       if (!parsed.ok) {
+        if (acceptsAgUiSse(request)) {
+          return sendAgUiEvents(
+            response,
+            toAgUiRunErrorEvents({
+              requestId: context.requestId,
+              threadId: validation.request.resumeId,
+              message: parsed.message,
+              code: "dependency_unavailable",
+            }),
+            context,
+            headerValue(request.headers.accept),
+          );
+        }
+
         return sendError(response, 503, context, {
           error: "dependency_unavailable",
           message: parsed.message,
@@ -488,12 +538,40 @@ async function routeRequest(
       );
     } catch (error) {
       if (error instanceof RichTextPolishProviderError) {
+        if (acceptsAgUiSse(request)) {
+          return sendAgUiEvents(
+            response,
+            toAgUiRunErrorEvents({
+              requestId: context.requestId,
+              threadId: validation.request.resumeId,
+              message: error.message,
+              code: error.code,
+            }),
+            context,
+            headerValue(request.headers.accept),
+          );
+        }
+
         return sendError(response, error.code === "provider_timeout" ? 504 : 503, context, {
           error: error.code,
           message: error.message,
           dependency: error.code === "dependency_unavailable" ? "provider" : undefined,
         });
       }
+      if (acceptsAgUiSse(request)) {
+        return sendAgUiEvents(
+          response,
+          toAgUiRunErrorEvents({
+            requestId: context.requestId,
+            threadId: validation.request.resumeId,
+            message: error instanceof Error ? error.message : "Provider request failed",
+            code: "dependency_unavailable",
+          }),
+          context,
+          headerValue(request.headers.accept),
+        );
+      }
+
       return sendError(response, 500, context, {
         error: "internal_error",
         message: error instanceof Error ? error.message : "Internal error",
@@ -875,6 +953,173 @@ async function sendAgUiEvents(
     }
   }
   response.end();
+}
+
+async function streamAgentMessageEvents({
+  response,
+  provider,
+  request,
+  prompt,
+  session,
+  requestId,
+  cacheKey,
+  aiCacheStore,
+  now,
+  accept,
+}: {
+  response: ServerResponse;
+  provider: AgentMessageProvider;
+  request: AgentMessageRequest;
+  prompt: AgentMessagePrompt;
+  session: AuthenticatedAgentSession;
+  requestId: string;
+  cacheKey: string;
+  aiCacheStore: AiCacheStore | undefined;
+  now: () => Date;
+  accept?: string;
+}): Promise<void> {
+  const encoder = new EventEncoder({ accept });
+  const threadId = request.resumeId;
+  const messageId = `msg_${requestId}`;
+  let content = "";
+  let emittedContent = "";
+  let usage: AgentMessageUsage = {
+    provider: "unknown",
+    model: "unknown",
+    inputTokens: 0,
+    outputTokens: 0,
+  };
+  let textStarted = false;
+
+  response.statusCode = 200;
+  response.setHeader("X-Request-Id", requestId);
+  response.setHeader("Content-Type", encoder.getContentType());
+  response.setHeader("Cache-Control", "no-cache, no-transform");
+  response.flushHeaders();
+
+  const writeEvent = (event: BaseEvent) => {
+    response.write(encoder.encodeBinary(event));
+  };
+
+  writeEvent({ type: EventType.RUN_STARTED, threadId, runId: requestId });
+
+  try {
+    for await (const chunk of provider.stream!({
+      request,
+      prompt,
+      session,
+      requestId,
+    })) {
+      if (chunk.type === "usage") {
+        usage = chunk.usage;
+        continue;
+      }
+
+      content += chunk.delta;
+      const visibleContent = extractStreamingAgentMessageContent(content);
+      const delta = visibleContent.slice(emittedContent.length);
+      if (!delta) continue;
+
+      if (!textStarted) {
+        writeEvent({
+          type: EventType.TEXT_MESSAGE_START,
+          messageId,
+          role: "assistant",
+        });
+        textStarted = true;
+      }
+      writeEvent({
+        type: EventType.TEXT_MESSAGE_CONTENT,
+        messageId,
+        delta,
+      });
+      emittedContent = visibleContent;
+    }
+
+    const parsed = parseAgentMessageProviderResponse(content);
+    if (!parsed.ok) {
+      writeEvent({
+        type: EventType.RUN_ERROR,
+        threadId,
+        runId: requestId,
+        message: parsed.message,
+        code: "dependency_unavailable",
+      });
+      response.end();
+      return;
+    }
+
+    const remainingContent = parsed.result.message.content.slice(
+      emittedContent.length,
+    );
+    if (!textStarted) {
+      writeEvent({
+        type: EventType.TEXT_MESSAGE_START,
+        messageId,
+        role: "assistant",
+      });
+      textStarted = true;
+    }
+    if (remainingContent) {
+      writeEvent({
+        type: EventType.TEXT_MESSAGE_CONTENT,
+        messageId,
+        delta: remainingContent,
+      });
+    }
+
+    const cacheValue: AgentMessageCacheValue = {
+      message: parsed.result.message,
+      toolCalls: parsed.result.toolCalls,
+      proposedOperations: parsed.result.proposedOperations,
+      usage,
+    };
+    await writeAiCache(aiCacheStore, cacheKey, cacheValue, "agent:chat", now);
+
+    for (const event of toAgUiAgentToolEvents({
+      messageId,
+      result: parsed.result,
+    })) {
+      writeEvent(event);
+    }
+    writeEvent({ type: EventType.TEXT_MESSAGE_END, messageId });
+    writeEvent({
+      type: EventType.RUN_FINISHED,
+      threadId,
+      runId: requestId,
+      outcome: { type: "success" },
+    });
+    response.end();
+  } catch (error) {
+    writeEvent({
+      type: EventType.RUN_ERROR,
+      threadId,
+      runId: requestId,
+      message: error instanceof Error ? error.message : "Provider request failed",
+      code:
+        error instanceof RichTextPolishProviderError
+          ? error.code
+          : "dependency_unavailable",
+    });
+    response.end();
+  }
+}
+
+function toAgUiRunErrorEvents({
+  requestId,
+  threadId,
+  message,
+  code,
+}: {
+  requestId: string;
+  threadId: string;
+  message: string;
+  code: string;
+}): BaseEvent[] {
+  return [
+    { type: EventType.RUN_STARTED, threadId, runId: requestId },
+    { type: EventType.RUN_ERROR, threadId, runId: requestId, message, code },
+  ];
 }
 
 function delay(milliseconds: number): Promise<void> {

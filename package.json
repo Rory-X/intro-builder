@@ -18,9 +18,11 @@
     "verify": "pnpm lint && pnpm tsc --noEmit && pnpm test && pnpm build"
   },
   "dependencies": {
+    "@ag-ui/client": "0.0.56",
     "@ag-ui/core": "0.0.56",
     "@ag-ui/encoder": "0.0.56",
     "@assistant-ui/react": "^0.14.15",
+    "@assistant-ui/react-ag-ui": "0.0.36",
     "@atlaskit/pragmatic-drag-and-drop": "^1.8.1",
     "@atlaskit/pragmatic-drag-and-drop-auto-scroll": "^2.1.5",
     "@auth/drizzle-adapter": "^1.11.2",

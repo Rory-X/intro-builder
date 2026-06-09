@@ -58,13 +58,29 @@ export type AgentMessageUsage = {
   outputTokens: number;
 };
 
+export type AgentMessageProviderRunOptions = {
+  request: AgentMessageRequest;
+  prompt: AgentMessagePrompt;
+  session: AuthenticatedAgentSession;
+  requestId: string;
+};
+
+export type AgentMessageProviderRunResult = {
+  content: string;
+  usage: AgentMessageUsage;
+};
+
+export type AgentProviderStreamChunk =
+  | { type: "content_delta"; delta: string }
+  | { type: "usage"; usage: AgentMessageUsage };
+
 export type AgentMessageProvider = {
-  run: (options: {
-    request: AgentMessageRequest;
-    prompt: AgentMessagePrompt;
-    session: AuthenticatedAgentSession;
-    requestId: string;
-  }) => Promise<{ content: string; usage: AgentMessageUsage }>;
+  run: (
+    options: AgentMessageProviderRunOptions,
+  ) => Promise<AgentMessageProviderRunResult>;
+  stream?: (
+    options: AgentMessageProviderRunOptions,
+  ) => AsyncIterable<AgentProviderStreamChunk>;
 };
 
 export type AgentMessageParseResult =
@@ -268,6 +284,41 @@ export function toAgUiAgentEvents({
     });
   }
 
+  appendAgUiToolEvents(events, result, messageId);
+
+  events.push(
+    {
+      type: EventType.TEXT_MESSAGE_END,
+      messageId,
+    },
+    {
+      type: EventType.RUN_FINISHED,
+      threadId,
+      runId,
+      outcome: { type: "success" },
+    },
+  );
+
+  return events;
+}
+
+export function toAgUiAgentToolEvents({
+  messageId,
+  result,
+}: {
+  messageId: string;
+  result: Extract<AgentMessageParseResult, { ok: true }>["result"];
+}): BaseEvent[] {
+  const events: BaseEvent[] = [];
+  appendAgUiToolEvents(events, result, messageId);
+  return events;
+}
+
+function appendAgUiToolEvents(
+  events: BaseEvent[],
+  result: Extract<AgentMessageParseResult, { ok: true }>["result"],
+  messageId: string,
+): void {
   for (const toolCall of result.toolCalls) {
     const operations = result.proposedOperations.filter(
       (operation) => operation.toolCallId === toolCall.id,
@@ -300,21 +351,6 @@ export function toAgUiAgentEvents({
       },
     );
   }
-
-  events.push(
-    {
-      type: EventType.TEXT_MESSAGE_END,
-      messageId,
-    },
-    {
-      type: EventType.RUN_FINISHED,
-      threadId,
-      runId,
-      outcome: { type: "success" },
-    },
-  );
-
-  return events;
 }
 
 function normalizeOptionalArray(
@@ -335,6 +371,25 @@ function splitAgUiTextDeltas(content: string): string[] {
     deltas.push(characters.slice(index, index + AG_UI_TEXT_DELTA_CHARS).join(""));
   }
   return deltas;
+}
+
+export function extractStreamingAgentMessageContent(jsonText: string): string {
+  const messageIndex = jsonText.indexOf('"message"');
+  if (messageIndex === -1) return "";
+
+  const contentKeyIndex = jsonText.indexOf('"content"', messageIndex);
+  if (contentKeyIndex === -1) return "";
+
+  const colonIndex = jsonText.indexOf(":", contentKeyIndex + '"content"'.length);
+  if (colonIndex === -1) return "";
+
+  let valueStart = colonIndex + 1;
+  while (valueStart < jsonText.length && /\s/.test(jsonText[valueStart] ?? "")) {
+    valueStart += 1;
+  }
+  if (jsonText[valueStart] !== '"') return "";
+
+  return decodeJsonStringPrefix(jsonText.slice(valueStart + 1));
 }
 
 export function createOpenAICompatibleAgentMessageProvider(
@@ -365,13 +420,7 @@ export function createOpenAICompatibleAgentMessageProvider(
               model: config.modelName,
               response_format: { type: "json_object" },
               thinking: { type: "disabled" },
-              messages: [
-                {
-                  role: "system",
-                  content: `${prompt.system}\n\n开发者指令：\n${prompt.developer}`,
-                },
-                { role: "user", content: prompt.user },
-              ],
+              messages: openAICompatibleMessages(prompt),
             }),
             signal: controller.signal,
           },
@@ -393,12 +442,7 @@ export function createOpenAICompatibleAgentMessageProvider(
         const usage = isRecord(body) && isRecord(body.usage) ? body.usage : {};
         return {
           content: providerContent,
-          usage: {
-            provider: "openai-compatible",
-            model: config.modelName!,
-            inputTokens: numberOrZero(usage.prompt_tokens),
-            outputTokens: numberOrZero(usage.completion_tokens),
-          },
+          usage: openAICompatibleUsage(config.modelName!, usage),
         };
       } catch (error) {
         if (error instanceof RichTextPolishProviderError) throw error;
@@ -416,6 +460,235 @@ export function createOpenAICompatibleAgentMessageProvider(
         clearTimeout(timeout);
       }
     },
+    async *stream({ prompt }) {
+      const controller = new AbortController();
+      const timeout = setTimeout(
+        () => controller.abort(),
+        config.modelTimeoutMs,
+      );
+      try {
+        const response = await fetchFn(
+          joinUrl(config.modelBaseUrl!, "/chat/completions"),
+          {
+            method: "POST",
+            headers: {
+              authorization: `Bearer ${config.modelApiKey}`,
+              "content-type": "application/json",
+            },
+            body: JSON.stringify({
+              model: config.modelName,
+              response_format: { type: "json_object" },
+              thinking: { type: "disabled" },
+              stream: true,
+              messages: openAICompatibleMessages(prompt),
+            }),
+            signal: controller.signal,
+          },
+        );
+        if (!response.ok) {
+          throw new RichTextPolishProviderError(
+            `Provider request failed with ${response.status}`,
+            "dependency_unavailable",
+          );
+        }
+        if (!response.body) {
+          throw new RichTextPolishProviderError(
+            "Provider stream response body is empty",
+            "dependency_unavailable",
+          );
+        }
+
+        let usage = openAICompatibleUsage(config.modelName!, {});
+        for await (const part of readOpenAICompatibleStream(response.body)) {
+          if (part.delta) {
+            yield { type: "content_delta", delta: part.delta };
+          }
+          if (part.usage) {
+            usage = openAICompatibleUsage(config.modelName!, part.usage);
+          }
+        }
+
+        yield { type: "usage", usage };
+      } catch (error) {
+        if (error instanceof RichTextPolishProviderError) throw error;
+        if (error instanceof DOMException && error.name === "AbortError") {
+          throw new RichTextPolishProviderError(
+            "Provider request timed out",
+            "provider_timeout",
+          );
+        }
+        throw new RichTextPolishProviderError(
+          error instanceof Error ? error.message : "Provider request failed",
+          "dependency_unavailable",
+        );
+      } finally {
+        clearTimeout(timeout);
+      }
+    },
+  };
+}
+
+function decodeJsonStringPrefix(raw: string): string {
+  let output = "";
+
+  for (let index = 0; index < raw.length; index += 1) {
+    const char = raw[index];
+    if (char === '"') return output;
+    if (char !== "\\") {
+      output += char;
+      continue;
+    }
+
+    const escaped = raw[index + 1];
+    if (!escaped) return output;
+    if (escaped === '"' || escaped === "\\" || escaped === "/") {
+      output += escaped;
+      index += 1;
+      continue;
+    }
+    if (escaped === "b") {
+      output += "\b";
+      index += 1;
+      continue;
+    }
+    if (escaped === "f") {
+      output += "\f";
+      index += 1;
+      continue;
+    }
+    if (escaped === "n") {
+      output += "\n";
+      index += 1;
+      continue;
+    }
+    if (escaped === "r") {
+      output += "\r";
+      index += 1;
+      continue;
+    }
+    if (escaped === "t") {
+      output += "\t";
+      index += 1;
+      continue;
+    }
+    if (escaped === "u") {
+      const hex = raw.slice(index + 2, index + 6);
+      if (!/^[0-9a-fA-F]{4}$/.test(hex)) return output;
+      output += String.fromCharCode(Number.parseInt(hex, 16));
+      index += 5;
+    }
+  }
+
+  return output;
+}
+
+async function* readOpenAICompatibleStream(
+  body: ReadableStream<Uint8Array>,
+): AsyncIterable<{ delta?: string; usage?: Record<string, unknown> }> {
+  const reader = body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true }).replace(/\r\n/g, "\n");
+
+      const parsed = shiftSseEvents(buffer);
+      buffer = parsed.rest;
+      for (const event of parsed.events) {
+        const part = parseOpenAICompatibleSseEvent(event);
+        if (part.done) return;
+        if (part.delta || part.usage) yield part;
+      }
+    }
+
+    buffer += decoder.decode().replace(/\r\n/g, "\n");
+    const parsed = shiftSseEvents(buffer);
+    for (const event of parsed.events) {
+      const part = parseOpenAICompatibleSseEvent(event);
+      if (part.done) return;
+      if (part.delta || part.usage) yield part;
+    }
+  } finally {
+    reader.releaseLock();
+  }
+}
+
+function shiftSseEvents(buffer: string): { events: string[]; rest: string } {
+  const events: string[] = [];
+  let rest = buffer;
+  let boundary = rest.indexOf("\n\n");
+
+  while (boundary !== -1) {
+    events.push(rest.slice(0, boundary));
+    rest = rest.slice(boundary + 2);
+    boundary = rest.indexOf("\n\n");
+  }
+
+  return { events, rest };
+}
+
+function parseOpenAICompatibleSseEvent(event: string): {
+  done: boolean;
+  delta?: string;
+  usage?: Record<string, unknown>;
+} {
+  const data = event
+    .split("\n")
+    .filter((line) => line.startsWith("data:"))
+    .map((line) => line.slice("data:".length).trimStart())
+    .join("\n")
+    .trim();
+  if (!data) return { done: false };
+  if (data === "[DONE]") return { done: true };
+
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(data);
+  } catch {
+    return { done: false };
+  }
+  if (!isRecord(parsed)) return { done: false };
+
+  const choice = Array.isArray(parsed.choices) ? parsed.choices[0] : undefined;
+  const delta =
+    isRecord(choice) &&
+    isRecord(choice.delta) &&
+    typeof choice.delta.content === "string"
+      ? choice.delta.content
+      : undefined;
+
+  return {
+    done: false,
+    ...(delta ? { delta } : {}),
+    ...(isRecord(parsed.usage) ? { usage: parsed.usage } : {}),
+  };
+}
+
+function openAICompatibleMessages(prompt: AgentMessagePrompt): Array<{
+  role: "system" | "user";
+  content: string;
+}> {
+  return [
+    {
+      role: "system",
+      content: `${prompt.system}\n\n开发者指令：\n${prompt.developer}`,
+    },
+    { role: "user", content: prompt.user },
+  ];
+}
+
+function openAICompatibleUsage(
+  model: string,
+  usage: Record<string, unknown>,
+): AgentMessageUsage {
+  return {
+    provider: "openai-compatible",
+    model,
+    inputTokens: numberOrZero(usage.prompt_tokens),
+    outputTokens: numberOrZero(usage.completion_tokens),
   };
 }
 

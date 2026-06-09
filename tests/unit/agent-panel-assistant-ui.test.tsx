@@ -53,7 +53,7 @@ describe("AgentPanel assistant-ui runtime", () => {
 
     await waitFor(() => {
       expect(fetchMock).toHaveBeenCalledWith(
-        "/api/agent/messages",
+        "/api/agent/runs",
         expect.objectContaining({
           method: "POST",
           headers: expect.objectContaining({ Accept: "text/event-stream" }),

@@ -235,6 +235,20 @@ export type AgentClient = {
 
 const DEFAULT_AGENT_BASE_URL = "http://127.0.0.1:8787";
 const DEFAULT_TIMEOUT_MS = 10_000;
+const AGENT_ERROR_CODES = new Set<string>([
+  "bad_request",
+  "unauthorized",
+  "forbidden",
+  "not_found",
+  "method_not_allowed",
+  "payload_too_large",
+  "rate_limited",
+  "dependency_unavailable",
+  "provider_timeout",
+  "internal_error",
+  "agent_timeout",
+  "agent_unavailable",
+]);
 
 export function createAgentClient({
   baseUrl = process.env.AGENT_BASE_URL ?? DEFAULT_AGENT_BASE_URL,
@@ -373,11 +387,31 @@ async function readJson(response: Response): Promise<unknown> {
   const text = await response.text();
   if (!text) return null;
 
+  return parseJson(text) ?? parseSseJson(text);
+}
+
+function parseJson(text: string): unknown {
   try {
     return JSON.parse(text);
   } catch {
     return null;
   }
+}
+
+function parseSseJson(text: string): unknown {
+  for (const rawEvent of text.split(/\r?\n\r?\n/)) {
+    const data = rawEvent
+      .split(/\r?\n/)
+      .filter((line) => line.startsWith("data:"))
+      .map((line) => line.slice("data:".length).trimStart())
+      .join("\n");
+    if (!data.trim()) continue;
+
+    const parsed = parseJson(data);
+    if (parsed !== null) return parsed;
+  }
+
+  return null;
 }
 
 async function requestStream({
@@ -412,16 +446,15 @@ async function requestStream({
       body: JSON.stringify(body),
       signal: controller.signal,
     });
+    clearTimeout(timeout);
     const responseRequestId = response.headers.get("x-request-id") ?? requestId;
 
     if (!response.ok) {
       const responseBody = await readJson(response);
-      clearTimeout(timeout);
       throw errorFromEnvelope(response.status, responseRequestId, responseBody);
     }
 
     if (!response.body) {
-      clearTimeout(timeout);
       throw new AgentClientError("Agent stream response body is empty", {
         statusCode: 503,
         error: "agent_unavailable",
@@ -484,13 +517,14 @@ function errorFromEnvelope(
   fallbackRequestId: string,
   body: unknown,
 ): AgentClientError {
-  if (isAgentErrorEnvelope(body)) {
-    return new AgentClientError(body.message, {
+  const envelope = parseAgentErrorEnvelope(body);
+  if (envelope) {
+    return new AgentClientError(envelope.message, {
       statusCode,
-      error: body.error,
-      requestId: body.requestId || fallbackRequestId,
-      retryAfterSeconds: body.retryAfterSeconds,
-      dependency: body.dependency,
+      error: envelope.error,
+      requestId: envelope.requestId || fallbackRequestId,
+      retryAfterSeconds: envelope.retryAfterSeconds,
+      dependency: envelope.dependency,
     });
   }
 
@@ -501,21 +535,44 @@ function errorFromEnvelope(
   });
 }
 
-function isAgentErrorEnvelope(body: unknown): body is {
+function parseAgentErrorEnvelope(body: unknown): {
   error: AgentErrorCode;
   message: string;
-  requestId: string;
+  requestId?: string;
   retryAfterSeconds?: number;
   dependency?: string;
-} {
-  if (!body || typeof body !== "object") return false;
+} | null {
+  if (!body || typeof body !== "object") return null;
 
   const value = body as Record<string, unknown>;
-  return (
-    typeof value.error === "string" &&
-    typeof value.message === "string" &&
-    typeof value.requestId === "string"
-  );
+  const error = agentErrorCode(value.code) ?? agentErrorCode(value.error);
+  if (!error) return null;
+
+  return {
+    error,
+    message: errorMessage(value),
+    requestId: typeof value.requestId === "string" ? value.requestId : undefined,
+    retryAfterSeconds:
+      typeof value.retryAfterSeconds === "number"
+        ? value.retryAfterSeconds
+        : undefined,
+    dependency: typeof value.dependency === "string" ? value.dependency : undefined,
+  };
+}
+
+function agentErrorCode(value: unknown): AgentErrorCode | null {
+  if (typeof value !== "string") return null;
+  return AGENT_ERROR_CODES.has(value) ? (value as AgentErrorCode) : null;
+}
+
+function errorMessage(value: Record<string, unknown>): string {
+  if (typeof value.message === "string" && value.message.trim() !== "") {
+    return value.message;
+  }
+  if (typeof value.code === "string" && typeof value.error === "string") {
+    return value.error;
+  }
+  return "Agent request failed";
 }
 
 function isAbortError(error: unknown): boolean {

@@ -149,6 +149,7 @@ assistant-ui 复用方式：
 
 - 使用 assistant-ui runtime 管理 chat thread/composer/tool display，但不让 assistant-ui 拥有简历状态。
 - Phase 3B 使用 LocalRuntime/custom adapter + AG-UI SSE BFF；adapter 返回 async generator，逐步 yield assistant text。
+- Phase 3C 起 Agent panel 发送标准 AG-UI `RunAgentInput` 到 `/api/agent/runs`；Web-owned `resumeId`、`workflowId` 和 capped RHF context 放在 `forwardedProps.introBuilder`。
 - 使用本项目 `Button`、`Input`/`Textarea`、`Separator` 包装视觉。
 - message bubble 和 tool result 样式使用现有 `bg-muted`、`text-muted-foreground`、`border` token。
 - 不直接使用 assistant-ui 默认主题覆盖全局设计。
@@ -157,7 +158,8 @@ assistant-ui 复用方式：
 
 ```mermaid
 flowchart LR
-  Panel["AgentPanel assistant-ui"] --> WebRoute["Next /api/agent/messages"]
+  Panel["AgentPanel assistant-ui"] --> WebRoute["Next /api/agent/runs"]
+  WebRoute --> Adapter["RunAgentInput -> AgentMessageRequest"]
   WebRoute --> Token["sign Agent JWT"]
   WebRoute --> Agent["Agent /v1/agent/messages"]
   Agent --> Tools["basic resume tools"]
@@ -250,7 +252,7 @@ Phase 3A allowlist：
 - Agent panel 默认 lazy mount。
 - assistant-ui 只在 panel 打开后加载。
 - 不把完整 resume content 每个 token 都重新传给 assistant-ui runtime。
-- 发送消息时用 `form.getValues()` 生成 capped context；不要在 Agent panel 高频 `useWatch()` 整份简历。
+- 发送消息时用 `form.getValues()` 生成 capped context，并放进 `forwardedProps.introBuilder`；不要在 Agent panel 高频 `useWatch()` 整份简历。
 - 对上下文按 section 裁剪。
 - 避免在 `EditorClient` 顶层新增高频 state。
 

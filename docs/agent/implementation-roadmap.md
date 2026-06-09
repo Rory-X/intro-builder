@@ -241,7 +241,8 @@ Recommended architecture:
 Editor toolbar Agent 模式
   -> left editor column AgentPanel
   -> assistant-ui LocalRuntime/custom async generator
-  -> Next /api/agent/messages
+  -> Next /api/agent/runs
+  -> RunAgentInput -> AgentMessageRequest adapter
   -> Agent /v1/agent/messages
   -> AG-UI SSE
   -> minimal resume operation tools
@@ -288,6 +289,28 @@ Exit gates:
 - Rich text list patches preserve ordered/unordered list structure instead of collapsing to one paragraph。
 - Agent unavailable degrades to a Chinese error state without breaking normal editor typing。
 - Phase 3A desktop passes; mobile Sheet is explicitly Phase 3B, not an exit gate for this slice。
+
+### Phase 3C: Realtime Streaming and SDK-Compatible Stability
+
+Status: implemented locally on `codex/agent-realtime-streaming-stability`, pending full gates and PR.
+
+Goal: 修复用户可感知的不稳定对话流，让 Agent Mode 接近 ChatGPT 的实时吐字体验，同时为 `@ag-ui/client` / `@assistant-ui/react-ag-ui` runtime 迁移铺好 BFF adapter。
+
+Delivered locally:
+
+- Agent `agent:chat` cache hit 在 `Accept: text/event-stream` 时返回 AG-UI SSE，而不是 JSON。
+- Agent SSE provider parse/throw failures 返回 `RUN_ERROR`，并保留 code/request id。
+- Web `streamAgentMessage()` 清晰区分 JSON total timeout 与 stream connection timeout，避免长流被 10 秒误杀。
+- OpenAI-compatible Agent provider 支持 `stream: true`，从 provider JSON 的 `message.content` 字符串中安全提取可见增量，不向用户显示 JSON braces。
+- Provider stream 完成后仍用现有 parser/validator 校验完整 JSON，再发 tool result、proposed operations，并写 AI cache。
+- 新增 `POST /api/agent/runs`：接收 AG-UI `RunAgentInput`，从 `forwardedProps.introBuilder` 或 `forwardedProps.runConfig.introBuilder` 映射到现有 Agent request。
+- AgentPanel 当前仍使用 LocalRuntime/custom adapter 以保留确认卡体验，但浏览器请求已切到 `/api/agent/runs` 的 SDK-compatible body。
+- 新增依赖 `@ag-ui/client@0.0.56`、`@assistant-ui/react-ag-ui@0.0.36`，版本与 `@ag-ui/core` / `@ag-ui/encoder` 对齐。
+
+Next candidate slice:
+
+- 用 `HttpAgent({ url: "/api/agent/runs" })` + `useAgUiRuntime({ agent })` 替换 LocalRuntime。
+- 替换前必须先证明 assistant-ui `tool-call` parts 能继续驱动 `AgentToolCard` 与 `AgentConfirmationCard`，且不会直接写 RHF。
 
 ## Phase 4: BYO Key, Credits, and Limits
 
