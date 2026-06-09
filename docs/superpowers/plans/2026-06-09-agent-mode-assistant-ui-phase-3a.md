@@ -8,6 +8,27 @@
 
 **Tech Stack:** Next.js 16 App Router, React 19, React Hook Form, assistant-ui React runtime, TypeScript, Vitest, Node HTTP Agent service, OpenAI-compatible provider, Redis rate limit/replay guard.
 
+## Current Status — 2026-06-09
+
+Phase 3A is implemented in the current development branch as the approved Agent Mode
+left-column replacement:
+
+- `components/agent/agent-panel.tsx` uses assistant-ui `ThreadPrimitive` and
+  `ComposerPrimitive`; it no longer keeps a parallel textarea/message state for the
+  visible chat thread.
+- `components/agent/agent-runtime-provider.tsx` uses assistant-ui `LocalRuntime`
+  and adapts runs to Web BFF `POST /api/agent/messages`.
+- Preset workflows call `useThreadRuntime().append(...)` and pass
+  `workflowId` through `runConfig.custom`, so workflow chips and free-form composer
+  sends share the same assistant-ui runtime path.
+- Tool calls and `ResumePatch` cards remain product UI owned by Web; patches only
+  write to RHF after the user clicks `应用`.
+- Browser manual smoke in the Codex in-app browser was blocked by the browser URL
+  policy for the local app. The smoke checklist is covered by automated tests for
+  Agent Mode toggle, preview preservation, assistant-ui composer/thread send,
+  workflow BFF request shape, tool/patch card rendering, confirmed RHF writeback,
+  autosave flush dispatch, and unsaved editor value preservation when switching back.
+
 ---
 
 ## Non-Negotiable Boundaries

@@ -9,7 +9,7 @@
 | `apps/agent/package.json` | Agent package scripts and dependencies |
 | `apps/agent/src/index.ts` | process entrypoint, listen, shutdown |
 | `apps/agent/src/config.ts` | env parsing and validation |
-| `apps/agent/src/http.ts` | health/ready routing, protected routes, request ids, JSON errors |
+| `apps/agent/src/http.ts` | health/ready routing, protected business routes, request ids, JSON errors |
 | `apps/agent/src/redis.ts` | Redis client factory and readiness |
 | `apps/agent/src/rate-limit.ts` | Redis-backed rate limiting primitive |
 | `apps/agent/src/errors.ts` | JSON error envelope helpers |
@@ -119,18 +119,26 @@ Implemented components:
 | `tests/unit/section-helper-button.test.tsx` | 2A | section helper request shape |
 | `tests/unit/resume-helper-card.test.tsx` | 2A | suggestion card rendering |
 
-Planned components:
+Phase 3A branch-local components:
 
-| Planned file | Phase | Responsibility |
+| File | Phase | Responsibility |
 | --- | --- | --- |
 | `components/agent/agent-mode-toggle.tsx` | 3A | toolbar `Agent 模式` toggle with gradient text/icon |
-| `components/agent/agent-panel.tsx` | 3A | left-column assistant-ui Agent panel shell |
-| `components/agent/agent-runtime-provider.tsx` | 3 | assistant-ui runtime integration |
+| `components/agent/agent-panel.tsx` | 3A | left-column Agent panel shell using assistant-ui thread/composer primitives, workflow calls, tool/patch cards |
+| `components/agent/agent-runtime-provider.tsx` | 3A | assistant-ui LocalRuntime seam isolated from product state |
 | `components/agent/agent-preset-workflows.tsx` | 3A | preset workflow chips |
 | `components/agent/agent-tool-card.tsx` | 3A | visible tool call/result card |
 | `components/agent/agent-confirmation-card.tsx` | 3A | `ResumePatch` apply/ignore card |
+| `lib/agent/assistant-ui-react-compat.ts` | 3A | localized React 19 internals alias for assistant-ui/tap webpack build |
+| `next.config.ts` | 3A | targeted `NormalModuleReplacementPlugin` for tap dispatcher only |
 | `tests/unit/agent-panel.test.tsx` | 3A | Agent panel workflow and confirmation behavior |
-| `tests/unit/editor-client-agent-mode.test.tsx` | 3A | editor mode toggle, preview preservation, RHF writeback |
+| `tests/unit/agent-panel-assistant-ui.test.tsx` | 3A | assistant-ui composer/thread drives Web BFF messages |
+| `tests/unit/editor-client-live-preview.test.tsx` | 3A | editor mode toggle and preview preservation coverage |
+
+Status note:
+
+- These files are intentionally part of the Phase 3A local development branch until PR/CI/deploy confirms them.
+- Do not recreate parallel files such as `agent-chat-panel.tsx` or `editor-client-agent-mode.test.tsx` unless the plan is updated first.
 
 Reuse:
 
@@ -145,8 +153,10 @@ Phase 3A UI guardrails:
 
 - `Agent 模式` is a left-column mode switch, not a right drawer or floating chat.
 - assistant-ui imports should stay behind Agent panel/runtime files and be lazy-loaded where practical.
+- assistant-ui/tap React compatibility is localized to `lib/agent/assistant-ui-react-compat.ts`; do not alias React globally.
 - `AgentConfirmationCard` calls a Web-owned apply callback; it must not call server actions or mutate persisted content directly.
 - Text/icon gradients are allowed for AI affordance; gradient backgrounds are not part of the approved button treatment.
+- Tool names must match the service contract: `inspect_resume`、`propose_rich_text_rewrite`、`propose_summary_rewrite`、`propose_bullet_rewrite`、`draft_section_item`.
 
 ## Dashboard and Templates
 

@@ -5,7 +5,7 @@
 ## 结论
 
 assistant-ui 适合放在 **Phase 3: Agent Panel**，不适合放在 **Phase 1: 单个富文本润色按钮**。
-Phase 2A resume helpers still use local buttons and cards; assistant-ui remains reserved for Phase 3 because helpers do not need multi-turn message state.
+Phase 2A resume helpers 继续使用本地按钮与 suggestion card；assistant-ui 保留给 Phase 3，因为 helpers 不需要多轮 message state。
 
 原因：
 
@@ -24,6 +24,7 @@ assistant-ui 是面向 React 的 AI chat / assistant UI 库。它通过 runtime 
 - Data stream runtime 支持 text streaming、tool calls、conversation context、error handling、cancellation、attachments。
 - 自定义 backend 可以选择 DataStream、AssistantTransport、External Store 等 runtime 模式。
 - AI SDK v6 可通过 `@assistant-ui/react-ai-sdk` 适配。
+- 当前开发分支安装的是 `@assistant-ui/react@0.14.15`；所有 assistant-ui import 应集中在 Agent panel/runtime seam，避免污染编辑器主状态。
 
 ## 官方资料摘录
 
@@ -32,6 +33,25 @@ assistant-ui 是面向 React 的 AI chat / assistant UI 库。它通过 runtime 
 - 自定义 backend 可选 DataStream、AssistantTransport、External Store 等模式：[Custom Runtime Overview](https://www.assistant-ui.com/docs/runtimes/custom/overview)。
 - 当前 `@assistant-ui/react-ai-sdk` 面向 AI SDK v6；如果使用 legacy data stream，要显式选择 data stream runtime：[AI SDK v6](https://www.assistant-ui.com/docs/runtimes/ai-sdk/v6)、[AI SDK v4 legacy](https://www.assistant-ui.com/docs/runtimes/ai-sdk/v4-legacy)。
 - 工具调用 UI 可通过 assistant-ui tools 体系表达，但 data stream runtime 不支持 human-in-the-loop approval tools；需要审批流时应直接使用 LocalRuntime 或自定义 runtime：[Tool Calling](https://www.assistant-ui.com/docs/guides/tools)。
+
+## Next.js 16 / React 19 兼容性记录
+
+当前分支使用 Next.js 16 `next build --webpack`、React 19.2.x 和 `@assistant-ui/react@0.14.15`。社区信号显示 assistant-ui 在 Next.js 16 / React 19 / tap runtime 下仍有边界问题需要隔离处理：
+
+- `assistant-ui/assistant-ui#2925` 记录过 `AssistantRuntimeProvider` 在 Next.js 16 + React 19 + Turbopack dev 下的 tap runtime 问题。
+- `assistant-ui/assistant-ui#2069` 记录过 Next/React 19 build import/export 类问题；其中也提醒 assistant-ui 组件必须在 `"use client"` 边界内。
+- `assistant-ui/assistant-ui#4282` 是 2026-06-08 合并的 tap React hook integration，说明 tap/React 集成仍在快速演进。
+
+本项目当前生产 build 的具体失败是 `@assistant-ui/tap@0.6.0` 的 `react-dispatcher.js` fallback 读取 React 18 的 `__SECRET_INTERNALS_DO_NOT_USE_OR_YOU_WILL_BE_FIRED`，而 React 19 只导出新的 `__CLIENT_INTERNALS_DO_NOT_USE_OR_WARN_USERS_THEY_CANNOT_UPGRADE`。Webpack 会在静态导出检查阶段报错，即使运行时会优先命中新字段。
+
+已采用的本地策略：
+
+- assistant-ui import 仍集中在 `components/agent/agent-runtime-provider.tsx` 和
+  `components/agent/agent-panel.tsx`：前者负责 LocalRuntime adapter，后者只使用
+  thread/composer primitives；不要扩散到编辑器核心状态。
+- `next.config.ts` 只对 `@assistant-ui/tap/dist/core/react-dispatcher.js` 的 `react` request 做 `NormalModuleReplacementPlugin`。
+- `lib/agent/assistant-ui-react-compat.ts` 只补齐 tap dispatcher 需要的 React internals alias，不替换全站 React import。
+- 不修改 `node_modules`，不禁用 build 错误，不降级 React。
 
 ## 对 intro-builder 的推荐模式
 
@@ -99,7 +119,7 @@ assistant-ui DataStream 有协议选项。默认是 `ui-message-stream`，legacy
 
 Agent panel 可以展示工具调用状态，但简历写入类工具必须 human-confirmed。
 
-Allowed tool classes:
+Phase 3A 允许的基础 tools 固定为：
 
 - `inspect_resume`: 读取当前简历摘要和完成度。
 - `propose_rich_text_rewrite`: 针对富文本 field 生成候选 `replace_tiptap_json` patch，不写回。
@@ -107,12 +127,14 @@ Allowed tool classes:
 - `propose_bullet_rewrite`: 针对列表型 TipTap 内容做保格式润色，不把列表压成一整段文本。
 - `draft_section_item`: 生成一个待用户确认的 section/item draft。
 
-Disallowed direct tools:
+禁止的直接执行 tools：
 
 - `save_resume_without_confirmation`
 - `delete_section`
 - `publish_resume`
 - `change_template_without_confirmation`
+- `save_to_postgres`
+- `apply_patch_without_user_confirmation`
 
 工具调用结果应该回到 Web UI。Agent 只能返回 `ResumePatch`，用户点击确认后才进入 RHF 和 autosave。STAR 优化必须保守：缺 Result 指标就提示用户补事实，不能编造数字或业务结果。
 
@@ -157,6 +179,7 @@ assistant-ui 提供的是：
 ## 风险
 
 - assistant-ui 的协议和 AI SDK 版本演进快，接入前要重新确认文档。
+- assistant-ui/tap 与 Next.js 16 / React 19 的兼容层必须保持局部化；如果 `@assistant-ui/react` 升级后不再需要 shim，应删除 `lib/agent/assistant-ui-react-compat.ts` 和 `next.config.ts` 中对应替换。
 - 错选 stream protocol 会导致前端收到 chunk 但 runtime 无法完成消息。
 - 如果把 assistant-ui 放进 editor-client 主树，可能增加编辑器首屏 bundle。
 - 如果 Agent panel 直接写 RHF，容易破坏 autosave 队列和用户确认语义。
@@ -164,11 +187,12 @@ assistant-ui 提供的是：
 
 ## 接入前验收清单
 
-- Phase 0B Redis ready/rate limit 已完成。
-- Phase 0C Agent JWT 已完成。
-- Phase 1 或 Phase 2 已有稳定 Agent API 和 error envelope。
-- 已选定 assistant-ui runtime。
-- Phase 3A 已确认 JSON message/tool/patch contract；如果做 streaming，必须确认 stream protocol 与后端一致。
-- 已有 Agent Mode 左侧替换、不接管 RHF 的设计。
-- 已定义基础简历修改 tools 和 `ResumePatch` 确认写回规则。
-- 已有 bundle 和 lazy loading 策略。
+Phase 3A 开发或评审时，用这份清单防止偏离设计：
+
+- Phase 0B Redis ready/rate limit 和 Phase 0C Agent JWT 已完成，Phase 3A 不重写这些基础层。
+- Phase 3A 只使用 JSON message/tool/patch contract；如果做 streaming，必须进入 Phase 3B plan 并确认 stream protocol 与后端一致。
+- Agent Mode 是左侧替换，不是右侧 drawer、浮窗或全屏 workspace。
+- assistant-ui 不接管 RHF、autosave、模板、preview 或简历持久化。
+- 基础简历修改 tools 只返回 `ResumePatch`，所有写回都经过确认卡。
+- 富文本列表 patch 必须保留 TipTap 列表结构。
+- assistant-ui 只在 panel 打开后加载；bundle 和 lazy loading 策略不能倒退。

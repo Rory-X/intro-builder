@@ -17,7 +17,7 @@ flowchart LR
   Caddy["Caddy"] --> Agent
 
   Web -. "short-lived Agent JWT" .-> Agent
-  Agent -. "streamed suggestion" .-> Web
+  Agent -. "JSON/streamed suggestion" .-> Web
   Web -. "RHF write / autosave" .-> Browser
 ```
 
@@ -31,18 +31,21 @@ flowchart LR
 | Redis | rate limit、jti replay guard、短期 memory、后续 job/stream state | 永久简历内容真源 |
 | Postgres | 用户、简历、模板、分享链接等主数据 | Agent 临时 memory |
 
-## 当前已实现
+## 当前服务构件
 
-- `apps/agent` 作为独立 pnpm workspace package。
-- Node HTTP 服务入口：`apps/agent/src/index.ts`。
-- 配置解析：`apps/agent/src/config.ts`。
-- HTTP contract：`apps/agent/src/http.ts`。
-- 测试：`apps/agent/tests/config.test.ts`、`apps/agent/tests/http.test.ts`。
-- 部署骨架：`Dockerfile`、`compose.yaml`、`Caddyfile`。
+这些是当前 Agent 架构的基础构件；是否已上线以对应 PR、CI/CD 和 `deployment.md` 为准。
 
-## 下一层架构
+- `apps/agent` 是独立 pnpm workspace package，包含 Node/TypeScript HTTP 服务。
+- `apps/agent/src/http.ts` 统一承载 `/health`、Redis-backed `/ready`、protected `/v1/session`、`/v1/rich-text/polish`、`/v1/resume/helpers/:helperId`、`/v1/agent/messages`、404/405、request id 和 JSON error envelope。
+- `apps/agent/src/auth.ts` 校验短期 Agent JWT，并通过 Redis `jti` replay guard 防重放。
+- `apps/agent/src/redis.ts` 与 `apps/agent/src/rate-limit.ts` 提供 readiness、rate limit 和后续短期 memory 基础。
+- `apps/agent/src/rich-text-polish.ts`、`apps/agent/src/resume-helpers.ts`、`apps/agent/src/agent-messages.ts` 分别承载 Phase 1、Phase 2A、Phase 3A 的新增 Agent 能力。
+- `apps/agent/src/agent-tools.ts` 定义 Phase 3A 基础简历修改 tools 和 `ResumePatch` 校验；这些 tools 只返回建议，不写 Web 状态或 Postgres。
+- `apps/agent/Dockerfile`、`apps/agent/compose.yaml`、`apps/agent/Caddyfile` 是服务器部署骨架。
 
-Phase 0B 后，Agent 服务应该具备这些内部模块：
+## 内部模块形态
+
+Agent 服务按以下模块组织；后续新增能力应该复用这些边界，不要把 provider 调用、auth 或 rate limit 分散进 UI/BFF：
 
 ```mermaid
 flowchart TB
@@ -71,16 +74,16 @@ flowchart TB
 - 允许有限 retry，只用于幂等 GET 或只读请求。
 - 响应必须是 JSON。
 
-### 流式生成请求
+### 生成请求
 
-适合富文本润色、模块建议、聊天式 Agent panel。
+适合富文本润色、模块建议、聊天式 Agent panel。Phase 3A Agent panel 首版走 HTTP JSON message contract；streaming/DataStream 只属于 Phase 3B 或后续单独 plan。
 
 要求：
 
 - 使用短期 JWT。
 - 支持 AbortController 取消。
 - 不做盲目 retry。
-- 每个 chunk 必须有类型，不能让前端猜字符串语义。
+- 如果是 streaming，每个 chunk 必须有类型，不能让前端猜字符串语义。
 - Web 端仍负责确认写回和 autosave。
 
 ### Phase 3A Agent Mode 请求
@@ -107,6 +110,7 @@ Rules:
 - assistant-ui 只负责 thread、composer、tool display，不拥有简历状态。
 - 基础 tools 可以推理和生成 `ResumePatch`，但不能直接写 RHF 或 Postgres。
 - 富文本 patch 必须保持 TipTap JSON 语义；列表不能被压成无结构段落。
+- Phase 3A 基础 tools 固定为 `inspect_resume`、`propose_rich_text_rewrite`、`propose_summary_rewrite`、`propose_bullet_rewrite`、`draft_section_item`；新增 tool 必须先更新 `service-contracts.md` 与测试。
 
 ## 稳定性原则
 

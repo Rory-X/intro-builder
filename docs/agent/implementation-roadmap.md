@@ -230,8 +230,9 @@ Current Phase 3A branch status:
 
 - Implemented locally: browser-safe message/tool/patch types, capped chat context, Agent service tool validation, Agent message prompt/parser, and Agent `/v1/agent/messages` route.
 - Implemented locally: Web client/BFF `POST /api/agent/messages` with Auth.js/dev-bypass user lookup, resume ownership check, `agent:chat` token signing, Agent proxying, and structured error mapping.
-- In progress next: assistant-ui runtime adapter and left-column Agent panel.
-- Not implemented yet: visible assistant-ui Agent Mode, confirmation cards, RHF patch dispatcher, and production deploy of Phase 3A behavior.
+- Implemented locally: assistant-ui LocalRuntime seam, left-column Agent panel, preset workflow call to Web BFF, tool cards, confirmation cards, toolbar `Agent 模式` toggle, and preview-preserving editor switch.
+- In progress next: richer RHF patch dispatcher regression coverage and local browser smoke.
+- Not implemented yet: production deploy of Phase 3A behavior and Phase 3B streaming/mobile Sheet.
 
 Recommended architecture:
 

@@ -181,7 +181,9 @@ Current branch status:
 - Agent service `POST /v1/agent/messages` exists and requires `agent:chat`.
 - Shared Web contract and chat context builders exist.
 - Web BFF `/api/agent/messages` exists and validates Auth.js/dev-bypass user plus resume ownership before signing `agent:chat`.
-- assistant-ui runtime and left-column Agent panel are the next implementation slice.
+- assistant-ui LocalRuntime seam, thread/composer primitives, left-column Agent panel,
+  workflow BFF call, tool card, confirmation card, and editor toolbar `Agent 模式`
+  toggle exist locally.
 
 Local contract checks:
 
@@ -196,6 +198,15 @@ Web BFF slice verification:
 ```bash
 pnpm vitest run tests/unit/agent-client.test.ts tests/unit/agent-messages-route.test.ts
 ```
+
+Agent panel/editor integration verification:
+
+```bash
+pnpm vitest run tests/unit/agent-panel.test.tsx tests/unit/editor-client-live-preview.test.tsx
+pnpm tsc --noEmit
+```
+
+These commands are gates, not historical pass claims. Do not mark Phase 3A ready until they pass in the current worktree and a desktop editor smoke confirms the preview stays visible.
 
 Manual Phase 3A smoke should use this shape after the BFF exists:
 
@@ -237,6 +248,7 @@ Current known warnings:
 - `pnpm lint` has existing Web app warnings unrelated to the Agent package.
 - `pnpm build` may print the intentional build-time `DATABASE_URL` placeholder warning when `.env.local` is absent.
 - `pnpm build` uses `next build --webpack` for deterministic local and Agent deploy verification. The default Turbopack build path was observed to fail when build-time Google Fonts `.woff2` downloads were reset.
+- Phase 3A adds a targeted assistant-ui/tap React 19 webpack compatibility shim in `next.config.ts` and `lib/agent/assistant-ui-react-compat.ts`. It only replaces tap dispatcher's `react` import; remove it if a future assistant-ui/tap version no longer reads the removed React 18 internals export.
 
 ## Docker and Caddy
 

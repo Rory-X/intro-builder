@@ -228,7 +228,7 @@ Stop and redesign if any of these appear:
 
 - Browser receives provider key。
 - Agent writes directly to Postgres。
-- assistant-ui imported into the editor main bundle before Phase 3。
+- assistant-ui imports spread outside the Agent panel/runtime seam or load eagerly before Agent Mode is opened。
 - Redis stores full resume documents without TTL。
 - Automatic retry wraps provider generation calls。
 - `/health` fails when Redis is down。

@@ -172,8 +172,8 @@ Business endpoints:
 
 Current Phase 3A branch status:
 
-- Implemented locally: shared `AgentMessageRequest`/`AgentMessageResponse` types, capped chat context builder, Agent tool/patch validation, Agent service `POST /v1/agent/messages` route, and Web BFF `POST /api/agent/messages`.
-- Pending in the next slice: assistant-ui runtime adapter, left-column Agent panel, confirmation cards, and RHF writeback dispatcher.
+- Implemented locally: shared `AgentMessageRequest`/`AgentMessageResponse` types, capped chat context builder, Agent tool/patch validation, Agent service `POST /v1/agent/messages` route, Web BFF `POST /api/agent/messages`, assistant-ui runtime seam, left-column Agent panel, confirmation cards, and initial RHF writeback dispatcher.
+- Pending in the next slice: broader RHF patch regression coverage, local browser smoke, and production deploy.
 - Phase 3A still uses HTTP JSON as the source of truth. The proto file is an IDL draft to keep naming aligned; it is not a requirement to introduce gRPC.
 
 ## Agent JWT Contract
@@ -457,7 +457,12 @@ Phase 3A 基础 tools：
 | `propose_rich_text_rewrite` | 目标富文本 field 的 plain text 和上下文 | `replace_tiptap_json` patch | No |
 | `propose_summary_rewrite` | `basics.summary` 和上下文 | `replace_plain_text` patch | No |
 | `propose_bullet_rewrite` | 列表型 TipTap field 的 plain text 和结构摘要 | 保持列表结构的 `replace_tiptap_json` patch | No |
-| `draft_section_item` | 简历摘要、目标 section、用户目标 | 新 section/item 草稿 patch | No |
+| `draft_section_item` | 简历摘要、目标 section、用户目标 | 待确认草稿 envelope；Phase 3A 默认不直接插入 | No |
+
+命名规则：
+
+- 以上五个 tool 名是 Phase 3A 的 canonical contract，代码、测试、prompt、proto 草案和 UI 文案都应引用同一组名字。
+- 早期草案里出现过的 `suggest_rewrite`、`draft_section`、`explain_template` 不属于当前 Phase 3A JSON contract；如需恢复，必须先更新本文件、proto、Agent validator 和 Web confirmation 语义。
 
 Request:
 
@@ -573,7 +578,7 @@ Patch rules:
 
 - `replace_plain_text` 只能用于 `basics.summary`。
 - `replace_tiptap_json` 用于富文本字段，必须保持原有段落/列表语义；原文是有序或无序列表时，润色结果也必须是对应列表结构，而不是一整段无结构文本。
-- `draft_section_item` 只能返回草稿 patch；Web 展示确认卡后才能插入，不允许 Agent 自行新增 section/item。
+- `draft_section_item` 只能返回草稿 envelope；当前 Phase 3A `ResumePatch.operation` 还没有 insert 语义，不允许 Agent 或 UI 顺手新增 section/item。如需插入，必须先新增 contract、allowlist、确认卡和 RHF dispatcher 测试。
 - `riskFlags` 必须标记需要用户补事实的地方，特别是 STAR 的 Result 指标。
 - Agent provider 输出必须是 JSON；Agent 负责解析和 allowlist 校验，失败返回 `dependency_unavailable` 或 `bad_request`。
 - Web 展示 `proposedPatches` 的确认卡；用户点击 `应用` 后才 `setValue` 到 RHF，并 dispatch `resume:flush-autosave`。
