@@ -174,16 +174,16 @@ Direct Agent replay guard check:
 2. Reuse the exact same bearer token against `GET /v1/session`.
 3. Expected result is `401 unauthorized` with `Bearer token has already been used`.
 
-## Phase 3A Agent Message Contract Smoke
+## Phase 3 Agent Message Contract Smoke
 
-Current branch status:
+Current implementation status:
 
 - Agent service `POST /v1/agent/messages` exists and requires `agent:chat`.
 - Shared Web contract and chat context builders exist.
 - Web BFF `/api/agent/messages` exists and validates Auth.js/dev-bypass user plus resume ownership before signing `agent:chat`.
 - assistant-ui LocalRuntime seam, thread/composer primitives, left-column Agent panel,
   workflow BFF call, tool card, confirmation card, and editor toolbar `Agent 模式`
-  toggle exist locally.
+  toggle are implemented.
 
 Local contract checks:
 
@@ -206,9 +206,9 @@ pnpm vitest run tests/unit/agent-panel.test.tsx tests/unit/editor-client-live-pr
 pnpm tsc --noEmit
 ```
 
-These commands are gates, not historical pass claims. Do not mark Phase 3A ready until they pass in the current worktree and a desktop editor smoke confirms the preview stays visible.
+These commands are gates, not historical pass claims. Do not mark future Agent Mode changes ready until they pass in the current worktree and a desktop editor smoke confirms the preview stays visible.
 
-Manual Phase 3A smoke should use this shape after the BFF exists:
+Manual Phase 3 smoke should use this shape:
 
 ```text
 Editor Agent 模式

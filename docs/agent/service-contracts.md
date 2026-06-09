@@ -424,7 +424,7 @@ Rules:
 
 ## Agent Messages Contract
 
-Phase 3A 计划新增聊天式 Agent Mode。该能力使用 assistant-ui 承载多轮 thread、composer 和 tool display，但产品状态仍由 Web 编辑器掌管。
+Phase 3 已新增聊天式 Agent Mode。该能力使用 assistant-ui 承载多轮 thread、composer 和 tool display，但产品状态仍由 Web 编辑器掌管。
 
 重要边界：
 

@@ -220,20 +220,20 @@ Exit gates:
 
 ## Phase 3: assistant-ui Agent Panel
 
-Status: Phase 3B implemented locally by `docs/superpowers/specs/2026-06-09-agent-mode-streaming-phase-3b-design.md` and `docs/superpowers/plans/2026-06-09-agent-mode-streaming-phase-3b.md`, pending PR/CI/deploy confirmation.
+Status: implemented, merged, and deployed by PR #43. Design and execution references are `docs/superpowers/specs/2026-06-09-agent-mode-streaming-phase-3b-design.md` and `docs/superpowers/plans/2026-06-09-agent-mode-streaming-phase-3b.md`.
 
 Goal: 引入聊天式 Agent Mode，承载多轮对话、可见 tool calling 和基础简历修改建议；首版左侧编辑列切换为 Agent panel，右侧 `LivePreview` 保持可见。
 
 Use assistant-ui here, not earlier.
 
-Current Phase 3B branch status:
+Current Phase 3B production status:
 
-- Implemented locally: browser-safe message/tool/operation types, capped chat context, Agent service tool validation, Agent message prompt/parser, and Agent `/v1/agent/messages` route.
-- Implemented locally: Web client/BFF `POST /api/agent/messages` with Auth.js/dev-bypass user lookup, resume ownership check, `agent:chat` token signing, JSON fallback, AG-UI SSE proxying, and structured error mapping.
-- Implemented locally: assistant-ui LocalRuntime async generator, left-column Agent panel, preset workflow call to Web BFF, streamed text rendering, tool cards, confirmation cards, toolbar `Agent 模式` toggle, preview-preserving editor switch, and mobile Agent Sheet.
-- Implemented locally: Web-owned confirmed writeback for `update_section` and `reorder_sections`; `delete_section`/`insert_section` remain displayed operations until array item identity and module manager tests are added.
-- Verified locally on this branch: `pnpm test`, `pnpm tsc --noEmit`, `pnpm agent:build`, `pnpm lint`, `pnpm build`。
-- In progress next: PR/CI/deploy confirmation and browser smoke against the deployed Web + Agent path.
+- Implemented and merged: browser-safe message/tool/operation types, capped chat context, Agent service tool validation, Agent message prompt/parser, and Agent `/v1/agent/messages` route.
+- Implemented and merged: Web client/BFF `POST /api/agent/messages` with Auth.js/dev-bypass user lookup, resume ownership check, `agent:chat` token signing, JSON fallback, AG-UI SSE proxying, and structured error mapping.
+- Implemented and merged: assistant-ui LocalRuntime async generator, left-column Agent panel, preset workflow call to Web BFF, streamed text rendering, tool cards, confirmation cards, toolbar `Agent 模式` toggle, preview-preserving editor switch, and mobile Agent Sheet.
+- Implemented and merged: Web-owned confirmed writeback for `update_section` and `reorder_sections`; `delete_section`/`insert_section` remain displayed operations until array item identity and module manager tests are added.
+- Verified before merge: `pnpm test`, `pnpm tsc --noEmit`, `pnpm agent:build`, `pnpm lint`, `pnpm build`。
+- Verified on `main`: GitHub Actions CI run `27191002056` passed, Agent CD run `27191002053` passed, Vercel status for merge commit `c36362c33239` passed, and public Agent `/health` plus `/ready` returned `HTTP/2 200` with version `github-c36362c33239`。
 
 Recommended architecture:
 
@@ -281,7 +281,7 @@ Exit gates:
 - `Agent 模式` opens from desktop editor toolbar。
 - Left panel switches to Agent panel while right `LivePreview` remains visible。
 - FormProvider/RHF state, section order, template state, and autosave queue are not reset。
-- First e2e smoke: click `诊断整份简历` and see user message, streamed assistant message, at least one tool card。
+- Contract smoke: tests cover clicking `诊断整份简历`, Web BFF SSE request, streamed assistant message, tool card rendering, and confirmation card rendering。
 - At least one proposed `ResumeOperation` can render as a confirmation card。
 - Patch does not mutate resume content before `应用`。
 - Confirmed patch writes through existing RHF path and triggers autosave flush。

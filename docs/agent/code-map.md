@@ -121,7 +121,7 @@ Implemented components:
 | `tests/unit/section-helper-button.test.tsx` | 2A | section helper request shape |
 | `tests/unit/resume-helper-card.test.tsx` | 2A | suggestion card rendering |
 
-Phase 3B branch-local components:
+Phase 3B components:
 
 | File | Phase | Responsibility |
 | --- | --- | --- |
@@ -139,7 +139,7 @@ Phase 3B branch-local components:
 
 Status note:
 
-- These files are intentionally part of the Phase 3B local development branch until PR/CI/deploy confirms them.
+- These files shipped in PR #43 and are now the canonical Phase 3B implementation.
 - Do not recreate parallel files such as `agent-chat-panel.tsx` or `editor-client-agent-mode.test.tsx` unless the plan is updated first.
 
 Reuse:
