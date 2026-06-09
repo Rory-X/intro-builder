@@ -72,6 +72,9 @@ export async function POST(req: Request) {
       toolCalls: result.data.toolCalls,
       proposedOperations: result.data.proposedOperations,
       usage: result.data.usage,
+      ...(result.data.cached
+        ? { cached: true, cachedAt: result.data.cachedAt }
+        : {}),
     });
   } catch (error) {
     if (error instanceof AgentClientError) {

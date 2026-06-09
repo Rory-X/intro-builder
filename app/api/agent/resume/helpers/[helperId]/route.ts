@@ -60,6 +60,9 @@ export async function POST(req: Request, context: RouteContext) {
       helperId: result.data.helperId,
       result: result.data.result,
       usage: result.data.usage,
+      ...(result.data.cached
+        ? { cached: true, cachedAt: result.data.cachedAt }
+        : {}),
     });
   } catch (error) {
     if (error instanceof AgentClientError) {

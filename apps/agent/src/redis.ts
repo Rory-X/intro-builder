@@ -12,12 +12,13 @@ export type RedisReadyConnection = {
 };
 
 export type RedisConnection = RedisReadyConnection & {
+  get: (key: string) => Promise<string | null>;
   incr: (key: string) => Promise<number>;
   expire: (key: string, seconds: number) => Promise<unknown>;
   set: (
     key: string,
     value: string,
-    options: { NX: true; EX: number },
+    options: { NX: true; EX: number } | { EX: number },
   ) => Promise<"OK" | null>;
 };
 

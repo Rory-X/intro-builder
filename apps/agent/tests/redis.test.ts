@@ -106,6 +106,10 @@ class FakeRedisConnection implements RedisConnection {
     return 1;
   }
 
+  async get(): Promise<string | null> {
+    return null;
+  }
+
   async expire(): Promise<unknown> {
     return "OK";
   }
@@ -113,9 +117,11 @@ class FakeRedisConnection implements RedisConnection {
   async set(
     key: string,
     value: string,
-    options: { NX: true; EX: number },
+    options: { NX: true; EX: number } | { EX: number },
   ): Promise<"OK" | null> {
-    this.setCalls.push({ key, value, options });
+    if ("NX" in options) {
+      this.setCalls.push({ key, value, options });
+    }
     return "OK";
   }
 
