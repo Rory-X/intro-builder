@@ -631,3 +631,39 @@ Rules:
 - 不同 scope 分开计数。
 - user id 使用稳定 hash，不直接在 Redis key 暴露原始 id。
 - 超限响应必须包含 `retryAfterSeconds`。
+
+## AI Result Cache
+
+Agent 生成类接口会在 auth、resumeId match、请求校验和 provider 配置检查之后计算缓存 key。缓存命中时直接返回结构化结果，不再调用模型 provider，也不进入模型 rate limit；JWT replay guard 仍照常执行。
+
+Cache key format:
+
+```text
+ai_cache:{scope}:{userHash}:{resumeHash}:{inputHash}
+```
+
+`inputHash` 包含 scope、validated request payload、prompt/cache version 和 model name。prompt 或模型变化会自然生成新 key。
+
+TTL:
+
+| Scope | TTL |
+| --- | --- |
+| `rich_text:polish` | 7 days |
+| `resume:helper` | 24 hours |
+| `agent:chat` | 10 minutes |
+
+Cache hit responses add:
+
+```json
+{
+  "cached": true,
+  "cachedAt": "2026-06-09T00:00:00.000Z"
+}
+```
+
+Rules:
+
+- Redis cache value stores parsed structured responses, not raw provider text.
+- Cache entries must always have TTL.
+- Cache read/write failures must not turn a successful model call into a failed request.
+- `agent:chat` cache is exact-request caching only; it is not semantic conversation memory.

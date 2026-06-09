@@ -94,6 +94,8 @@ describe("POST /api/agent/resume/helpers/[helperId]", () => {
           inputTokens: 620,
           outputTokens: 180,
         },
+        cached: true,
+        cachedAt: "2026-06-09T00:00:00.000Z",
       },
     });
     (createAgentClient as unknown as Mock).mockReturnValue({ runResumeHelper });
@@ -126,6 +128,8 @@ describe("POST /api/agent/resume/helpers/[helperId]", () => {
         inputTokens: 620,
         outputTokens: 180,
       },
+      cached: true,
+      cachedAt: "2026-06-09T00:00:00.000Z",
     });
   });
 

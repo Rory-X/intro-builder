@@ -88,6 +88,8 @@ export type RichTextPolishResponse = {
     inputTokens: number;
     outputTokens: number;
   };
+  cached?: true;
+  cachedAt?: string;
 };
 
 export type ResumeHelperId = "resume-diagnose" | "section-next-steps";
@@ -155,6 +157,8 @@ export type ResumeHelperResponse = {
     inputTokens: number;
     outputTokens: number;
   };
+  cached?: true;
+  cachedAt?: string;
 };
 
 export type AgentClientResult<T> = {

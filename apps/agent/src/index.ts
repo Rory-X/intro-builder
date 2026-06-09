@@ -1,5 +1,6 @@
 import { loadConfig } from "./config.js";
 import { createAgentServer } from "./http.js";
+import { createRedisAiCacheStore } from "./ai-cache.js";
 import {
   checkRedisReady,
   closeRedisConnection,
@@ -24,6 +25,7 @@ const server = createAgentServer({
     timeoutMs: config.redisConnectTimeoutMs,
   }),
   rateLimitStore: redis,
+  aiCacheStore: createRedisAiCacheStore(redis),
   richTextPolishProvider: createOpenAICompatibleRichTextPolishProvider(config),
   resumeHelperProvider: createOpenAICompatibleResumeHelperProvider(config),
   agentMessageProvider: createOpenAICompatibleAgentMessageProvider(config),

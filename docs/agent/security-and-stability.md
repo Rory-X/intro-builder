@@ -86,6 +86,12 @@ Rules:
 - Do not retry provider calls after rate limit failure。
 - Free/paid tiers belong to Phase 4, but the primitive should support config overrides.
 
+Cache hits:
+
+- Exact AI result cache hits do not consume model rate limit quota.
+- Cache lookup happens only after auth, replay guard, resumeId match, request validation, and provider configuration checks.
+- Cache failures degrade to normal provider generation; they do not fail the request by themselves.
+
 ## Timeouts
 
 Recommended timeouts:
@@ -230,6 +236,7 @@ Stop and redesign if any of these appear:
 - Agent writes directly to Postgres。
 - assistant-ui imports spread outside the Agent panel/runtime seam or load eagerly before Agent Mode is opened。
 - Redis stores full resume documents without TTL。
+- Redis stores AI cache entries without TTL。
 - Automatic retry wraps provider generation calls。
 - `/health` fails when Redis is down。
 - Error toast shows raw provider stack traces。

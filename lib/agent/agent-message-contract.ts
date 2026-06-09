@@ -100,4 +100,6 @@ export type AgentMessageResponse = {
     inputTokens: number;
     outputTokens: number;
   };
+  cached?: true;
+  cachedAt?: string;
 };

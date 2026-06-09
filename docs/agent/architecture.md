@@ -38,7 +38,7 @@ flowchart LR
 - `apps/agent` 是独立 pnpm workspace package，包含 Node/TypeScript HTTP 服务。
 - `apps/agent/src/http.ts` 统一承载 `/health`、Redis-backed `/ready`、protected `/v1/session`、`/v1/rich-text/polish`、`/v1/resume/helpers/:helperId`、`/v1/agent/messages`、404/405、request id 和 JSON error envelope。
 - `apps/agent/src/auth.ts` 校验短期 Agent JWT，并通过 Redis `jti` replay guard 防重放。
-- `apps/agent/src/redis.ts` 与 `apps/agent/src/rate-limit.ts` 提供 readiness、rate limit 和后续短期 memory 基础。
+- `apps/agent/src/redis.ts`、`apps/agent/src/rate-limit.ts` 与 `apps/agent/src/ai-cache.ts` 提供 readiness、rate limit、AI 结果缓存和后续短期 memory 基础。
 - `apps/agent/src/rich-text-polish.ts`、`apps/agent/src/resume-helpers.ts`、`apps/agent/src/agent-messages.ts` 分别承载 Phase 1、Phase 2A、Phase 3A 的新增 Agent 能力。
 - `apps/agent/src/agent-tools.ts` 定义 Phase 3B 最小简历操作 tools 和 `ResumeOperation` 校验；这些 tools 只返回待确认操作，不写 Web 状态或 Postgres。
 - `apps/agent/Dockerfile`、`apps/agent/compose.yaml`、`apps/agent/Caddyfile` 是服务器部署骨架。
@@ -120,7 +120,7 @@ Rules:
 4. 模型 provider key 不进入浏览器，也不进入 Next.js client bundle。
 5. 所有 Agent 请求必须带 request id，并在 Web 与 Agent 日志间贯通。
 6. 生成类请求默认非幂等，失败后由用户显式重试。
-7. Redis 只存临时状态，不成为简历内容真源。
+7. Redis 只存临时状态和带 TTL 的 AI 结果缓存，不成为简历内容真源。
 8. 旧 OCR、导入简历、AI 解析不穿过这个微服务，除非未来有单独迁移 plan。
 
 ## 香港 2C4G 部署约束
