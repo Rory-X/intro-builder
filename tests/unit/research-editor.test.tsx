@@ -20,8 +20,10 @@ function Harness() {
     {
       name: "大模型 Agent 评估",
       role: "第一作者",
+      location: "北京",
       start: "2025-01",
       end: "2025-06",
+      paperTitle: "LLM Agent Eval Framework",
       link: "https://example.com/paper",
       content: { type: "doc", content: [] },
     },
@@ -36,12 +38,12 @@ function Harness() {
 }
 
 describe("ResearchEditor", () => {
-  it("places paper link in the half-width metadata grid after role", () => {
+  it("renders research fields in correct order: role, location, dates, paper title, paper link", () => {
     const { container } = render(<Harness />);
 
-    const labels = screen.getAllByText(/^(角色|论文链接|开始|结束)$/).map((el) => el.textContent);
-    expect(labels).toEqual(["角色", "论文链接", "开始", "结束"]);
-    expect(screen.getByText("论文链接").closest("div")?.className).not.toContain("col-span-2");
-    expect(container.querySelector(".grid.grid-cols-2")?.textContent).toContain("角色论文链接开始结束");
+    const labels = screen.getAllByText(/^(角色|城市|开始|结束|论文名称|论文链接)$/).map((el) => el.textContent);
+    expect(labels).toEqual(["角色", "城市", "开始", "结束", "论文名称", "论文链接"]);
+    expect(screen.getByText("论文名称").closest("div")?.className).toContain("col-span-2");
+    expect(screen.getByText("论文链接").closest("div")?.className).toContain("col-span-2");
   });
 });

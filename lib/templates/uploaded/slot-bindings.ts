@@ -434,9 +434,9 @@ function derivePresetItems(sectionId: string, content: ResumeContent): ItemView[
       return (content.research ?? []).map((r) => ({
         title: r.name,
         subtitle: r.role,
-        meta: "",
+        meta: r.paperTitle ?? "",
         dateRange: formatDateRange(r.start, r.end),
-        location: "",
+        location: r.location ?? "",
         bullets: r.content,
         tags: [],
         link: r.link ?? "",

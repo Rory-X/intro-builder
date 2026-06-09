@@ -42,7 +42,7 @@ export function ResearchEditor() {
           itemCount={fields.length}
           isOpen={isOpen}
           onToggle={() => setIsOpen(!isOpen)}
-          onAdd={() => { append({ name: "", role: "", start: "", end: "", link: "", content: emptyDoc() }); setIsOpen(true); }}
+          onAdd={() => { append({ name: "", role: "", location: "", start: "", end: "", paperTitle: "", link: "", content: emptyDoc() }); setIsOpen(true); }}
         />
       </div>
       <div className={cn(
@@ -67,9 +67,11 @@ export function ResearchEditor() {
                 <div className="grid grid-cols-2 gap-x-2 gap-y-[5px]">
                   <div className="col-span-2 flex flex-col gap-1.5"><Label>课题名</Label><Input {...register(`research.${idx}.name` as const)} /></div>
                   <div className="flex flex-col gap-1.5"><Label>角色</Label><Input {...register(`research.${idx}.role` as const)} /></div>
-                  <div className="flex flex-col gap-1.5"><Label>论文链接</Label><Input {...register(`research.${idx}.link` as const)} /></div>
+                  <div className="flex flex-col gap-1.5"><Label>城市</Label><Input {...register(`research.${idx}.location` as const)} /></div>
                   <div className="flex flex-col gap-1.5"><Label>开始</Label><Input {...register(`research.${idx}.start` as const)} /></div>
                   <div className="flex flex-col gap-1.5"><Label>结束</Label><Input {...register(`research.${idx}.end` as const)} /></div>
+                  <div className="col-span-2 flex flex-col gap-1.5"><Label>论文名称</Label><Input {...register(`research.${idx}.paperTitle` as const)} /></div>
+                  <div className="col-span-2 flex flex-col gap-1.5"><Label>论文链接</Label><Input {...register(`research.${idx}.link` as const)} /></div>
                 </div>
                 <div>
                   <Label>研究描述</Label>
