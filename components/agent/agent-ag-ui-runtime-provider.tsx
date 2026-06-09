@@ -44,7 +44,7 @@ export type AgentAgUiRuntimeProviderProps = {
   getIntroBuilderForwardedProps: (
     workflowId: AgentWorkflowId | null,
   ) => IntroBuilderForwardedProps;
-  onRunStart: () => void;
+  onRunStart: (messages: readonly { role?: unknown }[]) => void;
   onTextDelta: () => void;
   onRunSettled: () => void;
   onError: (message: string) => void;
@@ -140,7 +140,7 @@ class IntroBuilderHttpAgent extends HttpAgent {
   private readonly getIntroBuilderForwardedProps: (
     workflowId: AgentWorkflowId | null,
   ) => IntroBuilderForwardedProps;
-  private readonly onRunStart: () => void;
+  private readonly onRunStart: (messages: readonly { role?: unknown }[]) => void;
   private readonly onRunSettled: () => void;
 
   constructor({
@@ -157,7 +157,7 @@ class IntroBuilderHttpAgent extends HttpAgent {
     getIntroBuilderForwardedProps: (
       workflowId: AgentWorkflowId | null,
     ) => IntroBuilderForwardedProps;
-    onRunStart: () => void;
+    onRunStart: (messages: readonly { role?: unknown }[]) => void;
     onTextDelta: () => void;
     onRunSettled: () => void;
     onError: (message: string) => void;
@@ -206,7 +206,7 @@ class IntroBuilderHttpAgent extends HttpAgent {
       );
     }
 
-    this.onRunStart();
+    this.onRunStart(this.messages ?? []);
     try {
       return await super.runAgent(
         {
