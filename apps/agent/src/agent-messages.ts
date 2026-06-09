@@ -1,11 +1,12 @@
+import { EventType, type BaseEvent } from "@ag-ui/core";
 import type { AuthenticatedAgentSession } from "./auth.js";
 import type { AgentConfig } from "./config.js";
 import type { AgentErrorCode } from "./errors.js";
 import {
   validateAgentToolOutput,
-  isAllowedPatchFieldPath,
+  isAllowedOperationFieldPath,
   type AgentToolCall,
-  type ResumePatch,
+  type ResumeOperation,
 } from "./agent-tools.js";
 import { RichTextPolishProviderError } from "./rich-text-polish.js";
 
@@ -72,10 +73,16 @@ export type AgentMessageParseResult =
       result: {
         message: { id: string; role: "assistant"; content: string };
         toolCalls: AgentToolCall[];
-        proposedPatches: ResumePatch[];
+        proposedOperations: ResumeOperation[];
       };
     }
   | { ok: false; message: string };
+
+export type ToAgUiAgentEventsInput = {
+  requestId: string;
+  threadId: string;
+  result: Extract<AgentMessageParseResult, { ok: true }>["result"];
+};
 
 export type AgentMessageValidationResult =
   | { ok: true; request: AgentMessageRequest }
@@ -153,11 +160,11 @@ export function buildAgentMessagePrompt(
     developer: [
       "输出必须是合法 JSON，不要 Markdown，不要解释推理过程。",
       "JSON schema:",
-      '{"message":{"id":"string","role":"assistant","content":"string"},"toolCalls":[{"id":"string","name":"inspect_resume|propose_rich_text_rewrite|propose_summary_rewrite|propose_bullet_rewrite|draft_section_item","status":"completed","title":"string","summary":"string","input":{},"result":{}}],"proposedPatches":[]}',
-      "可用 tools: inspect_resume, propose_rich_text_rewrite, propose_summary_rewrite, propose_bullet_rewrite, draft_section_item",
-      "所有简历修改必须作为 proposedPatches 返回，不能声称已经保存。",
+      '{"message":{"id":"string","role":"assistant","content":"string"},"toolCalls":[{"id":"string","name":"resume_read|resume_update_section|resume_delete_section|resume_reorder_sections|resume_insert_section","status":"completed","title":"string","summary":"string","input":{},"result":{}}],"proposedOperations":[]}',
+      "可用 tools: resume_read, resume_update_section, resume_delete_section, resume_reorder_sections, resume_insert_section",
+      "所有简历修改必须作为 proposedOperations 返回，不能声称已经保存。",
       "使用 STAR 原则时，不得编造 Result 指标。",
-      "原文是无序列表或有序列表时，propose_bullet_rewrite 必须保持对应 TipTap 列表结构。",
+      "原文是无序列表或有序列表时，resume_update_section 必须保持对应 TipTap 列表结构。",
       "如果缺少真实结果、指标或范围，用 riskFlags 标记 needs_user_fact。",
       `当前 workflowId=${request.workflowId ?? "none"}。`,
     ].join("\n"),
@@ -213,7 +220,7 @@ export function parseAgentMessageProviderResponse(
 
   const output = validateAgentToolOutput({
     toolCalls: parsed.toolCalls,
-    proposedPatches: parsed.proposedPatches,
+    proposedOperations: parsed.proposedOperations,
   });
   if (!output.ok) return output;
 
@@ -222,9 +229,79 @@ export function parseAgentMessageProviderResponse(
     result: {
       message: message.message,
       toolCalls: output.output.toolCalls,
-      proposedPatches: output.output.proposedPatches,
+      proposedOperations: output.output.proposedOperations,
     },
   };
+}
+
+export function toAgUiAgentEvents({
+  requestId,
+  threadId,
+  result,
+}: ToAgUiAgentEventsInput): BaseEvent[] {
+  const runId = requestId;
+  const messageId = result.message.id;
+  const events: BaseEvent[] = [
+    { type: EventType.RUN_STARTED, threadId, runId },
+    {
+      type: EventType.TEXT_MESSAGE_START,
+      messageId,
+      role: "assistant",
+    },
+    {
+      type: EventType.TEXT_MESSAGE_CONTENT,
+      messageId,
+      delta: result.message.content,
+    },
+  ];
+
+  for (const toolCall of result.toolCalls) {
+    const operations = result.proposedOperations.filter(
+      (operation) => operation.toolCallId === toolCall.id,
+    );
+    events.push(
+      {
+        type: EventType.TOOL_CALL_START,
+        toolCallId: toolCall.id,
+        toolCallName: toolCall.name,
+        parentMessageId: messageId,
+      },
+      {
+        type: EventType.TOOL_CALL_ARGS,
+        toolCallId: toolCall.id,
+        delta: JSON.stringify(toolCall.input),
+      },
+      {
+        type: EventType.TOOL_CALL_END,
+        toolCallId: toolCall.id,
+      },
+      {
+        type: EventType.TOOL_CALL_RESULT,
+        messageId: `${toolCall.id}_result`,
+        toolCallId: toolCall.id,
+        role: "tool",
+        content: JSON.stringify({
+          toolCall,
+          proposedOperations: operations,
+        }),
+      },
+    );
+  }
+
+  events.push(
+    {
+      type: EventType.TEXT_MESSAGE_END,
+      messageId,
+    },
+    {
+      type: EventType.RUN_FINISHED,
+      threadId,
+      runId,
+      outcome: { type: "success" },
+    },
+  );
+
+  return events;
 }
 
 export function createOpenAICompatibleAgentMessageProvider(
@@ -395,7 +472,7 @@ function validateContext(
       "context.sections.fieldPath",
     );
     if (!fieldPath.ok) return fieldPath;
-    if (!isAllowedPatchFieldPath(fieldPath.value)) {
+    if (!isAllowedOperationFieldPath(fieldPath.value)) {
       return badRequest("context.sections.fieldPath is not allowed");
     }
     const plainText = requiredString(

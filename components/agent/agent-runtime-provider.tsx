@@ -18,7 +18,7 @@ export type AgentRuntimeProviderProps = {
       messages: readonly ThreadMessage[];
       runConfig: ChatModelRunOptions["runConfig"];
     },
-  ) => Promise<string>;
+  ) => AsyncIterable<string>;
 };
 
 export function AgentRuntimeProvider({
@@ -26,11 +26,20 @@ export function AgentRuntimeProvider({
   sendMessage,
 }: AgentRuntimeProviderProps) {
   const adapter: ChatModelAdapter = {
-    async run({ messages, abortSignal, runConfig }) {
+    async *run({ messages, abortSignal, runConfig }) {
       const content = getLastUserText(messages);
-      const text = await sendMessage(content, { abortSignal, messages, runConfig });
-      return {
-        content: [{ type: "text", text }],
+      let latestText = "";
+
+      for await (const text of sendMessage(content, { abortSignal, messages, runConfig })) {
+        latestText = text;
+        yield {
+          content: [{ type: "text", text }],
+        };
+      }
+
+      yield {
+        content: [{ type: "text", text: latestText }],
+        status: { type: "complete", reason: "stop" },
       };
     },
   };

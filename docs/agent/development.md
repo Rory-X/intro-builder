@@ -215,7 +215,7 @@ Editor Agent 模式
   -> POST /api/agent/messages
   -> sign agent:chat JWT after Auth.js and resume ownership checks
   -> POST /v1/agent/messages
-  -> return assistant message, toolCalls, proposedPatches
+  -> return AG-UI text/tool events with proposedOperations
   -> user clicks 应用
   -> Web allowlisted dispatcher calls RHF setValue
   -> dispatch resume:flush-autosave

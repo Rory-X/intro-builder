@@ -280,7 +280,7 @@ describe("Web Agent client", () => {
           toolCalls: [
             {
               id: "tool_1",
-              name: "inspect_resume",
+              name: "resume_read",
               status: "completed",
               title: "检查简历",
               summary: "发现工作经历缺少结果。",
@@ -288,7 +288,7 @@ describe("Web Agent client", () => {
               result: { topIssue: "缺少结果" },
             },
           ],
-          proposedPatches: [],
+          proposedOperations: [],
           usage: {
             provider: "fake-provider",
             model: "fake-model",
@@ -319,7 +319,7 @@ describe("Web Agent client", () => {
 
     expect(result.requestId).toBe("req_agent_message");
     expect(result.data.message.content).toContain("优化第一段工作经历");
-    expect(result.data.toolCalls[0]?.name).toBe("inspect_resume");
+    expect(result.data.toolCalls[0]?.name).toBe("resume_read");
     expect(fetchMock).toHaveBeenCalledWith(
       "https://agent.test/intro-builder/agent/v1/agent/messages",
       expect.objectContaining({
@@ -328,6 +328,54 @@ describe("Web Agent client", () => {
           Authorization: "Bearer jwt-token",
           "X-Request-Id": "req_web_message",
           "Content-Type": "application/json",
+        },
+        body: JSON.stringify(request),
+      }),
+    );
+  });
+
+  it("streams Agent messages with AG-UI SSE accept header", async () => {
+    const stream = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(new TextEncoder().encode('data: {"type":"RUN_STARTED"}\n\n'));
+        controller.close();
+      },
+    });
+    const fetchMock = vi.fn(async (): Promise<Response> => {
+      return new Response(stream, {
+        status: 200,
+        headers: {
+          "content-type": "text/event-stream",
+          "x-request-id": "req_agent_stream",
+        },
+      });
+    });
+    const client = createAgentClient({
+      baseUrl: "https://agent.test/intro-builder/agent",
+      fetchFn: fetchMock as unknown as typeof fetch,
+      createRequestId: () => "req_web_stream",
+    });
+    const request = validAgentMessageRequest();
+
+    const result = await client.streamAgentMessage({
+      token: "jwt-token",
+      request,
+    });
+
+    expect(result.requestId).toBe("req_agent_stream");
+    expect(result.data.contentType).toBe("text/event-stream");
+    await expect(new Response(result.data.body).text()).resolves.toContain(
+      "RUN_STARTED",
+    );
+    expect(fetchMock).toHaveBeenCalledWith(
+      "https://agent.test/intro-builder/agent/v1/agent/messages",
+      expect.objectContaining({
+        method: "POST",
+        headers: {
+          Authorization: "Bearer jwt-token",
+          "X-Request-Id": "req_web_stream",
+          "Content-Type": "application/json",
+          Accept: "text/event-stream",
         },
         body: JSON.stringify(request),
       }),

@@ -1,6 +1,7 @@
 import { AddressInfo } from "node:net";
 import type { Server } from "node:http";
 
+import { EventType, BaseEventSchema, type BaseEvent } from "@ag-ui/core";
 import { SignJWT } from "jose";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -583,7 +584,7 @@ describe("agent HTTP service", () => {
     });
   });
 
-  it("returns Agent messages, tool calls, and proposed patches from /v1/agent/messages", async () => {
+  it("returns Agent messages, tool calls, and proposed operations from /v1/agent/messages", async () => {
     const provider = new FakeAgentMessageProvider(
       JSON.stringify({
         message: {
@@ -594,22 +595,22 @@ describe("agent HTTP service", () => {
         toolCalls: [
           {
             id: "tool_1",
-            name: "inspect_resume",
+            name: "resume_update_section",
             status: "completed",
-            title: "检查简历",
-            summary: "发现工作经历缺少结果证据。",
-            input: { scope: "resume" },
-            result: { topIssue: "缺少结果证据" },
+            title: "更新工作经历",
+            summary: "将笼统经历改成更清晰的 STAR 表达。",
+            input: { fieldPath: "experience.0.content" },
+            result: { operationIds: ["op_1"] },
           },
         ],
-        proposedPatches: [
+        proposedOperations: [
           {
-            id: "patch_1",
+            id: "op_1",
             toolCallId: "tool_1",
             label: "优化工作经历第一段",
             section: "experience",
             fieldPath: "experience.0.content",
-            operation: "replace_tiptap_json",
+            operation: "update_section",
             beforePlainText: "负责业务系统前端开发，优化页面性能。",
             afterPlainText: "围绕业务系统页面性能瓶颈推进前端优化；结果指标需要补充。",
             replacementTiptapJson: { type: "doc", content: [] },
@@ -649,7 +650,7 @@ describe("agent HTTP service", () => {
     expect(provider.calls).toHaveLength(1);
     expect(provider.calls[0]?.request.workflowId).toBe("resume-diagnose");
     expect(provider.calls[0]?.prompt.developer).toContain(
-      "propose_rich_text_rewrite",
+      "resume_update_section",
     );
     await expect(response.json()).resolves.toEqual({
       status: "ok",
@@ -662,22 +663,22 @@ describe("agent HTTP service", () => {
       toolCalls: [
         {
           id: "tool_1",
-          name: "inspect_resume",
+          name: "resume_update_section",
           status: "completed",
-          title: "检查简历",
-          summary: "发现工作经历缺少结果证据。",
-          input: { scope: "resume" },
-          result: { topIssue: "缺少结果证据" },
+          title: "更新工作经历",
+          summary: "将笼统经历改成更清晰的 STAR 表达。",
+          input: { fieldPath: "experience.0.content" },
+          result: { operationIds: ["op_1"] },
         },
       ],
-      proposedPatches: [
+      proposedOperations: [
         {
-          id: "patch_1",
+          id: "op_1",
           toolCallId: "tool_1",
           label: "优化工作经历第一段",
           section: "experience",
           fieldPath: "experience.0.content",
-          operation: "replace_tiptap_json",
+          operation: "update_section",
           beforePlainText: "负责业务系统前端开发，优化页面性能。",
           afterPlainText: "围绕业务系统页面性能瓶颈推进前端优化；结果指标需要补充。",
           replacementTiptapJson: { type: "doc", content: [] },
@@ -696,6 +697,98 @@ describe("agent HTTP service", () => {
         inputTokens: 900,
         outputTokens: 240,
       },
+    });
+  });
+
+  it("streams AG-UI events from /v1/agent/messages when requested", async () => {
+    const provider = new FakeAgentMessageProvider(
+      JSON.stringify({
+        message: {
+          id: "msg_assistant_1",
+          role: "assistant",
+          content: "建议先优化第一段工作经历。",
+        },
+        toolCalls: [
+          {
+            id: "tool_1",
+            name: "resume_update_section",
+            status: "completed",
+            title: "更新工作经历",
+            summary: "将笼统经历改成更清晰的 STAR 表达。",
+            input: { fieldPath: "experience.0.content" },
+            result: { operationIds: ["op_1"] },
+          },
+        ],
+        proposedOperations: [
+          {
+            id: "op_1",
+            toolCallId: "tool_1",
+            label: "优化工作经历第一段",
+            section: "experience",
+            fieldPath: "experience.0.content",
+            operation: "update_section",
+            beforePlainText: "负责业务系统前端开发，优化页面性能。",
+            afterPlainText: "围绕业务系统页面性能瓶颈推进前端优化；结果指标需要补充。",
+            replacementTiptapJson: { type: "doc", content: [] },
+            changeSummary: "按 STAR 补足任务与行动，不编造结果。",
+            riskFlags: [
+              {
+                type: "needs_user_fact",
+                message: "请补充真实性能提升指标。",
+              },
+            ],
+          },
+        ],
+      }),
+    );
+    const server = await listenOnRandomPort({
+      replayStore: new FakeReplayStore(),
+      agentMessageProvider: provider,
+    });
+    const token = await signAgentToken({
+      sub: "user_123",
+      resumeId: "resume_abc",
+      scope: "agent:chat",
+      jti: "jti_agent_message_stream",
+    });
+
+    const response = await fetch(server.url("/v1/agent/messages"), {
+      method: "POST",
+      headers: {
+        accept: "text/event-stream",
+        authorization: `Bearer ${token}`,
+        "content-type": "application/json",
+        "x-request-id": "req-client-agent-message-stream",
+      },
+      body: JSON.stringify(validAgentMessageBody()),
+    });
+    const events = parseSseEvents(await response.text());
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get("content-type")).toContain("text/event-stream");
+    expect(response.headers.get("cache-control")).toBe("no-cache, no-transform");
+    expect(response.headers.get("x-request-id")).toBe(
+      "req-client-agent-message-stream",
+    );
+    expect(events.map((event) => event.type)).toEqual([
+      EventType.RUN_STARTED,
+      EventType.TEXT_MESSAGE_START,
+      EventType.TEXT_MESSAGE_CONTENT,
+      EventType.TOOL_CALL_START,
+      EventType.TOOL_CALL_ARGS,
+      EventType.TOOL_CALL_END,
+      EventType.TOOL_CALL_RESULT,
+      EventType.TEXT_MESSAGE_END,
+      EventType.RUN_FINISHED,
+    ]);
+    expect(events[2]).toMatchObject({
+      type: EventType.TEXT_MESSAGE_CONTENT,
+      delta: "建议先优化第一段工作经历。",
+    });
+    expect(events[6]).toMatchObject({
+      type: EventType.TOOL_CALL_RESULT,
+      toolCallId: "tool_1",
+      content: expect.stringContaining('"proposedOperations"'),
     });
   });
 
@@ -1017,4 +1110,20 @@ class FakeAgentMessageProvider implements AgentMessageProvider {
       },
     };
   }
+}
+
+function parseSseEvents(text: string): BaseEvent[] {
+  return text
+    .split("\n\n")
+    .filter((chunk) => chunk.trim() !== "")
+    .map((chunk) => {
+      const data = chunk
+        .split(/\r?\n/)
+        .filter((line) => line.startsWith("data:"))
+        .map((line) => line.slice("data:".length).trimStart())
+        .join("\n");
+      const result = BaseEventSchema.safeParse(JSON.parse(data));
+      if (!result.success) throw result.error;
+      return result.data;
+    });
 }

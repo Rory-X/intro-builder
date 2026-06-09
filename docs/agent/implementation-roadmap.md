@@ -220,29 +220,31 @@ Exit gates:
 
 ## Phase 3: assistant-ui Agent Panel
 
-Status: in progress by `docs/superpowers/specs/2026-06-09-agent-mode-assistant-ui-design.md` and `docs/superpowers/plans/2026-06-09-agent-mode-assistant-ui-phase-3a.md`.
+Status: Phase 3B implemented locally by `docs/superpowers/specs/2026-06-09-agent-mode-streaming-phase-3b-design.md` and `docs/superpowers/plans/2026-06-09-agent-mode-streaming-phase-3b.md`, pending PR/CI/deploy confirmation.
 
 Goal: 引入聊天式 Agent Mode，承载多轮对话、可见 tool calling 和基础简历修改建议；首版左侧编辑列切换为 Agent panel，右侧 `LivePreview` 保持可见。
 
 Use assistant-ui here, not earlier.
 
-Current Phase 3A branch status:
+Current Phase 3B branch status:
 
-- Implemented locally: browser-safe message/tool/patch types, capped chat context, Agent service tool validation, Agent message prompt/parser, and Agent `/v1/agent/messages` route.
-- Implemented locally: Web client/BFF `POST /api/agent/messages` with Auth.js/dev-bypass user lookup, resume ownership check, `agent:chat` token signing, Agent proxying, and structured error mapping.
-- Implemented locally: assistant-ui LocalRuntime seam, left-column Agent panel, preset workflow call to Web BFF, tool cards, confirmation cards, toolbar `Agent 模式` toggle, and preview-preserving editor switch.
-- In progress next: richer RHF patch dispatcher regression coverage and local browser smoke.
-- Not implemented yet: production deploy of Phase 3A behavior and Phase 3B streaming/mobile Sheet.
+- Implemented locally: browser-safe message/tool/operation types, capped chat context, Agent service tool validation, Agent message prompt/parser, and Agent `/v1/agent/messages` route.
+- Implemented locally: Web client/BFF `POST /api/agent/messages` with Auth.js/dev-bypass user lookup, resume ownership check, `agent:chat` token signing, JSON fallback, AG-UI SSE proxying, and structured error mapping.
+- Implemented locally: assistant-ui LocalRuntime async generator, left-column Agent panel, preset workflow call to Web BFF, streamed text rendering, tool cards, confirmation cards, toolbar `Agent 模式` toggle, preview-preserving editor switch, and mobile Agent Sheet.
+- Implemented locally: Web-owned confirmed writeback for `update_section` and `reorder_sections`; `delete_section`/`insert_section` remain displayed operations until array item identity and module manager tests are added.
+- Verified locally on this branch: `pnpm test`, `pnpm tsc --noEmit`, `pnpm agent:build`, `pnpm lint`, `pnpm build`。
+- In progress next: PR/CI/deploy confirmation and browser smoke against the deployed Web + Agent path.
 
 Recommended architecture:
 
 ```text
 Editor toolbar Agent 模式
   -> left editor column AgentPanel
-  -> assistant-ui LocalRuntime/custom adapter
+  -> assistant-ui LocalRuntime/custom async generator
   -> Next /api/agent/messages
   -> Agent /v1/agent/messages
-  -> basic resume tools
+  -> AG-UI SSE
+  -> minimal resume operation tools
   -> provider
 ```
 
@@ -252,27 +254,35 @@ Deliverables:
 - `Agent 模式` toolbar toggle，文字和 icon 渐变，背景不渐变。
 - Left-column Agent panel shell，替换编辑表单视觉但不接管 RHF。
 - Preset workflows: `诊断整份简历`、`目标岗位匹配`、`经历 STAR 优化`、`终检导出前检查`。
-- JSON message adapter for Phase 3A; streaming/DataStream deferred to Phase 3B。
+- AG-UI `text/event-stream` message adapter for Phase 3B。
 - `POST /v1/agent/messages` with scope `agent:chat`。
 - Web BFF `POST /api/agent/messages` with Auth.js session and resume ownership check。
 - Tool call display。
 - Basic resume modification tools:
-  - `inspect_resume`
-  - `propose_rich_text_rewrite`
-  - `propose_summary_rewrite`
-  - `propose_bullet_rewrite`
-  - `draft_section_item`
-- `ResumePatch` confirmation cards with `应用` / `忽略`。
+  - `resume_read`
+  - `resume_update_section`
+  - `resume_delete_section`
+  - `resume_reorder_sections`
+  - `resume_insert_section`
+- `ResumeOperation` confirmation cards with `应用` / `忽略`。
 - Human-confirmed writeback via RHF `setValue` and `resume:flush-autosave`。
 - Lazy loading to protect editor initial bundle。
+- Mobile Agent Sheet。
+
+Protocol and tool constraints:
+
+- Phase 3B Agent conversation uses AG-UI SSE as the product protocol. JSON remains only as service debug fallback.
+- All conversation event code should use `@ag-ui/core` event types and `@ag-ui/encoder` rather than custom NDJSON/DataStream formats.
+- Minimal resume tools are fixed to `resume_read`、`resume_update_section`、`resume_delete_section`、`resume_reorder_sections`、`resume_insert_section`.
+- Workflows must not introduce separate tool names; they only constrain prompts, policies, and how `ResumeOperation` cards are explained.
 
 Exit gates:
 
 - `Agent 模式` opens from desktop editor toolbar。
 - Left panel switches to Agent panel while right `LivePreview` remains visible。
 - FormProvider/RHF state, section order, template state, and autosave queue are not reset。
-- First e2e smoke: click `诊断整份简历` and see user message, assistant message, at least one tool card。
-- At least one proposed `ResumePatch` can render as a confirmation card。
+- First e2e smoke: click `诊断整份简历` and see user message, streamed assistant message, at least one tool card。
+- At least one proposed `ResumeOperation` can render as a confirmation card。
 - Patch does not mutate resume content before `应用`。
 - Confirmed patch writes through existing RHF path and triggers autosave flush。
 - Rich text list patches preserve ordered/unordered list structure instead of collapsing to one paragraph。

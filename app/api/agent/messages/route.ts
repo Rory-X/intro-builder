@@ -42,6 +42,23 @@ export async function POST(req: Request) {
       scope: "agent:chat",
     });
     const agent = createAgentClient();
+    if (acceptsAgUiSse(req)) {
+      const result = await agent.streamAgentMessage({
+        token: signed.token,
+        request: parsed.request,
+      });
+
+      return new Response(result.data.body, {
+        status: 200,
+        headers: {
+          "content-type": result.data.contentType,
+          "cache-control": "no-cache, no-transform",
+          "x-request-id": result.requestId,
+          "x-agent-token-expires-at": signed.expiresAt.toISOString(),
+        },
+      });
+    }
+
     const result = await agent.sendAgentMessage({
       token: signed.token,
       request: parsed.request,
@@ -53,7 +70,7 @@ export async function POST(req: Request) {
       requestId: result.requestId,
       message: result.data.message,
       toolCalls: result.data.toolCalls,
-      proposedPatches: result.data.proposedPatches,
+      proposedOperations: result.data.proposedOperations,
       usage: result.data.usage,
     });
   } catch (error) {
@@ -183,4 +200,12 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function isNonEmptyString(value: unknown): value is string {
   return typeof value === "string" && value.trim() !== "";
+}
+
+function acceptsAgUiSse(req: Request): boolean {
+  const accept = req.headers.get("accept");
+  return Boolean(accept?.split(",").some((value) => {
+    const mediaType = value.split(";")[0]?.trim().toLowerCase();
+    return mediaType === "text/event-stream";
+  }));
 }

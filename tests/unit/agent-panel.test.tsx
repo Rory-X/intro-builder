@@ -1,4 +1,5 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { EventType, type BaseEvent } from "@ag-ui/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { AgentPanel } from "@/components/agent/agent-panel";
@@ -56,31 +57,21 @@ describe("AgentPanel", () => {
     const fetchMock = vi.fn<
       (...args: [RequestInfo | URL, RequestInit?]) => Promise<Response>
     >(async () => {
-      return new Response(
-        JSON.stringify({
-          status: "ok",
-          requestId: "req_test",
-          message: {
-            id: "msg_assistant_1",
-            role: "assistant",
-            content: "建议先优化工作经历。",
+      return agUiResponse({
+        text: "建议先优化工作经历。",
+        toolCalls: [
+          {
+            id: "tool_1",
+            name: "resume_read",
+            status: "completed",
+            title: "检查简历",
+            summary: "已检查当前简历。",
+            input: {},
+            result: {},
           },
-          toolCalls: [
-            {
-              id: "tool_1",
-              name: "inspect_resume",
-              status: "completed",
-              title: "检查简历",
-              summary: "已检查当前简历。",
-              input: {},
-              result: {},
-            },
-          ],
-          proposedPatches: [],
-          usage: { provider: "test", model: "fake", inputTokens: 1, outputTokens: 1 },
-        }),
-        { status: 200, headers: { "content-type": "application/json" } },
-      );
+        ],
+        proposedOperations: [],
+      });
     });
     vi.stubGlobal("fetch", fetchMock);
 
@@ -90,7 +81,10 @@ describe("AgentPanel", () => {
     await waitFor(() => {
       expect(fetchMock).toHaveBeenCalledWith(
         "/api/agent/messages",
-        expect.objectContaining({ method: "POST" }),
+        expect.objectContaining({
+          method: "POST",
+          headers: expect.objectContaining({ Accept: "text/event-stream" }),
+        }),
       );
     });
     const [, init] = fetchMock.mock.calls[0];
@@ -106,24 +100,17 @@ describe("AgentPanel", () => {
     expect(screen.getByText("检查简历")).toBeInTheDocument();
   });
 
-  it("applies proposed patch only after user confirms", async () => {
-    const applyPatch = vi.fn();
+  it("applies proposed operation only after user confirms", async () => {
+    const applyOperation = vi.fn();
     const fetchMock = vi.fn<
       (...args: [RequestInfo | URL, RequestInit?]) => Promise<Response>
     >(async () => {
-      return new Response(
-        JSON.stringify({
-          status: "ok",
-          requestId: "req_test",
-          message: {
-            id: "msg_assistant_1",
-            role: "assistant",
-            content: "我准备了一条改写建议。",
-          },
-          toolCalls: [
+      return agUiResponse({
+        text: "我准备了一条改写建议。",
+        toolCalls: [
             {
               id: "tool_1",
-              name: "propose_summary_rewrite",
+              name: "resume_update_section",
               status: "completed",
               title: "改写个人总结",
               summary: "生成一版更聚焦的个人总结。",
@@ -131,35 +118,70 @@ describe("AgentPanel", () => {
               result: {},
             },
           ],
-          proposedPatches: [
+        proposedOperations: [
             {
-              id: "patch_1",
+              id: "op_1",
               toolCallId: "tool_1",
               label: "应用个人总结改写",
               section: "summary",
               fieldPath: "basics.summary",
-              operation: "replace_plain_text",
+              operation: "update_section",
               beforePlainText: "三年前端经验。",
               afterPlainText: "三年前端工程经验，擅长 React 与工程化交付。",
               changeSummary: "让总结更具体。",
               riskFlags: [],
             },
           ],
-          usage: { provider: "test", model: "fake", inputTokens: 1, outputTokens: 1 },
-        }),
-        { status: 200, headers: { "content-type": "application/json" } },
-      );
+      });
     });
     vi.stubGlobal("fetch", fetchMock);
 
-    render(<AgentPanel {...panelProps({ applyPatch })} />);
+    render(<AgentPanel {...panelProps({ applyOperation })} />);
     fireEvent.click(screen.getByRole("button", { name: "诊断整份简历" }));
 
-    expect(applyPatch).not.toHaveBeenCalled();
+    expect(applyOperation).not.toHaveBeenCalled();
     fireEvent.click(await screen.findByRole("button", { name: "应用" }));
-    expect(applyPatch).toHaveBeenCalledWith(expect.objectContaining({ id: "patch_1" }));
+    expect(applyOperation).toHaveBeenCalledWith(expect.objectContaining({ id: "op_1" }));
   });
 });
+
+function agUiResponse({
+  text,
+  toolCalls,
+  proposedOperations,
+}: {
+  text: string;
+  toolCalls: unknown[];
+  proposedOperations: unknown[];
+}): Response {
+  const events: BaseEvent[] = [
+    { type: EventType.RUN_STARTED, threadId: "resume_1", runId: "req_test" },
+    {
+      type: EventType.TEXT_MESSAGE_START,
+      messageId: "msg_assistant_1",
+      role: "assistant",
+    },
+    {
+      type: EventType.TEXT_MESSAGE_CONTENT,
+      messageId: "msg_assistant_1",
+      delta: text,
+    },
+    { type: EventType.TEXT_MESSAGE_END, messageId: "msg_assistant_1" },
+    ...toolCalls.map((toolCall) => ({
+      type: EventType.TOOL_CALL_RESULT,
+      messageId: `${(toolCall as { id: string }).id}_result`,
+      toolCallId: (toolCall as { id: string }).id,
+      role: "tool" as const,
+      content: JSON.stringify({ toolCall, proposedOperations }),
+    })),
+    { type: EventType.RUN_FINISHED, threadId: "resume_1", runId: "req_test" },
+  ];
+
+  return new Response(events.map((event) => `data: ${JSON.stringify(event)}\n\n`).join(""), {
+    status: 200,
+    headers: { "content-type": "text/event-stream" },
+  });
+}
 
 function panelProps(overrides: Partial<React.ComponentProps<typeof AgentPanel>> = {}) {
   return {
@@ -168,7 +190,7 @@ function panelProps(overrides: Partial<React.ComponentProps<typeof AgentPanel>> 
     templateId: "professional",
     getResumeContent: () => emptyResumeContent(),
     completeness: { overall: 80, sections: [] },
-    applyPatch: vi.fn(),
+    applyOperation: vi.fn(),
     flushAutosave: vi.fn(),
     onBackToEdit: vi.fn(),
     ...overrides,

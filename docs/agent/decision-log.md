@@ -114,9 +114,9 @@ Consequences:
 - Redis 不存完整简历正文作为长期 memory。
 - `/ready` 检查 Redis，但 `/health` 不检查。
 
-## D8: Web BFF 优先代理 assistant-ui Agent messages
+## D8: Web BFF 代理 assistant-ui Agent messages
 
-Decision: Phase 3A 首版 Agent panel 优先走 `Browser -> Next /api/agent/messages -> Agent /v1/agent/messages` 的 JSON message contract；streaming/DataStream 升级延后到 Phase 3B。
+Decision: Agent panel 走 `Browser -> Next /api/agent/messages -> Agent /v1/agent/messages`。Phase 3A 曾以 JSON contract 验证语义；Phase 3B 升级为 AG-UI `text/event-stream`，JSON 仅保留为 fallback。
 
 Why:
 
@@ -126,8 +126,8 @@ Why:
 
 Consequences:
 
-- Phase 3A 先验证 message、tool call、`ResumePatch` 和确认写回语义，不把协议稳定性和 UI 状态复杂度同时放大。
-- 如果 BFF 或 JSON contract 后续成为瓶颈，可以升级为 Web streaming BFF 或 browser -> Agent direct + short-lived token。
+- Phase 3B 通过 Web streaming BFF 保持 Auth.js、ownership 和短期 JWT 边界，同时让 assistant-ui 获得增量文本。
+- 如果 Web BFF streaming 成为瓶颈，可以再评估 browser -> Agent direct + short-lived token。
 - assistant-ui runtime 不直接知道 Agent 内部部署地址。
 
 ## D9: `/dev-preview` 标记为动态渲染
@@ -157,27 +157,27 @@ Why:
 Consequences:
 
 - Phase 3A 不做右侧 Sheet/side panel。
-- 移动端 Agent panel 延后到 Phase 3B，再评估 `Sheet`。
+- Phase 3B 移动端使用底部 `Sheet` 承载同一个 Agent panel。
 - Template panel 与 Agent panel 互斥。
 - Agent Mode 切换不得重置 RHF state、section order、模板选择或 autosave 队列。
 
-## D11: Phase 3A tools 只返回 ResumePatch
+## D11: Phase 3B tools 只返回 ResumeOperation
 
-Decision: Phase 3A 必须封装基础简历修改 tools 供 Agent 推理调用，但 tools 只能返回 `ResumePatch`，不能直接保存或改写简历。
+Decision: Phase 3B 必须封装基础简历修改 tools 供 Agent 推理调用，但 tools 只能返回 `ResumeOperation`，不能直接保存或改写简历。
 
 Initial tools:
 
-- `inspect_resume`
-- `propose_rich_text_rewrite`
-- `propose_summary_rewrite`
-- `propose_bullet_rewrite`
-- `draft_section_item`
+- `resume_read`
+- `resume_update_section`
+- `resume_delete_section`
+- `resume_reorder_sections`
+- `resume_insert_section`
 
 Why:
 
 - 用户需要看到 Agent 不只是聊天，而是在使用可解释的简历工具推理。
 - 直接写 RHF 或 Postgres 会破坏用户确认、安全边界和 autosave 队列。
-- `ResumePatch` 可以让 Web 在确认卡里展示差异、风险和 `应用` / `忽略`。
+- `ResumeOperation` 可以让 Web 在确认卡里展示差异、风险和 `应用` / `忽略`。
 
 Consequences:
 
