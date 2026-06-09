@@ -119,32 +119,37 @@ components/agent/resume-helper-card.tsx
 
 推荐入口：
 
-- `EditorClient` 顶部工具区已有 `MessageSquare` icon import，可作为 Agent panel 的自然入口。
-- 桌面使用右侧 side panel 或 `Sheet`。
-- 移动端使用现有 `Sheet`。
+- `EditorClient` 顶部工具区新增 `Agent 模式`，使用 `MessageSquare` 作为自然入口。
+- Phase 3A 采用已确认的 A 方案：点击后左侧编辑列切换为 Agent panel，右侧 `LivePreview` 保持可见。
+- 桌面首版不做右侧 drawer，也不把 Agent panel 叠在 preview 上。
+- 移动端 Agent panel 暂不在 Phase 3A 解决；Phase 3B 再评估 `Sheet`。
 
 推荐组件：
 
 ```text
-components/agent/agent-panel-trigger.tsx
+components/agent/agent-mode-toggle.tsx
 components/agent/agent-panel.tsx
 components/agent/agent-runtime-provider.tsx
+components/agent/agent-preset-workflows.tsx
+components/agent/agent-tool-card.tsx
+components/agent/agent-confirmation-card.tsx
 app/api/agent/messages/route.ts
 ```
 
 布局建议：
 
-- Desktop panel width: `360px` 到 `420px`。
-- 不覆盖 preview 的主阅读区域。
+- Desktop: 左列原地从 editor 切换为 Agent panel，右列 preview 常驻。
+- Agent mode 激活时隐藏或禁用 resize handle，避免 panel 与 preview 比例被拖到不可用状态。
 - composer 固定底部。
 - message list 独立滚动。
-- 打开时不重置 RHF form。
-- 关闭时不销毁未完成请求，除非用户明确取消。
+- 切换 Agent mode 不重置 RHF form、autosave 队列、section order、模板选择或 preview。
+- Template panel 与 Agent panel 互斥；打开 Agent mode 时关闭模板面板。
 
 assistant-ui 复用方式：
 
-- 使用 assistant-ui runtime 管理 chat thread。
-- 使用本项目 `Button`、`Sheet`、`Input`/`Textarea`、`Separator` 包装视觉。
+- 使用 assistant-ui runtime 管理 chat thread/composer/tool display，但不让 assistant-ui 拥有简历状态。
+- Phase 3A 优先 LocalRuntime/custom adapter + JSON BFF；DataStream/SSE 等协议稳定后进入 Phase 3B。
+- 使用本项目 `Button`、`Input`/`Textarea`、`Separator` 包装视觉。
 - message bubble 和 tool result 样式使用现有 `bg-muted`、`text-muted-foreground`、`border` token。
 - 不直接使用 assistant-ui 默认主题覆盖全局设计。
 
@@ -155,18 +160,35 @@ flowchart LR
   Panel["AgentPanel assistant-ui"] --> WebRoute["Next /api/agent/messages"]
   WebRoute --> Token["sign Agent JWT"]
   WebRoute --> Agent["Agent /v1/agent/messages"]
+  Agent --> Tools["basic resume tools"]
   Agent --> Redis["Redis memory / rate limit"]
   Agent --> Model["Model provider"]
   Agent --> WebRoute
   WebRoute --> Panel
+  Panel --> Confirm["用户确认 ResumePatch"]
+  Confirm --> RHF["RHF setValue"]
+  RHF --> Autosave["resume:flush-autosave"]
+  RHF --> Preview["LivePreview"]
 ```
+
+Phase 3A 基础简历修改 tools：
+
+| Tool | 用途 | 写入边界 |
+| --- | --- | --- |
+| `inspect_resume` | 读取 Web 提供的简历快照，诊断结构和风险 | 只读 |
+| `propose_rich_text_rewrite` | 针对富文本 field 生成候选改写 | 返回 `ResumePatch`，不写回 |
+| `propose_summary_rewrite` | 针对 `basics.summary` 生成纯文本改写 | 返回 `ResumePatch`，不写回 |
+| `propose_bullet_rewrite` | 针对列表型富文本进行保格式润色 | 返回保持列表结构的 `ResumePatch` |
+| `draft_section_item` | 生成待确认 section/item 草稿 | 返回待确认草稿，不直接插入 |
+
+所有 `ResumePatch` 都必须经过 `AgentConfirmationCard`，用户点击 `应用` 后才进入 RHF。
 
 ## 与现有页面的复用点
 
 | Existing piece | Reuse plan |
 | --- | --- |
 | `Button` | Agent trigger、toolbar action、apply/cancel |
-| `Sheet` | Agent panel desktop/mobile shell |
+| `Sheet` | Phase 3B 移动端候选，不用于 Phase 3A 桌面 A 方案 |
 | `Popover` | Phase 1 polish suggestion |
 | `sonner` | 错误、成功、rate limit 提示 |
 | `lucide-react` | `Sparkles`、`MessageSquare`、`StopCircle`、`RotateCcw` |
@@ -204,14 +226,32 @@ Agent UI 不能直接写：
 
 - Phase 1：`RichTextEditor.onChange(nextJson)`。
 - Phase 2：section editor 的现有 RHF field array / controller。
-- Phase 3：生成 suggestion action，用户确认后调用已有 editor callback。
+- Phase 3A：Agent 返回 `ResumePatch`，用户确认后由 `EditorClient` 的 allowlisted dispatcher 调用 `form.setValue(...)`，再 dispatch `resume:flush-autosave`。
+
+Phase 3A allowlist：
+
+- `basics.summary`
+- `experience.<index>.content`
+- `projects.<index>.content`
+- `education.<index>.highlights`
+- `research.<index>.content`
+- `skills`
+- `custom.<index>.content`
+
+富文本写回规则：
+
+- TipTap JSON 是唯一富文本存储格式，不接受 HTML。
+- 原文是无序列表或有序列表时，Agent patch 必须保持对应列表结构。
+- Agent 不得把列表润色成一整段无结构文本。
+- STAR 优化只能重排和强化已有事实；缺失 Result 指标时用 `needs_user_fact` 提醒用户补充。
 
 ## 性能策略
 
 - Agent panel 默认 lazy mount。
 - assistant-ui 只在 panel 打开后加载。
 - 不把完整 resume content 每个 token 都重新传给 assistant-ui runtime。
-- 对上下文做 server-side summary 或按 section 裁剪。
+- 发送消息时用 `form.getValues()` 生成 capped context；不要在 Agent panel 高频 `useWatch()` 整份简历。
+- 对上下文按 section 裁剪。
 - 避免在 `EditorClient` 顶层新增高频 state。
 
 ## 可访问性与中文文案
@@ -229,5 +269,7 @@ Agent UI 不能直接写：
 - 应用建议后 autosave flush。
 - 取消请求不会写回部分结果。
 - assistant-ui panel 只在 Phase 3 引入。
+- `Agent 模式` 打开后左侧变为 Agent panel，右侧 preview 仍可见。
 - panel 关闭再打开不破坏编辑器表单状态。
-- 移动端 Sheet 不遮挡关键保存反馈。
+- 至少一个 preset workflow 能返回 assistant message、tool card 和待确认 patch。
+- patch 点击 `应用` 前不改变 RHF；点击后 preview 和 autosave 通过既有路径更新。

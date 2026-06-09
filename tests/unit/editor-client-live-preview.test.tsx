@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import EditorClient from "@/app/(app)/resume/[id]/edit/editor-client";
 import { DEFAULT_STYLE_SETTINGS, emptyResumeContent } from "@/lib/resume-schema";
@@ -48,6 +48,7 @@ const saveResumeMock = vi.fn();
 const exportPreviewImageMock = vi.fn();
 const toastErrorMock = vi.fn();
 const toastSuccessMock = vi.fn();
+const originalScrollTo = Element.prototype.scrollTo;
 
 vi.mock("@/app/(app)/resume/[id]/edit/actions", () => ({
   saveResume: (...args: unknown[]) => saveResumeMock(...args),
@@ -108,10 +109,23 @@ describe("EditorClient live preview", () => {
       unobserve() {}
       disconnect() {}
     } as unknown as typeof ResizeObserver;
+    Object.defineProperty(Element.prototype, "scrollTo", {
+      configurable: true,
+      value: vi.fn(),
+    });
   });
 
   afterEach(() => {
     vi.useRealTimers();
+    if (originalScrollTo) {
+      Object.defineProperty(Element.prototype, "scrollTo", {
+        configurable: true,
+        value: originalScrollTo,
+      });
+    } else {
+      delete (Element.prototype as { scrollTo?: Element["scrollTo"] }).scrollTo;
+    }
+    vi.unstubAllGlobals();
   });
 
   it("keeps the server-resolved unified template for classic", () => {
@@ -207,6 +221,174 @@ describe("EditorClient live preview", () => {
     expect(toolbar).toHaveTextContent("AI 诊断");
     expect(screen.getAllByRole("button", { name: "排版" })).toHaveLength(1);
     expect(screen.getByRole("button", { name: "AI 诊断" })).toBeInTheDocument();
+  });
+
+  it("toggles Agent mode without unmounting the live preview", async () => {
+    render(
+      <EditorClient
+        id="r1"
+        initialTitle="简历"
+        initialTemplate="professional"
+        initialContent={emptyResumeContent()}
+        initialIsPublic={false}
+        initialSlug={null}
+        initialUpdatedAtIso={new Date().toISOString()}
+        initialResolvedTemplate={DB_RESOLVED}
+        uploadedTemplates={[]}
+        allTemplates={DB_TEMPLATE_ROWS}
+        from={null}
+      />,
+    );
+
+    expect(screen.getByTestId("resume-export-preview")).toBeInTheDocument();
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Agent 模式" }));
+    });
+
+    expect(screen.getByText("简历 Agent")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "切回编辑" })).toBeInTheDocument();
+    expect(screen.getByTestId("resume-export-preview")).toBeInTheDocument();
+  });
+
+  it("keeps unsaved editor values when switching out of Agent mode", async () => {
+    const content = emptyResumeContent();
+    content.basics.name = "旧姓名";
+
+    render(
+      <EditorClient
+        id="r1"
+        initialTitle="简历"
+        initialTemplate="professional"
+        initialContent={content}
+        initialIsPublic={false}
+        initialSlug={null}
+        initialUpdatedAtIso={new Date().toISOString()}
+        initialResolvedTemplate={DB_RESOLVED}
+        uploadedTemplates={[]}
+        allTemplates={DB_TEMPLATE_ROWS}
+        from={null}
+      />,
+    );
+
+    await act(async () => {
+      fireEvent.change(screen.getByLabelText("姓名"), {
+        target: { value: "阶段三候选人" },
+      });
+    });
+    expect(screen.getByRole("heading", { name: "阶段三候选人" })).toBeInTheDocument();
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Agent 模式" }));
+    });
+    expect(screen.getByText("简历 Agent")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "阶段三候选人" })).toBeInTheDocument();
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "切回编辑" }));
+    });
+
+    expect(screen.getByLabelText("姓名")).toHaveValue("阶段三候选人");
+    expect(screen.getByRole("heading", { name: "阶段三候选人" })).toBeInTheDocument();
+  });
+
+  it("applies an Agent summary patch through RHF after confirmation", async () => {
+    vi.useRealTimers();
+    const content = emptyResumeContent();
+    content.basics.summary = "三年前端经验。";
+    const flushListener = vi.fn();
+    window.addEventListener("resume:flush-autosave", flushListener);
+    const fetchMock = vi.fn<
+      (...args: [RequestInfo | URL, RequestInit?]) => Promise<Response>
+    >(async () => {
+      return new Response(
+        JSON.stringify({
+          status: "ok",
+          requestId: "req_agent_editor",
+          message: {
+            id: "msg_assistant_1",
+            role: "assistant",
+            content: "我准备了一条个人总结改写建议。",
+          },
+          toolCalls: [
+            {
+              id: "tool_1",
+              name: "propose_summary_rewrite",
+              status: "completed",
+              title: "改写个人总结",
+              summary: "生成一版更聚焦的个人总结。",
+              input: {},
+              result: {},
+            },
+          ],
+          proposedPatches: [
+            {
+              id: "patch_1",
+              toolCallId: "tool_1",
+              label: "应用个人总结改写",
+              section: "summary",
+              fieldPath: "basics.summary",
+              operation: "replace_plain_text",
+              beforePlainText: "三年前端经验。",
+              afterPlainText: "三年前端工程经验，擅长 React 与工程化交付。",
+              changeSummary: "让总结更具体。",
+              riskFlags: [],
+            },
+          ],
+          usage: { provider: "test", model: "fake", inputTokens: 1, outputTokens: 1 },
+        }),
+        { status: 200, headers: { "content-type": "application/json" } },
+      );
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    try {
+      render(
+        <EditorClient
+          id="r1"
+          initialTitle="简历"
+          initialTemplate="professional"
+          initialContent={content}
+          initialIsPublic={false}
+          initialSlug={null}
+          initialUpdatedAtIso={new Date().toISOString()}
+          initialResolvedTemplate={DB_RESOLVED}
+          uploadedTemplates={[]}
+          allTemplates={DB_TEMPLATE_ROWS}
+          from={null}
+        />,
+      );
+
+      await act(async () => {
+        fireEvent.click(screen.getByRole("button", { name: "Agent 模式" }));
+      });
+      await act(async () => {
+        fireEvent.click(screen.getByRole("button", { name: "诊断整份简历" }));
+      });
+
+      await waitFor(() => {
+        expect(fetchMock).toHaveBeenCalledWith(
+          "/api/agent/messages",
+          expect.objectContaining({ method: "POST" }),
+        );
+      });
+
+      await act(async () => {
+        fireEvent.click(await screen.findByRole("button", { name: "应用" }));
+      });
+
+      expect(flushListener).toHaveBeenCalledTimes(1);
+
+      await act(async () => {
+        fireEvent.click(screen.getByRole("button", { name: "切回编辑" }));
+      });
+
+      expect(screen.getByLabelText("自我介绍")).toHaveValue(
+        "三年前端工程经验，擅长 React 与工程化交付。",
+      );
+    } finally {
+      window.removeEventListener("resume:flush-autosave", flushListener);
+    }
   });
 
   it("shows autosave status details on the save badge", () => {

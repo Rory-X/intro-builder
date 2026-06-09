@@ -179,7 +179,7 @@ Exit gates:
 
 ## Phase 2: Resume Helper APIs
 
-Status: Phase 2A implemented locally and verified, pending normal PR/deploy flow.
+Status: Phase 2A implemented locally and verified. Phase 2B is intentionally skipped while Phase 3A Agent Mode proceeds.
 
 Goal: 增量扩展到简历模块级 helper，但仍不是聊天面板。
 
@@ -196,14 +196,14 @@ Phase 2A delivered:
 - Tests for Agent domain, Agent HTTP route, Web client, Web BFF, context builder, and UI components。
 - Verification passed: `pnpm verify` and `pnpm agent:build`。
 
-Candidate helpers:
+Deferred helpers:
 
 - Phase 2A: `resume-diagnose`
 - Phase 2A: `section-next-steps`
-- Later Phase 2B candidate: `summary:suggest`
-- Later Phase 2B candidate: `experience:quantify`
-- Later Phase 2B candidate: `project:impact`
-- Later Phase 2B candidate: `skills:dedupe`
+- Not active without a new plan: `summary:suggest`
+- Not active without a new plan: `experience:quantify`
+- Not active without a new plan: `project:impact`
+- Not active without a new plan: `skills:dedupe`
 
 Rules:
 
@@ -215,38 +215,69 @@ Rules:
 Exit gates:
 
 - 每个 helper 有 schema、prompt、route tests。
-- Phase 2A Web UI 只展示建议；Phase 2B 生成内容类 helper 才设计 apply/cancel。
+- Phase 2A Web UI 只展示建议；任何生成内容类 helper 都必须另开 plan 设计 apply/cancel，不要在 Phase 3A 中顺手实现。
 - rate limit key 按 helper scope 分离。
 
 ## Phase 3: assistant-ui Agent Panel
 
-Goal: 引入聊天式 Agent panel，承载多轮对话和可见 tool calling。
+Status: in progress by `docs/superpowers/specs/2026-06-09-agent-mode-assistant-ui-design.md` and `docs/superpowers/plans/2026-06-09-agent-mode-assistant-ui-phase-3a.md`.
+
+Goal: 引入聊天式 Agent Mode，承载多轮对话、可见 tool calling 和基础简历修改建议；首版左侧编辑列切换为 Agent panel，右侧 `LivePreview` 保持可见。
 
 Use assistant-ui here, not earlier.
+
+Current Phase 3A branch status:
+
+- Implemented locally: browser-safe message/tool/patch types, capped chat context, Agent service tool validation, Agent message prompt/parser, and Agent `/v1/agent/messages` route.
+- Implemented locally: Web client/BFF `POST /api/agent/messages` with Auth.js/dev-bypass user lookup, resume ownership check, `agent:chat` token signing, Agent proxying, and structured error mapping.
+- Implemented locally: assistant-ui LocalRuntime seam, left-column Agent panel, preset workflow call to Web BFF, tool cards, confirmation cards, toolbar `Agent 模式` toggle, and preview-preserving editor switch.
+- In progress next: richer RHF patch dispatcher regression coverage and local browser smoke.
+- Not implemented yet: production deploy of Phase 3A behavior and Phase 3B streaming/mobile Sheet.
 
 Recommended architecture:
 
 ```text
-AgentPanel -> Next /api/agent/messages -> Agent /v1/agent/messages
+Editor toolbar Agent 模式
+  -> left editor column AgentPanel
+  -> assistant-ui LocalRuntime/custom adapter
+  -> Next /api/agent/messages
+  -> Agent /v1/agent/messages
+  -> basic resume tools
+  -> provider
 ```
 
 Deliverables:
 
 - assistant-ui runtime provider。
-- Agent panel trigger。
-- Right-side Sheet panel。
-- Stream adapter matching selected assistant-ui protocol。
+- `Agent 模式` toolbar toggle，文字和 icon 渐变，背景不渐变。
+- Left-column Agent panel shell，替换编辑表单视觉但不接管 RHF。
+- Preset workflows: `诊断整份简历`、`目标岗位匹配`、`经历 STAR 优化`、`终检导出前检查`。
+- JSON message adapter for Phase 3A; streaming/DataStream deferred to Phase 3B。
+- `POST /v1/agent/messages` with scope `agent:chat`。
+- Web BFF `POST /api/agent/messages` with Auth.js session and resume ownership check。
 - Tool call display。
-- Human-confirmed writeback actions。
+- Basic resume modification tools:
+  - `inspect_resume`
+  - `propose_rich_text_rewrite`
+  - `propose_summary_rewrite`
+  - `propose_bullet_rewrite`
+  - `draft_section_item`
+- `ResumePatch` confirmation cards with `应用` / `忽略`。
+- Human-confirmed writeback via RHF `setValue` and `resume:flush-autosave`。
 - Lazy loading to protect editor initial bundle。
 
 Exit gates:
 
-- Panel opens without resetting RHF form。
-- Message stream completes under selected protocol。
-- Tool calls render but cannot mutate resume without confirmation。
-- Closing panel does not break autosave。
-- Mobile Sheet smoke passes。
+- `Agent 模式` opens from desktop editor toolbar。
+- Left panel switches to Agent panel while right `LivePreview` remains visible。
+- FormProvider/RHF state, section order, template state, and autosave queue are not reset。
+- First e2e smoke: click `诊断整份简历` and see user message, assistant message, at least one tool card。
+- At least one proposed `ResumePatch` can render as a confirmation card。
+- Patch does not mutate resume content before `应用`。
+- Confirmed patch writes through existing RHF path and triggers autosave flush。
+- Rich text list patches preserve ordered/unordered list structure instead of collapsing to one paragraph。
+- Agent unavailable degrades to a Chinese error state without breaking normal editor typing。
+- Phase 3A desktop passes; mobile Sheet is explicitly Phase 3B, not an exit gate for this slice。
 
 ## Phase 4: BYO Key, Credits, and Limits
 

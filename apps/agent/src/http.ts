@@ -7,6 +7,12 @@ import {
   type AgentReplayStore,
   type AuthenticatedAgentSession,
 } from "./auth.js";
+import {
+  buildAgentMessagePrompt,
+  parseAgentMessageProviderResponse,
+  validateAgentMessageRequest,
+  type AgentMessageProvider,
+} from "./agent-messages.js";
 import type { AgentConfig } from "./config.js";
 import { createErrorEnvelope } from "./errors.js";
 import { checkRateLimit, type RateLimitRedis } from "./rate-limit.js";
@@ -33,6 +39,7 @@ export type CreateAgentServerOptions = {
   rateLimitStore?: RateLimitRedis;
   richTextPolishProvider?: RichTextPolishProvider;
   resumeHelperProvider?: ResumeHelperProvider;
+  agentMessageProvider?: AgentMessageProvider;
   createRequestId?: () => string;
 };
 
@@ -50,6 +57,7 @@ export function createAgentServer({
   rateLimitStore,
   richTextPolishProvider,
   resumeHelperProvider,
+  agentMessageProvider,
   createRequestId = defaultCreateRequestId,
 }: CreateAgentServerOptions): Server {
   return createServer((request, response) => {
@@ -64,6 +72,7 @@ export function createAgentServer({
       rateLimitStore,
       richTextPolishProvider,
       resumeHelperProvider,
+      agentMessageProvider,
       createRequestId,
     ).catch((error: unknown) => {
       if (response.headersSent) {
@@ -93,6 +102,7 @@ async function routeRequest(
   rateLimitStore: RateLimitRedis | undefined,
   richTextPolishProvider: RichTextPolishProvider | undefined,
   resumeHelperProvider: ResumeHelperProvider | undefined,
+  agentMessageProvider: AgentMessageProvider | undefined,
   createRequestId: () => string,
 ): Promise<void> {
   const context = {
@@ -238,6 +248,132 @@ async function routeRequest(
           requestId: context.requestId,
           result: polished.result,
           usage: polished.usage,
+        },
+        context,
+      );
+    } catch (error) {
+      if (error instanceof RichTextPolishProviderError) {
+        return sendError(response, error.code === "provider_timeout" ? 504 : 503, context, {
+          error: error.code,
+          message: error.message,
+          dependency: error.code === "dependency_unavailable" ? "provider" : undefined,
+        });
+      }
+      return sendError(response, 500, context, {
+        error: "internal_error",
+        message: error instanceof Error ? error.message : "Internal error",
+      });
+    }
+  }
+
+  if (url.pathname === "/v1/agent/messages") {
+    if (method !== "POST") return methodNotAllowed(response, context, "POST");
+
+    const auth = await authenticateAgentRequest({
+      authorizationHeader: headerValue(request.headers.authorization),
+      expectedScope: "agent:chat",
+      config,
+      replayStore,
+      now: now(),
+    });
+
+    if (!auth.ok) {
+      logAuthFailure(auth, context, url.pathname, method);
+      return sendError(response, auth.statusCode, context, {
+        error: auth.error,
+        message: auth.message,
+        dependency: auth.dependency,
+      });
+    }
+
+    const body = await readJsonBody(request);
+    if (!body.ok) {
+      return sendError(response, 400, context, {
+        error: "bad_request",
+        message: body.message,
+      });
+    }
+
+    const validation = validateAgentMessageRequest(body.value);
+    if (!validation.ok) {
+      return sendError(response, validation.statusCode, context, {
+        error: validation.error,
+        message: validation.message,
+      });
+    }
+
+    if (auth.session.resumeId !== validation.request.resumeId) {
+      return sendError(response, 403, context, {
+        error: "forbidden",
+        message: "Token resumeId does not match request resumeId",
+      });
+    }
+
+    if (!agentMessageProvider) {
+      return sendError(response, 503, context, {
+        error: "dependency_unavailable",
+        message: "Agent message provider is not configured",
+        dependency: "provider",
+      });
+    }
+
+    if (rateLimitStore) {
+      try {
+        const rateLimit = await checkRateLimit({
+          redis: rateLimitStore,
+          scope: "agent:chat",
+          identityHash: hashIdentity(auth.session.userId),
+          limit: config.rateLimitMaxRequests,
+          windowSeconds: config.rateLimitWindowSeconds,
+          now: now(),
+        });
+        if (!rateLimit.allowed) {
+          return sendError(response, 429, context, {
+            error: "rate_limited",
+            message: "Too many Agent chat requests",
+            retryAfterSeconds: rateLimit.retryAfterSeconds,
+          });
+        }
+      } catch {
+        return sendError(response, 503, context, {
+          error: "dependency_unavailable",
+          message: "Rate limit store is unavailable",
+          dependency: "redis",
+        });
+      }
+    }
+
+    const prompt = buildAgentMessagePrompt({
+      ...validation.request,
+      requestId: context.requestId,
+    });
+
+    try {
+      const providerResult = await agentMessageProvider.run({
+        request: validation.request,
+        prompt,
+        session: auth.session,
+        requestId: context.requestId,
+      });
+      const parsed = parseAgentMessageProviderResponse(providerResult.content);
+      if (!parsed.ok) {
+        return sendError(response, 503, context, {
+          error: "dependency_unavailable",
+          message: parsed.message,
+          dependency: "provider",
+        });
+      }
+
+      return sendJson(
+        response,
+        200,
+        {
+          status: "ok",
+          requestId: context.requestId,
+          message: parsed.result.message,
+          toolCalls: parsed.result.toolCalls,
+          proposedPatches: parsed.result.proposedPatches,
+          usage: providerResult.usage,
         },
         context,
       );

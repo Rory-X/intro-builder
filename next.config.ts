@@ -1,5 +1,23 @@
+import path from "node:path";
 import type { NextConfig } from "next";
 import { createMDX } from "fumadocs-mdx/next";
+
+const assistantUiReactCompatPath = path.join(
+  process.cwd(),
+  "lib/agent/assistant-ui-react-compat.ts",
+);
+const assistantUiTapCorePathPattern =
+  /[\\/]@assistant-ui[\\/]tap[\\/]dist[\\/]core$/;
+const assistantUiTapDispatcherPattern =
+  /[\\/]@assistant-ui[\\/]tap[\\/]dist[\\/]core[\\/]react-dispatcher\.js$/;
+
+type NormalModuleReplacementResource = {
+  context?: string;
+  contextInfo?: {
+    issuer?: string;
+  };
+  request: string;
+};
 
 const nextConfig: NextConfig = {
   images: {
@@ -20,6 +38,24 @@ const nextConfig: NextConfig = {
     "172.20.10.3",
     "10.5.223.33",
   ],
+  webpack(config, { webpack }) {
+    config.plugins.push(
+      new webpack.NormalModuleReplacementPlugin(/^react$/, (
+        resource: NormalModuleReplacementResource,
+      ) => {
+        const context = resource.context ?? "";
+        const issuer = resource.contextInfo?.issuer ?? "";
+        if (
+          assistantUiTapCorePathPattern.test(context) ||
+          assistantUiTapDispatcherPattern.test(issuer)
+        ) {
+          resource.request = assistantUiReactCompatPath;
+        }
+      }),
+    );
+
+    return config;
+  },
 };
 
 const withMDX = createMDX();

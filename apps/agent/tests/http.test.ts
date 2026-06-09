@@ -5,6 +5,7 @@ import { SignJWT } from "jose";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { AgentReplayStore } from "../src/auth";
+import type { AgentMessageProvider } from "../src/agent-messages";
 import { createAgentServer } from "../src/http";
 import type { RichTextPolishProvider } from "../src/rich-text-polish";
 import type { ResumeHelperProvider } from "../src/resume-helpers";
@@ -581,6 +582,215 @@ describe("agent HTTP service", () => {
       dependency: "provider",
     });
   });
+
+  it("returns Agent messages, tool calls, and proposed patches from /v1/agent/messages", async () => {
+    const provider = new FakeAgentMessageProvider(
+      JSON.stringify({
+        message: {
+          id: "msg_assistant_1",
+          role: "assistant",
+          content: "建议先优化第一段工作经历。",
+        },
+        toolCalls: [
+          {
+            id: "tool_1",
+            name: "inspect_resume",
+            status: "completed",
+            title: "检查简历",
+            summary: "发现工作经历缺少结果证据。",
+            input: { scope: "resume" },
+            result: { topIssue: "缺少结果证据" },
+          },
+        ],
+        proposedPatches: [
+          {
+            id: "patch_1",
+            toolCallId: "tool_1",
+            label: "优化工作经历第一段",
+            section: "experience",
+            fieldPath: "experience.0.content",
+            operation: "replace_tiptap_json",
+            beforePlainText: "负责业务系统前端开发，优化页面性能。",
+            afterPlainText: "围绕业务系统页面性能瓶颈推进前端优化；结果指标需要补充。",
+            replacementTiptapJson: { type: "doc", content: [] },
+            changeSummary: "按 STAR 补足任务与行动，不编造结果。",
+            riskFlags: [
+              {
+                type: "needs_user_fact",
+                message: "请补充真实性能提升指标。",
+              },
+            ],
+          },
+        ],
+      }),
+    );
+    const server = await listenOnRandomPort({
+      replayStore: new FakeReplayStore(),
+      agentMessageProvider: provider,
+    });
+    const token = await signAgentToken({
+      sub: "user_123",
+      resumeId: "resume_abc",
+      scope: "agent:chat",
+      jti: "jti_agent_message_valid",
+    });
+
+    const response = await fetch(server.url("/v1/agent/messages"), {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${token}`,
+        "content-type": "application/json",
+        "x-request-id": "req-client-agent-message",
+      },
+      body: JSON.stringify(validAgentMessageBody()),
+    });
+
+    expect(response.status).toBe(200);
+    expect(provider.calls).toHaveLength(1);
+    expect(provider.calls[0]?.request.workflowId).toBe("resume-diagnose");
+    expect(provider.calls[0]?.prompt.developer).toContain(
+      "propose_rich_text_rewrite",
+    );
+    await expect(response.json()).resolves.toEqual({
+      status: "ok",
+      requestId: "req-client-agent-message",
+      message: {
+        id: "msg_assistant_1",
+        role: "assistant",
+        content: "建议先优化第一段工作经历。",
+      },
+      toolCalls: [
+        {
+          id: "tool_1",
+          name: "inspect_resume",
+          status: "completed",
+          title: "检查简历",
+          summary: "发现工作经历缺少结果证据。",
+          input: { scope: "resume" },
+          result: { topIssue: "缺少结果证据" },
+        },
+      ],
+      proposedPatches: [
+        {
+          id: "patch_1",
+          toolCallId: "tool_1",
+          label: "优化工作经历第一段",
+          section: "experience",
+          fieldPath: "experience.0.content",
+          operation: "replace_tiptap_json",
+          beforePlainText: "负责业务系统前端开发，优化页面性能。",
+          afterPlainText: "围绕业务系统页面性能瓶颈推进前端优化；结果指标需要补充。",
+          replacementTiptapJson: { type: "doc", content: [] },
+          changeSummary: "按 STAR 补足任务与行动，不编造结果。",
+          riskFlags: [
+            {
+              type: "needs_user_fact",
+              message: "请补充真实性能提升指标。",
+            },
+          ],
+        },
+      ],
+      usage: {
+        provider: "fake-provider",
+        model: "fake-model",
+        inputTokens: 900,
+        outputTokens: 240,
+      },
+    });
+  });
+
+  it("rejects Agent message tokens with the wrong scope", async () => {
+    const server = await listenOnRandomPort({
+      replayStore: new FakeReplayStore(),
+      agentMessageProvider: new FakeAgentMessageProvider("{}"),
+    });
+    const token = await signAgentToken({
+      sub: "user_123",
+      resumeId: "resume_abc",
+      scope: "resume:helper",
+      jti: "jti_agent_message_wrong_scope",
+    });
+
+    const response = await fetch(server.url("/v1/agent/messages"), {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${token}`,
+        "content-type": "application/json",
+        "x-request-id": "req-client-agent-message-scope",
+      },
+      body: JSON.stringify(validAgentMessageBody()),
+    });
+
+    expect(response.status).toBe(403);
+    await expect(response.json()).resolves.toEqual({
+      error: "forbidden",
+      message: "Token scope is not allowed for this route",
+      requestId: "req-client-agent-message-scope",
+    });
+  });
+
+  it("rejects Agent message requests whose resumeId does not match the JWT", async () => {
+    const server = await listenOnRandomPort({
+      replayStore: new FakeReplayStore(),
+      agentMessageProvider: new FakeAgentMessageProvider("{}"),
+    });
+    const token = await signAgentToken({
+      sub: "user_123",
+      resumeId: "resume_abc",
+      scope: "agent:chat",
+      jti: "jti_agent_message_resume_mismatch",
+    });
+
+    const response = await fetch(server.url("/v1/agent/messages"), {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${token}`,
+        "content-type": "application/json",
+        "x-request-id": "req-client-agent-message-resume",
+      },
+      body: JSON.stringify({
+        ...validAgentMessageBody(),
+        resumeId: "resume_other",
+      }),
+    });
+
+    expect(response.status).toBe(403);
+    await expect(response.json()).resolves.toEqual({
+      error: "forbidden",
+      message: "Token resumeId does not match request resumeId",
+      requestId: "req-client-agent-message-resume",
+    });
+  });
+
+  it("returns dependency_unavailable when no Agent message provider is configured", async () => {
+    const server = await listenOnRandomPort({
+      replayStore: new FakeReplayStore(),
+    });
+    const token = await signAgentToken({
+      sub: "user_123",
+      resumeId: "resume_abc",
+      scope: "agent:chat",
+      jti: "jti_agent_message_no_provider",
+    });
+
+    const response = await fetch(server.url("/v1/agent/messages"), {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${token}`,
+        "content-type": "application/json",
+        "x-request-id": "req-client-agent-message-provider",
+      },
+      body: JSON.stringify(validAgentMessageBody()),
+    });
+
+    expect(response.status).toBe(503);
+    await expect(response.json()).resolves.toEqual({
+      error: "dependency_unavailable",
+      message: "Agent message provider is not configured",
+      requestId: "req-client-agent-message-provider",
+      dependency: "provider",
+    });
+  });
 });
 
 async function listenOnRandomPort(
@@ -589,6 +799,7 @@ async function listenOnRandomPort(
     replayStore?: AgentReplayStore;
     richTextPolishProvider?: RichTextPolishProvider;
     resumeHelperProvider?: ResumeHelperProvider;
+    agentMessageProvider?: AgentMessageProvider;
   } = {},
 ): Promise<TestAgentServer> {
   const server = createAgentServer({
@@ -618,6 +829,7 @@ async function listenOnRandomPort(
     replayStore: options.replayStore,
     richTextPolishProvider: options.richTextPolishProvider,
     resumeHelperProvider: options.resumeHelperProvider,
+    agentMessageProvider: options.agentMessageProvider,
     createRequestId: () => "req_test_1",
   });
 
@@ -664,6 +876,34 @@ function validResumeHelperBody() {
       mode: "diagnose",
       maxSuggestions: 5,
       strategy: "star",
+    },
+  };
+}
+
+function validAgentMessageBody() {
+  return {
+    resumeId: "resume_abc",
+    locale: "zh-CN",
+    workflowId: "resume-diagnose",
+    messages: [{ id: "msg_user_1", role: "user", content: "诊断整份简历" }],
+    context: {
+      resumeTitle: "前端开发工程师",
+      templateId: "professional",
+      activeSection: null,
+      completeness: {
+        overall: 80,
+        sections: [
+          { key: "experience", label: "工作经历", score: 18, max: 25 },
+        ],
+      },
+      sections: [
+        {
+          key: "experience",
+          label: "工作经历 1",
+          fieldPath: "experience.0.content",
+          plainText: "负责业务系统前端开发，优化页面性能。",
+        },
+      ],
     },
   };
 }
@@ -752,6 +992,28 @@ class FakeResumeHelperProvider implements ResumeHelperProvider {
         model: "fake-model",
         inputTokens: 620,
         outputTokens: 180,
+      },
+    };
+  }
+}
+
+class FakeAgentMessageProvider implements AgentMessageProvider {
+  readonly calls: Array<{
+    request: Parameters<AgentMessageProvider["run"]>[0]["request"];
+    prompt: Parameters<AgentMessageProvider["run"]>[0]["prompt"];
+  }> = [];
+
+  constructor(private readonly content: string) {}
+
+  async run(options: Parameters<AgentMessageProvider["run"]>[0]) {
+    this.calls.push({ request: options.request, prompt: options.prompt });
+    return {
+      content: this.content,
+      usage: {
+        provider: "fake-provider",
+        model: "fake-model",
+        inputTokens: 900,
+        outputTokens: 240,
       },
     };
   }

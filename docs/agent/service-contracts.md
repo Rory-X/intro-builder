@@ -157,11 +157,11 @@ Header: `Allow: GET`
 }
 ```
 
-## Planned API Versioning
+## Business API Versioning
 
 业务 API 从 `/v1` 开始。基础健康检查可以保留根路径，但业务能力必须版本化。
 
-Planned endpoints:
+Business endpoints:
 
 | Endpoint | Phase | Purpose |
 | --- | --- | --- |
@@ -169,6 +169,12 @@ Planned endpoints:
 | `POST /v1/rich-text/polish` | Phase 1 | 富文本局部润色 |
 | `POST /v1/resume/helpers/:helperId` | Phase 2 | 简历模块级增量 helper |
 | `POST /v1/agent/messages` | Phase 3 | assistant-ui Agent panel 消息入口 |
+
+Current Phase 3A branch status:
+
+- Implemented locally: shared `AgentMessageRequest`/`AgentMessageResponse` types, capped chat context builder, Agent tool/patch validation, Agent service `POST /v1/agent/messages` route, Web BFF `POST /api/agent/messages`, assistant-ui runtime seam, left-column Agent panel, confirmation cards, and initial RHF writeback dispatcher.
+- Pending in the next slice: broader RHF patch regression coverage, local browser smoke, and production deploy.
+- Phase 3A still uses HTTP JSON as the source of truth. The proto file is an IDL draft to keep naming aligned; it is not a requirement to introduce gRPC.
 
 ## Agent JWT Contract
 
@@ -414,6 +420,168 @@ Rules:
 - `context.sections[*].plainText` is capped by Web before forwarding and capped again by Agent validation.
 - Agent suggestions cannot claim facts, numbers, technologies, companies, schools, awards, or outcomes not present in the provided context.
 - Web displays suggestions and lets users edit manually. Phase 2A does not auto-apply generated patches.
+
+## Agent Messages Contract
+
+Phase 3A 计划新增聊天式 Agent Mode。该能力使用 assistant-ui 承载多轮 thread、composer 和 tool display，但产品状态仍由 Web 编辑器掌管。
+
+重要边界：
+
+- Phase 3A UI 形态是 **Agent Mode replaces left editor**：用户点击 `Agent 模式` 后，左侧编辑列切换为 Agent panel，右侧 `LivePreview` 保持可见。
+- `POST /v1/agent/messages` 只服务新增 Agent 能力，不迁移 OCR、导入简历、AI 解析。
+- Agent 可以为推理调用基础简历修改 tools，但只能返回 `proposedPatches`。
+- Web 只有在用户点击 `应用` 后才把 `ResumePatch` 写入 React Hook Form 并触发 autosave。
+- Agent 不连接 Postgres，不发布简历，不删除 section，不自动切模板。
+- Phase 3A 不做 streaming/DataStream；首版只稳定 JSON message/tool/patch contract。任何 streaming 接入都必须进入 Phase 3B plan。
+
+### `POST /v1/agent/messages`
+
+用途：assistant-ui Agent panel 的消息入口。它接收 Web 裁剪后的当前 RHF 简历快照、聊天消息和 preset workflow，返回 assistant 消息、可见 tool calls 和待用户确认的 `ResumePatch`。
+
+认证：`Authorization: Bearer <agent-jwt>`，scope 必须是 `agent:chat`。JWT 的 `resumeId` 必须与请求体 `resumeId` 一致。
+
+Phase 3A 支持的 preset workflows：
+
+| Workflow ID | Purpose |
+| --- | --- |
+| `resume-diagnose` | 诊断整份简历，给出优先级最高的改进点 |
+| `target-role-match` | 对照目标岗位检查匹配度，缺目标岗位时先追问 |
+| `experience-star` | 用 STAR 原则优化经历，但不编造 Result 指标 |
+| `pre-export-check` | 导出前检查内容和格式风险 |
+
+Phase 3A 基础 tools：
+
+| Tool | Can read | Can return | Direct write? |
+| --- | --- | --- | --- |
+| `inspect_resume` | Web 提供的 capped resume context | 结构诊断、缺口、风险 | No |
+| `propose_rich_text_rewrite` | 目标富文本 field 的 plain text 和上下文 | `replace_tiptap_json` patch | No |
+| `propose_summary_rewrite` | `basics.summary` 和上下文 | `replace_plain_text` patch | No |
+| `propose_bullet_rewrite` | 列表型 TipTap field 的 plain text 和结构摘要 | 保持列表结构的 `replace_tiptap_json` patch | No |
+| `draft_section_item` | 简历摘要、目标 section、用户目标 | 待确认草稿 envelope；Phase 3A 默认不直接插入 | No |
+
+命名规则：
+
+- 以上五个 tool 名是 Phase 3A 的 canonical contract，代码、测试、prompt、proto 草案和 UI 文案都应引用同一组名字。
+- 早期草案里出现过的 `suggest_rewrite`、`draft_section`、`explain_template` 不属于当前 Phase 3A JSON contract；如需恢复，必须先更新本文件、proto、Agent validator 和 Web confirmation 语义。
+
+Request:
+
+```json
+{
+  "resumeId": "resume_abc",
+  "locale": "zh-CN",
+  "workflowId": "resume-diagnose",
+  "messages": [
+    {
+      "id": "msg_user_1",
+      "role": "user",
+      "content": "请诊断这份简历，并优先指出最值得修改的一处。"
+    }
+  ],
+  "context": {
+    "resumeTitle": "前端工程师",
+    "templateId": "professional",
+    "activeSection": null,
+    "completeness": {
+      "overall": 76,
+      "sections": [
+        { "key": "experience", "label": "工作经历", "score": 18, "max": 25 }
+      ]
+    },
+    "sections": [
+      {
+        "key": "experience",
+        "label": "工作经历 1",
+        "fieldPath": "experience.0.content",
+        "plainText": "负责后台系统开发，优化页面性能。"
+      }
+    ]
+  }
+}
+```
+
+Success response:
+
+```json
+{
+  "status": "ok",
+  "requestId": "req_01H...",
+  "message": {
+    "id": "msg_assistant_1",
+    "role": "assistant",
+    "content": "我先看了整体结构，最值得优先优化的是第一段工作经历：它有动作，但缺少业务背景和结果证据。"
+  },
+  "toolCalls": [
+    {
+      "id": "tool_1",
+      "name": "inspect_resume",
+      "status": "completed",
+      "title": "检查简历结构",
+      "summary": "已检查 1 个工作经历段落，发现结果证据不足。",
+      "input": { "scope": "resume" },
+      "result": { "topIssue": "工作经历缺少结果证据" }
+    }
+  ],
+  "proposedPatches": [
+    {
+      "id": "patch_1",
+      "toolCallId": "tool_1",
+      "label": "优化工作经历第一段",
+      "section": "experience",
+      "fieldPath": "experience.0.content",
+      "operation": "replace_tiptap_json",
+      "beforePlainText": "负责后台系统开发，优化页面性能。",
+      "afterPlainText": "围绕后台系统的页面性能问题，梳理核心页面加载链路并推进前端优化；请补充具体指标后再写入最终结果。",
+      "replacementTiptapJson": {
+        "type": "doc",
+        "content": [
+          {
+            "type": "paragraph",
+            "content": [
+              {
+                "type": "text",
+                "text": "围绕后台系统的页面性能问题，梳理核心页面加载链路并推进前端优化；请补充具体指标后再写入最终结果。"
+              }
+            ]
+          }
+        ]
+      },
+      "changeSummary": "按 STAR 补足任务与行动，但没有编造结果指标。",
+      "riskFlags": [
+        {
+          "type": "needs_user_fact",
+          "message": "需要用户补充性能提升指标或业务影响。"
+        }
+      ]
+    }
+  ],
+  "usage": {
+    "provider": "openai-compatible",
+    "model": "deepseek-chat",
+    "inputTokens": 1000,
+    "outputTokens": 300
+  }
+}
+```
+
+Allowed `ResumePatch.fieldPath` in Phase 3A:
+
+- `basics.summary`
+- `experience.<index>.content`
+- `projects.<index>.content`
+- `education.<index>.highlights`
+- `research.<index>.content`
+- `skills`
+- `custom.<index>.content`
+
+Patch rules:
+
+- `replace_plain_text` 只能用于 `basics.summary`。
+- `replace_tiptap_json` 用于富文本字段，必须保持原有段落/列表语义；原文是有序或无序列表时，润色结果也必须是对应列表结构，而不是一整段无结构文本。
+- `draft_section_item` 只能返回草稿 envelope；当前 Phase 3A `ResumePatch.operation` 还没有 insert 语义，不允许 Agent 或 UI 顺手新增 section/item。如需插入，必须先新增 contract、allowlist、确认卡和 RHF dispatcher 测试。
+- `riskFlags` 必须标记需要用户补事实的地方，特别是 STAR 的 Result 指标。
+- Agent provider 输出必须是 JSON；Agent 负责解析和 allowlist 校验，失败返回 `dependency_unavailable` 或 `bad_request`。
+- Web 展示 `proposedPatches` 的确认卡；用户点击 `应用` 后才 `setValue` 到 RHF，并 dispatch `resume:flush-autosave`。
 
 ## Rate Limit Keys
 

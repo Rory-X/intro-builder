@@ -1,5 +1,10 @@
 import { randomUUID } from "node:crypto";
 
+import type {
+  AgentMessageRequest,
+  AgentMessageResponse,
+} from "@/lib/agent/agent-message-contract";
+
 export type AgentErrorCode =
   | "bad_request"
   | "unauthorized"
@@ -207,6 +212,11 @@ export type AgentClient = {
     request: ResumeHelperRequest;
     requestId?: string;
   }) => Promise<AgentClientResult<ResumeHelperResponse>>;
+  sendAgentMessage: (options: {
+    token: string;
+    request: AgentMessageRequest;
+    requestId?: string;
+  }) => Promise<AgentClientResult<AgentMessageResponse>>;
 };
 
 const DEFAULT_AGENT_BASE_URL = "http://127.0.0.1:8787";
@@ -246,6 +256,18 @@ export function createAgentClient({
       return requestJson<ResumeHelperResponse>({
         baseUrl,
         path: `/v1/resume/helpers/${encodeURIComponent(helperId)}`,
+        method: "POST",
+        token,
+        requestId,
+        body: request,
+        timeoutMs,
+        fetchFn,
+      });
+    },
+    sendAgentMessage({ token, request, requestId = createRequestId() }) {
+      return requestJson<AgentMessageResponse>({
+        baseUrl,
+        path: "/v1/agent/messages",
         method: "POST",
         token,
         requestId,

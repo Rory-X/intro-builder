@@ -12,6 +12,7 @@ import { useForm, FormProvider } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { toast } from "sonner";
 import { ResumeContent } from "@/lib/resume-schema";
+import { computeCompletenessScore } from "@/lib/completeness-score";
 import { saveResume, setTemplate, toggleShare } from "./actions";
 import { useResumeAutosave } from "@/hooks/use-resume-autosave";
 import { formatSaveError } from "@/lib/format-save-error";
@@ -55,6 +56,9 @@ import { VoiceChatControls } from "@/components/collab/voice-chat-controls";
 import { AnnotationHighlights, flashAnnotation } from "@/components/collab/annotation-highlights";
 import { AnnotationList } from "@/components/collab/annotation-list";
 import { ResumeDiagnoseButton } from "@/components/agent/resume-diagnose-button";
+import { AgentModeToggle } from "@/components/agent/agent-mode-toggle";
+import { AgentPanel } from "@/components/agent/agent-panel";
+import type { ResumePatch } from "@/lib/agent/agent-message-contract";
 
 type Props = {
   id: string;
@@ -108,6 +112,17 @@ function getServerDesktopSnapshot() {
   return true; // Assume desktop for SSR (this page is desktop-only)
 }
 
+function isAllowedAgentTipTapFieldPath(fieldPath: string): boolean {
+  return (
+    fieldPath === "skills" ||
+    /^experience\.\d+\.content$/.test(fieldPath) ||
+    /^projects\.\d+\.content$/.test(fieldPath) ||
+    /^education\.\d+\.highlights$/.test(fieldPath) ||
+    /^research\.\d+\.content$/.test(fieldPath) ||
+    /^custom\.\d+\.content$/.test(fieldPath)
+  );
+}
+
 function formatRelativeSaveTime(savedAt: Date, now: Date): string {
   const diffMs = Math.max(0, now.getTime() - savedAt.getTime());
   const minutes = Math.floor(diffMs / 60_000);
@@ -146,6 +161,7 @@ export default function EditorClient({ id, initialTitle, initialTemplate, initia
   const [paginationData, setPaginationData] = useState<{ pageBreaks: number[]; totalHeight: number } | null>(null);
   const [pendingTemplateId, setPendingTemplateId] = useState<TemplateId | null>(null);
   const [showTemplatePanel, setShowTemplatePanel] = useState(false);
+  const [isAgentMode, setIsAgentMode] = useState(false);
   const [isTogglingShare, setIsTogglingShare] = useState(false);
   const [isPending, startTransition] = useTransition();
   const previewRootRef = useRef<HTMLDivElement>(null);
@@ -375,6 +391,38 @@ export default function EditorClient({ id, initialTitle, initialTemplate, initia
     form.setValue("sectionOrder", newOrder, { shouldDirty: true });
   }
 
+  function applyAgentPatch(patch: ResumePatch) {
+    if (patch.operation === "replace_plain_text" && patch.fieldPath === "basics.summary") {
+      form.setValue("basics.summary", patch.afterPlainText, {
+        shouldDirty: true,
+        shouldValidate: true,
+      });
+      toast.success("已应用 Agent 建议");
+      return;
+    }
+
+    if (
+      patch.operation === "replace_tiptap_json" &&
+      patch.replacementTiptapJson !== undefined &&
+      isAllowedAgentTipTapFieldPath(patch.fieldPath)
+    ) {
+      type SetValueArgs = Parameters<typeof form.setValue>;
+      form.setValue(
+        patch.fieldPath as SetValueArgs[0],
+        patch.replacementTiptapJson as SetValueArgs[1],
+        { shouldDirty: true, shouldValidate: true },
+      );
+      toast.success("已应用 Agent 建议");
+      return;
+    }
+
+    toast.error("这条 Agent 建议暂不支持自动应用");
+  }
+
+  function flushAgentAutosave() {
+    window.dispatchEvent(new Event("resume:flush-autosave"));
+  }
+
   /** Check if a section key is a custom (non-built-in) section */
   function isCustomSection(key: string): boolean {
     return !BUILTIN_SECTION_KEYS.has(key);
@@ -444,6 +492,7 @@ export default function EditorClient({ id, initialTitle, initialTemplate, initia
   const saveStatusDescription = saveError
     ? `当前自动保存状态：保存失败（${saveError}）`
     : `当前自动保存状态：${saveStatusLabel}`;
+  const agentCompleteness = computeCompletenessScore(form.getValues() as ResumeContent);
 
   return (
     <FormProvider {...form}>
@@ -466,7 +515,10 @@ export default function EditorClient({ id, initialTitle, initialTemplate, initia
             <Button
               size="sm"
               variant="outline"
-              onClick={() => setShowTemplatePanel((v) => !v)}
+              onClick={() => {
+                setIsAgentMode(false);
+                setShowTemplatePanel((v) => !v);
+              }}
               aria-pressed={showTemplatePanel}
               className={cn(
                 "gap-1.5",
@@ -480,6 +532,13 @@ export default function EditorClient({ id, initialTitle, initialTemplate, initia
             <StyleEditor />
             <ModuleManager sectionOrder={sectionOrder} onOrderChange={handleOrderChange} />
             <ResumeDiagnoseButton resumeId={id} />
+            <AgentModeToggle
+              active={isAgentMode}
+              onClick={() => {
+                setShowTemplatePanel(false);
+                setIsAgentMode((value) => !value);
+              }}
+            />
             <Button
               size="sm"
               variant="outline"
@@ -601,33 +660,51 @@ export default function EditorClient({ id, initialTitle, initialTemplate, initia
           <div className="relative min-w-0 border-r" style={{ flex: `0 0 ${splitPercent}%` }}>
             <div
               ref={editorPanelRef}
-              className="thin-scrollbar h-full space-y-6 overflow-y-auto p-6"
+              className={cn(
+                "thin-scrollbar h-full overflow-y-auto",
+                isAgentMode ? "p-0" : "space-y-6 p-6",
+              )}
             >
-              <div className={cn(
-                "rounded-lg transition-all duration-500",
-                collabSync.highlightedFields.has("basics") && "ring-2 ring-violet-400/60 bg-violet-50/30 dark:bg-violet-950/20"
-              )}>
-                <BasicsEditor />
-              </div>
-              {sectionOrder.filter(k => k !== "basics").map((key) => (
-                <div key={key} className={cn(
-                  "rounded-lg transition-all duration-500",
-                  collabSync.highlightedFields.has(key) && "ring-2 ring-violet-400/60 bg-violet-50/30 dark:bg-violet-950/20"
-                )}>
-                  <SectionWrapper id={key}>
-                    {key === "experience" && <ExperienceEditor resumeId={id} />}
-                    {key === "education" && <EducationEditor resumeId={id} />}
-                    {key === "projects" && <ProjectsEditor resumeId={id} />}
-                    {key === "research" && <ResearchEditor resumeId={id} />}
-                    {key === "skills" && <SkillsEditor resumeId={id} />}
-                    {isCustomSection(key) && <CustomSectionEditor sectionId={key} resumeId={id} />}
-                  </SectionWrapper>
-                </div>
-              ))}
+              {isAgentMode ? (
+                <AgentPanel
+                  resumeId={id}
+                  title={title}
+                  templateId={template}
+                  getResumeContent={() => form.getValues() as ResumeContent}
+                  completeness={agentCompleteness}
+                  applyPatch={applyAgentPatch}
+                  flushAutosave={flushAgentAutosave}
+                  onBackToEdit={() => setIsAgentMode(false)}
+                />
+              ) : (
+                <>
+                  <div className={cn(
+                    "rounded-lg transition-all duration-500",
+                    collabSync.highlightedFields.has("basics") && "ring-2 ring-violet-400/60 bg-violet-50/30 dark:bg-violet-950/20"
+                  )}>
+                    <BasicsEditor />
+                  </div>
+                  {sectionOrder.filter(k => k !== "basics").map((key) => (
+                    <div key={key} className={cn(
+                      "rounded-lg transition-all duration-500",
+                      collabSync.highlightedFields.has(key) && "ring-2 ring-violet-400/60 bg-violet-50/30 dark:bg-violet-950/20"
+                    )}>
+                      <SectionWrapper id={key}>
+                        {key === "experience" && <ExperienceEditor resumeId={id} />}
+                        {key === "education" && <EducationEditor resumeId={id} />}
+                        {key === "projects" && <ProjectsEditor resumeId={id} />}
+                        {key === "research" && <ResearchEditor resumeId={id} />}
+                        {key === "skills" && <SkillsEditor resumeId={id} />}
+                        {isCustomSection(key) && <CustomSectionEditor sectionId={key} resumeId={id} />}
+                      </SectionWrapper>
+                    </div>
+                  ))}
+                </>
+              )}
             </div>
             {/* 模板面板：覆盖左侧表单列（右侧预览常驻可见，换模板实时看效果）。
                 表单不卸载（仅被遮住），保留编辑状态与滚动位置。 */}
-            {showTemplatePanel && (
+            {showTemplatePanel && !isAgentMode && (
               <TemplateSwitchPanel
                 className="absolute inset-0 z-20"
                 favorites={favoriteTemplateItems}
@@ -640,12 +717,14 @@ export default function EditorClient({ id, initialTitle, initialTemplate, initia
             )}
           </div>
           {/* Resize handle */}
-          <div
-            className="flex w-1.5 shrink-0 cursor-col-resize items-center justify-center hover:bg-accent active:bg-accent"
-            onMouseDown={handleMouseDown}
-          >
-            <div className="h-8 w-0.5 rounded-full bg-border" />
-          </div>
+          {!isAgentMode && (
+            <div
+              className="flex w-1.5 shrink-0 cursor-col-resize items-center justify-center hover:bg-accent active:bg-accent"
+              onMouseDown={handleMouseDown}
+            >
+              <div className="h-8 w-0.5 rounded-full bg-border" />
+            </div>
+          )}
           <div
             className="thin-scrollbar min-w-0 overflow-y-auto bg-muted p-6"
             style={{ flex: `1 1 ${100 - splitPercent}%` }}
