@@ -5,11 +5,13 @@ import { EventType, type BaseEvent, type RunAgentInput } from "@ag-ui/core";
 import {
   ComposerPrimitive,
   type ChatModelRunOptions,
+  MessagePrimitive,
   ThreadPrimitive,
   type ThreadMessage,
   useAuiState,
   useThreadRuntime,
 } from "@assistant-ui/react";
+import { MarkdownTextPrimitive } from "@assistant-ui/react-markdown";
 import { ArrowLeft, Loader2, Send } from "lucide-react";
 
 import { AgentConfirmationCard } from "@/components/agent/agent-confirmation-card";
@@ -287,12 +289,31 @@ function AgentThreadMessage({ message }: { message: ThreadMessage }) {
   const text = readThreadMessageText(message);
   if (!text || message.role === "system") return null;
 
+  if (message.role === "assistant") {
+    return (
+      <MessagePrimitive.Root className="text-left">
+        <div className="inline-block max-w-[85%] rounded-xl bg-muted px-3 py-2 text-sm text-foreground">
+          <MessagePrimitive.Content components={{ Text: AgentMarkdownText }} />
+        </div>
+      </MessagePrimitive.Root>
+    );
+  }
+
   return (
     <div className={message.role === "user" ? "text-right" : "text-left"}>
       <div className="inline-block max-w-[85%] whitespace-pre-wrap rounded-xl bg-muted px-3 py-2 text-sm text-foreground">
         {text}
       </div>
     </div>
+  );
+}
+
+function AgentMarkdownText() {
+  return (
+    <MarkdownTextPrimitive
+      className="space-y-2 [&_ol]:my-2 [&_ol]:list-decimal [&_ol]:pl-5 [&_p]:my-0 [&_strong]:font-semibold [&_ul]:my-2 [&_ul]:list-disc [&_ul]:pl-5"
+      smooth
+    />
   );
 }
 

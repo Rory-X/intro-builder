@@ -63,6 +63,31 @@ describe("AgentPanel assistant-ui runtime", () => {
     expect(await screen.findByText("我会先检查内容结构。")).toBeInTheDocument();
     expect(screen.getByTestId("agent-assistant-ui-thread")).toBeInTheDocument();
   });
+
+  it("renders assistant markdown as formatted content", async () => {
+    const fetchMock = vi.fn<
+      (...args: [RequestInfo | URL, RequestInit?]) => Promise<Response>
+    >(async () => {
+      return agUiResponse([
+        "已检查完毕：\n\n",
+        "1. **工作经历**：需要补充量化指标。\n",
+        "2. **项目经历**：建议说明 STAR 背景。",
+      ]);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<AgentPanel {...panelProps()} />);
+
+    const input = screen.getByTestId("agent-assistant-ui-composer-input");
+    fireEvent.change(input, { target: { value: "请检查格式风险" } });
+    fireEvent.click(screen.getByRole("button", { name: "发送" }));
+
+    const strong = await screen.findByText("工作经历", { selector: "strong" });
+    expect(strong).toBeInTheDocument();
+    expect(screen.queryByText(/\*\*工作经历\*\*/)).not.toBeInTheDocument();
+    expect(screen.getAllByRole("listitem")).toHaveLength(2);
+    expect(screen.getByText("项目经历", { selector: "strong" })).toBeInTheDocument();
+  });
 });
 
 function agUiResponse(chunks: string[]): Response {
