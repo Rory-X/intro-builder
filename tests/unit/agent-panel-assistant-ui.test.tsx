@@ -252,6 +252,7 @@ describe("AgentPanel assistant-ui runtime", () => {
     expect(await screen.findByText(/改写个人总结/)).toBeInTheDocument();
     expect(screen.getByText("应用个人总结改写")).toBeInTheDocument();
     expect(screen.queryByText("Agent 正在使用工具")).not.toBeInTheDocument();
+    expect(screen.queryByText("Agent 需要补充信息")).not.toBeInTheDocument();
     expect(applyOperation).not.toHaveBeenCalled();
 
     fireEvent.click(screen.getByRole("button", { name: "应用" }));

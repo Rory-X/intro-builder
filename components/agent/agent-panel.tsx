@@ -176,11 +176,12 @@ export function AgentPanel({
     nextInterrupts: AgentAgUiInterrupt[],
     turnId = activeTurnIdRef.current,
   ) {
+    const questionInterrupts = nextInterrupts.filter(isQuestionInterrupt);
     updateAgentTurn(turnId, (turn) => ({
       ...turn,
-      interrupts: nextInterrupts,
+      interrupts: questionInterrupts,
       status:
-        nextInterrupts.length > 0
+        questionInterrupts.length > 0
           ? "awaiting-input"
           : turn.status === "awaiting-input"
             ? "complete"
@@ -1066,4 +1067,8 @@ function hasRunningAssistantToolCall(message: ThreadMessage): boolean {
   return message.content.some(
     (part) => part.type === "tool-call" && part.result === undefined,
   );
+}
+
+function isQuestionInterrupt(interrupt: AgentAgUiInterrupt): boolean {
+  return interrupt.reason !== "approval_required";
 }
