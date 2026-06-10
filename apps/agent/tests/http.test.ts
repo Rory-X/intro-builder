@@ -1075,7 +1075,19 @@ describe("agent HTTP service", () => {
 
     expect(response.status).toBe(200);
     expect(events.find((event) => event.type === EventType.RUN_ERROR)).toBeUndefined();
-    expect(events.at(-1)?.type).toBe(EventType.RUN_FINISHED);
+    expect(events.at(-1)).toMatchObject({
+      type: EventType.RUN_FINISHED,
+      outcome: {
+        type: "interrupt",
+        interrupts: [
+          {
+            id: "op_1",
+            reason: "approval_required",
+            toolCallId: "tool_op_1",
+          },
+        ],
+      },
+    });
     expect(events).toContainEqual(expect.objectContaining({
       type: EventType.TOOL_CALL_RESULT,
       toolCallId: "tool_op_1",
