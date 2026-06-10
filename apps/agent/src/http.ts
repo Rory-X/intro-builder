@@ -12,6 +12,7 @@ import {
 } from "./auth.js";
 import {
   buildAgentMessagePrompt,
+  createAgUiRunFinishedEvent,
   extractStreamingAgentMessageContent,
   parseAgentMessageProviderResponse,
   toAgUiAgentEvents,
@@ -1083,12 +1084,9 @@ async function streamAgentMessageEvents({
       writeEvent(event);
     }
     writeEvent({ type: EventType.TEXT_MESSAGE_END, messageId });
-    writeEvent({
-      type: EventType.RUN_FINISHED,
-      threadId,
-      runId: requestId,
-      outcome: { type: "success" },
-    });
+    writeEvent(
+      createAgUiRunFinishedEvent({ requestId, threadId, result: parsed.result }),
+    );
     response.end();
   } catch (error) {
     writeEvent({

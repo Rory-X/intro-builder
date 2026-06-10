@@ -1,11 +1,10 @@
 "use client";
 
-import { useState, type ComponentProps, type ReactNode } from "react";
-import { EventType, type BaseEvent, type RunAgentInput } from "@ag-ui/core";
+import { useRef, useState, type ReactNode } from "react";
+import * as React from "react";
 import {
   ActionBarPrimitive,
   ComposerPrimitive,
-  type ChatModelRunOptions,
   MessagePrimitive,
   ThreadPrimitive,
   type ThreadMessage,
@@ -39,20 +38,10 @@ import {
   useAgentAgUiInterruptSubmit,
   type AgentAgUiInterrupt,
 } from "@/components/agent/agent-ag-ui-runtime-provider";
-import { AgentPresetWorkflows } from "@/components/agent/agent-preset-workflows";
-import {
-  AgentRuntimeProvider,
-  type AgentRuntimeProviderProps,
-} from "@/components/agent/agent-runtime-provider";
 import { AgentToolCard } from "@/components/agent/agent-tool-card";
 import { Button } from "@/components/ui/button";
-import {
-  extractAgUiResumeToolResult,
-  readAgUiSseStream,
-} from "@/lib/agent/ag-ui-stream";
 import { buildAgentResumeContext } from "@/lib/agent/chat-context";
 import type {
-  AgentChatMessage,
   AgentMessageResponse,
   AgentResumeContext,
   AgentWorkflowId,
@@ -60,11 +49,27 @@ import type {
 } from "@/lib/agent/agent-message-contract";
 import type { ResumeContent } from "@/lib/resume-schema";
 
-export type AgentRuntimeMode = "local" | "ag-ui";
-
 type AgentRetryRequest = {
   content: string;
   workflowId: AgentWorkflowId | null;
+};
+
+type AgentTurnStatus =
+  | "reading"
+  | "generating"
+  | "waiting-confirmation"
+  | "awaiting-input"
+  | "applied"
+  | "complete";
+
+type AgentTurnArtifacts = {
+  id: string;
+  assistantOrdinal: number;
+  status: AgentTurnStatus;
+  toolCalls: AgentMessageResponse["toolCalls"];
+  operations: ResumeOperation[];
+  interrupts: AgentAgUiInterrupt[];
+  appliedOperationIds: string[];
 };
 
 const AGENT_WELCOME_SUGGESTIONS = [
@@ -91,7 +96,6 @@ export function AgentPanel({
   applyOperation,
   flushAutosave,
   onBackToEdit,
-  runtimeMode,
 }: {
   resumeId: string;
   title: string;
@@ -101,110 +105,134 @@ export function AgentPanel({
   applyOperation: (operation: ResumeOperation) => void;
   flushAutosave: () => void;
   onBackToEdit: () => void;
-  runtimeMode?: AgentRuntimeMode;
 }) {
-  const [toolCalls, setToolCalls] = useState<AgentMessageResponse["toolCalls"]>([]);
-  const [operations, setOperations] = useState<ResumeOperation[]>([]);
+  const [turnArtifacts, setTurnArtifacts] = useState<AgentTurnArtifacts[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
-  const [isAwaitingAssistant, setIsAwaitingAssistant] = useState(false);
-  const [interrupts, setInterrupts] = useState<AgentAgUiInterrupt[]>([]);
   const [lastRetryRequest, setLastRetryRequest] = useState<AgentRetryRequest | null>(
     null,
   );
-  const resolvedRuntimeMode = resolveAgentRuntimeMode(runtimeMode);
+  const activeTurnIdRef = useRef<string | null>(null);
 
-  function appendToolResult(toolResult: {
-    toolCall: AgentMessageResponse["toolCalls"][number];
-    proposedOperations: ResumeOperation[];
-  }) {
-    setToolCalls((current) => [...current, toolResult.toolCall]);
-    setOperations((current) => [...current, ...toolResult.proposedOperations]);
+  function beginAgentTurn(messages: readonly { role?: unknown }[]) {
+    const turnId = createTurnId();
+    activeTurnIdRef.current = turnId;
+    setTurnArtifacts((current) => [
+      ...current,
+      {
+        id: turnId,
+        assistantOrdinal: countAssistantMessages(messages),
+        status: "reading",
+        toolCalls: [],
+        operations: [],
+        interrupts: [],
+        appliedOperationIds: [],
+      },
+    ]);
+    return turnId;
   }
 
-  async function* sendRuntimeMessage(
-    content: string,
-    {
-      abortSignal,
-      messages,
-      runConfig,
-    }: {
-      abortSignal: AbortSignal;
-      messages: readonly ThreadMessage[];
-      runConfig: ChatModelRunOptions["runConfig"];
+  function updateAgentTurn(
+    turnId: string | null,
+    update: (turn: AgentTurnArtifacts) => AgentTurnArtifacts,
+  ) {
+    if (!turnId) return;
+    setTurnArtifacts((current) =>
+      current.map((turn) => (turn.id === turnId ? update(turn) : turn)),
+    );
+  }
+
+  function setAgentTurnStatus(turnId: string | null, status: AgentTurnStatus) {
+    updateAgentTurn(turnId, (turn) => ({
+      ...turn,
+      status:
+        turn.status === "waiting-confirmation" ||
+        turn.status === "awaiting-input" ||
+        turn.status === "applied"
+          ? turn.status
+          : status,
+    }));
+  }
+
+  function appendToolResult(
+    toolResult: {
+      toolCall: AgentMessageResponse["toolCalls"][number];
+      proposedOperations: ResumeOperation[];
     },
-  ): AsyncGenerator<string> {
-    const trimmedContent = content.trim();
-    if (!trimmedContent || isLoading || abortSignal.aborted) return;
-    const workflowId = readWorkflowId(runConfig);
+    turnId = activeTurnIdRef.current,
+  ) {
+    updateAgentTurn(turnId, (turn) => ({
+      ...turn,
+      toolCalls: [...turn.toolCalls, toolResult.toolCall],
+      operations: [...turn.operations, ...toolResult.proposedOperations],
+      status:
+        toolResult.proposedOperations.length > 0
+          ? "waiting-confirmation"
+          : "complete",
+    }));
+  }
 
-    setLastRetryRequest({ content: trimmedContent, workflowId });
-    setError(null);
-    setIsLoading(true);
-    setIsAwaitingAssistant(true);
+  function setAgentTurnInterrupts(
+    nextInterrupts: AgentAgUiInterrupt[],
+    turnId = activeTurnIdRef.current,
+  ) {
+    const questionInterrupts = getQuestionInterrupts(nextInterrupts);
+    updateAgentTurn(turnId, (turn) => ({
+      ...turn,
+      interrupts: nextInterrupts,
+      status:
+        questionInterrupts.length > 0
+          ? "awaiting-input"
+          : turn.status === "awaiting-input"
+            ? "complete"
+            : turn.status,
+    }));
+  }
 
-    try {
-      const response = await fetch("/api/agent/runs", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Accept: "text/event-stream",
-        },
-        body: JSON.stringify(buildAgUiRunInput({
-          resumeId,
-          workflowId,
-          messages,
-          content: getResumeContent(),
-          templateId,
-          completeness,
-        })),
-        signal: abortSignal,
-      });
-      if (!response.ok) {
-        throw new Error(readAgentError(await readErrorBody(response)));
+  function settleAgentTurn(turnId: string | null) {
+    updateAgentTurn(turnId, (turn) => {
+      if (
+        turn.status === "waiting-confirmation" ||
+        turn.status === "awaiting-input" ||
+        turn.status === "applied"
+      ) {
+        return turn;
       }
-
-      let assistantText = "";
-      for await (const event of readAgUiSseStream(response)) {
-        if (abortSignal.aborted) return;
-
-        const delta = readTextDelta(event);
-        if (delta !== null) {
-          assistantText += delta;
-          if (assistantText.trim() !== "") {
-            setIsAwaitingAssistant(false);
-          }
-          yield assistantText;
-          continue;
-        }
-
-        const toolResult = extractAgUiResumeToolResult(event);
-        if (toolResult) {
-          appendToolResult(toolResult);
-        }
-
-        const nextInterrupts = extractAgUiInterrupts(event);
-        if (nextInterrupts.length > 0) {
-          setInterrupts(nextInterrupts);
-        }
+      if (turn.operations.length > 0) {
+        return { ...turn, status: "waiting-confirmation" };
       }
-    } catch (sendError) {
-      if (abortSignal.aborted || isAbortError(sendError)) return;
-      setError(sendError instanceof Error ? sendError.message : "Agent 服务暂不可用");
-    } finally {
-      setIsAwaitingAssistant(false);
-      setIsLoading(false);
-    }
+      if (getQuestionInterrupts(turn.interrupts).length > 0) {
+        return { ...turn, status: "awaiting-input" };
+      }
+      return { ...turn, status: "complete" };
+    });
+  }
+
+  function markOperationApplied(turnId: string, operationId: string) {
+    updateAgentTurn(turnId, (turn) => {
+      const appliedOperationIds = turn.appliedOperationIds.includes(operationId)
+        ? turn.appliedOperationIds
+        : [...turn.appliedOperationIds, operationId];
+      const allOperationsApplied =
+        turn.operations.length > 0 &&
+        turn.operations.every((operation) =>
+          appliedOperationIds.includes(operation.id),
+        );
+
+      return {
+        ...turn,
+        appliedOperationIds,
+        status: allOperationsApplied ? "applied" : "waiting-confirmation",
+      };
+    });
   }
 
   return (
     <section
-      data-agent-runtime-mode={resolvedRuntimeMode}
+      data-agent-runtime-mode="ag-ui"
       className="flex h-full min-h-[480px] flex-col bg-background"
     >
-      <AgentRuntimeBoundary
-        mode={resolvedRuntimeMode}
-        sendMessage={sendRuntimeMessage}
+      <AgentAgUiRuntimeProvider
         getIntroBuilderForwardedProps={(workflowId) => ({
           resumeId,
           locale: "zh-CN",
@@ -216,24 +244,38 @@ export function AgentPanel({
             completeness,
           }),
         })}
-        onRunStart={() => {
+        onRunStart={(messages) => {
           setError(null);
-          setInterrupts([]);
+          beginAgentTurn(messages);
           setIsLoading(true);
-          setIsAwaitingAssistant(true);
+          // Capture last message for retry
+          const lastMessage = messages[messages.length - 1] as
+            | { role?: string; content?: string | Array<{ type?: string; text?: string }> }
+            | undefined;
+          if (lastMessage?.role === "user") {
+            const content =
+              typeof lastMessage.content === "string"
+                ? lastMessage.content
+                : Array.isArray(lastMessage.content)
+                  ? lastMessage.content.find((c) => c.type === "text")?.text || ""
+                  : "";
+            if (content) {
+              setLastRetryRequest({ content, workflowId: null });
+            }
+          }
         }}
         onTextDelta={() => {
-          setIsAwaitingAssistant(false);
+          setAgentTurnStatus(activeTurnIdRef.current, "generating");
         }}
         onRunSettled={() => {
-          setIsAwaitingAssistant(false);
+          settleAgentTurn(activeTurnIdRef.current);
           setIsLoading(false);
         }}
         onError={(message) => {
           setError(message);
         }}
         onToolResult={appendToolResult}
-        onInterrupts={setInterrupts}
+        onInterrupts={setAgentTurnInterrupts}
       >
         <div className="border-b p-4">
           <div className="flex items-start justify-between gap-3">
@@ -250,186 +292,58 @@ export function AgentPanel({
               切回编辑
             </Button>
           </div>
-          <div className="mt-4">
-            <AgentWorkflowControls
-              disabled={isLoading}
-              onWorkflowStart={(request) => {
-                setLastRetryRequest(request);
-              }}
-            />
-          </div>
         </div>
 
         <AgentThreadArea
-          toolCalls={toolCalls}
-          operations={operations}
+          turnArtifacts={turnArtifacts}
           error={error}
           lastRetryRequest={lastRetryRequest}
           isLoading={isLoading}
-          isAwaitingAssistant={isAwaitingAssistant}
-          interrupts={interrupts}
           onDismissError={() => {
             setError(null);
           }}
           onRetryStarted={() => {
             setError(null);
-            setInterrupts([]);
           }}
-          onInterruptResolved={() => {
-            setInterrupts([]);
-          }}
+          onInterruptResolved={(turnId) => setAgentTurnInterrupts([], turnId)}
+          onOperationApplied={markOperationApplied}
           applyOperation={applyOperation}
           flushAutosave={flushAutosave}
         />
         <AgentComposer title={title} isLoading={isLoading} />
-      </AgentRuntimeBoundary>
+      </AgentAgUiRuntimeProvider>
     </section>
   );
 }
 
-function AgentRuntimeBoundary({
-  mode,
-  sendMessage,
-  getIntroBuilderForwardedProps,
-  onRunStart,
-  onTextDelta,
-  onRunSettled,
-  onError,
-  onToolResult,
-  onInterrupts,
-  children,
-}: {
-  mode: AgentRuntimeMode;
-  sendMessage: AgentRuntimeProviderProps["sendMessage"];
-  getIntroBuilderForwardedProps: ComponentProps<
-    typeof AgentAgUiRuntimeProvider
-  >["getIntroBuilderForwardedProps"];
-  onRunStart: () => void;
-  onTextDelta: () => void;
-  onRunSettled: () => void;
-  onError: (message: string) => void;
-  onToolResult: ComponentProps<typeof AgentAgUiRuntimeProvider>["onToolResult"];
-  onInterrupts: ComponentProps<typeof AgentAgUiRuntimeProvider>["onInterrupts"];
-  children: ReactNode;
-}) {
-  if (mode === "ag-ui") {
-    return (
-      <AgentAgUiRuntimeProvider
-        getIntroBuilderForwardedProps={getIntroBuilderForwardedProps}
-        onRunStart={onRunStart}
-        onTextDelta={onTextDelta}
-        onRunSettled={onRunSettled}
-        onError={onError}
-        onToolResult={onToolResult}
-        onInterrupts={onInterrupts}
-      >
-        {children}
-      </AgentAgUiRuntimeProvider>
-    );
-  }
-
-  return (
-    <AgentRuntimeProvider sendMessage={sendMessage}>
-      {children}
-    </AgentRuntimeProvider>
-  );
-}
-
-function buildAgUiRunInput({
-  resumeId,
-  workflowId,
-  messages,
-  content,
-  templateId,
-  completeness,
-}: {
-  resumeId: string;
-  workflowId: AgentWorkflowId | null;
-  messages: readonly ThreadMessage[];
-  content: ResumeContent;
-  templateId: string;
-  completeness: AgentResumeContext["completeness"];
-}): RunAgentInput {
-  return {
-    threadId: resumeId,
-    runId: createRunId(),
-    state: null,
-    messages: toAgentChatMessages(messages),
-    tools: [],
-    context: [],
-    forwardedProps: {
-      introBuilder: {
-        resumeId,
-        locale: "zh-CN",
-        workflowId,
-        context: buildAgentResumeContext({
-          content,
-          templateId,
-          activeSection: null,
-          completeness,
-        }),
-      },
-    },
-  };
-}
-
-function AgentWorkflowControls({
-  disabled,
-  onWorkflowStart,
-}: {
-  disabled: boolean;
-  onWorkflowStart: (request: AgentRetryRequest) => void;
-}) {
-  const threadRuntime = useThreadRuntime();
-
-  return (
-    <AgentPresetWorkflows
-      disabled={disabled}
-      onStart={(workflow) => {
-        onWorkflowStart({ content: workflow.prompt, workflowId: workflow.id });
-        threadRuntime.append({
-          role: "user",
-          content: [{ type: "text", text: workflow.prompt }],
-          runConfig: { custom: { workflowId: workflow.id } },
-        });
-      }}
-    />
-  );
-}
-
 function AgentThreadArea({
-  toolCalls,
-  operations,
+  turnArtifacts,
   error,
   lastRetryRequest,
   isLoading,
-  isAwaitingAssistant,
-  interrupts,
   onDismissError,
   onRetryStarted,
   onInterruptResolved,
+  onOperationApplied,
   applyOperation,
   flushAutosave,
 }: {
-  toolCalls: AgentMessageResponse["toolCalls"];
-  operations: ResumeOperation[];
+  turnArtifacts: AgentTurnArtifacts[];
   error: string | null;
   lastRetryRequest: AgentRetryRequest | null;
   isLoading: boolean;
-  isAwaitingAssistant: boolean;
-  interrupts: AgentAgUiInterrupt[];
   onDismissError: () => void;
   onRetryStarted: () => void;
-  onInterruptResolved: () => void;
+  onInterruptResolved: (turnId: string) => void;
+  onOperationApplied: (turnId: string, operationId: string) => void;
   applyOperation: (operation: ResumeOperation) => void;
   flushAutosave: () => void;
 }) {
-  const messageCount = useAuiState((state) => state.thread.messages.length);
+  const threadMessages = useAuiState((state) => state.thread.messages);
+  const { artifactByAssistantMessageId, pendingArtifacts } =
+    buildTurnArtifactRenderState(threadMessages, turnArtifacts);
   const isEmpty =
-    messageCount === 0 &&
-    toolCalls.length === 0 &&
-    operations.length === 0 &&
-    interrupts.length === 0;
+    threadMessages.length === 0 && !turnArtifacts.some(hasVisibleTurnArtifacts);
 
   return (
     <ThreadPrimitive.Root className="min-h-0 flex-1">
@@ -441,43 +355,30 @@ function AgentThreadArea({
         {isEmpty ? (
           <AgentWelcomeSuggestions />
         ) : null}
-        <AgentActivityTimeline
-          isAwaitingAssistant={isAwaitingAssistant}
-          toolCalls={toolCalls}
-          operations={operations}
-          interrupts={interrupts}
-        />
-        {interrupts.length > 0 ? (
-          <AgentQuestionCard
-            interrupts={interrupts}
-            onResolved={onInterruptResolved}
-          />
-        ) : null}
         <ThreadPrimitive.Messages>
-          {({ message }) => <AgentThreadMessage message={message} />}
+          {({ message }) => (
+            <AgentThreadMessage
+              message={message}
+              turnArtifact={
+                message.role === "assistant"
+                  ? artifactByAssistantMessageId.get(message.id) ?? null
+                  : null
+              }
+              onInterruptResolved={onInterruptResolved}
+              onOperationApplied={onOperationApplied}
+              applyOperation={applyOperation}
+              flushAutosave={flushAutosave}
+            />
+          )}
         </ThreadPrimitive.Messages>
-        {isAwaitingAssistant ? (
-          <div
-            role="status"
-            aria-live="polite"
-            data-testid="agent-loading-indicator"
-            className="inline-flex max-w-[85%] items-center gap-2 rounded-xl border border-sky-200/70 bg-sky-50 px-3 py-2 text-sm text-sky-800 shadow-sm dark:border-sky-400/20 dark:bg-sky-950/30 dark:text-sky-200"
-          >
-            <Loader2 className="h-4 w-4 animate-spin" />
-            AI 正在思考，回答会流式展开…
-          </div>
-        ) : null}
-        {toolCalls.map((toolCall) => (
-          <AgentToolCard key={toolCall.id} toolCall={toolCall} />
-        ))}
-        {operations.map((operation) => (
-          <AgentConfirmationCard
-            key={operation.id}
-            operation={operation}
-            onApply={(nextOperation) => {
-              applyOperation(nextOperation);
-              flushAutosave();
-            }}
+        {pendingArtifacts.map((turnArtifact) => (
+          <AgentTurnArtifactsPanel
+            key={turnArtifact.id}
+            turnArtifact={turnArtifact}
+            onInterruptResolved={onInterruptResolved}
+            onOperationApplied={onOperationApplied}
+            applyOperation={applyOperation}
+            flushAutosave={flushAutosave}
           />
         ))}
         {error ? (
@@ -603,84 +504,198 @@ function AgentErrorCard({
   );
 }
 
-function AgentActivityTimeline({
-  isAwaitingAssistant,
-  toolCalls,
-  operations,
-  interrupts,
+function AgentTurnArtifactsPanel({
+  turnArtifact,
+  onInterruptResolved,
+  onOperationApplied,
+  applyOperation,
+  flushAutosave,
 }: {
-  isAwaitingAssistant: boolean;
-  toolCalls: AgentMessageResponse["toolCalls"];
-  operations: ResumeOperation[];
-  interrupts: AgentAgUiInterrupt[];
+  turnArtifact: AgentTurnArtifacts;
+  onInterruptResolved: (turnId: string) => void;
+  onOperationApplied: (turnId: string, operationId: string) => void;
+  applyOperation: (operation: ResumeOperation) => void;
+  flushAutosave: () => void;
 }) {
-  if (
-    !isAwaitingAssistant &&
-    toolCalls.length === 0 &&
-    operations.length === 0 &&
-    interrupts.length === 0
-  ) {
+  const submitInterrupts = useAgentAgUiInterruptSubmit();
+  const [decisions, setDecisions] = React.useState<Map<string, boolean>>(new Map());
+  const approvalInterrupts = getApprovalInterrupts(turnArtifact.interrupts);
+  const questionInterrupts = getQuestionInterrupts(turnArtifact.interrupts);
+
+  if (!hasVisibleTurnArtifacts(turnArtifact)) {
     return null;
   }
 
-  const latestToolCall = toolCalls.at(-1);
+  const hasApprovalInterrupts = approvalInterrupts.length > 0;
+
+  async function handleApplyOperation(operation: ResumeOperation) {
+    applyOperation(operation);
+    onOperationApplied(turnArtifact.id, operation.id);
+    flushAutosave();
+
+    if (!hasApprovalInterrupts) return;
+
+    const newDecisions = new Map(decisions);
+    newDecisions.set(getApprovalInterruptDecisionId(approvalInterrupts, operation), true);
+    setDecisions(newDecisions);
+
+    // Submit all decisions once all interrupts have been decided
+    if (approvalInterrupts.every((interrupt) => newDecisions.has(interrupt.id))) {
+      await submitAllDecisions(newDecisions);
+    }
+  }
+
+  async function handleRejectOperation(operationId: string) {
+    if (!hasApprovalInterrupts) return;
+
+    const newDecisions = new Map(decisions);
+    newDecisions.set(operationId, false);
+    setDecisions(newDecisions);
+
+    // Submit all decisions once all interrupts have been decided
+    if (approvalInterrupts.every((interrupt) => newDecisions.has(interrupt.id))) {
+      await submitAllDecisions(newDecisions);
+    }
+  }
+
+  async function submitAllDecisions(allDecisions: Map<string, boolean>) {
+    if (!submitInterrupts || !hasApprovalInterrupts) return;
+
+    try {
+      const responses = approvalInterrupts.map((interrupt) => ({
+        interruptId: interrupt.id,
+        status: allDecisions.get(interrupt.id) ? ("resolved" as const) : ("cancelled" as const),
+        payload: { approved: allDecisions.get(interrupt.id) || false },
+      }));
+      await submitInterrupts(responses);
+      onInterruptResolved(turnArtifact.id);
+    } catch (error) {
+      console.error("[agent-panel] Failed to submit decisions:", error);
+    }
+  }
+
+  async function handleApplyAll() {
+    for (const operation of turnArtifact.operations) {
+      applyOperation(operation);
+      onOperationApplied(turnArtifact.id, operation.id);
+    }
+    flushAutosave();
+
+    if (!hasApprovalInterrupts) return;
+
+    const allApproved = new Map(
+      approvalInterrupts.map((interrupt) => [interrupt.id, true])
+    );
+    setDecisions(allApproved);
+    await submitAllDecisions(allApproved);
+  }
+
+  async function handleRejectAll() {
+    if (!hasApprovalInterrupts) return;
+
+    const allRejected = new Map(
+      approvalInterrupts.map((interrupt) => [interrupt.id, false])
+    );
+    setDecisions(allRejected);
+    await submitAllDecisions(allRejected);
+  }
 
   return (
     <div
-      data-testid="agent-activity-timeline"
-      className="rounded-xl border border-sky-200/70 bg-gradient-to-br from-sky-50 to-background p-3 text-sm shadow-sm dark:border-sky-400/20 dark:from-sky-950/30"
+      data-testid="agent-turn-artifacts"
+      data-agent-turn-status={turnArtifact.status}
+      className="max-w-[85%] space-y-2 pl-1 text-left"
     >
-      <div className="flex items-center justify-between gap-3">
-        <div>
-          <p className="font-medium text-foreground">Agent 活动</p>
-          <p className="mt-0.5 text-xs text-muted-foreground">
-            每一步都先展示给你，确认前不会写入简历。
-          </p>
+      <AgentTurnStatusLine turnArtifact={turnArtifact} />
+      {turnArtifact.toolCalls.length > 0 ? (
+        <div className="space-y-2 animate-in fade-in-0 slide-in-from-bottom-1 duration-200">
+          <div className="text-xs font-medium text-muted-foreground">
+            已完成 {turnArtifact.toolCalls.length} 个工具调用
+          </div>
+          {turnArtifact.toolCalls.map((toolCall) => (
+            <AgentToolCard key={toolCall.id} toolCall={toolCall} />
+          ))}
         </div>
-        {operations.length > 0 ? (
-          <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-800 dark:bg-amber-950/50 dark:text-amber-200">
-            待确认
-          </span>
-        ) : interrupts.length > 0 ? (
-          <span className="rounded-full bg-sky-100 px-2 py-0.5 text-xs font-medium text-sky-800 dark:bg-sky-950/50 dark:text-sky-200">
-            等待补充
-          </span>
-        ) : null}
-      </div>
-      <div className="mt-3 space-y-2">
-        {isAwaitingAssistant ? (
-          <AgentActivityItem
-            status="running"
-            title="正在读取简历上下文"
-            description="Agent 正在读取当前表单快照，并规划下一步。"
+      ) : null}
+      {questionInterrupts.length > 0 ? (
+        <div className="animate-in fade-in-0 slide-in-from-bottom-1 duration-200">
+          <AgentQuestionCard
+            interrupts={questionInterrupts}
+            onResolved={() => onInterruptResolved(turnArtifact.id)}
           />
-        ) : null}
-        {toolCalls.length > 0 ? (
-          <AgentActivityItem
-            status="complete"
-            title={`已完成 ${toolCalls.length} 个工具调用`}
-            description={
-              latestToolCall
-                ? `最近完成：${latestToolCall.title}`
-                : "工具调用已完成。"
-            }
-          />
-        ) : null}
-        {operations.length > 0 ? (
-          <AgentActivityItem
-            status="waiting"
-            title={`等待确认 ${operations.length} 条修改建议`}
-            description="应用前不会改动表单；点击应用后会触发自动保存。"
-          />
-        ) : null}
-        {interrupts.length > 0 ? (
-          <AgentActivityItem
-            status="question"
-            title={`等待回答 ${interrupts.length} 个问题`}
-            description="补充关键信息后，Agent 会接着这轮任务继续分析。"
-          />
-        ) : null}
-      </div>
+        </div>
+      ) : null}
+      {turnArtifact.operations.length > 0 ? (
+        <div className="space-y-2 animate-in fade-in-0 slide-in-from-bottom-1 duration-200">
+          <div className="flex items-center justify-between gap-2">
+            <div className="text-xs font-medium text-amber-700 dark:text-amber-300">
+              {turnArtifact.status === "applied"
+                ? `已应用 ${turnArtifact.operations.length} 条修改`
+                : `等待确认 ${countPendingOperations(turnArtifact)} 条修改建议`}
+            </div>
+            {turnArtifact.status === "waiting-confirmation" &&
+            turnArtifact.operations.length > 1 ? (
+              <div className="flex gap-1">
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  onClick={handleApplyAll}
+                  className="h-6 px-2 text-xs"
+                >
+                  全部应用
+                </Button>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="ghost"
+                  onClick={handleRejectAll}
+                  className="h-6 px-2 text-xs"
+                >
+                  全部拒绝
+                </Button>
+              </div>
+            ) : null}
+          </div>
+          {turnArtifact.operations.map((operation) => (
+            <AgentConfirmationCard
+              key={operation.id}
+              operation={operation}
+              onApply={handleApplyOperation}
+              onReject={handleRejectOperation}
+            />
+          ))}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function AgentTurnStatusLine({
+  turnArtifact,
+}: {
+  turnArtifact: AgentTurnArtifacts;
+}) {
+  const statusText = getAgentTurnStatusText(turnArtifact);
+  const isRunning =
+    turnArtifact.status === "reading" || turnArtifact.status === "generating";
+  const Icon =
+    turnArtifact.status === "applied"
+      ? CheckCircle2
+      : turnArtifact.status === "waiting-confirmation" ||
+          turnArtifact.status === "awaiting-input"
+        ? Clock3
+        : Loader2;
+
+  return (
+    <div
+      role="status"
+      aria-live="polite"
+      data-testid={isRunning ? "agent-loading-indicator" : "agent-turn-status-line"}
+      className="inline-flex items-center gap-1.5 rounded-full bg-background/80 px-1.5 py-0.5 text-xs font-medium text-sky-700 dark:bg-background/40 dark:text-sky-200"
+    >
+      <Icon className={isRunning ? "h-3.5 w-3.5 animate-spin" : "h-3.5 w-3.5"} />
+      <span className={isRunning ? "animate-pulse" : undefined}>{statusText}</span>
     </div>
   );
 }
@@ -780,67 +795,60 @@ function AgentQuestionCard({
   );
 }
 
-function AgentActivityItem({
-  status,
-  title,
-  description,
+function AgentThreadMessage({
+  message,
+  turnArtifact,
+  onInterruptResolved,
+  onOperationApplied,
+  applyOperation,
+  flushAutosave,
 }: {
-  status: "running" | "complete" | "waiting" | "question";
-  title: string;
-  description: string;
+  message: ThreadMessage;
+  turnArtifact: AgentTurnArtifacts | null;
+  onInterruptResolved: (turnId: string) => void;
+  onOperationApplied: (turnId: string, operationId: string) => void;
+  applyOperation: (operation: ResumeOperation) => void;
+  flushAutosave: () => void;
 }) {
-  const Icon =
-    status === "running"
-      ? Loader2
-      : status === "complete"
-        ? CheckCircle2
-        : status === "question"
-          ? MessageCircleQuestion
-          : Clock3;
-
-  return (
-    <div className="flex gap-2 rounded-lg bg-background/80 p-2 dark:bg-background/50">
-      <span
-        className={
-          status === "running"
-            ? "mt-0.5 text-sky-600 dark:text-sky-300"
-            : status === "complete"
-              ? "mt-0.5 text-emerald-600 dark:text-emerald-300"
-              : status === "question"
-                ? "mt-0.5 text-sky-600 dark:text-sky-300"
-                : "mt-0.5 text-amber-600 dark:text-amber-300"
-        }
-      >
-        <Icon className={status === "running" ? "h-4 w-4 animate-spin" : "h-4 w-4"} />
-      </span>
-      <div>
-        <p className="font-medium text-foreground">{title}</p>
-        <p className="mt-0.5 text-xs text-muted-foreground">{description}</p>
-      </div>
-    </div>
-  );
-}
-
-function AgentThreadMessage({ message }: { message: ThreadMessage }) {
   const text = readThreadMessageText(message);
   if (message.role === "system") return null;
 
   if (message.role === "assistant") {
-    if (!text && !hasRunningAssistantToolCall(message)) return null;
+    const hasRunningToolCall = hasRunningAssistantToolCall(message);
+    if (!text && !hasRunningToolCall && !turnArtifact) return null;
 
     return (
-      <MessagePrimitive.Root className="group/message text-left">
-        <div className="inline-block max-w-[85%] rounded-xl bg-muted px-3 py-2 text-sm text-foreground">
-          <MessagePrimitive.Content
-            components={{
-              Text: AgentMarkdownText,
-              ToolGroup: AgentAssistantUiToolGroup,
-              tools: { Override: AgentAssistantUiToolPart },
-            }}
+      <>
+        {text || hasRunningToolCall ? (
+          <MessagePrimitive.Root className="group/message text-left">
+            <div className="inline-block max-w-[85%] rounded-xl bg-muted px-3 py-2 text-sm text-foreground">
+              <MessagePrimitive.Content
+                components={{
+                  Text: AgentMarkdownText,
+                  ToolGroup: hasRunningToolCall
+                    ? AgentAssistantUiToolGroup
+                    : AgentAssistantUiHiddenToolGroup,
+                  tools: {
+                    Override: hasRunningToolCall
+                      ? AgentAssistantUiToolPart
+                      : AgentAssistantUiHiddenToolPart,
+                  },
+                }}
+              />
+            </div>
+            <AgentAssistantMessageActions />
+          </MessagePrimitive.Root>
+        ) : null}
+        {turnArtifact ? (
+          <AgentTurnArtifactsPanel
+            turnArtifact={turnArtifact}
+            onInterruptResolved={onInterruptResolved}
+            onOperationApplied={onOperationApplied}
+            applyOperation={applyOperation}
+            flushAutosave={flushAutosave}
           />
-        </div>
-        <AgentAssistantMessageActions />
-      </MessagePrimitive.Root>
+        ) : null}
+      </>
     );
   }
 
@@ -948,6 +956,10 @@ function AgentUserMessageActions() {
   );
 }
 
+function AgentAssistantUiHiddenToolGroup() {
+  return null;
+}
+
 function AgentAssistantUiToolGroup({ children }: { children?: ReactNode }) {
   return (
     <div className="my-2 rounded-xl border border-sky-200/80 bg-sky-50/80 p-2 shadow-sm dark:border-sky-400/20 dark:bg-sky-950/30">
@@ -958,6 +970,10 @@ function AgentAssistantUiToolGroup({ children }: { children?: ReactNode }) {
       <div className="space-y-1">{children}</div>
     </div>
   );
+}
+
+function AgentAssistantUiHiddenToolPart() {
+  return null;
 }
 
 function AgentAssistantUiToolPart({
@@ -1036,20 +1052,67 @@ function AgentComposer({ title, isLoading }: { title: string; isLoading: boolean
   );
 }
 
-function createRunId(): string {
-  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
-    return `run_${crypto.randomUUID()}`;
+function buildTurnArtifactRenderState(
+  messages: readonly { id: string; role?: unknown }[],
+  turnArtifacts: AgentTurnArtifacts[],
+) {
+  const assistantMessageIds = messages
+    .filter((message) => message.role === "assistant")
+    .map((message) => message.id);
+  const artifactByAssistantMessageId = new Map<string, AgentTurnArtifacts>();
+  const pendingArtifacts: AgentTurnArtifacts[] = [];
+
+  for (const turnArtifact of turnArtifacts) {
+    if (!hasVisibleTurnArtifacts(turnArtifact)) continue;
+    const assistantMessageId = assistantMessageIds[turnArtifact.assistantOrdinal];
+    if (assistantMessageId) {
+      artifactByAssistantMessageId.set(assistantMessageId, turnArtifact);
+    } else {
+      pendingArtifacts.push(turnArtifact);
+    }
   }
-  return `run_${Math.random().toString(36).slice(2)}`;
+
+  return { artifactByAssistantMessageId, pendingArtifacts };
 }
 
-function toAgentChatMessages(messages: readonly ThreadMessage[]): AgentChatMessage[] {
-  return messages.flatMap((message) => {
-    if (message.role !== "user" && message.role !== "assistant") return [];
-    const content = readThreadMessageText(message);
-    if (!content) return [];
-    return [{ id: message.id, role: message.role, content }];
-  });
+function hasVisibleTurnArtifacts(turnArtifact: AgentTurnArtifacts) {
+  return (
+    turnArtifact.status !== "complete" ||
+    turnArtifact.toolCalls.length > 0 ||
+    turnArtifact.operations.length > 0 ||
+    turnArtifact.interrupts.length > 0
+  );
+}
+
+function getAgentTurnStatusText(turnArtifact: AgentTurnArtifacts) {
+  if (turnArtifact.status === "applied") return "已应用";
+  if (getQuestionInterrupts(turnArtifact.interrupts).length > 0) {
+    return "等待补充信息";
+  }
+  if (countPendingOperations(turnArtifact) > 0) return "等待确认修改";
+  if (turnArtifact.status === "reading") {
+    return "AI 正在思考：正在读取简历上下文";
+  }
+  if (turnArtifact.status === "generating") return "正在生成修改建议";
+  if (turnArtifact.toolCalls.length > 0) return "已完成工具调用";
+  return "已完成";
+}
+
+function countPendingOperations(turnArtifact: AgentTurnArtifacts) {
+  return turnArtifact.operations.filter(
+    (operation) => !turnArtifact.appliedOperationIds.includes(operation.id),
+  ).length;
+}
+
+function countAssistantMessages(messages: readonly { role?: unknown }[]) {
+  return messages.filter((message) => message.role === "assistant").length;
+}
+
+function createTurnId(): string {
+  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+    return `turn_${crypto.randomUUID()}`;
+  }
+  return `turn_${Math.random().toString(36).slice(2)}`;
 }
 
 function readThreadMessageText(message: ThreadMessage): string {
@@ -1065,105 +1128,22 @@ function hasRunningAssistantToolCall(message: ThreadMessage): boolean {
   );
 }
 
-function readWorkflowId(runConfig: ChatModelRunOptions["runConfig"]): AgentWorkflowId | null {
-  const workflowId = runConfig.custom?.workflowId;
-  if (isAgentWorkflowId(workflowId)) return workflowId;
-  return null;
+function getQuestionInterrupts(interrupts: AgentAgUiInterrupt[]) {
+  return interrupts.filter((interrupt) => interrupt.reason !== "approval_required");
 }
 
-function isAgentWorkflowId(value: unknown): value is AgentWorkflowId {
+function getApprovalInterrupts(interrupts: AgentAgUiInterrupt[]) {
+  return interrupts.filter((interrupt) => interrupt.reason === "approval_required");
+}
+
+function getApprovalInterruptDecisionId(
+  approvalInterrupts: AgentAgUiInterrupt[],
+  operation: ResumeOperation,
+) {
   return (
-    value === "resume-diagnose" ||
-    value === "target-role-match" ||
-    value === "experience-star" ||
-    value === "pre-export-check"
+    approvalInterrupts.find((interrupt) => interrupt.id === operation.id)?.id ??
+    approvalInterrupts.find((interrupt) => interrupt.toolCallId === operation.toolCallId)
+      ?.id ??
+    operation.id
   );
-}
-
-function readAgentError(value: unknown): string {
-  if (value && typeof value === "object") {
-    const body = value as {
-      error?: unknown;
-      code?: unknown;
-      requestId?: unknown;
-      retryAfterSeconds?: unknown;
-    };
-    const error = readNonEmptyString(body.error) ?? "Agent 服务暂不可用";
-    const code = readNonEmptyString(body.code);
-    const requestId = readNonEmptyString(body.requestId);
-    const retryAfterSeconds =
-      typeof body.retryAfterSeconds === "number" ? body.retryAfterSeconds : null;
-    const diagnostics = [
-      code ? `code: ${code}` : null,
-      requestId ? `requestId: ${requestId}` : null,
-      retryAfterSeconds ? `${retryAfterSeconds} 秒后可重试` : null,
-    ].filter(Boolean);
-
-    if (diagnostics.length > 0) {
-      return `${error}（${diagnostics.join("，")}）`;
-    }
-    return error;
-  }
-  return "Agent 服务暂不可用";
-}
-
-function readNonEmptyString(value: unknown): string | null {
-  if (typeof value !== "string") return null;
-  const trimmed = value.trim();
-  return trimmed === "" ? null : trimmed;
-}
-
-async function readErrorBody(response: Response): Promise<unknown> {
-  try {
-    return await response.json();
-  } catch {
-    return null;
-  }
-}
-
-function readTextDelta(event: BaseEvent): string | null {
-  if (event.type !== EventType.TEXT_MESSAGE_CONTENT) return null;
-  const delta = event.delta;
-  return typeof delta === "string" ? delta : null;
-}
-
-function isAbortError(value: unknown): boolean {
-  return (
-    value instanceof DOMException && value.name === "AbortError"
-  ) || (
-    value instanceof Error && value.name === "AbortError"
-  );
-}
-
-function extractAgUiInterrupts(event: BaseEvent): AgentAgUiInterrupt[] {
-  if (event.type !== EventType.RUN_FINISHED) return [];
-  const outcome = (event as { outcome?: unknown }).outcome;
-  if (!isRecord(outcome) || outcome.type !== "interrupt") return [];
-  if (!Array.isArray(outcome.interrupts)) return [];
-
-  return outcome.interrupts.filter(isAgentAgUiInterrupt);
-}
-
-function isAgentAgUiInterrupt(value: unknown): value is AgentAgUiInterrupt {
-  return (
-    isRecord(value) &&
-    typeof value.id === "string" &&
-    value.id.trim() !== "" &&
-    typeof value.reason === "string" &&
-    value.reason.trim() !== "" &&
-    (value.message === undefined || typeof value.message === "string") &&
-    (value.toolCallId === undefined || typeof value.toolCallId === "string") &&
-    (value.responseSchema === undefined || isRecord(value.responseSchema)) &&
-    (value.expiresAt === undefined || typeof value.expiresAt === "string") &&
-    (value.metadata === undefined || isRecord(value.metadata))
-  );
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
-}
-
-function resolveAgentRuntimeMode(runtimeMode?: AgentRuntimeMode): AgentRuntimeMode {
-  if (runtimeMode) return runtimeMode;
-  return process.env.NEXT_PUBLIC_AGENT_RUNTIME === "ag-ui" ? "ag-ui" : "local";
 }

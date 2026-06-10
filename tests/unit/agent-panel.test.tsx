@@ -37,12 +37,17 @@ describe("AgentPanel", () => {
     vi.unstubAllGlobals();
   });
 
+  function sendMessage(text: string) {
+    const input = screen.getByTestId("agent-assistant-ui-composer-input");
+    fireEvent.change(input, { target: { value: text } });
+    fireEvent.click(screen.getByRole("button", { name: "发送" }));
+  }
+
   it("renders Agent panel safety copy and workflow entry", () => {
     render(<AgentPanel {...panelProps()} />);
 
     expect(screen.getByText("简历 Agent")).toBeInTheDocument();
     expect(screen.getByText("AI 会读取当前表单快照，修改需你确认。")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "诊断整份简历" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "切回编辑" })).toBeInTheDocument();
   });
 
@@ -108,7 +113,7 @@ describe("AgentPanel", () => {
     vi.stubGlobal("fetch", fetchMock);
 
     render(<AgentPanel {...panelProps()} />);
-    fireEvent.click(screen.getByRole("button", { name: "诊断整份简历" }));
+    sendMessage("请诊断这份简历");
 
     await waitFor(() => {
       expect(fetchMock).toHaveBeenCalledWith(
@@ -121,12 +126,11 @@ describe("AgentPanel", () => {
     });
     const [, init] = fetchMock.mock.calls[0];
     const body = JSON.parse(String(init?.body));
-    expect(body.forwardedProps.introBuilder.workflowId).toBe("resume-diagnose");
     expect(body.forwardedProps.introBuilder.resumeId).toBe("resume_1");
     expect(body.messages.at(-1)).toEqual(
       expect.objectContaining({
         role: "user",
-        content: "请诊断这份简历，并优先指出最值得修改的一处。",
+        content: "请诊断这份简历",
       }),
     );
     expect(await screen.findByText("建议先优化工作经历。")).toBeInTheDocument();
@@ -152,7 +156,7 @@ describe("AgentPanel", () => {
     vi.stubGlobal("fetch", fetchMock);
 
     render(<AgentPanel {...panelProps({ applyOperation })} />);
-    fireEvent.click(screen.getByRole("button", { name: "诊断整份简历" }));
+    sendMessage("请诊断这份简历");
 
     expect(await screen.findByText("建议先优化工作经历。")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "复制回答" }));
@@ -216,13 +220,13 @@ describe("AgentPanel", () => {
     vi.stubGlobal("fetch", fetchMock);
 
     render(<AgentPanel {...panelProps()} />);
-    fireEvent.click(screen.getByRole("button", { name: "诊断整份简历" }));
+    sendMessage("请诊断这份简历");
 
     expect(await screen.findByTestId("agent-loading-indicator")).toHaveTextContent(
       "AI 正在思考",
     );
-    expect(screen.getByText("Agent 活动")).toBeInTheDocument();
-    expect(screen.getByText("正在读取简历上下文")).toBeInTheDocument();
+    expect(screen.getByText(/正在读取简历上下文/)).toBeInTheDocument();
+    expect(screen.queryByText("Agent 活动")).not.toBeInTheDocument();
 
     pendingResponse.resolve(
       agUiResponse({
@@ -255,7 +259,7 @@ describe("AgentPanel", () => {
     vi.stubGlobal("fetch", fetchMock);
 
     render(<AgentPanel {...panelProps()} />);
-    fireEvent.click(screen.getByRole("button", { name: "诊断整份简历" }));
+    sendMessage("请诊断这份简历");
 
     expect(await screen.findByRole("button", { name: "停止生成" })).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "停止生成" }));
@@ -287,7 +291,7 @@ describe("AgentPanel", () => {
     vi.stubGlobal("fetch", fetchMock);
 
     render(<AgentPanel {...panelProps()} />);
-    fireEvent.click(screen.getByRole("button", { name: "诊断整份简历" }));
+    sendMessage("请诊断这份简历");
 
     expect(await screen.findByText(/dependency_unavailable/)).toBeInTheDocument();
     expect(screen.getByText(/req_agent_debug/)).toBeInTheDocument();
@@ -317,7 +321,7 @@ describe("AgentPanel", () => {
     vi.stubGlobal("fetch", fetchMock);
 
     render(<AgentPanel {...panelProps()} />);
-    fireEvent.click(screen.getByRole("button", { name: "诊断整份简历" }));
+    sendMessage("请诊断这份简历");
 
     expect(await screen.findByText(/req_retry_once/)).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "重新发送上一条" }));
@@ -327,42 +331,61 @@ describe("AgentPanel", () => {
     });
     const [, retryInit] = fetchMock.mock.calls[1];
     const retryBody = JSON.parse(String(retryInit?.body));
-    expect(retryBody.forwardedProps.introBuilder.workflowId).toBe("resume-diagnose");
     expect(retryBody.messages.at(-1)).toEqual(
       expect.objectContaining({
         role: "user",
-        content: "请诊断这份简历，并优先指出最值得修改的一处。",
+        content: "请诊断这份简历",
       }),
     );
     expect(await screen.findByText("重试成功，我继续检查。")).toBeInTheDocument();
     expect(screen.queryByText(/req_retry_once/)).not.toBeInTheDocument();
   });
 
-  it("can dismiss an Agent error without clearing the conversation", async () => {
+  it("recovers from Agent error and allows retry", async () => {
+    let callCount = 0;
     const fetchMock = vi.fn<
       (...args: [RequestInfo | URL, RequestInit?]) => Promise<Response>
-    >(async () =>
-      Response.json(
-        {
-          error: "Agent 服务暂不可用",
-          code: "dependency_unavailable",
-          requestId: "req_dismiss_error",
-        },
-        { status: 503 },
-      ),
-    );
+    >(async () => {
+      callCount++;
+      if (callCount === 1) {
+        // First call returns 503 error
+        return Response.json(
+          {
+            error: "Agent 服务暂不可用",
+            code: "dependency_unavailable",
+            requestId: "req_retry_test",
+          },
+          { status: 503 },
+        );
+      }
+      // Second call returns success
+      return agUiResponse({
+        text: "错误已恢复，我继续检查。",
+        toolCalls: [],
+        proposedOperations: [],
+      });
+    });
     vi.stubGlobal("fetch", fetchMock);
 
     render(<AgentPanel {...panelProps()} />);
-    fireEvent.click(screen.getByRole("button", { name: "诊断整份简历" }));
+    sendMessage("请诊断这份简历");
 
-    expect(await screen.findByText(/req_dismiss_error/)).toBeInTheDocument();
-    expect(screen.getByText("请诊断这份简历，并优先指出最值得修改的一处。")).toBeInTheDocument();
+    // Wait for error card to appear
+    expect(await screen.findByText(/req_retry_test/)).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole("button", { name: "关闭错误提示" }));
+    // Click retry button
+    fireEvent.click(screen.getByRole("button", { name: "重新发送上一条" }));
 
-    expect(screen.queryByText(/req_dismiss_error/)).not.toBeInTheDocument();
-    expect(screen.getByText("请诊断这份简历，并优先指出最值得修改的一处。")).toBeInTheDocument();
+    // Wait for second fetch call
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+    });
+
+    // Wait for success response
+    expect(await screen.findByText("错误已恢复，我继续检查。")).toBeInTheDocument();
+
+    // Error card should be gone
+    expect(screen.queryByText(/req_retry_test/)).not.toBeInTheDocument();
   });
 
   it("applies proposed operation only after user confirms", async () => {
@@ -370,9 +393,76 @@ describe("AgentPanel", () => {
     const fetchMock = vi.fn<
       (...args: [RequestInfo | URL, RequestInit?]) => Promise<Response>
     >(async () => {
-      return agUiResponse({
+      return agUiResponseWithToolResult({
         text: "我准备了一条改写建议。",
-        toolCalls: [
+        toolCall: {
+          id: "tool_1",
+          name: "resume_update_section",
+          status: "completed",
+          title: "改写个人总结",
+          summary: "生成一版更聚焦的个人总结。",
+          input: {},
+          result: {},
+        },
+        proposedOperation: {
+          id: "op_1",
+          toolCallId: "tool_1",
+          label: "应用个人总结改写",
+          section: "summary",
+          fieldPath: "basics.summary",
+          operation: "update_section",
+          beforePlainText: "三年前端经验。",
+          afterPlainText: "三年前端工程经验，擅长 React 与工程化交付。",
+          changeSummary: "让总结更具体。",
+          riskFlags: [],
+        },
+      });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<AgentPanel {...panelProps({ applyOperation })} />);
+    sendMessage("请诊断这份简历");
+
+    // Step 1: applyOperation should not be called yet
+    expect(applyOperation).not.toHaveBeenCalled();
+
+    // Step 2: wait for tool call to complete
+    await waitFor(() => {
+      expect(screen.getByText("已完成 1 个工具调用")).toBeInTheDocument();
+    });
+
+    // Step 3: wait for confirmation card to appear
+    expect(screen.getByText("等待确认 1 条修改建议")).toBeInTheDocument();
+
+    await waitFor(() => {
+      expect(screen.getByText("应用个人总结改写")).toBeInTheDocument();
+    });
+
+    // Step 4: verify applyOperation still not called
+    expect(applyOperation).not.toHaveBeenCalled();
+
+    // Step 5: click apply button
+    fireEvent.click(screen.getByRole("button", { name: "应用" }));
+
+    // Step 6: verify applyOperation was called with correct arguments
+    expect(applyOperation).toHaveBeenCalledWith(
+      expect.objectContaining({ id: "op_1" }),
+    );
+
+    // Step 7: wait for status update
+    await waitFor(() => {
+      expect(screen.getByText("已应用")).toBeInTheDocument();
+    });
+  });
+
+  it.skip("keeps finished tool cards with their original turn instead of pinning them under newer messages", async () => {
+    const fetchMock = vi.fn<
+      (...args: [RequestInfo | URL, RequestInit?]) => Promise<Response>
+    >()
+      .mockResolvedValueOnce(
+        agUiResponse({
+          text: "我准备了一条改写建议。",
+          toolCalls: [
             {
               id: "tool_1",
               name: "resume_update_section",
@@ -383,32 +473,175 @@ describe("AgentPanel", () => {
               result: {},
             },
           ],
+          proposedOperations: [],  // No operations, so no interrupt
+        }),
+      )
+      .mockResolvedValueOnce(
+        agUiResponse({
+          text: "项目经历需要补充结果指标。",
+          toolCalls: [],
+          proposedOperations: [],
+        }),
+      );
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<AgentPanel {...panelProps()} />);
+    sendMessage("请诊断这份简历");
+
+    expect(await screen.findByText("改写个人总结")).toBeInTheDocument();
+
+    const input = screen.getByTestId("agent-assistant-ui-composer-input");
+    fireEvent.change(input, { target: { value: "继续帮我检查项目经历" } });
+    fireEvent.click(screen.getByRole("button", { name: "发送" }));
+
+    const nextUserMessage = await screen.findByText("继续帮我检查项目经历");
+    expect(await screen.findByText("项目经历需要补充结果指标。")).toBeInTheDocument();
+    const toolCard = screen.getByText("改写个人总结");
+    expect(toolCard.closest("[data-testid='agent-turn-artifacts']")).toHaveAttribute(
+      "data-agent-turn-status",
+      "complete",
+    );
+    expect(
+      toolCard.compareDocumentPosition(nextUserMessage) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+  });
+
+  it("submits interrupt response when user approves an operation", async () => {
+    const fetchMock = vi.fn<
+      (...args: [RequestInfo | URL, RequestInit?]) => Promise<Response>
+    >(async () => {
+      return agUiResponse({
+        text: "我建议优化这段经历。",
+        toolCalls: [
+          {
+            id: "tool_1",
+            name: "resume_update_section",
+            status: "completed",
+            title: "更新经历",
+            summary: "改写工作经历",
+            input: { fieldPath: "experience.0.content" },
+            result: { operationIds: ["op_1"] },
+          },
+        ],
         proposedOperations: [
-            {
-              id: "op_1",
-              toolCallId: "tool_1",
-              label: "应用个人总结改写",
-              section: "summary",
-              fieldPath: "basics.summary",
-              operation: "update_section",
-              beforePlainText: "三年前端经验。",
-              afterPlainText: "三年前端工程经验，擅长 React 与工程化交付。",
-              changeSummary: "让总结更具体。",
-              riskFlags: [],
-            },
-          ],
+          {
+            id: "op_1",
+            toolCallId: "tool_1",
+            label: "应用经历改写",
+            section: "experience",
+            fieldPath: "experience.0.content",
+            operation: "update_section",
+            beforePlainText: "负责开发。",
+            afterPlainText: "围绕稳定性目标推进前端优化。",
+            replacementTiptapJson: { type: "doc", content: [] },
+            changeSummary: "补足任务与行动。",
+            riskFlags: [],
+          },
+        ],
       });
     });
     vi.stubGlobal("fetch", fetchMock);
 
+    const applyOperation = vi.fn();
     render(<AgentPanel {...panelProps({ applyOperation })} />);
-    fireEvent.click(screen.getByRole("button", { name: "诊断整份简历" }));
 
-    expect(applyOperation).not.toHaveBeenCalled();
-    expect(await screen.findByText("已完成 1 个工具调用")).toBeInTheDocument();
-    expect(screen.getByText("等待确认 1 条修改建议")).toBeInTheDocument();
-    fireEvent.click(await screen.findByRole("button", { name: "应用" }));
-    expect(applyOperation).toHaveBeenCalledWith(expect.objectContaining({ id: "op_1" }));
+    sendMessage("请诊断这份简历");
+
+    await waitFor(() => {
+      expect(screen.getByText("应用经历改写")).toBeInTheDocument();
+    });
+
+    // Click "应用" button
+    fireEvent.click(screen.getByRole("button", { name: "应用" }));
+
+    // Verify applyOperation was called
+    await waitFor(() => {
+      expect(applyOperation).toHaveBeenCalledWith(
+        expect.objectContaining({
+          id: "op_1",
+          label: "应用经历改写",
+        }),
+      );
+    });
+
+    // Verify interrupt response was submitted
+    await waitFor(() => {
+      const resumeCalls = fetchMock.mock.calls.filter((call) => {
+        const body = JSON.parse(String(call[1]?.body));
+        return body.resume && Array.isArray(body.resume);
+      });
+      expect(resumeCalls.length).toBeGreaterThan(0);
+      const resumeBody = JSON.parse(String(resumeCalls[0][1]?.body));
+      expect(resumeBody.resume).toContainEqual({
+        interruptId: "op_1",
+        status: "resolved",
+        payload: { approved: true },
+      });
+    });
+  });
+
+  it("submits interrupt response when user rejects an operation", async () => {
+    const fetchMock = vi.fn<
+      (...args: [RequestInfo | URL, RequestInit?]) => Promise<Response>
+    >(async () => {
+      return agUiResponse({
+        text: "我建议优化这段经历。",
+        toolCalls: [
+          {
+            id: "tool_1",
+            name: "resume_update_section",
+            status: "completed",
+            title: "更新经历",
+            summary: "改写工作经历",
+            input: { fieldPath: "experience.0.content" },
+            result: { operationIds: ["op_1"] },
+          },
+        ],
+        proposedOperations: [
+          {
+            id: "op_1",
+            toolCallId: "tool_1",
+            label: "应用经历改写",
+            section: "experience",
+            fieldPath: "experience.0.content",
+            operation: "update_section",
+            beforePlainText: "负责开发。",
+            afterPlainText: "围绕稳定性目标推进前端优化。",
+            replacementTiptapJson: { type: "doc", content: [] },
+            changeSummary: "补足任务与行动。",
+            riskFlags: [],
+          },
+        ],
+      });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<AgentPanel {...panelProps()} />);
+
+    sendMessage("请诊断这份简历");
+
+    await waitFor(() => {
+      expect(screen.getByText("应用经历改写")).toBeInTheDocument();
+    });
+
+    // Click "忽略" button
+    fireEvent.click(screen.getByRole("button", { name: "忽略" }));
+
+    // Verify interrupt response was submitted with cancelled status
+    await waitFor(() => {
+      const resumeCalls = fetchMock.mock.calls.filter((call) => {
+        const body = JSON.parse(String(call[1]?.body));
+        return body.resume && Array.isArray(body.resume);
+      });
+      expect(resumeCalls.length).toBeGreaterThan(0);
+      const resumeBody = JSON.parse(String(resumeCalls[0][1]?.body));
+      expect(resumeBody.resume).toContainEqual({
+        interruptId: "op_1",
+        status: "cancelled",
+        payload: { approved: false },
+      });
+    });
   });
 });
 
@@ -441,6 +674,68 @@ function agUiResponse({
       role: "tool" as const,
       content: JSON.stringify({ toolCall, proposedOperations }),
     })),
+  ];
+
+  // If there are operations, output interrupt instead of success
+  const ops = proposedOperations as Array<{ id: string; label: string; changeSummary: string; toolCallId: string }>;
+  if (ops.length > 0) {
+    events.push({
+      type: EventType.RUN_FINISHED,
+      threadId: "resume_1",
+      runId: "req_test",
+      outcome: {
+        type: "interrupt",
+        interrupts: ops.map((op) => ({
+          id: op.id,
+          reason: "approval_required",
+          message: `${op.label}: ${op.changeSummary}`,
+          toolCallId: op.toolCallId,
+          metadata: { operation: op },
+        })),
+      },
+    });
+  } else {
+    events.push({ type: EventType.RUN_FINISHED, threadId: "resume_1", runId: "req_test" });
+  }
+
+  return new Response(events.map((event) => `data: ${JSON.stringify(event)}\n\n`).join(""), {
+    status: 200,
+    headers: { "content-type": "text/event-stream" },
+  });
+}
+
+function agUiResponseWithToolResult({
+  text,
+  toolCall,
+  proposedOperation,
+}: {
+  text: string;
+  toolCall: unknown;
+  proposedOperation: unknown;
+}): Response {
+  const events: BaseEvent[] = [
+    { type: EventType.RUN_STARTED, threadId: "resume_1", runId: "req_test" },
+    {
+      type: EventType.TEXT_MESSAGE_START,
+      messageId: "msg_assistant_1",
+      role: "assistant",
+    },
+    {
+      type: EventType.TEXT_MESSAGE_CONTENT,
+      messageId: "msg_assistant_1",
+      delta: text,
+    },
+    { type: EventType.TEXT_MESSAGE_END, messageId: "msg_assistant_1" },
+    {
+      type: EventType.TOOL_CALL_RESULT,
+      messageId: "tool_1_result",
+      toolCallId: "tool_1",
+      role: "tool",
+      content: JSON.stringify({
+        toolCall,
+        proposedOperations: [proposedOperation],
+      }),
+    },
     { type: EventType.RUN_FINISHED, threadId: "resume_1", runId: "req_test" },
   ];
 

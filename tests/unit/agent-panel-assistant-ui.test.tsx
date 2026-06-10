@@ -37,6 +37,12 @@ describe("AgentPanel assistant-ui runtime", () => {
     vi.unstubAllGlobals();
   });
 
+  function sendMessage(text: string) {
+    const input = screen.getByTestId("agent-assistant-ui-composer-input");
+    fireEvent.change(input, { target: { value: text } });
+    fireEvent.keyDown(input, { key: "Enter", code: "Enter" });
+  }
+
   it("sends free-form composer input through the assistant-ui runtime adapter", async () => {
     const fetchMock = vi.fn<
       (...args: [RequestInfo | URL, RequestInit?]) => Promise<Response>
@@ -97,9 +103,9 @@ describe("AgentPanel assistant-ui runtime", () => {
     });
     vi.stubGlobal("fetch", fetchMock);
 
-    render(<AgentPanel {...panelProps({ runtimeMode: "ag-ui" })} />);
+    render(<AgentPanel {...panelProps({})} />);
 
-    fireEvent.click(screen.getByRole("button", { name: "诊断整份简历" }));
+    sendMessage("请诊断这份简历");
 
     await waitFor(() => {
       expect(fetchMock).toHaveBeenCalledWith(
@@ -117,17 +123,13 @@ describe("AgentPanel assistant-ui runtime", () => {
       expect.objectContaining({
         resumeId: "resume_1",
         locale: "zh-CN",
-        workflowId: "resume-diagnose",
       }),
-    );
-    expect(body.forwardedProps.runConfig).toEqual(
-      expect.objectContaining({ workflowId: "resume-diagnose" }),
     );
     expect(body.forwardedProps.introBuilder.context.templateId).toBe("professional");
     expect(body.messages.at(-1)).toEqual(
       expect.objectContaining({
         role: "user",
-        content: "请诊断这份简历，并优先指出最值得修改的一处。",
+        content: "请诊断这份简历",
       }),
     );
     expect(await screen.findByText("收到，我会先读取当前简历上下文。")).toBeInTheDocument();
@@ -156,12 +158,12 @@ describe("AgentPanel assistant-ui runtime", () => {
     });
     vi.stubGlobal("fetch", fetchMock);
 
-    render(<AgentPanel {...panelProps({ runtimeMode: "ag-ui" })} />);
-    fireEvent.click(screen.getByRole("button", { name: "诊断整份简历" }));
+    render(<AgentPanel {...panelProps({})} />);
+    sendMessage("请诊断这份简历");
 
     expect(await screen.findByText("Agent 正在使用工具")).toBeInTheDocument();
     expect(await screen.findByText("正在执行工具 resume_read")).toBeInTheDocument();
-    expect(screen.getByText("正在读取简历上下文")).toBeInTheDocument();
+    expect(screen.getByText(/正在读取简历上下文/)).toBeInTheDocument();
     expect(screen.queryByText("读取简历上下文")).not.toBeInTheDocument();
 
     const finishToolCall = toolStream.finish;
@@ -190,8 +192,8 @@ describe("AgentPanel assistant-ui runtime", () => {
     });
     vi.stubGlobal("fetch", fetchMock);
 
-    render(<AgentPanel {...panelProps({ runtimeMode: "ag-ui" })} />);
-    fireEvent.click(screen.getByRole("button", { name: "诊断整份简历" }));
+    render(<AgentPanel {...panelProps({})} />);
+    sendMessage("请诊断这份简历");
 
     expect(await screen.findByRole("button", { name: "停止生成" })).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "停止生成" }));
@@ -210,7 +212,7 @@ describe("AgentPanel assistant-ui runtime", () => {
     const fetchMock = vi.fn<
       (...args: [RequestInfo | URL, RequestInit?]) => Promise<Response>
     >(async () => {
-      return agUiResponseWithToolResult({
+      return agUiToolLifecycleInterruptResponse({
         text: "我生成了一条可确认的修改建议。",
         toolCall: {
           id: "tool_agui_1",
@@ -237,13 +239,20 @@ describe("AgentPanel assistant-ui runtime", () => {
     });
     vi.stubGlobal("fetch", fetchMock);
 
-    render(<AgentPanel {...panelProps({ applyOperation, runtimeMode: "ag-ui" })} />);
-    fireEvent.click(screen.getByRole("button", { name: "诊断整份简历" }));
+    render(<AgentPanel {...panelProps({ applyOperation })} />);
+    sendMessage("请诊断这份简历");
 
-    expect(await screen.findByText("已完成 1 个工具调用")).toBeInTheDocument();
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+    });
+    await waitFor(() => {
+      expect(screen.getByText("已完成 1 个工具调用")).toBeInTheDocument();
+    });
     expect(screen.getByText("等待确认 1 条修改建议")).toBeInTheDocument();
-    expect(await screen.findByText("改写个人总结")).toBeInTheDocument();
+    expect(await screen.findByText(/改写个人总结/)).toBeInTheDocument();
     expect(screen.getByText("应用个人总结改写")).toBeInTheDocument();
+    expect(screen.queryByText("Agent 正在使用工具")).not.toBeInTheDocument();
+    expect(screen.queryByText("Agent 需要补充信息")).not.toBeInTheDocument();
     expect(applyOperation).not.toHaveBeenCalled();
 
     fireEvent.click(screen.getByRole("button", { name: "应用" }));
@@ -268,10 +277,15 @@ describe("AgentPanel assistant-ui runtime", () => {
     });
     vi.stubGlobal("fetch", fetchMock);
 
-    render(<AgentPanel {...panelProps({ runtimeMode: "ag-ui" })} />);
-    fireEvent.click(screen.getByRole("button", { name: "目标岗位匹配" }));
+    render(<AgentPanel {...panelProps({})} />);
+    sendMessage("请根据目标岗位检查这份简历的匹配度");
 
-    expect(await screen.findByText("Agent 需要补充信息")).toBeInTheDocument();
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+    });
+    await waitFor(() => {
+      expect(screen.getByText(/Agent 需要补充信息/)).toBeInTheDocument();
+    });
     expect(
       screen.getByText("你这次主要投递哪个岗位？我需要用它判断经历重点。"),
     ).toBeInTheDocument();
@@ -320,14 +334,19 @@ function agUiResponse(chunks: string[]): Response {
   });
 }
 
-function agUiResponseWithToolResult({
+function agUiToolLifecycleInterruptResponse({
   text,
   toolCall,
   proposedOperation,
 }: {
   text: string;
   toolCall: unknown;
-  proposedOperation: unknown;
+  proposedOperation: {
+    id: string;
+    label: string;
+    changeSummary: string;
+    toolCallId: string;
+  } & Record<string, unknown>;
 }): Response {
   const events: BaseEvent[] = [
     { type: EventType.RUN_STARTED, threadId: "resume_1", runId: "req_test" },
@@ -341,18 +360,49 @@ function agUiResponseWithToolResult({
       messageId: "msg_assistant_1",
       delta: text,
     },
+    {
+      type: EventType.TOOL_CALL_START,
+      toolCallId: proposedOperation.toolCallId,
+      toolCallName: "resume_update_section",
+      parentMessageId: "msg_assistant_1",
+    },
+    {
+      type: EventType.TOOL_CALL_ARGS,
+      toolCallId: proposedOperation.toolCallId,
+      delta: JSON.stringify({ fieldPath: proposedOperation.fieldPath }),
+    },
+    {
+      type: EventType.TOOL_CALL_END,
+      toolCallId: proposedOperation.toolCallId,
+    },
     { type: EventType.TEXT_MESSAGE_END, messageId: "msg_assistant_1" },
     {
       type: EventType.TOOL_CALL_RESULT,
-      messageId: "tool_agui_1_result",
-      toolCallId: "tool_agui_1",
+      messageId: `${proposedOperation.toolCallId}_result`,
+      toolCallId: proposedOperation.toolCallId,
       role: "tool",
       content: JSON.stringify({
         toolCall,
         proposedOperations: [proposedOperation],
       }),
     },
-    { type: EventType.RUN_FINISHED, threadId: "resume_1", runId: "req_test" },
+    {
+      type: EventType.RUN_FINISHED,
+      threadId: "resume_1",
+      runId: "req_test",
+      outcome: {
+        type: "interrupt",
+        interrupts: [
+          {
+            id: proposedOperation.id,
+            reason: "approval_required",
+            message: `${proposedOperation.label}: ${proposedOperation.changeSummary}`,
+            toolCallId: proposedOperation.toolCallId,
+            metadata: { operation: proposedOperation },
+          },
+        ],
+      },
+    },
   ];
 
   return new Response(events.map((event) => `data: ${JSON.stringify(event)}\n\n`).join(""), {

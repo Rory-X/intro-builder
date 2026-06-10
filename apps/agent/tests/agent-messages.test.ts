@@ -333,6 +333,95 @@ describe("agent messages", () => {
       },
     });
   });
+
+  it("outputs RUN_FINISHED with interrupt when proposedOperations are present", () => {
+    const parsed = parseAgentMessageProviderResponse(
+      JSON.stringify({
+        message: {
+          id: "msg_assistant_1",
+          role: "assistant",
+          content: "我建议优化这段经历。",
+        },
+        toolCalls: [
+          {
+            id: "tool_1",
+            name: "resume_update_section",
+            status: "completed",
+            title: "更新经历",
+            summary: "改写工作经历",
+            input: { fieldPath: "experience.0.content" },
+            result: { operationIds: ["op_1"] },
+          },
+        ],
+        proposedOperations: [
+          {
+            id: "op_1",
+            toolCallId: "tool_1",
+            label: "应用经历改写",
+            section: "experience",
+            fieldPath: "experience.0.content",
+            operation: "update_section",
+            beforePlainText: "负责开发。",
+            afterPlainText: "围绕稳定性目标推进前端优化。",
+            replacementTiptapJson: { type: "doc", content: [] },
+            changeSummary: "补足任务与行动。",
+            riskFlags: [],
+          },
+        ],
+      }),
+    );
+    if (!parsed.ok) throw new Error("expected parse success");
+
+    const events = toAgUiAgentEvents({
+      requestId: "req_agent",
+      threadId: "resume_abc",
+      result: parsed.result,
+    });
+
+    const runFinished = events.find((event) => event.type === EventType.RUN_FINISHED);
+    expect(runFinished).toMatchObject({
+      type: EventType.RUN_FINISHED,
+      outcome: {
+        type: "interrupt",
+        interrupts: [
+          {
+            id: "op_1",
+            reason: "approval_required",
+            message: "应用经历改写: 补足任务与行动。",
+            toolCallId: "tool_1",
+            metadata: { operation: parsed.result.proposedOperations[0] },
+          },
+        ],
+      },
+    });
+  });
+
+  it("outputs RUN_FINISHED with success when no proposedOperations", () => {
+    const parsed = parseAgentMessageProviderResponse(
+      JSON.stringify({
+        message: {
+          id: "msg_assistant_1",
+          role: "assistant",
+          content: "你的简历已经很好了。",
+        },
+        toolCalls: [],
+        proposedOperations: [],
+      }),
+    );
+    if (!parsed.ok) throw new Error("expected parse success");
+
+    const events = toAgUiAgentEvents({
+      requestId: "req_agent",
+      threadId: "resume_abc",
+      result: parsed.result,
+    });
+
+    const runFinished = events.find((event) => event.type === EventType.RUN_FINISHED);
+    expect(runFinished).toMatchObject({
+      type: EventType.RUN_FINISHED,
+      outcome: { type: "success" },
+    });
+  });
 });
 
 function validBody(overrides: Record<string, unknown> = {}) {

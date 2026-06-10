@@ -4,19 +4,13 @@ import { useId, useState } from "react";
 
 import {
   GradientSparklesIcon,
-  ResumeHelperPopoverContent,
   requestResumeHelper,
 } from "@/components/agent/resume-diagnose-button";
+import { ResumeHelperDialog, type HelperState } from "@/components/agent/resume-helper-dialog";
 import { Button } from "@/components/ui/button";
-import { Popover, PopoverTrigger } from "@/components/ui/popover";
 import type { ResumeHelperRequest } from "@/lib/agent/client";
 
 type Section = Extract<ResumeHelperRequest["target"], { kind: "section" }>["section"];
-type HelperState =
-  | { status: "idle" }
-  | { status: "loading" }
-  | { status: "ready"; result: import("@/lib/agent/client").ResumeHelperResponse["result"] }
-  | { status: "error"; message: string };
 
 export type SectionHelperButtonProps = {
   resumeId: string;
@@ -39,9 +33,11 @@ export function SectionHelperButton({
   completeness,
 }: SectionHelperButtonProps) {
   const [state, setState] = useState<HelperState>({ status: "idle" });
+  const [dialogOpen, setDialogOpen] = useState(false);
   const gradientId = `section-helper-gradient-${useId().replace(/:/g, "")}`;
 
   async function requestSectionSuggestions() {
+    setDialogOpen(true);
     await requestResumeHelper({
       resumeId,
       path: "/api/agent/resume/helpers/section-next-steps",
@@ -65,26 +61,29 @@ export function SectionHelperButton({
   }
 
   return (
-    <Popover>
-      <PopoverTrigger
-        render={
-          <Button
-            type="button"
-            size="sm"
-            variant="ghost"
-            className="h-8 gap-1 rounded-full px-2 text-xs"
-            aria-label="AI 建议"
-            disabled={state.status === "loading" || plainText.trim() === ""}
-            onClick={() => void requestSectionSuggestions()}
-          />
-        }
+    <>
+      <Button
+        type="button"
+        size="sm"
+        variant="ghost"
+        className="h-8 gap-1 rounded-full px-2 text-xs"
+        aria-label="AI 建议"
+        disabled={state.status === "loading" || plainText.trim() === ""}
+        onClick={() => void requestSectionSuggestions()}
       >
         <GradientSparklesIcon gradientId={gradientId} />
         <span className="bg-gradient-to-r from-sky-500 via-fuchsia-500 to-amber-400 bg-clip-text text-transparent">
           {state.status === "loading" ? "分析中" : "AI 建议"}
         </span>
-      </PopoverTrigger>
-      <ResumeHelperPopoverContent state={state} title={`${label}建议`} />
-    </Popover>
+      </Button>
+
+      <ResumeHelperDialog
+        open={dialogOpen}
+        onOpenChange={setDialogOpen}
+        title={`${label}建议`}
+        state={state}
+        maxWidth="xl"
+      />
+    </>
   );
 }
