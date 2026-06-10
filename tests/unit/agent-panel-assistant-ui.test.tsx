@@ -37,6 +37,12 @@ describe("AgentPanel assistant-ui runtime", () => {
     vi.unstubAllGlobals();
   });
 
+  function sendMessage(text: string) {
+    const input = screen.getByTestId("agent-assistant-ui-composer-input");
+    fireEvent.change(input, { target: { value: text } });
+    fireEvent.keyDown(input, { key: "Enter", code: "Enter" });
+  }
+
   it("sends free-form composer input through the assistant-ui runtime adapter", async () => {
     const fetchMock = vi.fn<
       (...args: [RequestInfo | URL, RequestInit?]) => Promise<Response>
@@ -99,7 +105,7 @@ describe("AgentPanel assistant-ui runtime", () => {
 
     render(<AgentPanel {...panelProps({})} />);
 
-    fireEvent.click(screen.getByRole("button", { name: "诊断整份简历" }));
+    sendMessage("请诊断这份简历");
 
     await waitFor(() => {
       expect(fetchMock).toHaveBeenCalledWith(
@@ -117,17 +123,13 @@ describe("AgentPanel assistant-ui runtime", () => {
       expect.objectContaining({
         resumeId: "resume_1",
         locale: "zh-CN",
-        workflowId: "resume-diagnose",
       }),
-    );
-    expect(body.forwardedProps.runConfig).toEqual(
-      expect.objectContaining({ workflowId: "resume-diagnose" }),
     );
     expect(body.forwardedProps.introBuilder.context.templateId).toBe("professional");
     expect(body.messages.at(-1)).toEqual(
       expect.objectContaining({
         role: "user",
-        content: "请诊断这份简历，并优先指出最值得修改的一处。",
+        content: "请诊断这份简历",
       }),
     );
     expect(await screen.findByText("收到，我会先读取当前简历上下文。")).toBeInTheDocument();
@@ -157,7 +159,7 @@ describe("AgentPanel assistant-ui runtime", () => {
     vi.stubGlobal("fetch", fetchMock);
 
     render(<AgentPanel {...panelProps({})} />);
-    fireEvent.click(screen.getByRole("button", { name: "诊断整份简历" }));
+    sendMessage("请诊断这份简历");
 
     expect(await screen.findByText("Agent 正在使用工具")).toBeInTheDocument();
     expect(await screen.findByText("正在执行工具 resume_read")).toBeInTheDocument();
@@ -191,7 +193,7 @@ describe("AgentPanel assistant-ui runtime", () => {
     vi.stubGlobal("fetch", fetchMock);
 
     render(<AgentPanel {...panelProps({})} />);
-    fireEvent.click(screen.getByRole("button", { name: "诊断整份简历" }));
+    sendMessage("请诊断这份简历");
 
     expect(await screen.findByRole("button", { name: "停止生成" })).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "停止生成" }));
@@ -238,7 +240,7 @@ describe("AgentPanel assistant-ui runtime", () => {
     vi.stubGlobal("fetch", fetchMock);
 
     render(<AgentPanel {...panelProps({ applyOperation })} />);
-    fireEvent.click(screen.getByRole("button", { name: "诊断整份简历" }));
+    sendMessage("请诊断这份简历");
 
     await waitFor(() => {
       expect(fetchMock).toHaveBeenCalledTimes(1);
@@ -274,7 +276,7 @@ describe("AgentPanel assistant-ui runtime", () => {
     vi.stubGlobal("fetch", fetchMock);
 
     render(<AgentPanel {...panelProps({})} />);
-    fireEvent.click(screen.getByRole("button", { name: "目标岗位匹配" }));
+    sendMessage("请根据目标岗位检查这份简历的匹配度");
 
     await waitFor(() => {
       expect(fetchMock).toHaveBeenCalledTimes(1);
