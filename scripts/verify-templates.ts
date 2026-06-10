@@ -363,10 +363,10 @@ async function runItemLayoutCheck() {
   const expected = [
     "item.title",
     "item.dateRange",
-    "item.meta",
-    "item.link",
     "item.subtitle",
     "item.location",
+    "item.meta",
+    "item.link",
     "item.bullets",
   ] as const;
 
@@ -386,7 +386,7 @@ async function runItemLayoutCheck() {
       }
       for (let i = 1; i < positions.length; i++) {
         if (positions[i] <= positions[i - 1]) {
-          issues.push(`${itemTemplateId}: item fields are not in crimson order`);
+          issues.push(`${itemTemplateId}: item fields are not in expected order`);
           break;
         }
       }
@@ -397,7 +397,7 @@ async function runItemLayoutCheck() {
   }
 
   if (results.length === 0) {
-    console.log("  All item templates follow crimson field order ✓\n");
+    console.log("  All item templates follow expected field order ✓\n");
     return;
   }
 
@@ -405,7 +405,97 @@ async function runItemLayoutCheck() {
     console.log(`  ${result.templateId} (${result.templateName})`);
     for (const issue of result.issues) console.log(`    ${issue}`);
   }
-  fail("published templates have item layouts that diverge from crimson");
+  fail("published templates have item layouts that diverge from expected field order");
+}
+
+const META_LINK_TEXT_PROPS = [
+  "color",
+  "font-size",
+  "font-weight",
+  "font-style",
+  "font-family",
+  "letter-spacing",
+  "line-height",
+  "text-transform",
+] as const;
+
+function parseDeclarations(body: string): Map<string, string> {
+  const declarations = new Map<string, string>();
+  for (const part of body.split(";")) {
+    const separator = part.indexOf(":");
+    if (separator < 0) continue;
+    const property = part.slice(0, separator).trim().toLowerCase();
+    const value = part.slice(separator + 1).trim();
+    if (property && value) declarations.set(property, value);
+  }
+  return declarations;
+}
+
+function selectorTargetsClass(selector: string, className: string): boolean {
+  return new RegExp(`\\.${className}(?![\\w-])`).test(selector);
+}
+
+function collectEffectiveTextDeclarations(css: string, className: string): Map<string, string> {
+  const result = new Map<string, string>();
+  for (const match of css.matchAll(/([^{}]+)\{([^{}]*)\}/g)) {
+    const selector = match[1].trim();
+    if (!selectorTargetsClass(selector, className)) continue;
+    if (selector.includes(`.${className}:empty`)) continue;
+    const declarations = parseDeclarations(match[2]);
+    for (const property of META_LINK_TEXT_PROPS) {
+      const value = declarations.get(property);
+      if (value) result.set(property, value);
+    }
+  }
+  return result;
+}
+
+async function runItemMetaLinkTypographyCheck() {
+  console.log("\n─── Item Meta/Link Typography Check ───\n");
+
+  const publishedRows = await withTransientRetry("item meta/link typography check", () =>
+    db
+      .select({ id: templates.id, name: templates.name, css: templates.css })
+      .from(templates)
+      .where(eq(templates.status, "published")),
+  );
+
+  const results: Array<{ templateId: string; templateName: string; issues: string[] }> = [];
+  for (const row of publishedRows) {
+    const css = row.css ?? "";
+    const pairs = [
+      { meta: "item-meta", link: "item-link" },
+      { meta: "entry-meta", link: "entry-link" },
+    ] as const;
+    const issues: string[] = [];
+    for (const pair of pairs) {
+      const meta = collectEffectiveTextDeclarations(css, pair.meta);
+      const link = collectEffectiveTextDeclarations(css, pair.link);
+      if (meta.size === 0 || link.size === 0) continue;
+      for (const property of META_LINK_TEXT_PROPS) {
+        const metaValue = meta.get(property);
+        if (!metaValue) continue;
+        const linkValue = link.get(property);
+        if (linkValue !== metaValue) {
+          issues.push(`${pair.link}.${property}: expected ${metaValue}, got ${linkValue ?? "(missing)"}`);
+        }
+      }
+    }
+    if (issues.length > 0) {
+      results.push({ templateId: row.id, templateName: row.name, issues });
+    }
+  }
+
+  if (results.length === 0) {
+    console.log("  All item links match item meta typography ✓\n");
+    return;
+  }
+
+  for (const result of results) {
+    console.log(`  ${result.templateId} (${result.templateName})`);
+    for (const issue of result.issues) console.log(`    ${issue}`);
+  }
+  fail("published templates have item links that diverge from item meta typography");
 }
 
 async function runCrimsonTypographyCheck() {
@@ -545,6 +635,7 @@ async function main() {
   await runHardcodedContentCheck();
   await runSectionTemplateSplitCheck();
   await runItemLayoutCheck();
+  await runItemMetaLinkTypographyCheck();
   await runCrimsonTypographyCheck();
 }
 
