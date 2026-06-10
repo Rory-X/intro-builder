@@ -543,7 +543,7 @@ describe("AgentPanel", () => {
     const applyOperation = vi.fn();
     render(<AgentPanel {...panelProps({ applyOperation })} />);
 
-    fireEvent.click(screen.getByRole("button", { name: "诊断整份简历" }));
+    sendMessage("请诊断这份简历");
 
     await waitFor(() => {
       expect(screen.getByText("应用经历改写")).toBeInTheDocument();
@@ -616,7 +616,7 @@ describe("AgentPanel", () => {
 
     render(<AgentPanel {...panelProps()} />);
 
-    fireEvent.click(screen.getByRole("button", { name: "诊断整份简历" }));
+    sendMessage("请诊断这份简历");
 
     await waitFor(() => {
       expect(screen.getByText("应用经历改写")).toBeInTheDocument();
