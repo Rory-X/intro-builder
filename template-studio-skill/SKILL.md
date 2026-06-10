@@ -121,19 +121,23 @@ stdout 最后一行 JSON：
 
 参考 `docs/schema-v2/example-template.html` + `example-template.css`。两条骨架：
 
-**A. HTML 必须包含全部 8 个 basics binding**——缺一个 = 用户填的那字段在模板里永远不渲染。装饰图按 Step 1 判断结果插入：有 banner asset 就放 `<img src="<blob_url>">`，没有就用 CSS 画背景（如 `.tpl-header { background: linear-gradient(...) }`），不要保留无用的 `<img src="">`。
+**A. HTML 必须包含 profile headline、联系方式和全部 section/item slot**——缺字段 = 用户填的内容在模板里永远不渲染。顶部使用 `profile.*`，联系方式单独渲染，不要把 status 混进 contact 行。装饰图按 Step 1 判断结果插入：有 banner asset 就放 `<img src="<blob_url>">`，没有就用 CSS 画背景（如 `.tpl-header { background: linear-gradient(...) }`），不要保留无用的 `<img src="">`。
 
 ```html
 <header class="tpl-header">
   <!-- 有装饰资产时插入 banner img；无则删掉这行，用 CSS 画背景 -->
   <img src="<Step 2 拿到的 banner blob_url>" class="banner-img" alt="" />
 
-  <img data-bind="basics.photo" class="avatar" />
-  <h1 class="name"><slot data-bind="basics.name"></slot></h1>
+  <img data-bind="profile.photo" class="avatar" />
+  <h1 class="name"><slot data-bind="profile.name"></slot></h1>
 </header>
 <div class="tpl-body">
   <div class="meta">
-    <slot data-bind="basics.title"></slot> · <slot data-bind="basics.status"></slot>
+    <slot data-bind="profile.title"></slot>
+    <span class="profile-status">
+      <span class="profile-sep"> · </span>
+      <span class="profile-status-value"><slot data-bind="profile.status"></slot></span>
+    </span>
   </div>
   <div class="contact">
     <slot data-bind="basics.email"></slot> | <slot data-bind="basics.phone"></slot>
@@ -193,7 +197,8 @@ section title 内部 padding 用 **em**（跟字号联动），禁 px。
 
 ### Slot binding 速查
 
-- value：`basics.{name,title,status,email,phone,location,website,summary}` 用 `<slot>`；`basics.photo` **必须**用 `<img data-bind="basics.photo">`（不写 src，引擎注入 URL）
+- profile：顶部使用 `profile.name/title/status/photo`；`profile.photo` **必须**用 `<img data-bind="profile.photo">`。`profile.title` 和 `profile.status` 必须同一行、同样式、无 icon；不要使用 `basics.icon.Clock`，也不要把 status 放进联系方式行。
+- contacts：联系方式可用 `profile.contacts` 循环 + `contact.icon/contact.label`，或兼容直绑 `basics.email/phone/location/website`；联系方式行不展示求职状态。
 - loop：`sectionOrder`（单栏）、`sidebarSections` / `mainSections`（双栏，引擎未实现）、`section.items`（条目循环）
 - section 内：`section.{id,title,icon,body}`；`sectionOrder data-template="X"` 必须同时定义 `X-list` 和 `X-block`，`section.body` 放在 block 模板
 - item 内：`item.{title,subtitle,dateRange,location,bullets,tags,link}`

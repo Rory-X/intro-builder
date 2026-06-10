@@ -5,6 +5,11 @@ import { neon } from "@neondatabase/serverless";
 import { db } from "@/db";
 import { templates, type DbTemplate } from "@/db/schema";
 import { eq } from "drizzle-orm";
+import {
+  PROFILE_HEADLINE_CSS,
+  PROFILE_HEADLINE_PATCH_MARKER,
+  normalizeProfileHeadlineHtml,
+} from "@/lib/templates/uploaded/profile-headline-normalizer";
 
 type TemplateBackup = {
   createdAt: string;
@@ -436,6 +441,11 @@ function patchTemplate(row: DbTemplate): PatchResult | null {
   if (html) {
     if (row.id === "modern") html = patchModernHtml(html, changes);
     if (row.id === "classic") html = patchClassicHtml(html, changes);
+    const beforeProfileHeadline = html;
+    html = normalizeProfileHeadlineHtml(html);
+    if (html !== beforeProfileHeadline) {
+      changes.push("normalize profile title/status headline");
+    }
     html = patchItemLinkHtml(html, changes);
     html = patchSectionBodyHtml(html, changes);
     html = patchSectionTemplateSplit(html, changes);
@@ -467,6 +477,11 @@ function patchTemplate(row: DbTemplate): PatchResult | null {
     if (!css.includes(CRIMSON_ITEM_LAYOUT_PATCH_MARKER)) {
       css = `${css.trimEnd()}${CRIMSON_ITEM_LAYOUT_CSS}`;
       changes.push("append crimson item layout CSS");
+    }
+
+    if (!css.includes(PROFILE_HEADLINE_PATCH_MARKER)) {
+      css = `${css.trimEnd()}${PROFILE_HEADLINE_CSS}`;
+      changes.push("append profile headline CSS");
     }
 
     if (row.id === "modern" && !css.includes(".modern-status:not(:empty)::before")) {

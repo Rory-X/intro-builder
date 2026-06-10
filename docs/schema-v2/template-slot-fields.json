@@ -23,7 +23,7 @@
         },
         "profile.status": {
           "type": "string",
-          "description": "求职状态（如「在看机会」）",
+          "description": "求职状态（如「在看机会」）。必须紧跟 profile.title 放在同一行，继承同一套文字样式，不加 icon",
           "required_in_template": true
         },
         "profile.photo": {
@@ -156,6 +156,11 @@
     {
       "rule": "profile_title_status_present",
       "description": "模板顶部应同时展示 profile.title 和 profile.status",
+      "severity": "error"
+    },
+    {
+      "rule": "profile_title_status_one_line_no_icon",
+      "description": "profile.status 必须紧跟 profile.title 放在同一行，使用同样文字样式，不得放入联系方式行，也不得使用 basics.icon.Clock 或其它 status icon",
       "severity": "error"
     },
     {

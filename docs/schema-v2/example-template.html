@@ -2,15 +2,17 @@
   <div class="banner-bg">
     <img src="{{assets[0].url}}" class="banner-img" alt="" />
   </div>
-  <img data-bind="basics.photo" class="avatar" />
-  <h1 class="name"><slot data-bind="basics.name"></slot></h1>
+  <img data-bind="profile.photo" class="avatar" />
+  <h1 class="name"><slot data-bind="profile.name"></slot></h1>
 </header>
 
 <div class="tpl-body">
   <div class="subtitle-row">
-    <slot data-bind="basics.title"></slot>
-    <span class="dot-sep">·</span>
-    <slot data-bind="basics.status"></slot>
+    <slot data-bind="profile.title"></slot>
+    <span class="profile-status">
+      <span class="profile-sep"> · </span>
+      <span class="profile-status-value"><slot data-bind="profile.status"></slot></span>
+    </span>
   </div>
 
   <div class="contact-bar">

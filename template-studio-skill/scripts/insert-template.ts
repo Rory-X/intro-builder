@@ -31,6 +31,7 @@ import { parseArgs } from "node:util";
 import { readFileSync } from "node:fs";
 // Single source of truth for the row shape.
 import { SectionIconsSchema } from "@/lib/templates/uploaded/types";
+import { checkProfileHeadlineHtml } from "@/lib/templates/uploaded/profile-headline-normalizer";
 
 function fail(code: number, msg: string): never {
   console.error(`ERROR: ${msg}`);
@@ -314,6 +315,18 @@ async function main() {
           `status, and contacts. Prefer profile.* + profile.contacts; ` +
           `legacy basics.* remains accepted for existing templates.` +
           `\nSee SKILL.md §slot-protocol "header 必须包含全部个人信息字段".`,
+      );
+    }
+
+    const profileHeadlineIssues = checkProfileHeadlineHtml(customHtml);
+    if (profileHeadlineIssues.length > 0) {
+      fail(
+        1,
+        `--custom-html has invalid profile title/status headline layout:\n  ` +
+          profileHeadlineIssues.join("\n  ") +
+          `\n\nPlace profile.title and profile.status in the same inline headline, ` +
+          `with the same text styling and no status icon. Do not use ` +
+          `basics.icon.Clock or put status in the contacts row.`,
       );
     }
 

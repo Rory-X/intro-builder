@@ -11,6 +11,10 @@ import { listAllTemplatesAsync } from "@/lib/templates/registry-server";
 import { db } from "@/db";
 import { templates } from "@/db/schema";
 import { eq, inArray } from "drizzle-orm";
+import {
+  checkProfileHeadlineHtml,
+  type ProfileHeadlineIssue,
+} from "@/lib/templates/uploaded/profile-headline-normalizer";
 
 const REQUIRED_CORE_ROWS = ["professional", "classic", "modern"] as const;
 
@@ -165,6 +169,12 @@ type ItemLayoutResult = {
   templateId: string;
   templateName: string;
   issues: string[];
+};
+
+type ProfileHeadlineResult = {
+  templateId: string;
+  templateName: string;
+  issues: ProfileHeadlineIssue[];
 };
 
 const LEGACY_BODY_BINDINGS = [
@@ -347,6 +357,36 @@ async function runSectionTemplateSplitCheck() {
     console.log(`    缺: ${result.missing.join("、")}`);
   }
   fail("published templates have unsplit section templates");
+}
+
+async function runProfileHeadlineCheck() {
+  console.log("\n─── Profile Headline Check ───\n");
+
+  const publishedRows = await withTransientRetry("profile headline check", () =>
+    db
+      .select({ id: templates.id, name: templates.name, html: templates.html })
+      .from(templates)
+      .where(eq(templates.status, "published")),
+  );
+
+  const results: ProfileHeadlineResult[] = [];
+  for (const row of publishedRows) {
+    const issues = checkProfileHeadlineHtml(row.html ?? "");
+    if (issues.length > 0) {
+      results.push({ templateId: row.id, templateName: row.name, issues });
+    }
+  }
+
+  if (results.length === 0) {
+    console.log("  All templates render title/status in one no-icon headline ✓\n");
+    return;
+  }
+
+  for (const result of results) {
+    console.log(`  ${result.templateId} (${result.templateName})`);
+    console.log(`    issues: ${result.issues.join("、")}`);
+  }
+  fail("published templates have invalid profile title/status headline layout");
 }
 
 async function runItemLayoutCheck() {
@@ -634,6 +674,7 @@ async function main() {
   await runSlotCoverageCheck();
   await runHardcodedContentCheck();
   await runSectionTemplateSplitCheck();
+  await runProfileHeadlineCheck();
   await runItemLayoutCheck();
   await runItemMetaLinkTypographyCheck();
   await runCrimsonTypographyCheck();

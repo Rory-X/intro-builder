@@ -32,7 +32,7 @@
 |---------|------|------|
 | `profile.name` | string | 姓名 |
 | `profile.title` | string | 求职方向 / 职位头衔；模板顶部必须留显示位置 |
-| `profile.status` | string | 求职状态（如"在看机会"）；模板顶部必须留显示位置 |
+| `profile.status` | string | 求职状态（如"在看机会"）；必须紧跟 `profile.title` 放在同一行，继承同一套文字样式，不加 icon |
 | `profile.photo` | image | 头像 URL。**必须用 `<img data-bind="profile.photo">`，不能用 `<slot>`** |
 | `profile.summary` | string | 自我介绍 |
 
@@ -49,6 +49,20 @@
 ### 城市显示
 
 城市**不在** `profile.*` 直接暴露。城市通过 `profile.contacts` / `contact.*` 循环显示（type=location），避免和联系方式区域重复出现。
+
+### 求职岗位 + 状态
+
+顶部 headline 必须把求职岗位和求职状态放在同一行。`profile.status` 不属于联系方式，不要放进 contact/meta 行，也不要使用 `basics.icon.Clock` 或任何 status icon。状态应该继承岗位文字的字号、颜色、字重，只用文本分隔符连接。
+
+```html
+<div class="subtitle-row">
+  <slot data-bind="profile.title"></slot>
+  <span class="profile-status">
+    <span class="profile-sep"> · </span>
+    <span class="profile-status-value"><slot data-bind="profile.status"></slot></span>
+  </span>
+</div>
+```
 
 ---
 
@@ -175,7 +189,7 @@
 - [ ] 头像用 `<img data-bind="profile.photo">`
 - [ ] 联系方式用 `profile.contacts` 循环 + `contact.icon` / `contact.label`
 - [ ] 城市不在 profile 区单独显示（已含在 contacts 里）
-- [ ] `profile.title` 和 `profile.status` 都有显示位置
+- [ ] `profile.title` 和 `profile.status` 在同一行，样式一致，无 icon
 - [ ] `item.location` 有显示位置（用户填了地点不应丢失）
 - [ ] `item.meta` 有显示位置（技术栈/GPA 不应丢失）
 - [ ] `item.link` 有显示位置（项目链接不应丢失）
