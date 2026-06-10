@@ -23,6 +23,7 @@ type Props = {
   content: ResumeContent;
   resolved: SerializableResolvedTemplate;
   styleSettings?: StyleSettings;
+  initialPagination?: { pageBreaks: number[]; totalHeight: number };
 };
 
 /** Must match PaginatedPreview */
@@ -190,14 +191,15 @@ function calculatePageBreaks(breakPoints: { bottom: number }[], totalHeight: num
   return breaks;
 }
 
-export function PdfPreview({ content, resolved, styleSettings }: Props) {
+export function PdfPreview({ content, resolved, styleSettings, initialPagination }: Props) {
   const measureRef = useRef<HTMLDivElement>(null);
-  const [pageBreaks, setPageBreaks] = useState<number[]>([]);
-  const [totalHeight, setTotalHeight] = useState(0);
-  const [measured, setMeasured] = useState(false);
+  const [pageBreaks, setPageBreaks] = useState<number[]>(() => initialPagination?.pageBreaks ?? []);
+  const [totalHeight, setTotalHeight] = useState(() => initialPagination?.totalHeight ?? 0);
+  const [measured, setMeasured] = useState(() => Boolean(initialPagination));
   const debounceTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const recalculate = useCallback(() => {
+    if (initialPagination) return;
     const container = measureRef.current;
     if (!container) return;
     const height = container.scrollHeight;
@@ -208,7 +210,7 @@ export function PdfPreview({ content, resolved, styleSettings }: Props) {
     setPageBreaks(breaks);
     setTotalHeight(height);
     setMeasured(true);
-  }, []);
+  }, [initialPagination]);
 
   const debouncedRecalculate = useCallback(() => {
     if (debounceTimer.current) clearTimeout(debounceTimer.current);

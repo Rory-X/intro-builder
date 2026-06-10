@@ -106,17 +106,51 @@ const REQUIRED_BASICS_BINDINGS = [
   "basics.website",
 ] as const;
 
-function checkRequiredBindings(html: string): string[] {
+const REQUIRED_BODY_BINDINGS = [
+  "sectionOrder",
+  "section.title",
+  "section.items",
+  "item.title",
+  "item.subtitle",
+  "item.dateRange",
+  "item.bullets",
+] as const;
+
+const LEGACY_BODY_BINDINGS = [
+  "item.header.title",
+  "item.header.subtitle",
+  "item.header.dateRange",
+  "item.header.location",
+] as const;
+
+const DEMO_CONTENT_LITERALS = [
+  "张三",
+  "字节跳动",
+  "美团",
+  "北京邮电大学",
+  "前端工程师",
+  "前端实习生",
+] as const;
+
+function hasBinding(html: string, binding: string): boolean {
+  const escaped = binding.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return new RegExp(`data-bind=["']${escaped}["']`).test(html);
+}
+
+function checkMissingBindings(html: string, bindings: readonly string[]): string[] {
   const missing: string[] = [];
-  for (const binding of REQUIRED_BASICS_BINDINGS) {
-    // basics.photo: must appear as <img data-bind="basics.photo"
-    // others: must appear as data-bind="basics.xxx"
-    const re = new RegExp(`data-bind=["']${binding.replace(".", "\\.")}["']`);
-    if (!re.test(html)) {
-      missing.push(binding);
-    }
+  for (const binding of bindings) {
+    if (!hasBinding(html, binding)) missing.push(binding);
   }
   return missing;
+}
+
+function checkLegacyBindings(html: string): string[] {
+  return LEGACY_BODY_BINDINGS.filter((binding) => hasBinding(html, binding));
+}
+
+function checkDemoContent(html: string): string[] {
+  return DEMO_CONTENT_LITERALS.filter((literal) => html.includes(literal));
 }
 
 async function main() {
@@ -241,7 +275,7 @@ async function main() {
   // disappears from the rendered resume (zoo reported: photo, website,
   // status, title all invisible). Fail-fast here so skill must re-add them.
   if (customHtml) {
-    const missing = checkRequiredBindings(customHtml);
+    const missing = checkMissingBindings(customHtml, REQUIRED_BASICS_BINDINGS);
     if (missing.length > 0) {
       fail(
         1,
@@ -257,6 +291,45 @@ async function main() {
           `  <slot data-bind="basics.location">   (for city)\n` +
           `  <slot data-bind="basics.website">    (for 知识库/个人网站)\n` +
           `\nSee SKILL.md §slot-protocol "header 必须包含全部个人信息字段".`,
+      );
+    }
+
+    const missingBody = checkMissingBindings(customHtml, REQUIRED_BODY_BINDINGS);
+    if (missingBody.length > 0) {
+      fail(
+        1,
+        `--custom-html is missing required body bindings:\n  ` +
+          missingBody.join("\n  ") +
+          `\n\nSection and item titles must be dynamic slots. Use:\n` +
+          `  <slot data-bind="sectionOrder" data-template="section-tpl"></slot>\n` +
+          `  <slot data-bind="section.title"></slot>\n` +
+          `  <slot data-bind="section.items" data-template="item-tpl"></slot>\n` +
+          `  <slot data-bind="item.title"></slot>\n` +
+          `  <slot data-bind="item.subtitle"></slot>\n` +
+          `  <slot data-bind="item.dateRange"></slot>\n` +
+          `  <slot data-bind="item.bullets"></slot>`,
+      );
+    }
+
+    const legacyBindings = checkLegacyBindings(customHtml);
+    if (legacyBindings.length > 0) {
+      fail(
+        1,
+        `--custom-html uses legacy item bindings:\n  ` +
+          legacyBindings.join("\n  ") +
+          `\n\nCurrent SlotRenderer uses item.title / item.subtitle / ` +
+          `item.dateRange / item.location directly. Rewrite legacy item.header.* slots.`,
+      );
+    }
+
+    const demoContent = checkDemoContent(customHtml);
+    if (demoContent.length > 0) {
+      fail(
+        1,
+        `--custom-html contains demo resume text:\n  ` +
+          demoContent.join("\n  ") +
+          `\n\nTemplate HTML must contain only structure and slots; resume content ` +
+          `comes from data-bind values at render time.`,
       );
     }
   }

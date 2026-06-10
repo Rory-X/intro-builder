@@ -148,11 +148,46 @@ type CoverageResult = {
   missing: string[];
 };
 
+type HardcodedContentResult = {
+  templateId: string;
+  templateName: string;
+  legacyBindings: string[];
+  demoContent: string[];
+};
+
+const LEGACY_BODY_BINDINGS = [
+  "item.header.title",
+  "item.header.subtitle",
+  "item.header.dateRange",
+  "item.header.location",
+] as const;
+
+const DEMO_CONTENT_LITERALS = [
+  "张三",
+  "字节跳动",
+  "美团",
+  "北京邮电大学",
+  "前端工程师",
+  "前端实习生",
+] as const;
+
+function hasBinding(html: string, binding: string): boolean {
+  const escaped = binding.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return new RegExp(`data-bind=["']${escaped}["']`).test(html);
+}
+
 function checkSlotCoverage(id: string, name: string, html: string): CoverageResult {
   const missing = SLOT_CHECKS
     .filter((check) => !check.test(html))
     .map((check) => check.name);
   return { templateId: id, templateName: name, missing };
+}
+
+function checkHardcodedContent(id: string, name: string, html: string): HardcodedContentResult | null {
+  const legacyBindings = LEGACY_BODY_BINDINGS.filter((binding) => hasBinding(html, binding));
+  const demoContent = DEMO_CONTENT_LITERALS.filter((literal) => html.includes(literal));
+  if (legacyBindings.length === 0 && demoContent.length === 0) return null;
+  return { templateId: id, templateName: name, legacyBindings, demoContent };
 }
 
 async function runSlotCoverageCheck() {
@@ -200,6 +235,111 @@ async function runSlotCoverageCheck() {
   }
 
   console.log("");
+}
+
+async function runHardcodedContentCheck() {
+  console.log("\n─── Hardcoded Template Content Check ───\n");
+
+  const publishedRows = await withTransientRetry("hardcoded content check", () =>
+    db
+      .select({ id: templates.id, name: templates.name, html: templates.html })
+      .from(templates)
+      .where(eq(templates.status, "published")),
+  );
+
+  const results = publishedRows
+    .filter((row) => row.html)
+    .map((row) => checkHardcodedContent(row.id, row.name, row.html ?? ""))
+    .filter((result): result is HardcodedContentResult => result !== null);
+
+  if (results.length === 0) {
+    console.log("  No legacy item.header.* slots or demo resume text found ✓\n");
+    return;
+  }
+
+  for (const result of results) {
+    console.log(`  ${result.templateId} (${result.templateName})`);
+    if (result.legacyBindings.length > 0) {
+      console.log(`    legacy slots: ${result.legacyBindings.join("、")}`);
+    }
+    if (result.demoContent.length > 0) {
+      console.log(`    demo text: ${result.demoContent.join("、")}`);
+    }
+  }
+
+  fail("published templates contain legacy item slots or demo resume text");
+}
+
+async function runCrimsonTypographyCheck() {
+  console.log("\n─── Crimson Body Typography Check ───\n");
+
+  const [row] = await withTransientRetry("crimson typography check", () =>
+    db
+      .select({ id: templates.id, name: templates.name, css: templates.css })
+      .from(templates)
+      .where(eq(templates.id, "handcoded-crimson")),
+  );
+
+  if (!row?.css) {
+    console.log("  handcoded-crimson CSS not found; skipped\n");
+    return;
+  }
+
+  const bannerBlock = row.css.match(/\.crimson-banner\s*\{([^{}]*)\}/)?.[1] ?? "";
+  const bannerDescendantBlocks = Array.from(
+    row.css.matchAll(/\.crimson-banner[^{]*\{([^{}]*)\}/g),
+    (match) => match[1],
+  ).join("\n");
+  const bannerIssues: string[] = [];
+  if (!/font-family\s*:\s*(?!var\()[^;]+;/.test(bannerBlock)) {
+    bannerIssues.push("banner must set a fixed font-family");
+  }
+  if (!/line-height\s*:\s*(?!var\()[^;]+;/.test(bannerBlock)) {
+    bannerIssues.push("banner must set a fixed line-height");
+  }
+  if (/var\(--font-size\)|var\(--line-height\)|var\(--font-family\)/.test(bannerDescendantBlocks)) {
+    bannerIssues.push("banner selectors must not depend on layout typography variables");
+  }
+  const titleBlock = row.css.match(/\.crimson-section-title h2\s*\{([^{}]*)\}/)?.[1] ?? "";
+  if (!/line-height\s*:\s*(?!var\()[^;]+;/.test(titleBlock)) {
+    bannerIssues.push("section title h2 must set a fixed line-height so body line-height cannot resize the title bar");
+  }
+
+  const violations: string[] = [];
+  const blockRe = /([^{}]+)\{([^{}]*)\}/g;
+  let match: RegExpExecArray | null;
+  while ((match = blockRe.exec(row.css)) !== null) {
+    const selector = match[1].trim();
+    const body = match[2];
+    if (selector.includes(".crimson-banner")) continue;
+    if (selector.includes(".crimson-section-title")) continue;
+
+    const hasFixedFontSize = /font-size\s*:\s*\d+(?:\.\d+)?px\b/.test(body);
+    const hasFixedLineHeight = /line-height\s*:\s*\d+(?:\.\d+)?\b/.test(body);
+    if (hasFixedFontSize || hasFixedLineHeight) {
+      const fixedProps = body
+        .split(";")
+        .map((part) => part.trim())
+        .filter((part) =>
+          /^font-size\s*:\s*\d+(?:\.\d+)?px\b/.test(part) ||
+          /^line-height\s*:\s*\d+(?:\.\d+)?\b/.test(part),
+        );
+      violations.push(`${selector} -> ${fixedProps.join("; ")}`);
+    }
+  }
+
+  if (bannerIssues.length === 0 && violations.length === 0) {
+    console.log("  Crimson banner typography is fixed; body typography uses CSS variables ✓\n");
+    return;
+  }
+
+  for (const issue of bannerIssues) {
+    console.log(`  ${issue}`);
+  }
+  for (const violation of violations) {
+    console.log(`  ${violation}`);
+  }
+  fail("handcoded-crimson typography violates banner/body typography boundaries");
 }
 
 // ─── Main ───────────────────────────────────────────────────────────────────
@@ -263,6 +403,8 @@ async function main() {
 
   // Slot coverage check
   await runSlotCoverageCheck();
+  await runHardcodedContentCheck();
+  await runCrimsonTypographyCheck();
 }
 
 main().catch((e) => {

@@ -35,10 +35,7 @@ export function useSmartLayout({ measureRef }: UseSmartLayoutOptions) {
           return;
         }
 
-        // The measurement container is a sibling of the ref div (both inside containerRef).
-        // Navigate to parent to find it.
-        const parent = root.parentElement;
-        const container = parent?.querySelector("[aria-hidden='true']") as HTMLElement | null;
+        const container = findSmartLayoutMeasurementContainer(root);
         if (!container) {
           resolve(Infinity);
           return;
@@ -122,4 +119,10 @@ export function useSmartLayout({ measureRef }: UseSmartLayoutOptions) {
   }, [form]);
 
   return { calculate, apply, revert, isCalculating, isActive };
+}
+
+export function findSmartLayoutMeasurementContainer(root: HTMLElement | null): HTMLElement | null {
+  const previewRoot = root?.closest("[data-paginated-preview-root]");
+  if (!previewRoot) return null;
+  return previewRoot.querySelector("[aria-hidden='true']") as HTMLElement | null;
 }
