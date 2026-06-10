@@ -7,7 +7,7 @@ import parse, {
   type HTMLReactParserOptions,
 } from "html-react-parser";
 import React, { type ReactElement } from "react";
-import type { ResumeContent, StyleSettings } from "@/lib/resume-schema";
+import { DEFAULT_STYLE_SETTINGS, type ResumeContent, type StyleSettings } from "@/lib/resume-schema";
 import type { TipTapJSON } from "@/lib/tiptap-types";
 import { FONT_MAP } from "@/lib/font-map";
 import { ResumeRichText } from "@/lib/templates/shared/resume-rich-text";
@@ -159,11 +159,9 @@ export function SlotRenderer({
   }
 
   // 4. Build CSS variables for styleSettings (dual-constraint §4.2)
-  // --profile-font-size: 个人信息栏字号，不受智能排版压缩影响。
-  // 智能排版 apply 后 styleSettings.fontSize 是压缩值，原始值保存在
-  // content.smartLayout.originalSettings.fontSize。未启用智能排版时两者一致。
-  const smartOriginal = content.smartLayout?.originalSettings;
-  const profileFontSize = smartOriginal?.fontSize ?? styleSettings.fontSize;
+  // --profile-font-size: 个人信息栏字号，固定为模板基准值。
+  // 顶部个人信息是模板装饰/身份区，不受手动排版和智能排版影响。
+  const profileFontSize = DEFAULT_STYLE_SETTINGS.fontSize;
   const cssVars: Record<string, string> = {
     "--font-family": fontFamilyValue(styleSettings.fontFamily),
     "--font-size": `${styleSettings.fontSize}px`,

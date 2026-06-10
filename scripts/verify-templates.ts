@@ -94,11 +94,6 @@ const SLOT_CHECKS: SlotCheck[] = [
     test: (html) => /data-bind=["']section\.title["']/.test(html),
   },
   {
-    name: "section.body",
-    description: "块状模块内容 (section.body)",
-    test: (html) => /data-bind=["']section\.body["']/.test(html),
-  },
-  {
     name: "section.items",
     description: "列表模块 (section.items)",
     test: (html) => /data-bind=["']section\.items["']/.test(html),
@@ -312,6 +307,7 @@ async function runCrimsonTypographyCheck() {
     const selector = match[1].trim();
     const body = match[2];
     if (selector.includes(".crimson-banner")) continue;
+    if (selector.includes("[data-pagination-header]")) continue;
     if (selector.includes(".crimson-section-title")) continue;
 
     const hasFixedFontSize = /font-size\s*:\s*\d+(?:\.\d+)?px\b/.test(body);

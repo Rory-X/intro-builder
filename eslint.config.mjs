@@ -16,6 +16,8 @@ const eslintConfig = defineConfig([
     ".source/**",
     // Local agent worktrees and their generated build output:
     ".claude/**",
+    ".agents/**",
+    ".codex/**",
   ]),
 ]);
 

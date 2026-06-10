@@ -31,8 +31,8 @@
 | Binding | 类型 | 说明 |
 |---------|------|------|
 | `profile.name` | string | 姓名 |
-| `profile.title` | string | 求职方向 / 职位头衔 |
-| `profile.status` | string | 求职状态（如"在看机会"） |
+| `profile.title` | string | 求职方向 / 职位头衔；模板顶部必须留显示位置 |
+| `profile.status` | string | 求职状态（如"在看机会"）；模板顶部必须留显示位置 |
 | `profile.photo` | image | 头像 URL。**必须用 `<img data-bind="profile.photo">`，不能用 `<slot>`** |
 | `profile.summary` | string | 自我介绍 |
 
@@ -95,7 +95,7 @@
 | Binding | 类型 | 说明 |
 |---------|------|------|
 | `section.title` | string | 分区标题（如"工作经历""教育背景"） |
-| `section.body` | rich-text | 分区级富文本内容（技能、自定义模块使用） |
+| `section.body` | rich-text | 分区级富文本内容；当前批量模板暂不强制使用，块状模块继续通过 `section.items` → `item.bullets` 渲染，避免双渲染 |
 | `section.items` | loop | 该分区下的条目列表 |
 
 ---
@@ -109,9 +109,9 @@
 | `item.title` | string | company / school / project name | 主标题（公司/学校/项目名） |
 | `item.subtitle` | string | title / degree+major / role | 副标题（职位/学位/角色） |
 | `item.dateRange` | string | start – end | 时间范围 |
-| `item.location` | string | location | 地点（城市/远程） |
+| `item.location` | string | location | 地点（城市/远程）；模板必须留显示位置 |
 | `item.meta` | string | stack.join(" · ") / gpa | 技术栈 / GPA 等补充信息 |
-| `item.link` | string | link | 项目链接 / 论文链接 |
+| `item.link` | string | link | 项目链接 / 论文链接；模板必须留显示位置，空值时隐藏 |
 | `item.bullets` | rich-text | content / highlights | 详细描述（TipTap 富文本） |
 
 ### 完整条目模板示例
@@ -165,7 +165,9 @@
 - [ ] 头像用 `<img data-bind="profile.photo">`
 - [ ] 联系方式用 `profile.contacts` 循环 + `contact.icon` / `contact.label`
 - [ ] 城市不在 profile 区单独显示（已含在 contacts 里）
+- [ ] `profile.title` 和 `profile.status` 都有显示位置
 - [ ] `item.location` 有显示位置（用户填了地点不应丢失）
 - [ ] `item.meta` 有显示位置（技术栈/GPA 不应丢失）
 - [ ] `item.link` 有显示位置（项目链接不应丢失）
+- [ ] `section.body` 暂不作为批量模板必填项；如使用，必须避免与 `section.items` 双渲染
 - [ ] 所有字段为空时布局不塌陷

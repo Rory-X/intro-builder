@@ -91,19 +91,20 @@ function checkDualConstraint(css: string): string[] {
 }
 
 /**
- * v2 header completeness guard: every template MUST include all basics
- * bindings so user data never silently disappears. Photo uses <img data-bind>,
- * others use <slot data-bind>.
+ * v2 header completeness guard: every template MUST include all profile fields
+ * either through the new `profile.*` / `profile.contacts` API or the legacy
+ * `basics.*` compatibility API. This prevents user data from silently
+ * disappearing while allowing old templates to keep rendering.
  */
-const REQUIRED_BASICS_BINDINGS = [
-  "basics.photo",
-  "basics.name",
-  "basics.title",
-  "basics.status",
-  "basics.email",
-  "basics.phone",
-  "basics.location",
-  "basics.website",
+const REQUIRED_HEADER_BINDINGS = [
+  { label: "photo", bindings: ["profile.photo", "basics.photo"] },
+  { label: "name", bindings: ["profile.name", "basics.name"] },
+  { label: "title", bindings: ["profile.title", "basics.title"] },
+  { label: "status", bindings: ["profile.status", "basics.status"] },
+  { label: "contacts", bindings: ["profile.contacts", "basics.email"] },
+  { label: "phone", bindings: ["profile.contacts", "basics.phone"] },
+  { label: "location", bindings: ["profile.contacts", "basics.location"] },
+  { label: "website", bindings: ["profile.contacts", "basics.website"] },
 ] as const;
 
 const REQUIRED_BODY_BINDINGS = [
@@ -143,6 +144,12 @@ function checkMissingBindings(html: string, bindings: readonly string[]): string
     if (!hasBinding(html, binding)) missing.push(binding);
   }
   return missing;
+}
+
+function checkMissingHeaderBindings(html: string): string[] {
+  return REQUIRED_HEADER_BINDINGS
+    .filter((group) => !group.bindings.some((binding) => hasBinding(html, binding)))
+    .map((group) => `${group.label} (${group.bindings.join(" or ")})`);
 }
 
 function checkLegacyBindings(html: string): string[] {
@@ -270,26 +277,18 @@ async function main() {
     }
   }
 
-  // v2 header completeness check: every uploaded template header must
-  // include ALL basics bindings. Missing a binding = user's data silently
-  // disappears from the rendered resume (zoo reported: photo, website,
-  // status, title all invisible). Fail-fast here so skill must re-add them.
+  // v2 header completeness check: every uploaded template header must include
+  // all profile fields via profile.* or legacy basics.*.
   if (customHtml) {
-    const missing = checkMissingBindings(customHtml, REQUIRED_BASICS_BINDINGS);
+    const missing = checkMissingHeaderBindings(customHtml);
     if (missing.length > 0) {
       fail(
         1,
         `--custom-html is missing required header bindings:\n  ` +
           missing.join("\n  ") +
-          `\n\nEvery v2 template header must include ALL of:\n` +
-          `  <img data-bind="basics.photo" .../>  (for photo)\n` +
-          `  <slot data-bind="basics.name">       (for name)\n` +
-          `  <slot data-bind="basics.title">      (for title/求职方向)\n` +
-          `  <slot data-bind="basics.status">     (for 求职状态)\n` +
-          `  <slot data-bind="basics.email">      (for email)\n` +
-          `  <slot data-bind="basics.phone">      (for phone)\n` +
-          `  <slot data-bind="basics.location">   (for city)\n` +
-          `  <slot data-bind="basics.website">    (for 知识库/个人网站)\n` +
+          `\n\nEvery v2 template header must include photo, name, title, ` +
+          `status, and contacts. Prefer profile.* + profile.contacts; ` +
+          `legacy basics.* remains accepted for existing templates.` +
           `\nSee SKILL.md §slot-protocol "header 必须包含全部个人信息字段".`,
       );
     }

@@ -18,11 +18,13 @@
         },
         "profile.title": {
           "type": "string",
-          "description": "求职方向 / 职位头衔"
+          "description": "求职方向 / 职位头衔",
+          "required_in_template": true
         },
         "profile.status": {
           "type": "string",
-          "description": "求职状态（如「在看机会」）"
+          "description": "求职状态（如「在看机会」）",
+          "required_in_template": true
         },
         "profile.photo": {
           "type": "image",
@@ -62,7 +64,9 @@
         },
         "section.body": {
           "type": "rich-text",
-          "description": "分区级富文本（技能、自定义模块的正文内容）"
+          "description": "分区级富文本（技能、自定义模块的正文内容）",
+          "required_in_template": false,
+          "note": "当前批量模板暂不强制使用 section.body；块状模块继续通过 section.items -> item.bullets 渲染，避免双渲染"
         },
         "section.items": {
           "type": "loop",
@@ -94,6 +98,7 @@
           "type": "string",
           "description": "地点（城市/远程）",
           "source": "experience.location / education.location / projects.location",
+          "required_in_template": true,
           "note": "AI 生成模板容易遗漏此字段，必须留出显示位置"
         },
         "item.meta": {
@@ -106,7 +111,8 @@
           "type": "string",
           "description": "项目链接 / 论文链接",
           "source": "projects.link / research.link",
-          "note": "AI 生成模板容易遗漏此字段，必须留出显示位置"
+          "required_in_template": true,
+          "note": "AI 生成模板容易遗漏此字段，必须留出显示位置；空值时隐藏"
         },
         "item.bullets": {
           "type": "rich-text",
@@ -148,9 +154,14 @@
       "severity": "warning"
     },
     {
+      "rule": "profile_title_status_present",
+      "description": "模板顶部应同时展示 profile.title 和 profile.status",
+      "severity": "error"
+    },
+    {
       "rule": "item_location_present",
       "description": "模板应为 item.location 留出显示位置",
-      "severity": "warning"
+      "severity": "error"
     },
     {
       "rule": "item_meta_present",
@@ -160,7 +171,12 @@
     {
       "rule": "item_link_present",
       "description": "模板应为 item.link 留出显示位置",
-      "severity": "warning"
+      "severity": "error"
+    },
+    {
+      "rule": "section_body_optional_for_batch_templates",
+      "description": "批量模板暂不强制 section.body；若使用必须避免和 section.items 双渲染",
+      "severity": "info"
     },
     {
       "rule": "no_standalone_city",
