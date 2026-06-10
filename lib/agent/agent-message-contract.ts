@@ -74,6 +74,7 @@ export type ResumeOperation = {
   replacementTiptapJson?: unknown;
   sectionOrder?: string[];
   changeSummary: string;
+  diagnosis?: string;
   riskFlags: Array<{
     type:
       | "needs_user_fact"

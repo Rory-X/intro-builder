@@ -89,6 +89,17 @@ export function AgentConfirmationCard({
         )}
       </button>
 
+      {operation.diagnosis ? (
+        <details className="mt-2 text-xs">
+          <summary className="cursor-pointer text-muted-foreground hover:text-foreground">
+            💡 为什么要改？
+          </summary>
+          <p className="mt-1.5 pl-4 text-muted-foreground leading-relaxed">
+            {operation.diagnosis}
+          </p>
+        </details>
+      ) : null}
+
       {operation.riskFlags.length > 0 ? (
         <div className="mt-2 text-xs text-amber-600 dark:text-amber-400">
           {operation.riskFlags.map((flag) => flag.message).join("；")}
