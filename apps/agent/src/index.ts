@@ -10,8 +10,10 @@ import {
 import { createOpenAICompatibleRichTextPolishProvider } from "./rich-text-polish.js";
 import { createOpenAICompatibleResumeHelperProvider } from "./resume-helpers.js";
 import { createOpenAICompatibleAgentMessageProvider } from "./agent-messages.js";
+import { createAgentObservability } from "./observability.js";
 
 const config = loadConfig();
+const observability = createAgentObservability(config);
 const redis = createRedisConnection(config, {
   onError: (error) => {
     log("error", "redis client error", { error: error.message });
@@ -29,6 +31,7 @@ const server = createAgentServer({
   richTextPolishProvider: createOpenAICompatibleRichTextPolishProvider(config),
   resumeHelperProvider: createOpenAICompatibleResumeHelperProvider(config),
   agentMessageProvider: createOpenAICompatibleAgentMessageProvider(config),
+  observability,
 });
 
 server.listen(config.port, config.host, () => {
@@ -64,7 +67,10 @@ function shutdown(signal: NodeJS.Signals): void {
       process.exit(1);
     }
 
-    void closeRedisConnection(redis).finally(() => {
+    void Promise.allSettled([
+      closeRedisConnection(redis),
+      observability.shutdown(),
+    ]).finally(() => {
       log("info", "agent service stopped", { signal });
       process.exit(0);
     });

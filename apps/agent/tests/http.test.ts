@@ -9,6 +9,14 @@ import type { AgentReplayStore } from "../src/auth";
 import type { AgentMessageProvider } from "../src/agent-messages";
 import type { AiCacheEntry, AiCacheStore } from "../src/ai-cache";
 import { createAgentServer } from "../src/http";
+import type {
+  AgentCacheStatus,
+  AgentMessageGenerationTraceInput,
+  AgentMessageParseTrace,
+  AgentMessageTrace,
+  AgentMessageTraceContext,
+  AgentObservability,
+} from "../src/observability";
 import type { RichTextPolishProvider } from "../src/rich-text-polish";
 import type { ResumeHelperProvider } from "../src/resume-helpers";
 
@@ -825,6 +833,95 @@ describe("agent HTTP service", () => {
     });
   });
 
+  it("records Agent message observability for successful JSON responses", async () => {
+    const observability = new FakeAgentObservability();
+    const provider = new FakeAgentMessageProvider(
+      JSON.stringify({
+        message: {
+          id: "msg_assistant_1",
+          role: "assistant",
+          content: "建议先优化第一段工作经历。",
+        },
+        toolCalls: [
+          {
+            id: "tool_1",
+            name: "resume_update_section",
+            status: "completed",
+            title: "更新工作经历",
+            summary: "将笼统经历改成更清晰的 STAR 表达。",
+            input: { fieldPath: "experience.0.content" },
+            result: { operationIds: ["op_1"] },
+          },
+        ],
+        proposedOperations: [
+          {
+            id: "op_1",
+            toolCallId: "tool_1",
+            label: "优化工作经历第一段",
+            section: "experience",
+            fieldPath: "experience.0.content",
+            operation: "update_section",
+            beforePlainText: "负责业务系统前端开发，优化页面性能。",
+            afterPlainText: "围绕业务系统页面性能瓶颈推进前端优化；结果指标需要补充。",
+            changeSummary: "按 STAR 补足任务与行动，不编造结果。",
+            riskFlags: [
+              {
+                type: "needs_user_fact",
+                message: "请补充真实性能提升指标。",
+              },
+            ],
+          },
+        ],
+      }),
+    );
+    const server = await listenOnRandomPort({
+      replayStore: new FakeReplayStore(),
+      agentMessageProvider: provider,
+      observability,
+    });
+    const token = await signAgentToken({
+      sub: "user_123",
+      resumeId: "resume_abc",
+      scope: "agent:chat",
+      jti: "jti_agent_message_observed",
+    });
+
+    const response = await fetch(server.url("/v1/agent/messages"), {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${token}`,
+        "content-type": "application/json",
+        "x-request-id": "req-client-agent-message-observed",
+      },
+      body: JSON.stringify(validAgentMessageBody()),
+    });
+
+    expect(response.status).toBe(200);
+    expect(observability.runs).toHaveLength(1);
+    expect(observability.runs[0]).toMatchObject({
+      requestId: "req-client-agent-message-observed",
+      cacheStatus: "miss",
+    });
+    expect(observability.generationInputs).toHaveLength(1);
+    expect(observability.generationInputs[0]?.prompt.developer).toContain(
+      "proposedOperations",
+    );
+    expect(observability.cacheStatuses).toEqual(["miss"]);
+    expect(observability.parseResults).toEqual([
+      {
+        ok: true,
+        toolCallCount: 1,
+        proposedOperationCount: 1,
+        interruptReasons: ["approval_required"],
+      },
+    ]);
+    expect(observability.runOutputs.at(-1)).toEqual({
+      status: "ok",
+      toolCallCount: 1,
+      proposedOperationCount: 1,
+    });
+  });
+
   it("returns conversational Agent messages when provider omits empty tool arrays", async () => {
     const provider = new FakeAgentMessageProvider(
       JSON.stringify({
@@ -1162,6 +1259,94 @@ describe("agent HTTP service", () => {
       .join("")).toBe("缓存命中也应该继续走 AG-UI SSE。");
   });
 
+  it("records Agent message cache hits and misses", async () => {
+    const observability = new FakeAgentObservability();
+    const cache = new FakeAiCacheStore();
+    const provider = new FakeAgentMessageProvider(
+      JSON.stringify({
+        message: {
+          id: "msg_cached",
+          role: "assistant",
+          content: "缓存候选响应。",
+        },
+        toolCalls: [],
+        proposedOperations: [],
+      }),
+    );
+    const server = await listenOnRandomPort({
+      replayStore: new FakeReplayStore(),
+      aiCacheStore: cache,
+      agentMessageProvider: provider,
+      observability,
+    });
+    const firstToken = await signAgentToken({
+      sub: "user_123",
+      resumeId: "resume_abc",
+      scope: "agent:chat",
+      jti: "jti_agent_message_observed_cache_1",
+    });
+    const secondToken = await signAgentToken({
+      sub: "user_123",
+      resumeId: "resume_abc",
+      scope: "agent:chat",
+      jti: "jti_agent_message_observed_cache_2",
+    });
+
+    await fetch(server.url("/v1/agent/messages"), {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${firstToken}`,
+        "content-type": "application/json",
+      },
+      body: JSON.stringify(validAgentMessageBody()),
+    });
+    await fetch(server.url("/v1/agent/messages"), {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${secondToken}`,
+        "content-type": "application/json",
+      },
+      body: JSON.stringify(validAgentMessageBody()),
+    });
+
+    expect(provider.calls).toHaveLength(1);
+    expect(observability.cacheStatuses).toEqual(["miss", "hit"]);
+  });
+
+  it("records Agent message parse failures", async () => {
+    const observability = new FakeAgentObservability();
+    const provider = new FakeAgentMessageProvider("not-json");
+    const server = await listenOnRandomPort({
+      replayStore: new FakeReplayStore(),
+      agentMessageProvider: provider,
+      observability,
+    });
+    const token = await signAgentToken({
+      sub: "user_123",
+      resumeId: "resume_abc",
+      scope: "agent:chat",
+      jti: "jti_agent_message_observed_parse_error",
+    });
+
+    const response = await fetch(server.url("/v1/agent/messages"), {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${token}`,
+        "content-type": "application/json",
+      },
+      body: JSON.stringify(validAgentMessageBody()),
+    });
+
+    expect(response.status).toBe(503);
+    expect(observability.parseResults).toEqual([
+      { ok: false, message: "Provider returned invalid JSON" },
+    ]);
+    expect(observability.runOutputs.at(-1)).toEqual({
+      status: "error",
+      error: "Provider returned invalid JSON",
+    });
+  });
+
   it("streams AG-UI RUN_ERROR when an SSE provider response cannot be parsed", async () => {
     const server = await listenOnRandomPort({
       replayStore: new FakeReplayStore(),
@@ -1401,6 +1586,7 @@ async function listenOnRandomPort(
     resumeHelperProvider?: ResumeHelperProvider;
     agentMessageProvider?: AgentMessageProvider;
     aiCacheStore?: AiCacheStore;
+    observability?: AgentObservability;
   } = {},
 ): Promise<TestAgentServer> {
   const server = createAgentServer({
@@ -1423,6 +1609,17 @@ async function listenOnRandomPort(
       modelApiKey: undefined,
       modelName: undefined,
       modelTimeoutMs: 20_000,
+      langfuse: {
+        enabled: false,
+        publicKey: undefined,
+        secretKey: undefined,
+        baseUrl: "https://cloud.langfuse.com",
+        environment: "test",
+        release: "test-version",
+        timeoutSeconds: 5,
+        sampleRate: 1,
+        captureRawPayloads: false,
+      },
     },
     now: () => new Date("2026-06-05T00:00:00.000Z"),
     uptimeSeconds: () => 42,
@@ -1432,6 +1629,7 @@ async function listenOnRandomPort(
     resumeHelperProvider: options.resumeHelperProvider,
     agentMessageProvider: options.agentMessageProvider,
     aiCacheStore: options.aiCacheStore,
+    observability: options.observability,
     createRequestId: () => "req_test_1",
   });
 
@@ -1654,6 +1852,41 @@ class FakeAgentMessageProvider implements AgentMessageProvider {
       },
     };
   }
+}
+
+class FakeAgentObservability implements AgentObservability {
+  enabled = true;
+  readonly runs: AgentMessageTraceContext[] = [];
+  readonly cacheStatuses: AgentCacheStatus[] = [];
+  readonly parseResults: AgentMessageParseTrace[] = [];
+  readonly runOutputs: Array<Parameters<AgentMessageTrace["recordRunOutput"]>[0]> = [];
+  readonly generationInputs: AgentMessageGenerationTraceInput[] = [];
+
+  async traceAgentMessageRun<T>(
+    context: AgentMessageTraceContext,
+    run: (trace: AgentMessageTrace) => Promise<T>,
+  ): Promise<T> {
+    this.runs.push(context);
+    return run({
+      recordCache: (status) => {
+        this.cacheStatuses.push(status);
+      },
+      recordParseResult: (result) => {
+        this.parseResults.push(result);
+      },
+      recordRunOutput: (output) => {
+        this.runOutputs.push(output);
+      },
+      traceGeneration: async (input, callback) => {
+        this.generationInputs.push(input);
+        return callback();
+      },
+    });
+  }
+
+  async flush(): Promise<void> {}
+
+  async shutdown(): Promise<void> {}
 }
 
 class ThrowingAgentMessageProvider implements AgentMessageProvider {

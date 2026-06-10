@@ -412,6 +412,17 @@ describe("rich text polish prompt", () => {
         modelApiKey: "deepseek-test-key",
         modelName: "deepseek-v4-flash",
         modelTimeoutMs: 20_000,
+        langfuse: {
+          enabled: false,
+          publicKey: undefined,
+          secretKey: undefined,
+          baseUrl: "https://cloud.langfuse.com",
+          environment: "test",
+          release: "test-version",
+          timeoutSeconds: 5,
+          sampleRate: 1,
+          captureRawPayloads: false,
+        },
       },
       fetchFn,
     );

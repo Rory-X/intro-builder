@@ -25,6 +25,17 @@ describe("agent config", () => {
       modelApiKey: undefined,
       modelName: undefined,
       modelTimeoutMs: 20_000,
+      langfuse: {
+        enabled: false,
+        publicKey: undefined,
+        secretKey: undefined,
+        baseUrl: "https://cloud.langfuse.com",
+        environment: "development",
+        release: "0.0.0-dev",
+        timeoutSeconds: 5,
+        sampleRate: 1,
+        captureRawPayloads: false,
+      },
     });
   });
 
@@ -48,6 +59,15 @@ describe("agent config", () => {
       AGENT_MODEL_API_KEY: "model-key",
       AGENT_MODEL_NAME: "gpt-test",
       AGENT_MODEL_TIMEOUT_MS: "30000",
+      LANGFUSE_TRACING_ENABLED: "true",
+      LANGFUSE_PUBLIC_KEY: "pk_test",
+      LANGFUSE_SECRET_KEY: "sk_test",
+      LANGFUSE_BASE_URL: "https://langfuse.test",
+      LANGFUSE_TRACING_ENVIRONMENT: "preview",
+      LANGFUSE_RELEASE: "2026.06.05-agent",
+      LANGFUSE_TIMEOUT: "8",
+      LANGFUSE_SAMPLE_RATE: "0.25",
+      LANGFUSE_CAPTURE_RAW_PAYLOADS: "true",
     });
 
     expect(config).toMatchObject({
@@ -69,6 +89,30 @@ describe("agent config", () => {
       modelApiKey: "model-key",
       modelName: "gpt-test",
       modelTimeoutMs: 30000,
+      langfuse: {
+        enabled: true,
+        publicKey: "pk_test",
+        secretKey: "sk_test",
+        baseUrl: "https://langfuse.test",
+        environment: "preview",
+        release: "2026.06.05-agent",
+        timeoutSeconds: 8,
+        sampleRate: 0.25,
+        captureRawPayloads: true,
+      },
+    });
+  });
+
+  it("keeps Langfuse disabled when credentials are missing", () => {
+    expect(
+      loadConfig({
+        LANGFUSE_TRACING_ENABLED: "true",
+        LANGFUSE_PUBLIC_KEY: "pk_test",
+      }).langfuse,
+    ).toMatchObject({
+      enabled: false,
+      publicKey: "pk_test",
+      secretKey: undefined,
     });
   });
 
@@ -101,6 +145,18 @@ describe("agent config", () => {
 
     expect(() => loadConfig({ AGENT_MODEL_TIMEOUT_MS: "0" })).toThrow(
       /AGENT_MODEL_TIMEOUT_MS must be an integer between 1 and 120000/,
+    );
+
+    expect(() => loadConfig({ LANGFUSE_TIMEOUT: "0" })).toThrow(
+      /LANGFUSE_TIMEOUT must be an integer between 1 and 120/,
+    );
+
+    expect(() => loadConfig({ LANGFUSE_SAMPLE_RATE: "-0.1" })).toThrow(
+      /LANGFUSE_SAMPLE_RATE must be a number between 0 and 1/,
+    );
+
+    expect(() => loadConfig({ LANGFUSE_SAMPLE_RATE: "1.1" })).toThrow(
+      /LANGFUSE_SAMPLE_RATE must be a number between 0 and 1/,
     );
   });
 });
