@@ -437,20 +437,7 @@ describe("AgentPanel", () => {
               result: {},
             },
           ],
-          proposedOperations: [
-            {
-              id: "op_1",
-              toolCallId: "tool_1",
-              label: "应用个人总结改写",
-              section: "summary",
-              fieldPath: "basics.summary",
-              operation: "update_section",
-              beforePlainText: "三年前端经验。",
-              afterPlainText: "三年前端工程经验，擅长 React 与工程化交付。",
-              changeSummary: "让总结更具体。",
-              riskFlags: [],
-            },
-          ],
+          proposedOperations: [],  // No operations, so no interrupt
         }),
       )
       .mockResolvedValueOnce(
@@ -465,7 +452,7 @@ describe("AgentPanel", () => {
     render(<AgentPanel {...panelProps()} />);
     fireEvent.click(screen.getByRole("button", { name: "诊断整份简历" }));
 
-    expect(await screen.findByText("应用个人总结改写")).toBeInTheDocument();
+    expect(await screen.findByText("改写个人总结")).toBeInTheDocument();
 
     const input = screen.getByTestId("agent-assistant-ui-composer-input");
     fireEvent.change(input, { target: { value: "继续帮我检查项目经历" } });
@@ -473,13 +460,13 @@ describe("AgentPanel", () => {
 
     const nextUserMessage = await screen.findByText("继续帮我检查项目经历");
     expect(await screen.findByText("项目经历需要补充结果指标。")).toBeInTheDocument();
-    const confirmationCard = screen.getByText("应用个人总结改写");
-    expect(confirmationCard.closest("[data-testid='agent-turn-artifacts']")).toHaveAttribute(
+    const toolCard = screen.getByText("改写个人总结");
+    expect(toolCard.closest("[data-testid='agent-turn-artifacts']")).toHaveAttribute(
       "data-agent-turn-status",
-      "waiting-confirmation",
+      "complete",
     );
     expect(
-      confirmationCard.compareDocumentPosition(nextUserMessage) &
+      toolCard.compareDocumentPosition(nextUserMessage) &
         Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy();
   });
