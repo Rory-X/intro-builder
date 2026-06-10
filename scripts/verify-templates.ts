@@ -11,10 +11,6 @@ import { listAllTemplatesAsync } from "@/lib/templates/registry-server";
 import { db } from "@/db";
 import { templates } from "@/db/schema";
 import { eq, inArray } from "drizzle-orm";
-import {
-  checkProfileHeadlineHtml,
-  type ProfileHeadlineIssue,
-} from "@/lib/templates/uploaded/profile-headline-normalizer";
 
 const REQUIRED_CORE_ROWS = ["professional", "classic", "modern"] as const;
 
@@ -61,31 +57,31 @@ type SlotCheck = {
 const SLOT_CHECKS: SlotCheck[] = [
   {
     name: "photo",
-    description: "头像 (<img data-bind=\"profile.photo\"> 或 basics.photo)",
-    test: (html) => /data-bind=["'](profile|basics)\.photo["']/.test(html),
+    description: "头像 (<img data-bind=\"basic.photo\">)",
+    test: (html) => /<img\b[^>]*data-bind=["']basic\.photo["'][^>]*>/i.test(html),
   },
   {
-    name: "profile.name",
-    description: "姓名 (profile.name 或 basics.name)",
-    test: (html) => /data-bind=["'](profile|basics)\.name["']/.test(html),
+    name: "basic.name",
+    description: "姓名 (basic.name)",
+    test: (html) => /data-bind=["']basic\.name["']/.test(html),
   },
   {
-    name: "profile.title",
-    description: "求职方向 (profile.title 或 basics.title)",
-    test: (html) => /data-bind=["'](profile|basics)\.title["']/.test(html),
+    name: "basic.title",
+    description: "求职岗位 (basic.title)",
+    test: (html) => /data-bind=["']basic\.title["']/.test(html),
   },
   {
-    name: "profile.status",
-    description: "求职状态 (profile.status 或 basics.status)",
-    test: (html) => /data-bind=["'](profile|basics)\.status["']/.test(html),
+    name: "basic.status",
+    description: "求职状态 (basic.status)",
+    test: (html) => /data-bind=["']basic\.status["']/.test(html),
   },
   {
     name: "contacts",
-    description: "联系方式 (profile.contacts 或 basics.email/phone/location/website)",
+    description: "联系方式 (profile.contacts + contact.icon/contact.label)",
     test: (html) =>
-      /data-bind=["']profile\.contacts["']/.test(html) ||
-      (/data-bind=["']basics\.email["']/.test(html) &&
-        /data-bind=["']basics\.phone["']/.test(html)),
+      /data-bind=["']profile\.contacts["']/.test(html) &&
+      /data-bind=["']contact\.icon["']/.test(html) &&
+      /data-bind=["']contact\.label["']/.test(html),
   },
   {
     name: "sectionOrder",
@@ -171,10 +167,10 @@ type ItemLayoutResult = {
   issues: string[];
 };
 
-type ProfileHeadlineResult = {
+type ForbiddenBindingResult = {
   templateId: string;
   templateName: string;
-  issues: ProfileHeadlineIssue[];
+  bindings: string[];
 };
 
 const LEGACY_BODY_BINDINGS = [
@@ -182,6 +178,12 @@ const LEGACY_BODY_BINDINGS = [
   "item.header.subtitle",
   "item.header.dateRange",
   "item.header.location",
+] as const;
+
+const FORBIDDEN_BINDING_PATTERNS = [
+  /^basics\./,
+  /^basics\.icon\./,
+  /^profile\.(name|title|status|summary)$/,
 ] as const;
 
 const DEMO_CONTENT_LITERALS = [
@@ -198,6 +200,12 @@ function hasBinding(html: string, binding: string): boolean {
   return new RegExp(`data-bind=["']${escaped}["']`).test(html);
 }
 
+function listBindings(html: string): string[] {
+  return Array.from(
+    new Set(Array.from(html.matchAll(/data-bind=["']([^"']+)["']/g), (match) => match[1])),
+  ).sort();
+}
+
 function checkSlotCoverage(id: string, name: string, html: string): CoverageResult {
   const missing = SLOT_CHECKS
     .filter((check) => !check.test(html))
@@ -210,6 +218,14 @@ function checkHardcodedContent(id: string, name: string, html: string): Hardcode
   const demoContent = DEMO_CONTENT_LITERALS.filter((literal) => html.includes(literal));
   if (legacyBindings.length === 0 && demoContent.length === 0) return null;
   return { templateId: id, templateName: name, legacyBindings, demoContent };
+}
+
+function checkForbiddenBindings(id: string, name: string, html: string): ForbiddenBindingResult | null {
+  const bindings = listBindings(html).filter((binding) =>
+    FORBIDDEN_BINDING_PATTERNS.some((pattern) => pattern.test(binding)),
+  );
+  if (bindings.length === 0) return null;
+  return { templateId: id, templateName: name, bindings };
 }
 
 function collectSectionTemplateBaseIds(html: string): string[] {
@@ -324,6 +340,33 @@ async function runHardcodedContentCheck() {
   fail("published templates contain legacy item slots or demo resume text");
 }
 
+async function runForbiddenBindingCheck() {
+  console.log("\n─── Forbidden Slot Binding Check ───\n");
+
+  const publishedRows = await withTransientRetry("forbidden binding check", () =>
+    db
+      .select({ id: templates.id, name: templates.name, html: templates.html })
+      .from(templates)
+      .where(eq(templates.status, "published")),
+  );
+
+  const results = publishedRows
+    .filter((row) => row.html)
+    .map((row) => checkForbiddenBindings(row.id, row.name, row.html ?? ""))
+    .filter((result): result is ForbiddenBindingResult => result !== null);
+
+  if (results.length === 0) {
+    console.log("  No forbidden basics.* or profile identity bindings found ✓\n");
+    return;
+  }
+
+  for (const result of results) {
+    console.log(`  ${result.templateId} (${result.templateName})`);
+    console.log(`    forbidden: ${result.bindings.join("、")}`);
+  }
+  fail("published templates contain forbidden slot bindings");
+}
+
 async function runSectionTemplateSplitCheck() {
   console.log("\n─── Section Template Split Check ───\n");
 
@@ -357,36 +400,6 @@ async function runSectionTemplateSplitCheck() {
     console.log(`    缺: ${result.missing.join("、")}`);
   }
   fail("published templates have unsplit section templates");
-}
-
-async function runProfileHeadlineCheck() {
-  console.log("\n─── Profile Headline Check ───\n");
-
-  const publishedRows = await withTransientRetry("profile headline check", () =>
-    db
-      .select({ id: templates.id, name: templates.name, html: templates.html })
-      .from(templates)
-      .where(eq(templates.status, "published")),
-  );
-
-  const results: ProfileHeadlineResult[] = [];
-  for (const row of publishedRows) {
-    const issues = checkProfileHeadlineHtml(row.html ?? "");
-    if (issues.length > 0) {
-      results.push({ templateId: row.id, templateName: row.name, issues });
-    }
-  }
-
-  if (results.length === 0) {
-    console.log("  All templates render title/status in one no-icon headline ✓\n");
-    return;
-  }
-
-  for (const result of results) {
-    console.log(`  ${result.templateId} (${result.templateName})`);
-    console.log(`    issues: ${result.issues.join("、")}`);
-  }
-  fail("published templates have invalid profile title/status headline layout");
 }
 
 async function runItemLayoutCheck() {
@@ -672,9 +685,9 @@ async function main() {
 
   // Slot coverage check
   await runSlotCoverageCheck();
+  await runForbiddenBindingCheck();
   await runHardcodedContentCheck();
   await runSectionTemplateSplitCheck();
-  await runProfileHeadlineCheck();
   await runItemLayoutCheck();
   await runItemMetaLinkTypographyCheck();
   await runCrimsonTypographyCheck();

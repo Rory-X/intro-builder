@@ -5,11 +5,6 @@ import { neon } from "@neondatabase/serverless";
 import { db } from "@/db";
 import { templates, type DbTemplate } from "@/db/schema";
 import { eq } from "drizzle-orm";
-import {
-  PROFILE_HEADLINE_CSS,
-  PROFILE_HEADLINE_PATCH_MARKER,
-  normalizeProfileHeadlineHtml,
-} from "@/lib/templates/uploaded/profile-headline-normalizer";
 
 type TemplateBackup = {
   createdAt: string;
@@ -227,12 +222,12 @@ async function restoreTemplates(file: string): Promise<void> {
 
 function patchModernHtml(html: string, changes: string[]): string {
   let next = html;
-  if (!/data-bind=["'](?:profile|basics)\.title["']/.test(next)) {
+  if (!/data-bind=["'](?:basic|profile|basics)\.title["']/.test(next)) {
     next = next.replace(
       '<div class="modern-subtitle"><slot data-bind="basics.status"></slot></div>',
-      '<div class="modern-subtitle"><slot data-bind="profile.title"></slot><span class="modern-status"><slot data-bind="profile.status"></slot></span></div>',
+      '<div class="modern-subtitle"><slot data-bind="basic.title"></slot><span class="modern-status"><slot data-bind="basic.status"></slot></span></div>',
     );
-    if (next !== html) changes.push("modern: add profile.title/status header slots");
+    if (next !== html) changes.push("modern: add basic.title/status header slots");
   }
   if (!/data-bind=["']item\.location["']/.test(next)) {
     next = next.replace(
@@ -246,13 +241,61 @@ function patchModernHtml(html: string, changes: string[]): string {
 
 function patchClassicHtml(html: string, changes: string[]): string {
   let next = html;
-  if (!/data-bind=["'](?:profile|basics)\.status["']/.test(next)) {
+  if (!/data-bind=["'](?:basic|profile|basics)\.status["']/.test(next)) {
     next = next.replace(
       '<div class="classic-title"><slot data-bind="profile.title"></slot></div>',
-      '<div class="classic-title"><slot data-bind="profile.title"></slot><span class="classic-status"><slot data-bind="profile.status"></slot></span></div>',
+      '<div class="classic-title"><slot data-bind="basic.title"></slot><span class="classic-status"><slot data-bind="basic.status"></slot></span></div>',
     );
-    if (next !== html) changes.push("classic: add profile.status header slot");
+    if (next !== html) changes.push("classic: add basic.status header slot");
   }
+  return next;
+}
+
+function patchSlotProtocolHtml(html: string, changes: string[]): string {
+  let next = html;
+
+  const replacements: Array<[RegExp, string, string]> = [
+    [/data-bind=(["'])(?:profile|basics)\.photo\1/g, 'data-bind="basic.photo"', "rename photo binding to basic.photo"],
+    [/data-bind=(["'])(?:profile|basics)\.name\1/g, 'data-bind="basic.name"', "rename name binding to basic.name"],
+    [/data-bind=(["'])(?:profile|basics)\.title\1/g, 'data-bind="basic.title"', "rename title binding to basic.title"],
+    [/data-bind=(["'])(?:profile|basics)\.status\1/g, 'data-bind="basic.status"', "rename status binding to basic.status"],
+  ];
+
+  for (const [pattern, replacement, label] of replacements) {
+    const before = next;
+    next = next.replace(pattern, replacement);
+    if (next !== before) changes.push(label);
+  }
+
+  if (!/data-bind=["']profile\.contacts["']/.test(next)) {
+    const contactBlock = `<div class="contact-bar"><slot data-bind="profile.contacts" data-template="contact-item"></slot></div>`;
+    const sectionOrderSlot = /<slot\b(?=[^>]*\bdata-bind=["']sectionOrder["'])[^>]*>(?:\s*<\/slot>)?/i;
+    if (sectionOrderSlot.test(next)) {
+      next = next.replace(sectionOrderSlot, `${contactBlock}\n\n  $&`);
+    } else {
+      next = `${next.trimEnd()}\n${contactBlock}`;
+    }
+    changes.push("add profile.contacts loop");
+  }
+
+  if (!hasTemplate(next, "contact-item")) {
+    next = `${next.trimEnd()}
+  <template id="contact-item">
+    <span class="contact-item"><slot data-bind="contact.icon"></slot><slot data-bind="contact.label"></slot></span>
+  </template>`;
+    changes.push("add contact-item template");
+  }
+
+  const beforeContacts = next;
+  next = next
+    .replace(
+      /<slot\b(?=[^>]*\bdata-bind=["']basics\.(?:email|phone|location|website|icon\.[^"']+)["'])[^>]*>(?:\s*<\/slot>)?/g,
+      "",
+    )
+    .replace(/\s*(?:\||·|,|，|\/)\s*(?=<\/(?:div|p|span)>)/g, "")
+    .replace(/(<(?:div|p|span)\b[^>]*class=["'][^"']*contact[^"']*["'][^>]*>)\s*(?:\||·|,|，|\/|\s)*\s*(<\/(?:div|p|span)>)/gi, "$1$2");
+  if (next !== beforeContacts) changes.push("remove legacy basics contact bindings");
+
   return next;
 }
 
@@ -441,11 +484,7 @@ function patchTemplate(row: DbTemplate): PatchResult | null {
   if (html) {
     if (row.id === "modern") html = patchModernHtml(html, changes);
     if (row.id === "classic") html = patchClassicHtml(html, changes);
-    const beforeProfileHeadline = html;
-    html = normalizeProfileHeadlineHtml(html);
-    if (html !== beforeProfileHeadline) {
-      changes.push("normalize profile title/status headline");
-    }
+    html = patchSlotProtocolHtml(html, changes);
     html = patchItemLinkHtml(html, changes);
     html = patchSectionBodyHtml(html, changes);
     html = patchSectionTemplateSplit(html, changes);
@@ -477,11 +516,6 @@ function patchTemplate(row: DbTemplate): PatchResult | null {
     if (!css.includes(CRIMSON_ITEM_LAYOUT_PATCH_MARKER)) {
       css = `${css.trimEnd()}${CRIMSON_ITEM_LAYOUT_CSS}`;
       changes.push("append crimson item layout CSS");
-    }
-
-    if (!css.includes(PROFILE_HEADLINE_PATCH_MARKER)) {
-      css = `${css.trimEnd()}${PROFILE_HEADLINE_CSS}`;
-      changes.push("append profile headline CSS");
     }
 
     if (row.id === "modern" && !css.includes(".modern-status:not(:empty)::before")) {

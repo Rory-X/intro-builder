@@ -1,202 +1,202 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "Template Slot Fields",
-  "description": "模板 HTML data-bind 可用字段的完整定义。供 template-studio skill 和校验脚本使用。",
+  "description": "模板 HTML data-bind 可用字段。给 template-studio skill、SlotRenderer 和模板 verifier 使用。",
+  "contract_notes": [
+    "模板绑定的是展示视图协议，不是 resume.content 内部字段路径。",
+    "对外不暴露旧 basics.*。",
+    "profile.name、profile.title、profile.status 不是标准字段；姓名、岗位、状态属于 basic.*。",
+    "profile 只通过 profile.contacts 暴露带 icon 的联系资料。",
+    "自我介绍通过正文 section.body 渲染，不作为顶部 profile 字段。"
+  ],
   "definitions": {
     "bindingType": {
       "enum": ["string", "rich-text", "image", "icon", "loop"]
     }
   },
   "namespaces": {
-    "profile": {
-      "description": "基础信息（新模板统一前缀，替代旧 basics.*）",
+    "basic": {
+      "description": "顶部基础身份信息。无 icon。岗位和状态必须同一行、同样式展示。",
       "fields": {
-        "profile.name": {
+        "basic.name": {
           "type": "string",
           "description": "姓名",
           "required_in_template": true
         },
-        "profile.title": {
+        "basic.title": {
           "type": "string",
-          "description": "求职方向 / 职位头衔",
+          "description": "求职岗位 / 目标职位",
           "required_in_template": true
         },
-        "profile.status": {
+        "basic.status": {
           "type": "string",
-          "description": "求职状态（如「在看机会」）。必须紧跟 profile.title 放在同一行，继承同一套文字样式，不加 icon",
+          "description": "求职状态。必须紧跟 basic.title 放在同一行，继承同一套文字样式，不加 icon。",
           "required_in_template": true
         },
-        "profile.photo": {
+        "basic.photo": {
           "type": "image",
-          "description": "头像 URL。必须使用 <img data-bind=\"profile.photo\">，不可用 <slot>",
-          "element": "img",
-          "note": "用户未上传时渲染器自动移除该 img 节点"
-        },
-        "profile.summary": {
-          "type": "string",
-          "description": "自我介绍"
+          "description": "头像 URL。必须使用 <img data-bind=\"basic.photo\">，不可用 <slot>。",
+          "element": "img"
         }
       }
     },
-    "contacts": {
-      "description": "联系方式循环（从 basics 自动派生：phone/email/location/website）",
+    "profile": {
+      "description": "带 icon 的联系资料。模板只通过 profile.contacts 循环访问，不直绑 email/phone/location/website。",
       "loop_binding": "profile.contacts",
-      "note": "城市通过此循环显示（type=location），不要在 profile 区单独放城市字段",
       "fields": {
+        "contact.type": {
+          "type": "string",
+          "description": "联系方式类型：phone / email / location / website。"
+        },
         "contact.icon": {
           "type": "icon",
-          "description": "Lucide 图标组件（自动按 type 匹配：Phone/Mail/MapPin/Globe）"
+          "description": "Lucide 图标，由联系方式类型派生：Phone / Mail / MapPin / Globe。"
         },
         "contact.label": {
           "type": "string",
-          "description": "显示文本（电话号码 / 邮箱地址 / 城市名 / URL）"
+          "description": "显示文本：电话号码、邮箱、城市或 URL。"
+        },
+        "contact.href": {
+          "type": "string",
+          "description": "可点击链接。email/phone/website 有值，location 为空。"
         }
       }
     },
     "section": {
-      "description": "分区信息（在 sectionOrder 循环内使用）",
+      "description": "正文分区。在 sectionOrder 循环内使用。",
       "loop_binding": "sectionOrder",
       "fields": {
+        "section.id": {
+          "type": "string",
+          "description": "正文分区 ID，如 selfIntroduction、experience、education、projects、skills、summary。"
+        },
         "section.title": {
           "type": "string",
-          "description": "分区标题（如「工作经历」「教育背景」「项目经历」）",
+          "description": "分区标题，如「自我介绍」「工作经历」「教育背景」。",
           "required_in_template": true
+        },
+        "section.icon": {
+          "type": "icon",
+          "description": "分区标题图标。是否展示由模板样式决定。"
+        },
+        "section.kind": {
+          "type": "string",
+          "enum": ["list", "block"],
+          "description": "list 使用 section.items；block 使用 section.body。"
         },
         "section.body": {
           "type": "rich-text",
-          "description": "分区级富文本（技能、自定义模块的正文内容）",
-          "required_in_template": true,
-          "note": "模板必须在 sectionOrder 的 block 变体模板中为 section.body 留出显示位置"
+          "description": "分区级富文本正文。用于 selfIntroduction、skills、summary、awards、portfolio、custom。",
+          "required_in_template": true
         },
         "section.items": {
           "type": "loop",
-          "description": "该分区下的条目列表"
+          "description": "结构化条目列表。用于 experience、education、projects、research。"
         }
       }
     },
     "item": {
-      "description": "条目字段（在 section.items 循环内使用）。从 experience/education/projects/research 统一映射。",
+      "description": "正文条目字段。在 section.items 循环内使用，由 adapter 从具体模块字段派生。",
       "loop_binding": "section.items",
       "fields": {
         "item.title": {
           "type": "string",
-          "description": "主标题（公司名/学校名/项目名）",
-          "source": "experience.company / education.school / projects.name / research.name",
+          "description": "主标题：公司、学校、项目或研究名称。",
           "required_in_template": true
         },
         "item.subtitle": {
           "type": "string",
-          "description": "副标题（职位/学位+专业/角色）",
-          "source": "experience.title / education.degree+major / projects.role / research.role"
-        },
-        "item.dateRange": {
-          "type": "string",
-          "description": "时间范围（格式：start – end）",
-          "source": "start + end 拼接"
-        },
-        "item.location": {
-          "type": "string",
-          "description": "地点（城市/远程）",
-          "source": "experience.location / education.location / projects.location",
-          "required_in_template": true,
-          "note": "AI 生成模板容易遗漏此字段，必须留出显示位置"
+          "description": "副标题：职位、学位专业、项目角色或研究角色。"
         },
         "item.meta": {
           "type": "string",
-          "description": "补充信息（技术栈/GPA）",
-          "source": "projects.stack.join(' · ') / education.gpa",
-          "note": "AI 生成模板容易遗漏此字段，必须留出显示位置"
+          "description": "补充信息：项目技术栈、GPA 等。"
         },
-        "item.link": {
+        "item.dateRange": {
           "type": "string",
-          "description": "项目链接 / 论文链接",
-          "source": "projects.link / research.link",
-          "required_in_template": true,
-          "note": "AI 生成模板容易遗漏此字段，必须留出显示位置；空值时隐藏"
+          "description": "时间范围，由 start/end 拼接。"
+        },
+        "item.location": {
+          "type": "string",
+          "description": "地点。",
+          "required_in_template": true
         },
         "item.bullets": {
           "type": "rich-text",
-          "description": "详细描述（TipTap JSON 富文本）",
-          "source": "experience.content / education.highlights / projects.content / research.content",
+          "description": "条目正文，TipTap JSON 渲染后的富文本。",
+          "required_in_template": true
+        },
+        "item.tags": {
+          "type": "string[]",
+          "description": "标签数组。当前主要来自 projects.stack。"
+        },
+        "item.link": {
+          "type": "string",
+          "description": "项目 / 论文 / 成果链接。",
           "required_in_template": true
         }
       }
     }
   },
-  "deprecated": {
-    "description": "旧模板兼容写法，新模板不要使用",
-    "bindings": {
-      "basics.name": "→ profile.name",
-      "basics.title": "→ profile.title",
-      "basics.email": "→ contact.label (通过 profile.contacts 循环)",
-      "basics.phone": "→ contact.label (通过 profile.contacts 循环)",
-      "basics.location": "→ contact.label (通过 profile.contacts 循环)",
-      "basics.website": "→ contact.label (通过 profile.contacts 循环)",
-      "basics.status": "→ profile.status",
-      "basics.summary": "→ profile.summary",
-      "basics.photo": "→ profile.photo (img 标签)",
-      "basics.icon.Mail": "→ contact.icon (自动处理)",
-      "basics.icon.Phone": "→ contact.icon (自动处理)",
-      "basics.icon.MapPin": "→ contact.icon (自动处理)",
-      "basics.icon.Globe": "→ contact.icon (自动处理)",
-      "basics.icon.Clock": "→ contact.icon (自动处理)"
+  "loops": {
+    "profile.contacts": {
+      "template_context": "contact",
+      "description": "从 profile 电话、邮箱、城市、主页派生。"
+    },
+    "sectionOrder": {
+      "template_context": "section",
+      "description": "按正文模块顺序渲染。data-template=\"X\" 必须同时提供 X-list 和 X-block。"
+    },
+    "section.items": {
+      "template_context": "item",
+      "description": "在 sectionOrder 内部使用，渲染当前 section 的结构化条目。"
     }
   },
   "validation_rules": [
     {
+      "rule": "no_legacy_basics_bindings",
+      "description": "模板不得使用 basics.* 或 basics.icon.*。",
+      "severity": "error"
+    },
+    {
+      "rule": "no_profile_identity_bindings",
+      "description": "模板不得使用 profile.name/profile.title/profile.status/profile.summary；身份信息使用 basic.*，自我介绍使用 section.body。",
+      "severity": "error"
+    },
+    {
       "rule": "no_slot_for_images",
-      "description": "profile.photo / basics.photo 必须用 <img> 标签，不能用 <slot>",
+      "description": "basic.photo 必须用 <img data-bind=\"basic.photo\">，不能用 <slot>。",
       "severity": "error"
     },
     {
-      "rule": "prefer_profile_over_basics",
-      "description": "新模板应使用 profile.* 而非 basics.*",
-      "severity": "warning"
-    },
-    {
-      "rule": "profile_title_status_present",
-      "description": "模板顶部应同时展示 profile.title 和 profile.status",
+      "rule": "basic_title_status_one_line_no_icon",
+      "description": "basic.title 和 basic.status 必须在同一行、同样式展示；status 不得放入联系方式行，不得使用 icon。",
       "severity": "error"
     },
     {
-      "rule": "profile_title_status_one_line_no_icon",
-      "description": "profile.status 必须紧跟 profile.title 放在同一行，使用同样文字样式，不得放入联系方式行，也不得使用 basics.icon.Clock 或其它 status icon",
-      "severity": "error"
-    },
-    {
-      "rule": "item_location_present",
-      "description": "模板应为 item.location 留出显示位置",
-      "severity": "error"
-    },
-    {
-      "rule": "item_meta_present",
-      "description": "模板应为 item.meta 留出显示位置",
-      "severity": "warning"
-    },
-    {
-      "rule": "item_link_present",
-      "description": "模板应为 item.link 留出显示位置",
-      "severity": "error"
-    },
-    {
-      "rule": "item_layout_crimson_order",
-      "description": "条目字段顺序应为 title/dateRange、meta/link、subtitle/location、bullets",
-      "severity": "error"
-    },
-    {
-      "rule": "section_body_present",
-      "description": "模板应为 section.body 留出显示位置；block section 优先使用该槽",
+      "rule": "contacts_via_profile_contacts",
+      "description": "电话、邮箱、城市、主页必须通过 profile.contacts + contact.* 循环展示。",
       "severity": "error"
     },
     {
       "rule": "section_template_split",
-      "description": "sectionOrder 的 data-template=\"X\" 必须同时定义 X-list 和 X-block，列表模块走 section.items，块状模块走 section.body",
+      "description": "sectionOrder 的 data-template=\"X\" 必须同时定义 X-list 和 X-block。list section 使用 section.items；block section 使用 section.body。",
       "severity": "error"
     },
     {
-      "rule": "no_standalone_city",
-      "description": "城市不应在 profile 区单独显示，应通过 profile.contacts 循环展示",
-      "severity": "warning"
+      "rule": "section_body_present",
+      "description": "模板必须在 block section 模板中为 section.body 留显示位置。",
+      "severity": "error"
+    },
+    {
+      "rule": "item_location_present",
+      "description": "模板必须为 item.location 留显示位置。",
+      "severity": "error"
+    },
+    {
+      "rule": "item_link_present",
+      "description": "模板必须为 item.link 留显示位置，空值时隐藏。",
+      "severity": "error"
     }
   ]
 }

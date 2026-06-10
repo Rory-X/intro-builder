@@ -71,14 +71,16 @@ const render_ = (props: Partial<Parameters<typeof SlotRenderer>[0]> = {}) =>
 const SECTION_FIXTURE_HTML = `
   <article class="fixture-resume">
     <header>
-      <h1><slot data-bind="basics.name" /></h1>
+      <h1><slot data-bind="basic.name" /></h1>
       <div class="fixture-contact">
-        <slot data-bind="basics.email" />
-        <slot data-bind="basics.phone" />
+        <slot data-bind="profile.contacts" data-template="fixture-contact-item" />
       </div>
     </header>
     <slot data-bind="sectionOrder" data-template="section" />
   </article>
+  <template id="fixture-contact-item">
+    <span class="fixture-contact-item"><slot data-bind="contact.icon" /><slot data-bind="contact.label" /></span>
+  </template>
   <template id="section-block">
     <section class="fixture-section">
       <h2><slot data-bind="section.title" /></h2>
@@ -128,23 +130,23 @@ function itemFieldsFixtureHtml(locationClass: string, metaClass: string): string
 }
 
 describe("SlotRenderer — value slots", () => {
-  it("replaces basics.name slot with content.basics.name", () => {
+  it("replaces basic.name slot with content.basics.name", () => {
     const { container } = render_({
-      html: '<article><h1><slot data-bind="basics.name" /></h1></article>',
+      html: '<article><h1><slot data-bind="basic.name" /></h1></article>',
     });
     expect(container.querySelector("h1")?.textContent).toBe("张三");
   });
 
-  it("replaces multiple basics slots in one template", () => {
+  it("replaces multiple basic slots in one template", () => {
     const { container } = render_({
       html: `<article>
-        <h1><slot data-bind="basics.name" /></h1>
-        <p><slot data-bind="basics.title" /> · <slot data-bind="basics.email" /></p>
+        <h1><slot data-bind="basic.name" /></h1>
+        <p><slot data-bind="basic.title" /> · <slot data-bind="basic.status" /></p>
       </article>`,
     });
     expect(container.querySelector("h1")?.textContent).toBe("张三");
     expect(container.querySelector("p")?.textContent).toContain("前端工程师");
-    expect(container.querySelector("p")?.textContent).toContain("z@example.com");
+    expect(container.querySelector("p")?.textContent).toContain("在职");
   });
 
   it("renders [未知 slot] for invalid binding name", () => {
@@ -169,59 +171,55 @@ describe("SlotRenderer — value slots", () => {
   });
 });
 
-describe("SlotRenderer — 联系字段自动 linkify（直绑路径）", () => {
-  function renderBasics(field: string, basics: Partial<ResumeContent["basics"]>) {
+describe("SlotRenderer — profile.contacts", () => {
+  function renderContacts(basics: Partial<ResumeContent["basics"]>) {
     return render_({
-      content: makeContent({ basics }),
-      html: `<article><span class="c"><slot data-bind="${field}" /></span></article>`,
+      content: makeContent({
+        basics: {
+          email: "",
+          phone: "",
+          location: "",
+          website: "",
+          ...basics,
+        },
+      }),
+      html: `<article>
+        <slot data-bind="profile.contacts" data-template="contact" />
+      </article>
+      <template id="contact">
+        <span class="c"><slot data-bind="contact.type" />:<slot data-bind="contact.label" />:<slot data-bind="contact.href" /></span>
+      </template>`,
     });
   }
 
-  it("email 直绑包成 mailto 链接，文本不变", () => {
-    const { container } = renderBasics("basics.email", { email: "z@example.com" });
-    const a = container.querySelector("span.c a");
-    expect(a?.getAttribute("href")).toBe("mailto:z@example.com");
-    expect(a?.textContent).toBe("z@example.com");
+  it("derives email contact label and mailto href", () => {
+    const { container } = renderContacts({ email: "z@example.com" });
+    expect(container.querySelector("span.c")?.textContent).toBe("email:z@example.com:mailto:z@example.com");
   });
 
-  it("phone 直绑包成 tel 链接，并去掉空格", () => {
-    const { container } = renderBasics("basics.phone", { phone: "138 0000 0000" });
-    const a = container.querySelector("span.c a");
-    expect(a?.getAttribute("href")).toBe("tel:13800000000");
-    expect(a?.textContent).toBe("138 0000 0000");
+  it("derives phone contact href and removes spaces from tel URI", () => {
+    const { container } = renderContacts({ phone: "138 0000 0000" });
+    expect(container.querySelector("span.c")?.textContent).toBe("phone:138 0000 0000:tel:13800000000");
   });
 
-  it("website 缺协议头时补 https", () => {
-    const { container } = renderBasics("basics.website", { website: "github.com/z" });
-    const a = container.querySelector("span.c a");
-    expect(a?.getAttribute("href")).toBe("https://github.com/z");
+  it("derives website href with https when protocol is missing", () => {
+    const { container } = renderContacts({ website: "github.com/z" });
+    expect(container.querySelector("span.c")?.textContent).toBe("website:github.com/z:https://github.com/z");
   });
 
-  it("website 已带协议头则原样保留", () => {
-    const { container } = renderBasics("basics.website", { website: "https://me.dev" });
-    expect(container.querySelector("span.c a")?.getAttribute("href")).toBe("https://me.dev");
+  it("keeps website href when protocol already exists", () => {
+    const { container } = renderContacts({ website: "https://me.dev" });
+    expect(container.querySelector("span.c")?.textContent).toBe("website:https://me.dev:https://me.dev");
   });
 
-  it("location 无可点目标，保持纯文本不包链接", () => {
-    const { container } = renderBasics("basics.location", { location: "北京" });
-    expect(container.querySelector("span.c a")).toBeNull();
-    expect(container.querySelector("span.c")?.textContent).toBe("北京");
+  it("derives location contact with an empty href", () => {
+    const { container } = renderContacts({ location: "北京" });
+    expect(container.querySelector("span.c")?.textContent).toBe("location:北京:");
   });
 
-  it("name 等非联系字段不 linkify", () => {
-    const { container } = renderBasics("basics.name", { name: "张三" });
-    expect(container.querySelector("span.c a")).toBeNull();
-    expect(container.querySelector("span.c")?.textContent).toBe("张三");
-  });
-
-  it("profile.* 同名字段同样 linkify", () => {
-    const { container } = renderBasics("profile.email", { email: "z@example.com" });
-    expect(container.querySelector("span.c a")?.getAttribute("href")).toBe("mailto:z@example.com");
-  });
-
-  it("空值不渲染空链接", () => {
-    const { container } = renderBasics("basics.website", { website: "" });
-    expect(container.querySelector("span.c a")).toBeNull();
+  it("omits empty contacts", () => {
+    const { container } = renderContacts({ website: "" });
+    expect(container.querySelector("span.c")).toBeNull();
   });
 });
 
@@ -393,7 +391,7 @@ describe("SlotRenderer — profile contacts loop", () => {
         },
       }),
       html: `<article>
-        <h1><slot data-bind="profile.name" /></h1>
+        <h1><slot data-bind="basic.name" /></h1>
         <div class="contacts">
           <slot data-bind="profile.contacts" data-template="contact" />
         </div>
@@ -473,7 +471,7 @@ describe("SlotRenderer — section.items loop (nested)", () => {
 describe("SlotRenderer — security", () => {
   it("strips <script> tags via DOMPurify", () => {
     const { container } = render_({
-      html: '<article><script>window.x=1</script><h1><slot data-bind="basics.name" /></h1></article>',
+      html: '<article><script>window.x=1</script><h1><slot data-bind="basic.name" /></h1></article>',
     });
     expect(container.querySelector("script")).toBeNull();
     expect(container.querySelector("h1")?.textContent).toBe("张三");
@@ -481,7 +479,7 @@ describe("SlotRenderer — security", () => {
 
   it("strips on* event attributes", () => {
     const { container } = render_({
-      html: '<article><h1 onclick="alert(1)"><slot data-bind="basics.name" /></h1></article>',
+      html: '<article><h1 onclick="alert(1)"><slot data-bind="basic.name" /></h1></article>',
     });
     const h1 = container.querySelector("h1");
     expect(h1?.getAttribute("onclick")).toBeNull();
@@ -489,7 +487,7 @@ describe("SlotRenderer — security", () => {
 
   it("strips iframe", () => {
     const { container } = render_({
-      html: '<article><iframe src="https://evil"></iframe><h1><slot data-bind="basics.name" /></h1></article>',
+      html: '<article><iframe src="https://evil"></iframe><h1><slot data-bind="basic.name" /></h1></article>',
     });
     expect(container.querySelector("iframe")).toBeNull();
   });
@@ -498,7 +496,7 @@ describe("SlotRenderer — security", () => {
 describe("SlotRenderer — CSS scope + style injection", () => {
   it("scopes CSS rules and injects styleSettings as CSS variables", () => {
     const { container } = render_({
-      html: '<article><h1 class="my-name"><slot data-bind="basics.name" /></h1></article>',
+      html: '<article><h1 class="my-name"><slot data-bind="basic.name" /></h1></article>',
       css: ".my-name { color: red }",
       styleSettings: {
         fontFamily: "serif", fontSize: 14,
@@ -525,7 +523,7 @@ describe("SlotRenderer — CSS scope + style injection", () => {
 
   it("silently bails on forbidden CSS at-rules without crashing", () => {
     const { container } = render_({
-      html: '<article><h1><slot data-bind="basics.name" /></h1></article>',
+      html: '<article><h1><slot data-bind="basic.name" /></h1></article>',
       css: "@media (min-width: 600px) { .x { color: red } }",
     });
     // Should still render the h1; only the renderer fixes <style> emitted
@@ -539,10 +537,10 @@ describe("SlotRenderer — CSS scope + style injection", () => {
 describe("SlotRenderer — image binding (<img data-bind>)", () => {
   const PHOTO = "https://x.public.blob.vercel-storage.com/photos/u/1-a.png";
 
-  it("injects basics.photo URL into <img src> when photo is non-empty", () => {
+  it("injects basic.photo URL into <img src> when photo is non-empty", () => {
     const { container } = render_({
       content: makeContent({ basics: { photo: PHOTO } }),
-      html: `<article><img data-bind="basics.photo" class="avatar" alt="头像" /></article>`,
+      html: `<article><img data-bind="basic.photo" class="avatar" alt="头像" /></article>`,
     });
     const img = container.querySelector("img");
     expect(img).not.toBeNull();
@@ -552,7 +550,7 @@ describe("SlotRenderer — image binding (<img data-bind>)", () => {
   it("keeps class/alt and does NOT leak data-bind to the DOM", () => {
     const { container } = render_({
       content: makeContent({ basics: { photo: PHOTO } }),
-      html: `<article><img data-bind="basics.photo" class="avatar" alt="头像" /></article>`,
+      html: `<article><img data-bind="basic.photo" class="avatar" alt="头像" /></article>`,
     });
     const img = container.querySelector("img");
     expect(img?.getAttribute("class")).toBe("avatar");
@@ -563,23 +561,23 @@ describe("SlotRenderer — image binding (<img data-bind>)", () => {
   it("renders nothing (no <img>) when photo is empty — avoids broken-image", () => {
     const { container } = render_({
       content: makeContent({ basics: { photo: "" } }),
-      html: `<article><img data-bind="basics.photo" class="avatar" alt="头像" /></article>`,
+      html: `<article><img data-bind="basic.photo" class="avatar" alt="头像" /></article>`,
     });
     expect(container.querySelector("img")).toBeNull();
   });
 
   it("renders placeholder when <img data-bind> targets a non-image binding", () => {
     const { container } = render_({
-      html: `<article><img data-bind="basics.name" alt="x" /></article>`,
+      html: `<article><img data-bind="basic.name" alt="x" /></article>`,
     });
     expect(container.querySelector("img")).toBeNull();
     expect(container.textContent).toContain("仅支持图片字段");
   });
 
-  it("renders placeholder when basics.photo is used via <slot> instead of <img>", () => {
+  it("renders placeholder when basic.photo is used via <slot> instead of <img>", () => {
     const { container } = render_({
       content: makeContent({ basics: { photo: PHOTO } }),
-      html: `<article><slot data-bind="basics.photo" /></article>`,
+      html: `<article><slot data-bind="basic.photo" /></article>`,
     });
     expect(container.textContent).not.toContain(PHOTO);
     expect(container.textContent).toContain("请用");
@@ -589,7 +587,7 @@ describe("SlotRenderer — image binding (<img data-bind>)", () => {
 describe("SlotRenderer — template extraction", () => {
   it("removes <template> blocks from the rendered tree", () => {
     const { container } = render_({
-      html: `<article><h1><slot data-bind="basics.name" /></h1></article>
+      html: `<article><h1><slot data-bind="basic.name" /></h1></article>
       <template id="unused"><div>SHOULD NOT APPEAR</div></template>`,
     });
     expect(container.textContent).not.toContain("SHOULD NOT APPEAR");
@@ -808,7 +806,7 @@ describe("SlotRenderer — basics 头部自动补 data-pagination-header", () =>
   // 引擎层自动补标记，所有模板的 basics 头部都能在导出时保留。
   it("裸 <header> 渲染后带 data-pagination-header", () => {
     const { container } = render_({
-      html: '<article><header><h1><slot data-bind="basics.name" /></h1></header></article>',
+      html: '<article><header><h1><slot data-bind="basic.name" /></h1></header></article>',
     });
     const header = container.querySelector("header");
     expect(header).not.toBeNull();
@@ -817,7 +815,7 @@ describe("SlotRenderer — basics 头部自动补 data-pagination-header", () =>
 
   it("已手写 data-pagination-header 时不重复（幂等）", () => {
     const { container } = render_({
-      html: '<article><header data-pagination-header class="pro"><h1><slot data-bind="basics.name" /></h1></header></article>',
+      html: '<article><header data-pagination-header class="pro"><h1><slot data-bind="basic.name" /></h1></header></article>',
     });
     const header = container.querySelector("header");
     expect(header).not.toBeNull();
@@ -827,7 +825,7 @@ describe("SlotRenderer — basics 头部自动补 data-pagination-header", () =>
 
   it("basics 用 <div>（无 <header>）时不报错且正常渲染", () => {
     const { container } = render_({
-      html: '<article><div class="basics"><h1><slot data-bind="basics.name" /></h1></div></article>',
+      html: '<article><div class="basics"><h1><slot data-bind="basic.name" /></h1></div></article>',
     });
     expect(container.querySelector("header")).toBeNull();
     expect(container.textContent).toContain("张三");
@@ -840,7 +838,7 @@ describe("SlotRenderer — basics 头部自动补 data-pagination-header", () =>
   // 引擎层自动补标记，所有模板的 basics 头部都能在导出时保留。
   it("裸 <header> 渲染后带 data-pagination-header", () => {
     const { container } = render_({
-      html: '<article><header><h1><slot data-bind="basics.name" /></h1></header></article>',
+      html: '<article><header><h1><slot data-bind="basic.name" /></h1></header></article>',
     });
     const header = container.querySelector("header");
     expect(header).not.toBeNull();
@@ -849,7 +847,7 @@ describe("SlotRenderer — basics 头部自动补 data-pagination-header", () =>
 
   it("已手写 data-pagination-header 时不重复（幂等）", () => {
     const { container } = render_({
-      html: '<article><header data-pagination-header class="pro"><h1><slot data-bind="basics.name" /></h1></header></article>',
+      html: '<article><header data-pagination-header class="pro"><h1><slot data-bind="basic.name" /></h1></header></article>',
     });
     const header = container.querySelector("header");
     expect(header).not.toBeNull();
@@ -859,7 +857,7 @@ describe("SlotRenderer — basics 头部自动补 data-pagination-header", () =>
 
   it("basics 用 <div>（无 <header>）时不报错且正常渲染", () => {
     const { container } = render_({
-      html: '<article><div class="basics"><h1><slot data-bind="basics.name" /></h1></div></article>',
+      html: '<article><div class="basics"><h1><slot data-bind="basic.name" /></h1></div></article>',
     });
     expect(container.querySelector("header")).toBeNull();
     expect(container.textContent).toContain("张三");

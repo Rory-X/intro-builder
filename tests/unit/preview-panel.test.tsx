@@ -11,7 +11,7 @@ vi.mock("@tiptap/html", () => ({
 const RESOLVED_TEMPLATE: SerializableResolvedTemplate = {
   source: "unified",
   id: "professional",
-  html: '<article><slot data-bind="basics.name"></slot></article>',
+  html: '<article><slot data-bind="basic.name"></slot></article>',
   css: null,
   templateId: "professional",
   sectionIcons: {},

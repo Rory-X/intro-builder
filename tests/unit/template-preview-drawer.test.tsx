@@ -28,7 +28,7 @@ beforeEach(() => {
 const dbResolved: SerializableResolvedTemplate = {
   source: "unified",
   id: "professional",
-  html: '<div><slot data-bind="basics.name"></slot></div>',
+  html: '<div><slot data-bind="basic.name"></slot></div>',
   css: null,
   templateId: "professional",
   sectionIcons: {},
@@ -146,7 +146,7 @@ describe("TemplatePreviewDrawer", () => {
     const unifiedResolved: SerializableResolvedTemplate = {
       source: "unified",
       id: "abbey-stub",
-      html: '<div><slot data-bind="basics.name"></slot></div>',
+      html: '<div><slot data-bind="basic.name"></slot></div>',
       css: null,
       templateId: "abbey-stub",
       sectionIcons: {},

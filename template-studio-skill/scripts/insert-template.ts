@@ -31,7 +31,6 @@ import { parseArgs } from "node:util";
 import { readFileSync } from "node:fs";
 // Single source of truth for the row shape.
 import { SectionIconsSchema } from "@/lib/templates/uploaded/types";
-import { checkProfileHeadlineHtml } from "@/lib/templates/uploaded/profile-headline-normalizer";
 
 function fail(code: number, msg: string): never {
   console.error(`ERROR: ${msg}`);
@@ -91,24 +90,14 @@ function checkDualConstraint(css: string): string[] {
   return violations;
 }
 
-/**
- * v2 header completeness guard: every template MUST include all profile fields
- * either through the new `profile.*` / `profile.contacts` API or the legacy
- * `basics.*` compatibility API. This prevents user data from silently
- * disappearing while allowing old templates to keep rendering.
- */
-const REQUIRED_HEADER_BINDINGS = [
-  { label: "photo", bindings: ["profile.photo", "basics.photo"] },
-  { label: "name", bindings: ["profile.name", "basics.name"] },
-  { label: "title", bindings: ["profile.title", "basics.title"] },
-  { label: "status", bindings: ["profile.status", "basics.status"] },
-  { label: "contacts", bindings: ["profile.contacts", "basics.email"] },
-  { label: "phone", bindings: ["profile.contacts", "basics.phone"] },
-  { label: "location", bindings: ["profile.contacts", "basics.location"] },
-  { label: "website", bindings: ["profile.contacts", "basics.website"] },
-] as const;
-
-const REQUIRED_BODY_BINDINGS = [
+const REQUIRED_BINDINGS = [
+  "basic.name",
+  "basic.title",
+  "basic.status",
+  "basic.photo",
+  "profile.contacts",
+  "contact.icon",
+  "contact.label",
   "sectionOrder",
   "section.title",
   "section.body",
@@ -116,23 +105,16 @@ const REQUIRED_BODY_BINDINGS = [
   "item.title",
   "item.subtitle",
   "item.dateRange",
+  "item.location",
+  "item.meta",
+  "item.link",
   "item.bullets",
 ] as const;
 
-const LEGACY_BODY_BINDINGS = [
-  "item.header.title",
-  "item.header.subtitle",
-  "item.header.dateRange",
-  "item.header.location",
-] as const;
-
-const DEMO_CONTENT_LITERALS = [
-  "张三",
-  "字节跳动",
-  "美团",
-  "北京邮电大学",
-  "前端工程师",
-  "前端实习生",
+const FORBIDDEN_BINDING_PATTERNS = [
+  /^basics\./,
+  /^basics\.icon\./,
+  /^profile\.(name|title|status|summary)$/,
 ] as const;
 
 function hasBinding(html: string, binding: string): boolean {
@@ -140,49 +122,23 @@ function hasBinding(html: string, binding: string): boolean {
   return new RegExp(`data-bind=["']${escaped}["']`).test(html);
 }
 
-function checkMissingBindings(html: string, bindings: readonly string[]): string[] {
-  const missing: string[] = [];
-  for (const binding of bindings) {
-    if (!hasBinding(html, binding)) missing.push(binding);
-  }
-  return missing;
+function listBindings(html: string): string[] {
+  const matches = html.matchAll(/data-bind=["']([^"']+)["']/g);
+  return Array.from(new Set(Array.from(matches, (match) => match[1]))).sort();
 }
 
-function checkMissingHeaderBindings(html: string): string[] {
-  return REQUIRED_HEADER_BINDINGS
-    .filter((group) => !group.bindings.some((binding) => hasBinding(html, binding)))
-    .map((group) => `${group.label} (${group.bindings.join(" or ")})`);
+function checkMissingRequiredBindings(html: string): string[] {
+  return REQUIRED_BINDINGS.filter((binding) => !hasBinding(html, binding));
 }
 
-function checkLegacyBindings(html: string): string[] {
-  return LEGACY_BODY_BINDINGS.filter((binding) => hasBinding(html, binding));
-}
-
-function collectSectionTemplateBaseIds(html: string): string[] {
-  return Array.from(
-    html.matchAll(
-      /<slot\b(?=[^>]*\bdata-bind=["']sectionOrder["'])(?=[^>]*\bdata-template=["']([^"']+)["'])[^>]*>/g,
-    ),
-    (match) => match[1],
+function checkForbiddenBindings(html: string): string[] {
+  return listBindings(html).filter((binding) =>
+    FORBIDDEN_BINDING_PATTERNS.some((pattern) => pattern.test(binding)),
   );
 }
 
-function hasTemplate(html: string, id: string): boolean {
-  const escaped = id.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  return new RegExp(`<template[^>]*\\bid=["']${escaped}["']`, "i").test(html);
-}
-
-function checkMissingSectionTemplateVariants(html: string): string[] {
-  const missing: string[] = [];
-  for (const baseId of new Set(collectSectionTemplateBaseIds(html))) {
-    if (!hasTemplate(html, `${baseId}-list`)) missing.push(`${baseId}-list`);
-    if (!hasTemplate(html, `${baseId}-block`)) missing.push(`${baseId}-block`);
-  }
-  return missing;
-}
-
-function checkDemoContent(html: string): string[] {
-  return DEMO_CONTENT_LITERALS.filter((literal) => html.includes(literal));
+function hasPhotoImgBinding(html: string): boolean {
+  return /<img\b[^>]*data-bind=["']basic\.photo["'][^>]*>/i.test(html);
 }
 
 async function main() {
@@ -302,85 +258,41 @@ async function main() {
     }
   }
 
-  // v2 header completeness check: every uploaded template header must include
-  // all profile fields via profile.* or legacy basics.*.
+  // v2 slot protocol check: templates must use the current public view model,
+  // not storage paths or legacy compatibility aliases.
   if (customHtml) {
-    const missing = checkMissingHeaderBindings(customHtml);
+    const forbidden = checkForbiddenBindings(customHtml);
+    if (forbidden.length > 0) {
+      fail(
+        1,
+        `--custom-html uses forbidden slot bindings:\n  ` +
+          forbidden.join("\n  ") +
+          `\n\nCurrent schema exposes basic.* for headline identity, ` +
+          `profile.contacts/contact.* for icon contact rows, and section/item ` +
+          `bindings for body content. Do not use basics.* or ` +
+          `profile.name/title/status/summary.`,
+      );
+    }
+
+    const missing = checkMissingRequiredBindings(customHtml);
     if (missing.length > 0) {
       fail(
         1,
-        `--custom-html is missing required header bindings:\n  ` +
+        `--custom-html is missing required slot bindings:\n  ` +
           missing.join("\n  ") +
-          `\n\nEvery v2 template header must include photo, name, title, ` +
-          `status, and contacts. Prefer profile.* + profile.contacts; ` +
-          `legacy basics.* remains accepted for existing templates.` +
-          `\nSee SKILL.md §slot-protocol "header 必须包含全部个人信息字段".`,
+          `\n\nRequired groups:\n` +
+          `  basic.name/basic.title/basic.status/basic.photo for headline identity\n` +
+          `  profile.contacts + contact.icon/contact.label for contact rows\n` +
+          `  sectionOrder + section.* + item.* for body sections\n` +
+          `\nSee docs/schema-v2/template-slot-fields.md.`,
       );
     }
 
-    const profileHeadlineIssues = checkProfileHeadlineHtml(customHtml);
-    if (profileHeadlineIssues.length > 0) {
+    if (!hasPhotoImgBinding(customHtml)) {
       fail(
         1,
-        `--custom-html has invalid profile title/status headline layout:\n  ` +
-          profileHeadlineIssues.join("\n  ") +
-          `\n\nPlace profile.title and profile.status in the same inline headline, ` +
-          `with the same text styling and no status icon. Do not use ` +
-          `basics.icon.Clock or put status in the contacts row.`,
-      );
-    }
-
-    const missingBody = checkMissingBindings(customHtml, REQUIRED_BODY_BINDINGS);
-    if (missingBody.length > 0) {
-      fail(
-        1,
-        `--custom-html is missing required body bindings:\n  ` +
-          missingBody.join("\n  ") +
-          `\n\nSection and item titles must be dynamic slots. Use:\n` +
-          `  <slot data-bind="sectionOrder" data-template="section-tpl"></slot>\n` +
-          `  <slot data-bind="section.title"></slot>\n` +
-          `  <slot data-bind="section.body"></slot>\n` +
-          `  <slot data-bind="section.items" data-template="item-tpl"></slot>\n` +
-          `  <slot data-bind="item.title"></slot>\n` +
-          `  <slot data-bind="item.subtitle"></slot>\n` +
-          `  <slot data-bind="item.dateRange"></slot>\n` +
-          `  <slot data-bind="item.location"></slot>\n` +
-          `  <slot data-bind="item.link"></slot>\n` +
-          `  <slot data-bind="item.bullets"></slot>`,
-      );
-    }
-
-    const missingSectionTemplates = checkMissingSectionTemplateVariants(customHtml);
-    if (missingSectionTemplates.length > 0) {
-      fail(
-        1,
-        `--custom-html is missing section template variants:\n  ` +
-          missingSectionTemplates.join("\n  ") +
-          `\n\nEvery sectionOrder data-template=\"X\" must define both ` +
-          `<template id=\"X-list\"> for list sections and ` +
-          `<template id=\"X-block\"> for block sections.`,
-      );
-    }
-
-    const legacyBindings = checkLegacyBindings(customHtml);
-    if (legacyBindings.length > 0) {
-      fail(
-        1,
-        `--custom-html uses legacy item bindings:\n  ` +
-          legacyBindings.join("\n  ") +
-          `\n\nCurrent SlotRenderer uses item.title / item.subtitle / ` +
-          `item.dateRange / item.location directly. Rewrite legacy item.header.* slots.`,
-      );
-    }
-
-    const demoContent = checkDemoContent(customHtml);
-    if (demoContent.length > 0) {
-      fail(
-        1,
-        `--custom-html contains demo resume text:\n  ` +
-          demoContent.join("\n  ") +
-          `\n\nTemplate HTML must contain only structure and slots; resume content ` +
-          `comes from data-bind values at render time.`,
+        `--custom-html must render the avatar with <img data-bind="basic.photo">. ` +
+          `Do not use <slot data-bind="basic.photo">.`,
       );
     }
   }

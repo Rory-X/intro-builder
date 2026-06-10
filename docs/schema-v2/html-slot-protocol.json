@@ -1,74 +1,110 @@
 {
-  "_description": "模板 HTML 的 slot 标记协议。引擎解析 data-bind 属性替换为简历内容。",
-
-  "fixed_area": {
-    "_description": "智能排版不影响的区域：banner 装饰、头像（absolute 定位）、姓名",
-    "wrapper": "<header class=\"tpl-header\">",
-    "bindings": [
-      { "tag": "img", "data-bind": "basics.photo", "description": "头像，absolute 定位不影响文档流，通过 var(--photo-scale) 缩放" },
-      { "tag": "h1", "data-bind": "basics.name", "description": "姓名，位置固定" }
-    ]
-  },
-
-  "flexible_area": {
-    "_description": "智能排版影响的区域：目标岗位、求职状态、联系信息、所有正文分区",
-    "wrapper": "<div class=\"tpl-body\">",
-
-    "value_bindings": [
-      { "data-bind": "basics.title", "description": "目标岗位" },
-      { "data-bind": "basics.status", "description": "求职状态" },
-      { "data-bind": "basics.email", "description": "邮箱" },
-      { "data-bind": "basics.phone", "description": "手机号" },
-      { "data-bind": "basics.location", "description": "城市" },
-      { "data-bind": "basics.website", "description": "个人网站" }
-    ],
-
-    "loop_bindings": [
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "HTML Slot Protocol",
+  "description": "模板 HTML/CSS 的 slot 标记协议。引擎解析 data-bind、data-template 和 CSS 变量后渲染简历。",
+  "html_rules": {
+    "value_slot": {
+      "description": "文本、富文本、icon 等值使用 <slot data-bind=\"...\">。",
+      "example": "<slot data-bind=\"basic.name\"></slot>"
+    },
+    "image_binding": {
+      "description": "图片字段只能绑定在 img 上，不能用 slot。",
+      "allowed": [
+        {
+          "tag": "img",
+          "data-bind": "basic.photo",
+          "description": "头像。空值时渲染器移除 img。通过 var(--photo-scale) 缩放。"
+        }
+      ],
+      "forbidden": [
+        {
+          "tag": "slot",
+          "data-bind": "basic.photo",
+          "reason": "slot 会把 URL 当文本渲染。"
+        }
+      ]
+    },
+    "loops": [
+      {
+        "data-bind": "profile.contacts",
+        "data-template": "contact-item",
+        "context": "contact",
+        "description": "循环渲染带 icon 的联系方式。"
+      },
       {
         "data-bind": "sectionOrder",
-        "data-template": "section-tpl",
-        "description": "按 sectionOrder 顺序循环渲染所有分区；必须定义 section-tpl-list 和 section-tpl-block 两个模板"
+        "data-template": "section",
+        "context": "section",
+        "description": "循环渲染正文分区。必须同时定义 section-list 和 section-block。"
       },
       {
         "data-bind": "section.items",
-        "data-template": "item-tpl",
-        "description": "循环渲染分区内的条目"
+        "data-template": "item",
+        "context": "item",
+        "description": "在 sectionOrder 循环内渲染当前正文分区的结构化条目。"
       }
     ],
-
-    "section_bindings": [
-      { "data-bind": "section.title", "description": "分区标题，如「工作经历」「教育背景」" },
-      { "data-bind": "section.body", "description": "块状模块正文，如「专业技能」「个人总结」；放在 section-tpl-block 中" },
-      { "data-bind": "section.id", "description": "分区 ID，如 experience、education" }
-    ],
-
-    "item_bindings": [
-      { "data-bind": "item.title", "description": "条目标题（experience→公司名，education→学校名，projects→项目名）" },
-      { "data-bind": "item.subtitle", "description": "条目副标题（experience→职位，education→学位+专业+GPA，projects→角色）" },
-      { "data-bind": "item.dateRange", "description": "时间范围，如 2025.06 - 2025.09" },
-      { "data-bind": "item.location", "description": "城市" },
-      { "data-bind": "item.bullets", "description": "条目正文内容（TipTap 富文本渲染）" },
-      { "data-bind": "item.tags", "description": "标签数组（如项目技术栈）" },
-      { "data-bind": "item.link", "description": "链接（如项目 URL）" }
+    "template_variants": {
+      "description": "sectionOrder 的 data-template=\"X\" 会根据 section.kind 选择模板。",
+      "list": "X-list 用于 experience、education、projects、research。",
+      "block": "X-block 用于 selfIntroduction、skills、summary、awards、portfolio、custom。"
+    },
+    "forbidden_bindings": [
+      "basics.*",
+      "basics.icon.*",
+      "profile.name",
+      "profile.title",
+      "profile.status",
+      "profile.summary"
     ]
   },
-
-  "css_variable_contract": {
-    "_description": "模板 CSS 必须用这些变量，不能写死对应值",
-    "rules": {
-      "font-size": "正文用 var(--font-size)",
-      "font-family": "正文用 var(--font-family)",
-      "line-height": "正文用 var(--line-height)",
-      "page-padding": "页面左右用 var(--page-padding)",
-      "heading-gap": "section title 外部 margin-bottom 用 var(--heading-gap)",
-      "section-gap": "section 之间 margin-top 用 var(--section-gap)",
-      "item-gap": "item 之间 margin-bottom 用 var(--item-gap)",
-      "photo-scale": "头像用 transform: scale(var(--photo-scale))"
+  "layout_rules": {
+    "basic_headline": {
+      "description": "求职岗位和求职状态必须同行、同样式、无 icon。",
+      "required_bindings": ["basic.title", "basic.status"]
     },
-    "additional_rules": {
-      "section_title_padding": "内部 padding 必须用 em 单位（跟字号联动），禁止用 px",
-      "colors_and_decorations": "颜色、背景、阴影、圆角可写死（模板锁定）",
-      "decoration_images": "在 HTML 中通过 assets 里的 URL 引用"
+    "contacts": {
+      "description": "电话、邮箱、城市、主页必须通过 profile.contacts 循环展示。",
+      "required_bindings": ["profile.contacts", "contact.icon", "contact.label"]
+    },
+    "body_sections": {
+      "description": "正文分区必须通过 sectionOrder 渲染；模板不能硬编码具体模块顺序。",
+      "required_bindings": ["sectionOrder", "section.title", "section.body", "section.items"]
+    }
+  },
+  "css_variable_contract": {
+    "description": "模板 CSS 必须消费这些变量，不能写死对应排版值。",
+    "variables": {
+      "--font-size": "正文字号。正文区域使用 var(--font-size)。",
+      "--font-family": "字体族。正文区域使用 var(--font-family)。",
+      "--line-height": "正文行高。正文富文本使用 var(--line-height)。",
+      "--page-padding": "A4 页面内边距。",
+      "--heading-gap": "section 标题到正文的间距。",
+      "--section-gap": "section 之间的间距。",
+      "--item-gap": "同一 section 内 item 之间的间距。",
+      "--photo-scale": "头像缩放倍数。"
+    },
+    "allowed_fixed_styles": [
+      "颜色",
+      "背景",
+      "边框",
+      "阴影",
+      "圆角",
+      "装饰图位置",
+      "标题装饰"
+    ],
+    "forbidden_fixed_styles": [
+      "正文 font-size 写死 px",
+      "正文 line-height 写死数字",
+      "页面 padding 写死且不引用 --page-padding",
+      "section/item 间距写死且不引用对应变量"
+    ]
+  },
+  "pagination_attributes": {
+    "description": "渲染器会自动注入分页测量属性，模板作者不需要手写。",
+    "attributes": {
+      "data-pagination-section": "注入到 section 根节点。",
+      "data-pagination-item": "注入到 item 根节点。"
     }
   }
 }

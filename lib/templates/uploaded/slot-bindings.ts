@@ -70,59 +70,26 @@ export type ItemView = {
   link: string;
 };
 
-// ─── Basics value slot ────────────────────────────────────────────
-
-export const BASICS_BINDINGS = {
-  "basics.name": (c: ResumeContent) => c.basics.name,
-  "basics.title": (c: ResumeContent) => c.basics.title,
-  "basics.email": (c: ResumeContent) => c.basics.email,
-  "basics.phone": (c: ResumeContent) => c.basics.phone,
-  "basics.location": (c: ResumeContent) => c.basics.location,
-  "basics.website": (c: ResumeContent) => c.basics.website,
-  "basics.status": (c: ResumeContent) => c.basics.status,
-  "basics.summary": (c: ResumeContent) => c.basics.summary,
+// ─── Basic value slots ────────────────────────────────────────────
+//
+// Public slot contract uses singular `basic.*`. The persisted ResumeContent
+// still stores these fields under content.basics; that storage detail is not
+// exposed to template authors.
+export const BASIC_BINDINGS = {
+  "basic.name": (c: ResumeContent) => c.basics.name,
+  "basic.title": (c: ResumeContent) => c.basics.title,
+  "basic.status": (c: ResumeContent) => c.basics.status,
 } as const;
 
-export type BasicsBinding = keyof typeof BASICS_BINDINGS;
-
-// ─── Icon slots (basics.icon.*) ──────────────────────────────────
-// 为联系信息提供 icon 支持，例如 <slot data-bind="basics.icon.Mail">
-// 渲染为对应的 lucide 图标。兼容批量生成模板的写法。
-export const BASICS_ICON_BINDINGS = {
-  "basics.icon.Mail": "Mail",
-  "basics.icon.Phone": "Phone",
-  "basics.icon.MapPin": "MapPin",
-  "basics.icon.Globe": "Globe",
-  "basics.icon.Clock": "Clock",
-} as const;
-
-export type BasicsIconBinding = keyof typeof BASICS_ICON_BINDINGS;
-
-export const ICON_BINDINGS: Record<string, string> = BASICS_ICON_BINDINGS;
-
-// ─── Profile value slots ─────────────────────────────────────────
-
-export const PROFILE_BINDINGS = {
-  "profile.name": (c: ResumeContent) => c.basics.name,
-  "profile.title": (c: ResumeContent) => c.basics.title,
-  "profile.email": (c: ResumeContent) => c.basics.email,
-  "profile.phone": (c: ResumeContent) => c.basics.phone,
-  "profile.location": (c: ResumeContent) => c.basics.location,
-  "profile.website": (c: ResumeContent) => c.basics.website,
-  "profile.status": (c: ResumeContent) => c.basics.status,
-  "profile.summary": (c: ResumeContent) => c.basics.summary,
-} as const;
-
-export type ProfileBinding = keyof typeof PROFILE_BINDINGS;
+export type BasicBinding = keyof typeof BASIC_BINDINGS;
 
 // ─── Image binding (<img data-bind="...">) ────────────────────────
 // 图片类 binding 走 SlotRenderer 的 <img> 路径而非 <slot>：引擎把 URL 注入
-// img 的 src，空值则整个 img 不渲染。photo 故意不放进 BASICS_BINDINGS（文本
-// 路径）—— 否则 <slot data-bind="basics.photo"> 会把一长串 URL 当文字渲染出
+// img 的 src，空值则整个 img 不渲染。photo 故意不放进 BASIC_BINDINGS（文本
+// 路径）—— 否则 <slot data-bind="basic.photo"> 会把一长串 URL 当文字渲染出
 // 来（footgun）。集合形式预留未来扩展（如 logo、二维码）。
 export const IMAGE_BINDINGS = {
-  "basics.photo": (c: ResumeContent) => c.basics.photo,
-  "profile.photo": (c: ResumeContent) => c.basics.photo,
+  "basic.photo": (c: ResumeContent) => c.basics.photo,
 } as const;
 
 export type ImageBinding = keyof typeof IMAGE_BINDINGS;
@@ -178,9 +145,7 @@ export type LoopBinding = (typeof LOOP_BINDINGS)[number];
 // ─── All bindings union ───────────────────────────────────────────
 
 export type SlotBinding =
-  | BasicsBinding
-  | BasicsIconBinding
-  | ProfileBinding
+  | BasicBinding
   | ImageBinding
   | SectionBinding
   | ItemBinding
@@ -189,10 +154,7 @@ export type SlotBinding =
 
 export function isValidBinding(name: string): name is SlotBinding {
   return (
-    name in BASICS_BINDINGS ||
-    name in BASICS_ICON_BINDINGS ||
-    name in PROFILE_BINDINGS ||
-    name in ICON_BINDINGS ||
+    name in BASIC_BINDINGS ||
     name in IMAGE_BINDINGS ||
     name in SECTION_BINDINGS ||
     name in ITEM_BINDINGS ||
@@ -211,7 +173,7 @@ export function isLoopBinding(name: string): name is LoopBinding {
  * Resolve a sectionOrder entry to display metadata. Returns null if the
  * section has no content to render (so SlotRenderer can skip iteration).
  *
- * - `basics` → renders only if basics.summary is non-empty
+ * - `basics` storage section → exposes `section.id = selfIntroduction` if basics.summary is non-empty
  * - preset (experience/education/projects/skills/awards/research/portfolio) → renders if array has items
  * - custom (id matches content.custom[].id) → renders if content has items
  * - unknown → null (skipped)
@@ -226,7 +188,7 @@ export function resolveSection(
   if (sectionId === "basics") {
     if (!content.basics.summary) return null;
     return {
-      id: "basics",
+      id: "selfIntroduction",
       title: "自我介绍",
       icon: decl?.icon ?? getSectionMeta("basics").iconName,
       iconColor: decl?.color,
@@ -307,7 +269,7 @@ export function deriveItems(
   const id = ctx.section.id;
 
   if (id === "basics") {
-    // 单元素 item，bullets 是 basics.summary 包装成 TipTap paragraph
+    // 单元素 item，bullets 是 selfIntroduction/basics.summary 包装成 TipTap paragraph
     return [
       {
         title: "",
@@ -353,8 +315,7 @@ export type LinkableContactType = "email" | "phone" | "website";
  * URI 里非法、部分客户端会断）、website→https（缺协议头自动补）。
  *
  * 单一信源：deriveContacts（loop 路径 contact.href）与 html-slot-renderer 的
- * 直绑路径（basics.email/phone/website 自动 linkify）共用这一处，避免两份
- * href 计算逻辑漂移。
+ * profile.contacts 派生路径使用的 href 计算逻辑。
  */
 export function contactHref(type: LinkableContactType, value: string): string {
   if (type === "email") return `mailto:${value.trim()}`;
@@ -385,7 +346,7 @@ function deriveSectionBody(
   section: NonNullable<IterationContext["section"]>,
   content: ResumeContent,
 ): TipTapJSON {
-  if (section.id === "basics") return textToTipTap(content.basics.summary);
+  if (section.source === "basics") return textToTipTap(content.basics.summary);
   if (section.id === "skills") return content.skills ?? emptyDoc();
   if (section.id === "summary") return content.summary ?? emptyDoc();
   if (section.id === "awards") return content.awards ?? emptyDoc();

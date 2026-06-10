@@ -12,10 +12,7 @@ import type { TipTapJSON } from "@/lib/tiptap-types";
 import { FONT_MAP } from "@/lib/font-map";
 import { ResumeRichText } from "@/lib/templates/shared/resume-rich-text";
 import {
-  BASICS_BINDINGS,
-  BASICS_ICON_BINDINGS,
-  PROFILE_BINDINGS,
-  ICON_BINDINGS,
+  BASIC_BINDINGS,
   IMAGE_BINDINGS,
   ITEM_BINDINGS,
   CONTACT_BINDINGS,
@@ -26,8 +23,6 @@ import {
   resolveSection,
   deriveItems,
   deriveContacts,
-  contactHref,
-  type LinkableContactType,
   type IterationContext,
 } from "./slot-bindings";
 import { scopeCss, CssScopeError } from "./css-scope";
@@ -86,22 +81,6 @@ const SAFE_ATTRS: Record<string, sanitizeHtml.AllowedAttribute[]> = {
 /** 嵌套深度上限 —— spec §6.3 #5 */
 const MAX_NEST_DEPTH = 3;
 
-/**
- * 直绑路径里有可点目标的联系字段 → 联系类型。模板作者按 SKILL.md 惯例写
- * `<slot data-bind="basics.email">` 当纯文本，引擎在这里把 email/phone/website
- * 自动包成 `<a href>`（mailto/tel/https），一处生效覆盖全部模板，PDF（Puppeteer
- * 保留链接注释）/在线分享/预览三处都可点。location 无可点目标、name/title 等
- * 非联系字段不在表内，照常渲染纯文本。
- */
-const LINKABLE_BINDINGS: Record<string, LinkableContactType> = {
-  "basics.email": "email",
-  "profile.email": "email",
-  "basics.phone": "phone",
-  "profile.phone": "phone",
-  "basics.website": "website",
-  "profile.website": "website",
-};
-
 export function SlotRenderer({
   html,
   css,
@@ -134,10 +113,10 @@ export function SlotRenderer({
   //    hydration warnings.
   const { mainHtml, templates } = extractTemplates(cleanHtml);
 
-  // 引擎层给 basics 头部自动补 data-pagination-header（和 injectAttrIntoFirstTag
+  // 引擎层给顶部 basic/profile 头部自动补 data-pagination-header（和 injectAttrIntoFirstTag
   // 注入 section/item 属性同一套思路）。两个下游强依赖这个标记：
   //   1. PDF 导出注入 `header:not([data-pagination-header]){display:none}` 隐藏
-  //      app 外壳 header —— 模板 basics 用裸 <header> 时会被一起隐藏，整块个人
+  //      app 外壳 header —— 模板用裸 <header> 时会被一起隐藏，整块个人
   //      信息消失（zoo 反馈"导出头部缺失"的根因）。
   //   2. 智能排版用 [data-pagination-header] 锁定 --profile-font-size。
   // 只有 professional 手写了该属性，classic/abbey/crimson 及协议示例都漏标。
@@ -225,7 +204,7 @@ function makeParserOptions(p: ParserCtx): HTMLReactParserOptions {
       if (node.name === "img" && node.attribs?.["data-bind"] != null) {
         return renderImageBinding(node, p);
       }
-      // 旧语法：任意元素上的 data-bind（如 <h1 data-bind="basics.name">）
+      // 元素级 data-bind（如 <h1 data-bind="basic.name">）
       // 兼容数据库中已存在的模板 HTML（professional / classic / modern）
       if (node.attribs?.["data-bind"] != null) {
         return renderLegacyDataBind(node, p);
@@ -265,25 +244,9 @@ function renderSlotElement(
   }
 
   // Value slot — context-aware resolution
-  if (binding in BASICS_BINDINGS) {
-    const fn = BASICS_BINDINGS[binding as keyof typeof BASICS_BINDINGS];
-    return renderContactValue(binding, fn(p.content));
-  }
-
-  // Basics icon slots (for contact info icons)
-  if (binding in BASICS_ICON_BINDINGS) {
-    const iconName = BASICS_ICON_BINDINGS[binding as keyof typeof BASICS_ICON_BINDINGS];
-    return renderIconSlot(node, iconName);
-  }
-
-  if (binding in PROFILE_BINDINGS) {
-    const fn = PROFILE_BINDINGS[binding as keyof typeof PROFILE_BINDINGS];
-    return renderContactValue(binding, fn(p.content));
-  }
-
-  if (binding in ICON_BINDINGS) {
-    const iconName = ICON_BINDINGS[binding];
-    return renderIconSlot(node, iconName);
+  if (binding in BASIC_BINDINGS) {
+    const fn = BASIC_BINDINGS[binding as keyof typeof BASIC_BINDINGS];
+    return <>{fn(p.content)}</>;
   }
 
   if (binding in SECTION_BINDINGS) {
@@ -337,24 +300,7 @@ function renderSlotElement(
 }
 
 /**
- * 渲染 basics.* / profile.* 直绑值。email/phone/website 包成可点 `<a href>`
- * （见 LINKABLE_BINDINGS）；inline 样式 color:inherit + 去下划线，外观与原纯文本
- * 一致，只是可点——不破坏任何模板的联系栏视觉。空值不包链接。
- */
-function renderContactValue(binding: string, value: string): ReactElement {
-  const linkType = LINKABLE_BINDINGS[binding];
-  if (linkType && value) {
-    return (
-      <a href={contactHref(linkType, value)} style={{ color: "inherit", textDecoration: "none" }}>
-        {value}
-      </a>
-    );
-  }
-  return <>{value}</>;
-}
-
-/**
- * Render `<img data-bind="basics.photo">` → 把解析出的 URL 注入 src。
+ * Render `<img data-bind="basic.photo">` → 把解析出的 URL 注入 src。
  * 空 URL → 返回空 Fragment（整个 img 移除）；返回 null 会让 html-react-parser
  * 保留原 src-less <img>（→ 裂图 / React19 空 src 报错），所以必须返回空元素。
  * 通用：任何 v2 模板都能用，形状 / 尺寸由模板 CSS 决定，引擎只管注入 src。
@@ -378,8 +324,7 @@ function renderImageBinding(node: Element, p: ParserCtx): ReactElement {
 }
 
 /**
- * 旧语法兼容：`<h1 data-bind="basics.name"></h1>` 等。
- * 数据库中已存在的 professional / classic / modern 模板使用此语法。
+ * 元素级 data-bind：`<h1 data-bind="basic.name"></h1>` 等。
  * 渲染逻辑与 <slot> 相同，但将内容注入到原元素中（保留 class / style 等）。
  */
 function renderLegacyDataBind(node: Element, p: ParserCtx): ReactElement {

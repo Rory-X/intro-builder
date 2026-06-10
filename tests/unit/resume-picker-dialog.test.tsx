@@ -31,7 +31,7 @@ const tpl: SerializableResolvedTemplate = {
   source: "unified",
   id: "professional",
   templateId: "professional",
-  html: '<main><slot data-bind="basics.name"></slot></main>',
+  html: '<main><slot data-bind="basic.name"></slot></main>',
   css: null,
   sectionIcons: {},
   name: "专业",

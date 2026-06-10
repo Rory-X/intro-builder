@@ -44,8 +44,8 @@ const mockStyleSettings = {
 };
 
 describe('旧语法 data-bind 兼容性', () => {
-  it('应该渲染 <h1 data-bind="basics.name">', () => {
-    const html = '<h1 data-bind="basics.name" class="pro-name"></h1>';
+  it('应该渲染 <h1 data-bind="basic.name">', () => {
+    const html = '<h1 data-bind="basic.name" class="pro-name"></h1>';
 
     const { container } = render(
       <SlotRenderer
@@ -63,7 +63,7 @@ describe('旧语法 data-bind 兼容性', () => {
   });
 
   it('应该保留元素的 class 属性', () => {
-    const html = '<h1 data-bind="basics.name" class="my-custom-class"></h1>';
+    const html = '<h1 data-bind="basic.name" class="my-custom-class"></h1>';
 
     const { container } = render(
       <SlotRenderer
@@ -80,8 +80,8 @@ describe('旧语法 data-bind 兼容性', () => {
   });
 
   it('新旧语法应该产生相同的结果', () => {
-    const oldSyntax = '<h1 data-bind="basics.name"></h1>';
-    const newSyntax = '<h1><slot data-bind="basics.name"></slot></h1>';
+    const oldSyntax = '<h1 data-bind="basic.name"></h1>';
+    const newSyntax = '<h1><slot data-bind="basic.name"></slot></h1>';
 
     const { container: oldContainer } = render(
       <SlotRenderer

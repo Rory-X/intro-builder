@@ -1,90 +1,174 @@
 {
-  "_description": "resume.content JSONB 的完整结构",
-
-  "basics": {
-    "_description": "个人基本信息",
-    "name": { "type": "string", "description": "姓名" },
-    "status": { "type": "string", "description": "求职状态，如「大三」「在职看机会」" },
-    "title": { "type": "string", "description": "目标岗位，如「前端开发实习」" },
-    "email": { "type": "string", "description": "邮箱" },
-    "phone": { "type": "string", "description": "手机号" },
-    "location": { "type": "string", "description": "城市" },
-    "website": { "type": "string", "description": "个人网站/GitHub" },
-    "summary": { "type": "string", "description": "个人简介（部分模板展示）" },
-    "photo": { "type": "string", "description": "头像图片 URL" }
-  },
-
-  "education": {
-    "_description": "教育经历数组",
-    "type": "array",
-    "item_schema": {
-      "school": { "type": "string", "description": "学校名" },
-      "degree": { "type": "string", "description": "学位，如「本科」「硕士」" },
-      "major": { "type": "string", "description": "专业" },
-      "location": { "type": "string", "description": "城市" },
-      "start": { "type": "string", "description": "开始时间，如 2023-09" },
-      "end": { "type": "string", "description": "结束时间，如 2027-06" },
-      "gpa": { "type": "string", "description": "GPA，如 3.8/4.0" },
-      "highlights": { "type": "TipTapJSON", "description": "补充描述（富文本）" }
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "ResumeContent",
+  "description": "resume.content JSONB 的业务结构。给表单、导入、Agent、自动保存、完整度诊断使用；不是数据库表结构。",
+  "source_of_truth": "lib/resume-schema.ts",
+  "contract_notes": [
+    "basic/profile 是业务语义分组，不是模板 slot 前缀的兼容层。",
+    "basic 只承载顶部无 icon 的身份信息：姓名、求职岗位、求职状态、头像。",
+    "profile 只承载带 icon 展示的联系资料：电话、邮箱、城市、主页。",
+    "selfIntroduction 是正文模块，和 summary（个人总结）不是同一个字段。",
+    "sectionOrder 只排序正文模块，不排序顶部 basic/profile。"
+  ],
+  "type": "object",
+  "required": [
+    "basic",
+    "profile",
+    "selfIntroduction",
+    "education",
+    "experience",
+    "projects",
+    "research",
+    "skills",
+    "summary",
+    "awards",
+    "portfolio",
+    "custom",
+    "sectionOrder"
+  ],
+  "properties": {
+    "basic": {
+      "type": "object",
+      "description": "顶部基础身份信息。模板应在 header/headline 区展示，不带 icon。",
+      "required": ["name", "title", "status"],
+      "properties": {
+        "name": { "type": "string", "default": "", "description": "姓名" },
+        "title": { "type": "string", "default": "", "description": "求职岗位 / 目标职位" },
+        "status": { "type": "string", "default": "", "description": "求职状态，如「在看机会」「应届」「在职」" },
+        "photo": { "type": "string", "default": "", "description": "头像图片 URL。模板渲染时用 img 绑定，不作为文本 slot。" }
+      }
+    },
+    "profile": {
+      "type": "object",
+      "description": "联系资料。模板通过 profile.contacts 派生循环展示，每项带 icon。",
+      "properties": {
+        "email": { "type": "string", "default": "", "description": "邮箱" },
+        "phone": { "type": "string", "default": "", "description": "手机号" },
+        "location": { "type": "string", "default": "", "description": "城市 / 所在地" },
+        "website": { "type": "string", "default": "", "description": "个人网站 / GitHub / 作品集主页" }
+      }
+    },
+    "selfIntroduction": {
+      "type": "string",
+      "default": "",
+      "description": "自我介绍。虽然内容短，但渲染语义属于正文分区，模板通过 section.body 展示，不放在顶部 profile。"
+    },
+    "education": {
+      "type": "array",
+      "description": "教育经历数组",
+      "items": {
+        "type": "object",
+        "properties": {
+          "school": { "type": "string", "default": "", "description": "学校名" },
+          "degree": { "type": "string", "default": "", "description": "学位，如「本科」「硕士」" },
+          "major": { "type": "string", "default": "", "description": "专业" },
+          "location": { "type": "string", "default": "", "description": "城市" },
+          "start": { "type": "string", "default": "", "description": "开始时间" },
+          "end": { "type": "string", "default": "", "description": "结束时间" },
+          "gpa": { "type": "string", "default": "", "description": "GPA" },
+          "highlights": { "$ref": "#/$defs/tiptapDoc", "description": "教育经历补充描述" }
+        }
+      },
+      "default": []
+    },
+    "experience": {
+      "type": "array",
+      "description": "工作 / 实习经历数组",
+      "items": {
+        "type": "object",
+        "properties": {
+          "company": { "type": "string", "default": "", "description": "公司名" },
+          "title": { "type": "string", "default": "", "description": "职位" },
+          "start": { "type": "string", "default": "", "description": "开始时间" },
+          "end": { "type": "string", "default": "", "description": "结束时间" },
+          "location": { "type": "string", "default": "", "description": "城市 / 远程" },
+          "content": { "$ref": "#/$defs/tiptapDoc", "description": "工作内容描述" }
+        }
+      },
+      "default": []
+    },
+    "projects": {
+      "type": "array",
+      "description": "项目经历数组",
+      "items": {
+        "type": "object",
+        "properties": {
+          "name": { "type": "string", "default": "", "description": "项目名" },
+          "role": { "type": "string", "default": "", "description": "角色" },
+          "location": { "type": "string", "default": "", "description": "城市 / 远程" },
+          "start": { "type": "string", "default": "", "description": "开始时间" },
+          "end": { "type": "string", "default": "", "description": "结束时间" },
+          "stack": { "type": "array", "items": { "type": "string" }, "default": [], "description": "技术栈标签" },
+          "link": { "type": "string", "default": "", "description": "项目链接" },
+          "content": { "$ref": "#/$defs/tiptapDoc", "description": "项目描述" }
+        }
+      },
+      "default": []
+    },
+    "research": {
+      "type": "array",
+      "description": "研究经历数组",
+      "items": {
+        "type": "object",
+        "properties": {
+          "name": { "type": "string", "default": "", "description": "机构 / 项目名" },
+          "role": { "type": "string", "default": "", "description": "角色" },
+          "location": { "type": "string", "default": "", "description": "地点" },
+          "start": { "type": "string", "default": "", "description": "开始时间" },
+          "end": { "type": "string", "default": "", "description": "结束时间" },
+          "paperTitle": { "type": "string", "default": "", "description": "论文 / 成果标题" },
+          "link": { "type": "string", "default": "", "description": "论文 / 成果链接" },
+          "content": { "$ref": "#/$defs/tiptapDoc", "description": "研究内容描述" }
+        }
+      },
+      "default": []
+    },
+    "skills": { "$ref": "#/$defs/tiptapDoc", "description": "专业技能，富文本块" },
+    "summary": { "$ref": "#/$defs/tiptapDoc", "description": "个人总结，富文本块。不同于 selfIntroduction。" },
+    "awards": { "$ref": "#/$defs/tiptapDoc", "description": "荣誉奖项，富文本块" },
+    "portfolio": { "$ref": "#/$defs/tiptapDoc", "description": "作品集，富文本块" },
+    "custom": {
+      "type": "array",
+      "description": "用户自建正文分区",
+      "items": {
+        "type": "object",
+        "required": ["id"],
+        "properties": {
+          "id": { "type": "string", "description": "分区唯一 ID" },
+          "title": { "type": "string", "default": "", "description": "分区标题" },
+          "content": { "$ref": "#/$defs/tiptapDoc", "description": "分区正文" }
+        }
+      },
+      "default": []
+    },
+    "sectionOrder": {
+      "type": "array",
+      "description": "正文分区排序。允许内置正文模块 id 和 custom[].id；不包含 basic/profile。",
+      "items": { "type": "string" },
+      "examples": [["selfIntroduction", "experience", "education", "projects", "skills", "summary"]]
+    },
+    "styleSettings": {
+      "$ref": "style-settings.json",
+      "description": "排版设置。模板 CSS 通过变量消费。"
+    },
+    "smartLayout": {
+      "type": "object",
+      "description": "智能排版状态",
+      "properties": {
+        "enabled": { "type": "boolean", "description": "是否开启智能排版" },
+        "originalSettings": { "$ref": "style-settings.json", "description": "开启前的原始排版设置备份" }
+      }
     }
   },
-
-  "experience": {
-    "_description": "工作/实习经历数组",
-    "type": "array",
-    "item_schema": {
-      "company": { "type": "string", "description": "公司名" },
-      "title": { "type": "string", "description": "职位" },
-      "start": { "type": "string", "description": "开始时间" },
-      "end": { "type": "string", "description": "结束时间" },
-      "location": { "type": "string", "description": "城市" },
-      "content": { "type": "TipTapJSON", "description": "工作内容描述（富文本）" }
+  "$defs": {
+    "tiptapDoc": {
+      "type": "object",
+      "description": "TipTap JSON doc，存储富文本结构，不是 HTML。",
+      "required": ["type", "content"],
+      "properties": {
+        "type": { "const": "doc" },
+        "content": { "type": "array" }
+      }
     }
-  },
-
-  "projects": {
-    "_description": "项目经历数组",
-    "type": "array",
-    "item_schema": {
-      "name": { "type": "string", "description": "项目名" },
-      "role": { "type": "string", "description": "角色，如「独立开发」「核心成员」" },
-      "location": { "type": "string", "description": "城市" },
-      "start": { "type": "string", "description": "开始时间" },
-      "end": { "type": "string", "description": "结束时间" },
-      "stack": { "type": "string[]", "description": "技术栈标签" },
-      "link": { "type": "string", "description": "项目链接" },
-      "content": { "type": "TipTapJSON", "description": "项目描述（富文本）" }
-    }
-  },
-
-  "skills": {
-    "type": "TipTapJSON",
-    "_description": "专业技能（富文本，一整块）"
-  },
-
-  "custom": {
-    "_description": "用户自建的自定义分区数组",
-    "type": "array",
-    "item_schema": {
-      "id": { "type": "string", "description": "分区唯一 ID" },
-      "title": { "type": "string", "description": "分区标题，如「荣誉奖项」" },
-      "content": { "type": "TipTapJSON", "description": "分区内容（富文本）" }
-    }
-  },
-
-  "sectionOrder": {
-    "type": "string[]",
-    "_description": "分区排列顺序",
-    "example": ["experience", "education", "projects", "skills"]
-  },
-
-  "styleSettings": {
-    "_description": "排版设置，所有值通过 CSS 变量注入到模板。结构见 style-settings.json"
-  },
-
-  "smartLayout": {
-    "_description": "智能排版状态",
-    "enabled": { "type": "boolean", "description": "是否开启智能排版" },
-    "originalSettings": { "type": "styleSettings", "description": "开启前的原始排版设置备份，用于恢复" }
   }
 }

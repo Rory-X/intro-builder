@@ -121,30 +121,32 @@ stdout 最后一行 JSON：
 
 参考 `docs/schema-v2/example-template.html` + `example-template.css`。两条骨架：
 
-**A. HTML 必须包含 profile headline、联系方式和全部 section/item slot**——缺字段 = 用户填的内容在模板里永远不渲染。顶部使用 `profile.*`，联系方式单独渲染，不要把 status 混进 contact 行。装饰图按 Step 1 判断结果插入：有 banner asset 就放 `<img src="<blob_url>">`，没有就用 CSS 画背景（如 `.tpl-header { background: linear-gradient(...) }`），不要保留无用的 `<img src="">`。
+**A. HTML 必须包含 basic headline、profile contacts 和完整正文 slot**——缺字段 = 用户填的内容在模板里永远不渲染。顶部身份信息使用 `basic.*`；联系方式使用 `profile.contacts` 循环；自我介绍和个人总结都属于正文 section，不放进顶部 profile。装饰图按 Step 1 判断结果插入：有 banner asset 就放 `<img src="<blob_url>">`，没有就用 CSS 画背景（如 `.tpl-header { background: linear-gradient(...) }`），不要保留无用的 `<img src="">`。
 
 ```html
 <header class="tpl-header">
   <!-- 有装饰资产时插入 banner img；无则删掉这行，用 CSS 画背景 -->
   <img src="<Step 2 拿到的 banner blob_url>" class="banner-img" alt="" />
 
-  <img data-bind="profile.photo" class="avatar" />
-  <h1 class="name"><slot data-bind="profile.name"></slot></h1>
+  <img data-bind="basic.photo" class="avatar" alt="头像" />
+  <h1 class="name"><slot data-bind="basic.name"></slot></h1>
 </header>
 <div class="tpl-body">
   <div class="meta">
-    <slot data-bind="profile.title"></slot>
-    <span class="profile-status">
-      <span class="profile-sep"> · </span>
-      <span class="profile-status-value"><slot data-bind="profile.status"></slot></span>
-    </span>
+    <slot data-bind="basic.title"></slot> · <slot data-bind="basic.status"></slot>
   </div>
   <div class="contact">
-    <slot data-bind="basics.email"></slot> | <slot data-bind="basics.phone"></slot>
-    | <slot data-bind="basics.location"></slot> | <slot data-bind="basics.website"></slot>
+    <slot data-bind="profile.contacts" data-template="contact-item"></slot>
   </div>
 
   <slot data-bind="sectionOrder" data-template="section-tpl"></slot>
+
+  <template id="contact-item">
+    <a class="contact-item" href="#">
+      <slot data-bind="contact.icon"></slot>
+      <slot data-bind="contact.label"></slot>
+    </a>
+  </template>
 
   <template id="section-tpl-list">
     <section class="resume-section">
@@ -172,7 +174,7 @@ stdout 最后一行 JSON：
       </div>
       <div class="item-meta-row">
         <span class="item-meta"><slot data-bind="item.meta"></slot></span>
-        <a class="item-link"><slot data-bind="item.link"></slot></a>
+        <a class="item-link" href="#"><slot data-bind="item.link"></slot></a>
       </div>
       <div class="item-body"><slot data-bind="item.bullets"></slot></div>
     </div>
@@ -197,10 +199,10 @@ section title 内部 padding 用 **em**（跟字号联动），禁 px。
 
 ### Slot binding 速查
 
-- profile：顶部使用 `profile.name/title/status/photo`；`profile.photo` **必须**用 `<img data-bind="profile.photo">`。`profile.title` 和 `profile.status` 必须同一行、同样式、无 icon；不要使用 `basics.icon.Clock`，也不要把 status 放进联系方式行。
-- contacts：联系方式可用 `profile.contacts` 循环 + `contact.icon/contact.label`，或兼容直绑 `basics.email/phone/location/website`；联系方式行不展示求职状态。
-- loop：`sectionOrder`（单栏）、`sidebarSections` / `mainSections`（双栏，引擎未实现）、`section.items`（条目循环）
-- section 内：`section.{id,title,icon,body}`；`sectionOrder data-template="X"` 必须同时定义 `X-list` 和 `X-block`，`section.body` 放在 block 模板
+- basic：顶部身份信息使用 `basic.name/title/status/photo`；`basic.photo` **必须**用 `<img data-bind="basic.photo">`。`basic.title` 和 `basic.status` 必须同一行、同样式、无 icon。
+- profile：联系方式使用 `profile.contacts` 循环 + `contact.icon/contact.label`。不要直绑 email/phone/location/website，也不要把 status 放进联系方式行。
+- loop：`sectionOrder`（正文分区）、`section.items`（条目循环）。`sectionOrder data-template="X"` 必须同时定义 `X-list` 和 `X-block`。
+- section 内：`section.{id,title,icon,kind,body}`；自我介绍和个人总结都通过 `section.body` 渲染，二者语义不同。
 - item 内：`item.{title,subtitle,dateRange,location,bullets,tags,link}`
 
 item 字段从 section 派生：experience.company/title→item.title/subtitle；education.school/(degree+major+gpa)→item.title/subtitle；projects.name/role + tags=stack；skills→bullets 整块。
@@ -280,7 +282,12 @@ stdout 应输出 `PUBLISHED: <id> (<name>)`。这时 dashboard / 编辑器模板
 
 - [ ] **draft 入库 + 用户口头确认**：6a 跑过，6b 把预览链接发给用户，等到用户明确说"通过/OK"才进入 6c。**绝不可以一步到位 publish**
 - [ ] **装饰判断**：参考图里 CSS 画不出来的装饰（波浪/复杂条纹/手绘/几何组合/渐变形状）都已通过 Step 2 复刻；CSS 能搞定的没多余调生图
-- [ ] HTML 含全部 8 个 basics binding（photo 用 `<img data-bind>`，其余 7 个用 `<slot data-bind>`）
+- [ ] HTML 顶部使用 `basic.name/title/status/photo`，其中 `basic.photo` 用 `<img data-bind="basic.photo">`
+- [ ] `basic.title` 和 `basic.status` 同行、同样式、无 icon，且不放入联系方式行
+- [ ] 联系方式使用 `profile.contacts` 循环 + `contact.icon/contact.label`
+- [ ] 不使用 `basics.*`、`basics.icon.*`、`profile.name/title/status/summary`
+- [ ] `sectionOrder` 同时定义 `*-list` 和 `*-block`，block 模板包含 `section.body`
+- [ ] item 模板包含 `item.location`、`item.meta`、`item.link`、`item.bullets`
 - [ ] CSS 里 `font-size` / `font-family` / `line-height` 全部走 `var(--*)`
 - [ ] section margin-top 用 `var(--section-gap)`、item margin-bottom 用 `var(--item-gap)`、page padding 用 `var(--page-padding)`
 - [ ] 装饰图 URL 全部来自 `--upload-blob` 拿到的 https，不引用本地 `public/` 路径；`--assets` 数组与 HTML 中实际引用的 role 一一对应
@@ -295,4 +302,4 @@ stdout 应输出 `PUBLISHED: <id> (<name>)`。这时 dashboard / 编辑器模板
 - **API 兼容性**：脚本走 OpenAI `/images/edits` multipart 协议（`image` + `prompt` + `size` + `n`），响应支持 `b64_json` 或 `url` 两种 payload。换模型只改 `TEMPLATE_IMAGE_MODEL` + 必要时换 `TEMPLATE_IMAGE_API_BASE_URL`，脚本无需修改
 - **生图 30-60s**：HTTP 000 是网络抖动，重跑即可。装饰提取尽量一次成功，反复试浪费配额
 - **prompt 怎么改都不对**：可能是 model 极限（精确数量/排列复刻不出来）。接受"风格 + 位置"对齐即可，细节用 CSS 调
-- **DB 列不存在报错**：当前 DB schema 还没完全升到目标态。skill 是协议先到位的产物，引擎/DB 跟上后无需改 prompt 自动可用。临时跑通可手动加列或等下一轮 plan
+- **slot 校验失败**：按错误信息补齐 `basic.*`、`profile.contacts/contact.*`、`section.*` 或 `item.*`。不要用 `basics.*` 或 `profile.name/title/status/summary` 规避校验。
