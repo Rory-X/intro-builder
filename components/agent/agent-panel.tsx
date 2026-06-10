@@ -571,6 +571,32 @@ function AgentTurnArtifactsPanel({
     }
   }
 
+  async function handleApplyAll() {
+    for (const operation of turnArtifact.operations) {
+      applyOperation(operation);
+      onOperationApplied(turnArtifact.id, operation.id);
+    }
+    flushAutosave();
+
+    if (!hasInterrupts) return;
+
+    const allApproved = new Map(
+      turnArtifact.operations.map((op) => [op.id, true])
+    );
+    setDecisions(allApproved);
+    await submitAllDecisions(allApproved);
+  }
+
+  async function handleRejectAll() {
+    if (!hasInterrupts) return;
+
+    const allRejected = new Map(
+      turnArtifact.operations.map((op) => [op.id, false])
+    );
+    setDecisions(allRejected);
+    await submitAllDecisions(allRejected);
+  }
+
   return (
     <div
       data-testid="agent-turn-artifacts"
@@ -598,10 +624,35 @@ function AgentTurnArtifactsPanel({
       ) : null}
       {turnArtifact.operations.length > 0 ? (
         <div className="space-y-2 animate-in fade-in-0 slide-in-from-bottom-1 duration-200">
-          <div className="text-xs font-medium text-amber-700 dark:text-amber-300">
-            {turnArtifact.status === "applied"
-              ? `已应用 ${turnArtifact.operations.length} 条修改`
-              : `等待确认 ${countPendingOperations(turnArtifact)} 条修改建议`}
+          <div className="flex items-center justify-between gap-2">
+            <div className="text-xs font-medium text-amber-700 dark:text-amber-300">
+              {turnArtifact.status === "applied"
+                ? `已应用 ${turnArtifact.operations.length} 条修改`
+                : `等待确认 ${countPendingOperations(turnArtifact)} 条修改建议`}
+            </div>
+            {turnArtifact.status === "waiting-confirmation" &&
+            turnArtifact.operations.length > 1 ? (
+              <div className="flex gap-1">
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  onClick={handleApplyAll}
+                  className="h-6 px-2 text-xs"
+                >
+                  全部应用
+                </Button>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="ghost"
+                  onClick={handleRejectAll}
+                  className="h-6 px-2 text-xs"
+                >
+                  全部拒绝
+                </Button>
+              </div>
+            ) : null}
           </div>
           {turnArtifact.operations.map((operation) => (
             <AgentConfirmationCard
