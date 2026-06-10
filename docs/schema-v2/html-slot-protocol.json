@@ -27,7 +27,7 @@
       {
         "data-bind": "sectionOrder",
         "data-template": "section-tpl",
-        "description": "按 sectionOrder 顺序循环渲染所有分区（单栏和双栏的 main 区域都用这个）"
+        "description": "按 sectionOrder 顺序循环渲染所有分区；必须定义 section-tpl-list 和 section-tpl-block 两个模板"
       },
       {
         "data-bind": "section.items",
@@ -38,7 +38,7 @@
 
     "section_bindings": [
       { "data-bind": "section.title", "description": "分区标题，如「工作经历」「教育背景」" },
-      { "data-bind": "section.body", "description": "块状模块正文，如「专业技能」「个人总结」；同一模板中可和 section.items 并存，block section 优先走此槽" },
+      { "data-bind": "section.body", "description": "块状模块正文，如「专业技能」「个人总结」；放在 section-tpl-block 中" },
       { "data-bind": "section.id", "description": "分区 ID，如 experience、education" }
     ],
 

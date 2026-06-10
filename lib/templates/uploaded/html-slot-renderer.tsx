@@ -213,7 +213,6 @@ type ParserCtx = {
   ctx: IterationContext;
   depth: number;
   sectionIcons: Record<string, SectionIconDeclaration>;
-  sectionTemplateHasBodySlot?: boolean;
 };
 
 function makeParserOptions(p: ParserCtx): HTMLReactParserOptions {
@@ -427,7 +426,6 @@ function renderLoop(
       const childCtx: IterationContext = { ...p.ctx, section };
       const tplHtml = selectTemplateForSection(p.templates, tplId, section);
       if (!tplHtml) return placeholder(`模板未定义: ${tplId}`);
-      const sectionTemplateHasBodySlot = hasSectionBodySlot(tplHtml);
       const tplWithAttr = injectAttrIntoFirstTag(
         tplHtml,
         "data-pagination-section",
@@ -437,7 +435,7 @@ function renderLoop(
         <SlotChunk
           key={`section-${i}-${section.id}`}
           html={tplWithAttr}
-          parserCtx={{ ...p, ctx: childCtx, depth: p.depth + 1, sectionTemplateHasBodySlot }}
+          parserCtx={{ ...p, ctx: childCtx, depth: p.depth + 1 }}
         />
       );
     });
@@ -446,9 +444,6 @@ function renderLoop(
   if (loopName === "section.items") {
     if (!p.ctx.section) {
       return placeholder(`section.items 必须在 sectionOrder loop 内`);
-    }
-    if (p.ctx.section.kind === "block" && p.sectionTemplateHasBodySlot) {
-      return <></>;
     }
     const items = deriveItems(p.ctx, p.content);
     const tplHtml = selectTemplateForSection(p.templates, tplId, p.ctx.section);
@@ -508,10 +503,6 @@ function selectTemplateForSection(
     templates.get(baseId) ??
     null
   );
-}
-
-function hasSectionBodySlot(html: string): boolean {
-  return /\bdata-bind=["']section\.body["']/.test(html);
 }
 
 /**

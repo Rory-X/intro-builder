@@ -155,6 +155,12 @@ type HardcodedContentResult = {
   demoContent: string[];
 };
 
+type SectionTemplateSplitResult = {
+  templateId: string;
+  templateName: string;
+  missing: string[];
+};
+
 const LEGACY_BODY_BINDINGS = [
   "item.header.title",
   "item.header.subtitle",
@@ -188,6 +194,20 @@ function checkHardcodedContent(id: string, name: string, html: string): Hardcode
   const demoContent = DEMO_CONTENT_LITERALS.filter((literal) => html.includes(literal));
   if (legacyBindings.length === 0 && demoContent.length === 0) return null;
   return { templateId: id, templateName: name, legacyBindings, demoContent };
+}
+
+function collectSectionTemplateBaseIds(html: string): string[] {
+  return Array.from(
+    html.matchAll(
+      /<slot\b(?=[^>]*\bdata-bind=["']sectionOrder["'])(?=[^>]*\bdata-template=["']([^"']+)["'])[^>]*>/g,
+    ),
+    (match) => match[1],
+  );
+}
+
+function hasTemplate(html: string, id: string): boolean {
+  const escaped = id.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return new RegExp(`<template[^>]*\\bid=["']${escaped}["']`, "i").test(html);
 }
 
 async function runSlotCoverageCheck() {
@@ -268,6 +288,41 @@ async function runHardcodedContentCheck() {
   }
 
   fail("published templates contain legacy item slots or demo resume text");
+}
+
+async function runSectionTemplateSplitCheck() {
+  console.log("\n─── Section Template Split Check ───\n");
+
+  const publishedRows = await withTransientRetry("section template split check", () =>
+    db
+      .select({ id: templates.id, name: templates.name, html: templates.html })
+      .from(templates)
+      .where(eq(templates.status, "published")),
+  );
+
+  const results: SectionTemplateSplitResult[] = [];
+  for (const row of publishedRows) {
+    const html = row.html ?? "";
+    const missing: string[] = [];
+    for (const baseId of new Set(collectSectionTemplateBaseIds(html))) {
+      if (!hasTemplate(html, `${baseId}-list`)) missing.push(`${baseId}-list`);
+      if (!hasTemplate(html, `${baseId}-block`)) missing.push(`${baseId}-block`);
+    }
+    if (missing.length > 0) {
+      results.push({ templateId: row.id, templateName: row.name, missing });
+    }
+  }
+
+  if (results.length === 0) {
+    console.log("  All sectionOrder templates have list/block variants ✓\n");
+    return;
+  }
+
+  for (const result of results) {
+    console.log(`  ${result.templateId} (${result.templateName})`);
+    console.log(`    缺: ${result.missing.join("、")}`);
+  }
+  fail("published templates have unsplit section templates");
 }
 
 async function runCrimsonTypographyCheck() {
@@ -405,6 +460,7 @@ async function main() {
   // Slot coverage check
   await runSlotCoverageCheck();
   await runHardcodedContentCheck();
+  await runSectionTemplateSplitCheck();
   await runCrimsonTypographyCheck();
 }
 

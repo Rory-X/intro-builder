@@ -66,7 +66,7 @@
           "type": "rich-text",
           "description": "分区级富文本（技能、自定义模块的正文内容）",
           "required_in_template": true,
-          "note": "模板必须为 section.body 留出显示位置；当同一 section 模板同时包含 section.body 和 section.items 时，渲染引擎会让 block section 优先走 section.body，避免双渲染"
+          "note": "模板必须在 sectionOrder 的 block 变体模板中为 section.body 留出显示位置"
         },
         "section.items": {
           "type": "loop",
@@ -176,6 +176,11 @@
     {
       "rule": "section_body_present",
       "description": "模板应为 section.body 留出显示位置；block section 优先使用该槽",
+      "severity": "error"
+    },
+    {
+      "rule": "section_template_split",
+      "description": "sectionOrder 的 data-template=\"X\" 必须同时定义 X-list 和 X-block，列表模块走 section.items，块状模块走 section.body",
       "severity": "error"
     },
     {

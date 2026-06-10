@@ -25,12 +25,20 @@
 
   <slot data-bind="sectionOrder" data-template="section-tpl"></slot>
 
-  <template id="section-tpl">
+  <template id="section-tpl-list">
+    <section class="resume-section" data-pagination-section>
+      <h2 class="section-title"><slot data-bind="section.icon"></slot><slot data-bind="section.title"></slot></h2>
+      <div class="section-content">
+        <slot data-bind="section.items" data-template="item-tpl"></slot>
+      </div>
+    </section>
+  </template>
+
+  <template id="section-tpl-block">
     <section class="resume-section" data-pagination-section>
       <h2 class="section-title"><slot data-bind="section.icon"></slot><slot data-bind="section.title"></slot></h2>
       <div class="section-content">
         <div class="section-body"><slot data-bind="section.body"></slot></div>
-        <slot data-bind="section.items" data-template="item-tpl"></slot>
       </div>
     </section>
   </template>

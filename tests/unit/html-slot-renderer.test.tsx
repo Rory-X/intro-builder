@@ -674,7 +674,7 @@ describe("SlotRenderer — section fixture integration", () => {
     expect(container.querySelectorAll(".fixture-section").length).toBe(3);
   });
 
-  it("does not double-render block sections when one template includes section.body and section.items", () => {
+  it("uses split section templates so block sections render through section.body only", () => {
     const mixed = makeContent({
       skills: richDoc("Python、Go、Rust"),
       sectionOrder: ["experience", "skills"],
@@ -683,11 +683,16 @@ describe("SlotRenderer — section fixture integration", () => {
       html: `<article>
         <slot data-bind="sectionOrder" data-template="section" />
       </article>
-      <template id="section">
+      <template id="section-list">
+        <section>
+          <h2><slot data-bind="section.title" /></h2>
+          <slot data-bind="section.items" data-template="item" />
+        </section>
+      </template>
+      <template id="section-block">
         <section>
           <h2><slot data-bind="section.title" /></h2>
           <div class="body"><slot data-bind="section.body" /></div>
-          <slot data-bind="section.items" data-template="item" />
         </section>
       </template>
       <template id="item">

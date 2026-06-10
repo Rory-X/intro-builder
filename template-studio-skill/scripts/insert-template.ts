@@ -157,6 +157,29 @@ function checkLegacyBindings(html: string): string[] {
   return LEGACY_BODY_BINDINGS.filter((binding) => hasBinding(html, binding));
 }
 
+function collectSectionTemplateBaseIds(html: string): string[] {
+  return Array.from(
+    html.matchAll(
+      /<slot\b(?=[^>]*\bdata-bind=["']sectionOrder["'])(?=[^>]*\bdata-template=["']([^"']+)["'])[^>]*>/g,
+    ),
+    (match) => match[1],
+  );
+}
+
+function hasTemplate(html: string, id: string): boolean {
+  const escaped = id.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return new RegExp(`<template[^>]*\\bid=["']${escaped}["']`, "i").test(html);
+}
+
+function checkMissingSectionTemplateVariants(html: string): string[] {
+  const missing: string[] = [];
+  for (const baseId of new Set(collectSectionTemplateBaseIds(html))) {
+    if (!hasTemplate(html, `${baseId}-list`)) missing.push(`${baseId}-list`);
+    if (!hasTemplate(html, `${baseId}-block`)) missing.push(`${baseId}-block`);
+  }
+  return missing;
+}
+
 function checkDemoContent(html: string): string[] {
   return DEMO_CONTENT_LITERALS.filter((literal) => html.includes(literal));
 }
@@ -311,6 +334,18 @@ async function main() {
           `  <slot data-bind="item.location"></slot>\n` +
           `  <slot data-bind="item.link"></slot>\n` +
           `  <slot data-bind="item.bullets"></slot>`,
+      );
+    }
+
+    const missingSectionTemplates = checkMissingSectionTemplateVariants(customHtml);
+    if (missingSectionTemplates.length > 0) {
+      fail(
+        1,
+        `--custom-html is missing section template variants:\n  ` +
+          missingSectionTemplates.join("\n  ") +
+          `\n\nEvery sectionOrder data-template=\"X\" must define both ` +
+          `<template id=\"X-list\"> for list sections and ` +
+          `<template id=\"X-block\"> for block sections.`,
       );
     }
 

@@ -77,16 +77,21 @@
 ## 3. Section Order（分区循环）
 
 ```html
-<slot data-bind="sectionOrder" data-template="section-block">
-  <template id="section-block">
+<slot data-bind="sectionOrder" data-template="section">
+  <template id="section-list">
     <section>
       <h2><slot data-bind="section.title"></slot></h2>
-      <slot data-bind="section.body"></slot>
       <slot data-bind="section.items" data-template="item-block">
         <template id="item-block">
           <!-- item.* bindings here -->
         </template>
       </slot>
+    </section>
+  </template>
+  <template id="section-block">
+    <section>
+      <h2><slot data-bind="section.title"></slot></h2>
+      <slot data-bind="section.body"></slot>
     </section>
   </template>
 </slot>
@@ -97,6 +102,9 @@
 | `section.title` | string | 分区标题（如"工作经历""教育背景"） |
 | `section.body` | rich-text | 分区级富文本内容；模板必须留显示位置，block section 会优先走此槽 |
 | `section.items` | loop | 该分区下的条目列表 |
+
+`sectionOrder` 使用的 `data-template="X"` 必须同时定义 `X-list` 和 `X-block`：
+列表模块走 `X-list` + `section.items`，块状模块走 `X-block` + `section.body`。
 
 ---
 
@@ -169,5 +177,6 @@
 - [ ] `item.location` 有显示位置（用户填了地点不应丢失）
 - [ ] `item.meta` 有显示位置（技术栈/GPA 不应丢失）
 - [ ] `item.link` 有显示位置（项目链接不应丢失）
-- [ ] `section.body` 有显示位置；同一 section 模板里可同时保留 `section.items`，引擎会避免 block 模块双渲染
+- [ ] `sectionOrder` 的模板已拆成 `*-list` 和 `*-block`
+- [ ] `section.body` 在 `*-block` 中有显示位置
 - [ ] 所有字段为空时布局不塌陷

@@ -27,6 +27,7 @@ type PatchResult = {
 
 const PATCH_MARKER = "intro-builder template db patch 2026-06";
 const SECTION_BODY_PATCH_MARKER = "intro-builder template db patch 2026-06 section.body";
+const SECTION_SPLIT_PATCH_MARKER = "intro-builder template db patch 2026-06 section split";
 const PROFILE_TYPOGRAPHY_CSS = `
 
 /* ${PATCH_MARKER}: fixed profile typography boundary */
@@ -212,6 +213,85 @@ function patchSectionBodyHtml(html: string, changes: string[]): string {
   return next;
 }
 
+function patchSectionTemplateSplit(html: string, changes: string[]): string {
+  const baseIds = Array.from(
+    html.matchAll(
+      /<slot\b(?=[^>]*\bdata-bind=["']sectionOrder["'])(?=[^>]*\bdata-template=["']([^"']+)["'])[^>]*>/g,
+    ),
+    (match) => match[1],
+  );
+  let next = html;
+
+  for (const baseId of new Set(baseIds)) {
+    if (hasTemplate(next, `${baseId}-list`) && hasTemplate(next, `${baseId}-block`)) {
+      continue;
+    }
+
+    const template = extractTemplate(next, baseId);
+    if (!template) continue;
+
+    const listInner = removeSectionBodySlot(template.inner).trim();
+    const blockInner = removeSectionItemsSlot(template.inner).trim();
+    if (listInner === template.inner.trim() || blockInner === template.inner.trim()) {
+      continue;
+    }
+
+    const splitTemplates = `<template id="${baseId}-list">
+${indentTemplateInner(listInner)}
+  </template>
+  <template id="${baseId}-block">
+${indentTemplateInner(blockInner)}
+  </template>`;
+    next = `${next.slice(0, template.start)}${splitTemplates}${next.slice(template.end)}`;
+    changes.push(`split ${baseId} into list/block section templates`);
+  }
+
+  return next;
+}
+
+function hasTemplate(html: string, id: string): boolean {
+  return new RegExp(`<template[^>]*\\bid=["']${escapeRegExp(id)}["']`, "i").test(html);
+}
+
+function extractTemplate(html: string, id: string): { start: number; end: number; inner: string } | null {
+  const re = new RegExp(
+    `<template[^>]*\\bid=["']${escapeRegExp(id)}["'][^>]*>([\\s\\S]*?)<\\/template>`,
+    "i",
+  );
+  const match = re.exec(html);
+  if (!match || match.index === undefined) return null;
+  return {
+    start: match.index,
+    end: match.index + match[0].length,
+    inner: match[1] ?? "",
+  };
+}
+
+function removeSectionBodySlot(html: string): string {
+  return html.replace(
+    /\s*<div\b[^>]*class=["'][^"']*\bsection-body\b[^"']*["'][^>]*>\s*<slot\b(?=[^>]*\bdata-bind=["']section\.body["'])[^>]*>(?:\s*<\/slot>)?\s*<\/div>\s*/i,
+    "\n",
+  );
+}
+
+function removeSectionItemsSlot(html: string): string {
+  return html.replace(
+    /\s*<slot\b(?=[^>]*\bdata-bind=["']section\.items["'])(?=[^>]*\bdata-template=)[^>]*>(?:\s*<\/slot>)?\s*/i,
+    "\n",
+  );
+}
+
+function indentTemplateInner(html: string): string {
+  return html
+    .split("\n")
+    .map((line) => (line.trim() ? `    ${line.trimEnd()}` : ""))
+    .join("\n");
+}
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
 function patchSectionTitleLineHeight(css: string, changes: string[]): string {
   const patched = css.replace(/([^{}]*section-title[^{}]*)\{([^{}]*)\}/g, (block, selector: string, body: string) => {
     if (selector.includes("data-pagination-header")) return block;
@@ -237,6 +317,7 @@ function patchTemplate(row: DbTemplate): PatchResult | null {
     if (row.id === "classic") html = patchClassicHtml(html, changes);
     html = patchItemLinkHtml(html, changes);
     html = patchSectionBodyHtml(html, changes);
+    html = patchSectionTemplateSplit(html, changes);
   }
 
   if (css) {
@@ -254,6 +335,11 @@ function patchTemplate(row: DbTemplate): PatchResult | null {
     if (!css.includes(SECTION_BODY_PATCH_MARKER)) {
       css = `${css.trimEnd()}${SECTION_BODY_CSS}`;
       changes.push("append section.body CSS");
+    }
+
+    if (!css.includes(SECTION_SPLIT_PATCH_MARKER)) {
+      css = `${css.trimEnd()}\n\n/* ${SECTION_SPLIT_PATCH_MARKER}: section templates are split into list/block variants */\n`;
+      changes.push("append section split marker");
     }
 
     if (row.id === "modern" && !css.includes(".modern-status:not(:empty)::before")) {
