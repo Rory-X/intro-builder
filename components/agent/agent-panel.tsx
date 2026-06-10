@@ -523,42 +523,46 @@ function AgentTurnArtifactsPanel({
     return null;
   }
 
-  const allOperations = turnArtifact.operations || [];
+  const hasInterrupts = turnArtifact.interrupts.length > 0;
 
   async function handleApplyOperation(operation: ResumeOperation) {
     applyOperation(operation);
     onOperationApplied(turnArtifact.id, operation.id);
     flushAutosave();
 
+    if (!hasInterrupts) return;
+
     const newDecisions = new Map(decisions);
     newDecisions.set(operation.id, true);
     setDecisions(newDecisions);
 
-    // Submit all decisions once all operations have been decided
-    if (allOperations.every((op: ResumeOperation) => newDecisions.has(op.id))) {
+    // Submit all decisions once all interrupts have been decided
+    if (turnArtifact.interrupts.every((interrupt) => newDecisions.has(interrupt.id))) {
       await submitAllDecisions(newDecisions);
     }
   }
 
   async function handleRejectOperation(operationId: string) {
+    if (!hasInterrupts) return;
+
     const newDecisions = new Map(decisions);
     newDecisions.set(operationId, false);
     setDecisions(newDecisions);
 
-    // Submit all decisions once all operations have been decided
-    if (allOperations.every((op: ResumeOperation) => newDecisions.has(op.id))) {
+    // Submit all decisions once all interrupts have been decided
+    if (turnArtifact.interrupts.every((interrupt) => newDecisions.has(interrupt.id))) {
       await submitAllDecisions(newDecisions);
     }
   }
 
   async function submitAllDecisions(allDecisions: Map<string, boolean>) {
-    if (!submitInterrupts) return;
+    if (!submitInterrupts || !hasInterrupts) return;
 
     try {
-      const responses = allOperations.map((op: ResumeOperation) => ({
-        interruptId: op.id,
-        status: allDecisions.get(op.id) ? ("resolved" as const) : ("cancelled" as const),
-        payload: { approved: allDecisions.get(op.id) || false },
+      const responses = turnArtifact.interrupts.map((interrupt) => ({
+        interruptId: interrupt.id,
+        status: allDecisions.get(interrupt.id) ? ("resolved" as const) : ("cancelled" as const),
+        payload: { approved: allDecisions.get(interrupt.id) || false },
       }));
       await submitInterrupts(responses);
       onInterruptResolved(turnArtifact.id);
