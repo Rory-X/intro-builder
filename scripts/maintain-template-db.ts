@@ -1,5 +1,6 @@
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { pathToFileURL } from "node:url";
 import { parseArgs } from "node:util";
 import { neon } from "@neondatabase/serverless";
 import { db } from "@/db";
@@ -28,7 +29,6 @@ type PatchResult = {
 const PATCH_MARKER = "intro-builder template db patch 2026-06";
 const SECTION_BODY_PATCH_MARKER = "intro-builder template db patch 2026-06 section.body";
 const SECTION_SPLIT_PATCH_MARKER = "intro-builder template db patch 2026-06 section split";
-const CRIMSON_ITEM_LAYOUT_PATCH_MARKER = "intro-builder template db patch 2026-06 crimson item layout";
 const PROFILE_TYPOGRAPHY_CSS = `
 
 /* ${PATCH_MARKER}: fixed profile typography boundary */
@@ -65,67 +65,6 @@ const SECTION_BODY_CSS = `
   line-height: var(--body-line-height);
 }
 .section-body:empty {
-  display: none;
-}
-`;
-const CRIMSON_ITEM_LAYOUT_CSS = `
-
-/* ${CRIMSON_ITEM_LAYOUT_PATCH_MARKER}: align item meta/link and role/location rows with crimson */
-.item-header {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 12px;
-}
-.item-title {
-  min-width: 0;
-}
-.item-date {
-  text-align: right;
-  flex-shrink: 0;
-  white-space: nowrap;
-}
-.item-meta-row {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 12px;
-  margin-top: 2px;
-  font-size: calc(var(--font-size) * 0.92);
-  line-height: var(--line-height);
-}
-.item-meta {
-  min-width: 0;
-  overflow-wrap: anywhere;
-}
-.item-link {
-  text-align: right;
-  min-width: 0;
-  overflow-wrap: anywhere;
-}
-.item-subtitle {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 12px;
-  margin-top: 2px;
-}
-.item-role {
-  min-width: 0;
-}
-.item-location {
-  margin-left: auto;
-  text-align: right;
-  flex-shrink: 0;
-  white-space: nowrap;
-}
-.item-meta:empty,
-.item-link:empty,
-.item-role:empty,
-.item-location:empty {
-  display: none;
-}
-.item-meta-row:has(.item-meta:empty):has(.item-link:empty) {
   display: none;
 }
 `;
@@ -266,22 +205,29 @@ function patchSlotProtocolHtml(html: string, changes: string[]): string {
     next = next.replace(pattern, replacement);
     if (next !== before) changes.push(label);
   }
+  const hadBasicStatus = /data-bind=["']basic\.status["']/.test(next);
 
   if (!/data-bind=["']profile\.contacts["']/.test(next)) {
-    const contactBlock = `<div class="contact-bar"><slot data-bind="profile.contacts" data-template="contact-item"></slot></div>`;
-    const sectionOrderSlot = /<slot\b(?=[^>]*\bdata-bind=["']sectionOrder["'])[^>]*>(?:\s*<\/slot>)?/i;
-    if (sectionOrderSlot.test(next)) {
-      next = next.replace(sectionOrderSlot, `${contactBlock}\n\n  $&`);
+    const migrated = migrateLegacyContactContainers(next);
+    if (migrated !== next) {
+      next = migrated;
+      changes.push("migrate legacy contact container to profile.contacts loop");
     } else {
-      next = `${next.trimEnd()}\n${contactBlock}`;
+      const contactBlock = `<div class="contact-bar"><slot data-bind="profile.contacts" data-template="contact-item"></slot></div>`;
+      const sectionOrderSlot = /<slot\b(?=[^>]*\bdata-bind=["']sectionOrder["'])[^>]*>(?:\s*<\/slot>)?/i;
+      if (sectionOrderSlot.test(next)) {
+        next = next.replace(sectionOrderSlot, `${contactBlock}\n\n  $&`);
+      } else {
+        next = `${next.trimEnd()}\n${contactBlock}`;
+      }
+      changes.push("add fallback profile.contacts loop");
     }
-    changes.push("add profile.contacts loop");
   }
 
   if (!hasTemplate(next, "contact-item")) {
     next = `${next.trimEnd()}
   <template id="contact-item">
-    <span class="contact-item"><slot data-bind="contact.icon"></slot><slot data-bind="contact.label"></slot></span>
+    <span class="contact-item"><slot data-bind="contact.icon" class="contact-icon-lucide"></slot><slot data-bind="contact.label"></slot></span>
   </template>`;
     changes.push("add contact-item template");
   }
@@ -291,12 +237,119 @@ function patchSlotProtocolHtml(html: string, changes: string[]): string {
     .replace(
       /<slot\b(?=[^>]*\bdata-bind=["']basics\.(?:email|phone|location|website|icon\.[^"']+)["'])[^>]*>(?:\s*<\/slot>)?/g,
       "",
-    )
-    .replace(/\s*(?:\||·|,|，|\/)\s*(?=<\/(?:div|p|span)>)/g, "")
-    .replace(/(<(?:div|p|span)\b[^>]*class=["'][^"']*contact[^"']*["'][^>]*>)\s*(?:\||·|,|，|\/|\s)*\s*(<\/(?:div|p|span)>)/gi, "$1$2");
+    );
   if (next !== beforeContacts) changes.push("remove legacy basics contact bindings");
 
+  if (hadBasicStatus && !/data-bind=["']basic\.status["']/.test(next)) {
+    const withStatus = insertStatusBesideTitle(next);
+    if (withStatus !== next) {
+      next = withStatus;
+      changes.push("move basic.status beside basic.title");
+    }
+  }
+
   return next;
+}
+
+function migrateLegacyContactContainers(html: string): string {
+  const candidates = collectLegacyContactContainers(html);
+  if (candidates.length === 0) return html;
+
+  let next = html;
+  for (const candidate of [...candidates].reverse()) {
+    const inner = next.slice(candidate.openEnd, candidate.closeStart);
+    const identity = buildContactContainerIdentityLine(inner);
+    next = `${next.slice(0, candidate.openEnd)}
+              ${identity}
+              <slot data-bind="profile.contacts" data-template="contact-item"></slot>
+            ${next.slice(candidate.closeStart)}`;
+  }
+  return next;
+}
+
+function buildContactContainerIdentityLine(inner: string): string {
+  const hasTitle = /data-bind=["']basic\.title["']/.test(inner);
+  const hasStatus = /data-bind=["']basic\.status["']/.test(inner);
+  if (!hasTitle && !hasStatus) return "";
+
+  const title = hasTitle ? '<span class="contact-item"><slot data-bind="basic.title"></slot></span>' : "";
+  const status = hasStatus
+    ? '<span class="profile-status"><span class="profile-sep"> · </span><span class="profile-status-value"><slot data-bind="basic.status"></slot></span></span>'
+    : "";
+  return `${title}${status}`;
+}
+
+function insertStatusBesideTitle(html: string): string {
+  const statusHtml = '<span class="profile-status"><span class="profile-sep"> · </span><span class="profile-status-value"><slot data-bind="basic.status"></slot></span></span>';
+  const titleSlot = /<slot\b(?=[^>]*\bdata-bind=["']basic\.title["'])[^>]*>(?:\s*<\/slot>)?/i;
+  return html.replace(titleSlot, (match) => `${match}${statusHtml}`);
+}
+
+function collectLegacyContactContainers(html: string): Array<{
+  start: number;
+  openEnd: number;
+  closeStart: number;
+  end: number;
+}> {
+  const elements: Array<{
+    start: number;
+    openEnd: number;
+    closeStart: number;
+    end: number;
+    openTag: string;
+  }> = [];
+  const stack: Array<{ tag: string; start: number; openEnd: number; openTag: string }> = [];
+  const re = /<\/?([a-zA-Z][\w:-]*)\b[^>]*>/g;
+  let match: RegExpExecArray | null;
+
+  while ((match = re.exec(html)) !== null) {
+    const full = match[0];
+    const tag = match[1].toLowerCase();
+    if (/^<\s*\//.test(full)) {
+      const stackIndex = stack.findLastIndex((entry) => entry.tag === tag);
+      if (stackIndex < 0) continue;
+      const [entry] = stack.splice(stackIndex, stack.length - stackIndex);
+      elements.push({
+        start: entry.start,
+        openEnd: entry.openEnd,
+        closeStart: match.index,
+        end: match.index + full.length,
+        openTag: entry.openTag,
+      });
+      continue;
+    }
+    if (/\/\s*>$/.test(full)) continue;
+    stack.push({
+      tag,
+      start: match.index,
+      openEnd: match.index + full.length,
+      openTag: full,
+    });
+  }
+
+  const blockTags = new Set(["div", "p", "aside", "section", "header", "main", "li"]);
+  const candidates = elements
+    .filter((element) => {
+      const tag = element.openTag.match(/^<([a-zA-Z][\w:-]*)/)?.[1]?.toLowerCase();
+      if (!tag || !blockTags.has(tag)) return false;
+      if (!isLegacyContactContainerOpenTag(element.openTag)) return false;
+      const inner = html.slice(element.openEnd, element.closeStart);
+      return /data-bind=["']basics\.(?:email|phone|location|website|icon\.[^"']+)["']/.test(inner);
+    })
+    .sort((a, b) => a.start - b.start || b.end - a.end);
+
+  return candidates.filter((candidate, index) => {
+    return !candidates.some((other, otherIndex) => (
+      otherIndex !== index &&
+      other.start <= candidate.start &&
+      candidate.end <= other.end
+    ));
+  });
+}
+
+function isLegacyContactContainerOpenTag(openTag: string): boolean {
+  const classAttr = openTag.match(/\bclass=["']([^"']*)["']/i)?.[1] ?? "";
+  return /\b(?:contact|info-line|meta-row|details?)\b/i.test(classAttr);
 }
 
 function patchItemLinkHtml(html: string, changes: string[]): string {
@@ -359,65 +412,6 @@ ${indentTemplateInner(blockInner)}
   return next;
 }
 
-function patchCrimsonItemLayoutHtml(html: string, changes: string[]): string {
-  let next = html;
-  for (const itemTemplateId of collectSectionItemTemplateIds(next)) {
-    const template = extractTemplate(next, itemTemplateId);
-    if (!template) continue;
-    if (isCrimsonItemLayout(template.inner)) continue;
-
-    const root = splitRootElement(template.inner);
-    if (!root) continue;
-
-    const replacement = `<template id="${itemTemplateId}">
-${indentTemplateInner(`${root.open}
-      <div class="item-header">
-        <span class="item-title"><slot data-bind="item.title"></slot></span>
-        <span class="item-date"><slot data-bind="item.dateRange"></slot></span>
-      </div>
-      <div class="item-subtitle"><span class="item-role"><slot data-bind="item.subtitle"></slot></span><span class="item-location"><slot data-bind="item.location"></slot></span></div>
-      <div class="item-meta-row"><span class="item-meta"><slot data-bind="item.meta"></slot></span><a class="item-link"><slot data-bind="item.link"></slot></a></div>
-      <div class="item-body"><slot data-bind="item.bullets"></slot></div>
-    ${root.close}`)}
-  </template>`;
-
-    next = `${next.slice(0, template.start)}${replacement}${next.slice(template.end)}`;
-    changes.push(`align ${itemTemplateId} item layout with crimson`);
-  }
-  return next;
-}
-
-function collectSectionItemTemplateIds(html: string): string[] {
-  return Array.from(
-    html.matchAll(
-      /<slot\b(?=[^>]*\bdata-bind=["']section\.items["'])(?=[^>]*\bdata-template=["']([^"']+)["'])[^>]*>/g,
-    ),
-    (match) => match[1],
-  );
-}
-
-function isCrimsonItemLayout(html: string): boolean {
-  return (
-    (/\bclass=["'][^"']*\bitem-meta-row\b/.test(html) &&
-      /\bclass=["'][^"']*\bitem-role\b/.test(html) &&
-      /\bclass=["'][^"']*\bitem-location\b/.test(html)) ||
-    (/\bclass=["'][^"']*\bentry-meta-row\b/.test(html) &&
-      /\bclass=["'][^"']*\bentry-role\b/.test(html) &&
-      /\bclass=["'][^"']*\bentry-location\b/.test(html))
-  );
-}
-
-function splitRootElement(html: string): { open: string; close: string } | null {
-  const trimmed = html.trim();
-  const open = trimmed.match(/^<([a-zA-Z][\w:-]*)([^>]*)>/);
-  if (!open) return null;
-  const tag = open[1];
-  const closeRe = new RegExp(`</${escapeRegExp(tag)}>\\s*$`, "i");
-  const close = trimmed.match(closeRe);
-  if (!close) return null;
-  return { open: open[0], close: close[0].trim() };
-}
-
 function hasTemplate(html: string, id: string): boolean {
   return new RegExp(`<template[^>]*\\bid=["']${escapeRegExp(id)}["']`, "i").test(html);
 }
@@ -476,7 +470,7 @@ function patchSectionTitleLineHeight(css: string, changes: string[]): string {
   return patched;
 }
 
-function patchTemplate(row: DbTemplate): PatchResult | null {
+export function patchTemplate(row: DbTemplate): PatchResult | null {
   const changes: string[] = [];
   let html = row.html;
   let css = row.css;
@@ -488,7 +482,6 @@ function patchTemplate(row: DbTemplate): PatchResult | null {
     html = patchItemLinkHtml(html, changes);
     html = patchSectionBodyHtml(html, changes);
     html = patchSectionTemplateSplit(html, changes);
-    html = patchCrimsonItemLayoutHtml(html, changes);
   }
 
   if (css) {
@@ -511,11 +504,6 @@ function patchTemplate(row: DbTemplate): PatchResult | null {
     if (!css.includes(SECTION_SPLIT_PATCH_MARKER)) {
       css = `${css.trimEnd()}\n\n/* ${SECTION_SPLIT_PATCH_MARKER}: section templates are split into list/block variants */\n`;
       changes.push("append section split marker");
-    }
-
-    if (!css.includes(CRIMSON_ITEM_LAYOUT_PATCH_MARKER)) {
-      css = `${css.trimEnd()}${CRIMSON_ITEM_LAYOUT_CSS}`;
-      changes.push("append crimson item layout CSS");
     }
 
     if (row.id === "modern" && !css.includes(".modern-status:not(:empty)::before")) {
@@ -604,7 +592,9 @@ async function main() {
   await patchTemplates(Boolean(values.apply));
 }
 
-main().catch((error) => {
-  console.error(error);
-  process.exit(1);
-});
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+  main().catch((error) => {
+    console.error(error);
+    process.exit(1);
+  });
+}
