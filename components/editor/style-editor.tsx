@@ -11,7 +11,7 @@ import { ChevronDown, RotateCcw, SlidersHorizontal } from "lucide-react";
 
 const FONT_KEYS: FontKey[] = ["sans", "serif", "mono"];
 const FONT_SIZE_OPTIONS = [10, 11, 12, 13, 14, 15, 16] as const;
-const HEADING_GAP_OPTIONS = [0, 4, 8, 12, 16, 20, 24, 28, 32] as const;
+const SECTION_GAP_OPTIONS = [4, 8, 10, 12, 14, 16, 18, 20, 22, 24] as const;
 const BODY_LINE_HEIGHT_OPTIONS = [1.2, 1.3, 1.4, 1.5, 1.6, 1.7, 1.8, 1.9, 2.0] as const;
 const PAGE_PADDING_OPTIONS = [20, 25, 30, 35, 40, 45, 50, 55, 60] as const;
 
@@ -88,10 +88,10 @@ export function StyleEditor() {
 
           <ValueDropdownRow
             label="标题间距"
-            value={ss.headingGap}
+            value={ss.sectionGap}
             unit="px"
-            options={HEADING_GAP_OPTIONS}
-            onChange={(v) => set("headingGap", v)}
+            options={SECTION_GAP_OPTIONS}
+            onChange={(v) => set("sectionGap", v)}
           />
 
           <ValueDropdownRow

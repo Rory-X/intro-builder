@@ -90,33 +90,55 @@ function checkDualConstraint(css: string): string[] {
   return violations;
 }
 
-/**
- * v2 header completeness guard: every template MUST include all basics
- * bindings so user data never silently disappears. Photo uses <img data-bind>,
- * others use <slot data-bind>.
- */
-const REQUIRED_BASICS_BINDINGS = [
-  "basics.photo",
-  "basics.name",
-  "basics.title",
-  "basics.status",
-  "basics.email",
-  "basics.phone",
-  "basics.location",
-  "basics.website",
+const REQUIRED_BINDINGS = [
+  "basic.name",
+  "basic.title",
+  "basic.status",
+  "basic.photo",
+  "profile.contacts",
+  "contact.icon",
+  "contact.label",
+  "sectionOrder",
+  "section.title",
+  "section.body",
+  "section.items",
+  "item.title",
+  "item.subtitle",
+  "item.dateRange",
+  "item.location",
+  "item.meta",
+  "item.link",
+  "item.bullets",
 ] as const;
 
-function checkRequiredBindings(html: string): string[] {
-  const missing: string[] = [];
-  for (const binding of REQUIRED_BASICS_BINDINGS) {
-    // basics.photo: must appear as <img data-bind="basics.photo"
-    // others: must appear as data-bind="basics.xxx"
-    const re = new RegExp(`data-bind=["']${binding.replace(".", "\\.")}["']`);
-    if (!re.test(html)) {
-      missing.push(binding);
-    }
-  }
-  return missing;
+const FORBIDDEN_BINDING_PATTERNS = [
+  /^basics\./,
+  /^basics\.icon\./,
+  /^profile\.(name|title|status|summary)$/,
+] as const;
+
+function hasBinding(html: string, binding: string): boolean {
+  const escaped = binding.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return new RegExp(`data-bind=["']${escaped}["']`).test(html);
+}
+
+function listBindings(html: string): string[] {
+  const matches = html.matchAll(/data-bind=["']([^"']+)["']/g);
+  return Array.from(new Set(Array.from(matches, (match) => match[1]))).sort();
+}
+
+function checkMissingRequiredBindings(html: string): string[] {
+  return REQUIRED_BINDINGS.filter((binding) => !hasBinding(html, binding));
+}
+
+function checkForbiddenBindings(html: string): string[] {
+  return listBindings(html).filter((binding) =>
+    FORBIDDEN_BINDING_PATTERNS.some((pattern) => pattern.test(binding)),
+  );
+}
+
+function hasPhotoImgBinding(html: string): boolean {
+  return /<img\b[^>]*data-bind=["']basic\.photo["'][^>]*>/i.test(html);
 }
 
 async function main() {
@@ -236,27 +258,41 @@ async function main() {
     }
   }
 
-  // v2 header completeness check: every uploaded template header must
-  // include ALL basics bindings. Missing a binding = user's data silently
-  // disappears from the rendered resume (zoo reported: photo, website,
-  // status, title all invisible). Fail-fast here so skill must re-add them.
+  // v2 slot protocol check: templates must use the current public view model,
+  // not storage paths or legacy compatibility aliases.
   if (customHtml) {
-    const missing = checkRequiredBindings(customHtml);
+    const forbidden = checkForbiddenBindings(customHtml);
+    if (forbidden.length > 0) {
+      fail(
+        1,
+        `--custom-html uses forbidden slot bindings:\n  ` +
+          forbidden.join("\n  ") +
+          `\n\nCurrent schema exposes basic.* for headline identity, ` +
+          `profile.contacts/contact.* for icon contact rows, and section/item ` +
+          `bindings for body content. Do not use basics.* or ` +
+          `profile.name/title/status/summary.`,
+      );
+    }
+
+    const missing = checkMissingRequiredBindings(customHtml);
     if (missing.length > 0) {
       fail(
         1,
-        `--custom-html is missing required header bindings:\n  ` +
+        `--custom-html is missing required slot bindings:\n  ` +
           missing.join("\n  ") +
-          `\n\nEvery v2 template header must include ALL of:\n` +
-          `  <img data-bind="basics.photo" .../>  (for photo)\n` +
-          `  <slot data-bind="basics.name">       (for name)\n` +
-          `  <slot data-bind="basics.title">      (for title/求职方向)\n` +
-          `  <slot data-bind="basics.status">     (for 求职状态)\n` +
-          `  <slot data-bind="basics.email">      (for email)\n` +
-          `  <slot data-bind="basics.phone">      (for phone)\n` +
-          `  <slot data-bind="basics.location">   (for city)\n` +
-          `  <slot data-bind="basics.website">    (for 知识库/个人网站)\n` +
-          `\nSee SKILL.md §slot-protocol "header 必须包含全部个人信息字段".`,
+          `\n\nRequired groups:\n` +
+          `  basic.name/basic.title/basic.status/basic.photo for headline identity\n` +
+          `  profile.contacts + contact.icon/contact.label for contact rows\n` +
+          `  sectionOrder + section.* + item.* for body sections\n` +
+          `\nSee docs/schema-v2/template-slot-fields.md.`,
+      );
+    }
+
+    if (!hasPhotoImgBinding(customHtml)) {
+      fail(
+        1,
+        `--custom-html must render the avatar with <img data-bind="basic.photo">. ` +
+          `Do not use <slot data-bind="basic.photo">.`,
       );
     }
   }

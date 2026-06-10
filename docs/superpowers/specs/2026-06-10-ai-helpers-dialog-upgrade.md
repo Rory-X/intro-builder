@@ -1,7 +1,7 @@
 # Spec: AI 辅助功能 UX 升级
 
-**日期**: 2026-06-10  
-**作者**: Claude Opus 4.8  
+**日期**: 2026-06-10
+**作者**: Claude Opus 4.8
 **状态**: Draft
 
 ## 1. 背景与动机
@@ -202,7 +202,7 @@ const [helperState, setHelperState] = useState<HelperState>({ status: "idle" });
 async function handleRequest() {
   setHelperState({ status: "loading" });
   setDialogOpen(true); // 打开 Dialog
-  
+
   const result = await fetchHelper(...);
   setHelperState({ status: "ready", result });
 }

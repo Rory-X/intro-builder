@@ -31,39 +31,45 @@
 
 .name {
   margin-top: 0.5em;
+  margin-bottom: 0.2em;
   font-size: 1.6em;
   font-weight: 700;
   color: #1a1a1a;
 }
 
-/* ===== 可变区域（消费 CSS 变量） ===== */
-.tpl-body {
-  font-size: var(--font-size);
-  font-family: var(--font-family);
-  line-height: var(--line-height);
-  padding: 0 var(--page-padding);
-}
-
-.subtitle-row {
-  text-align: center;
+.headline {
+  margin: 0;
   color: #555;
-  margin-bottom: 0.4em;
 }
 
-.dot-sep {
+.headline-sep {
   margin: 0 0.3em;
   color: #999;
 }
 
 .contact-bar {
-  text-align: center;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 0.4em 0.9em;
+  margin-top: 0.7em;
   color: #444;
-  margin-bottom: 1em;
 }
 
-.contact-sep {
-  margin: 0 0.6em;
-  color: #ccc;
+.contact-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25em;
+  color: inherit;
+  text-decoration: none;
+}
+
+/* ===== 正文区域（消费 CSS 变量） ===== */
+.tpl-body {
+  font-size: var(--font-size);
+  font-family: var(--font-family);
+  line-height: var(--line-height);
+  padding: 0 var(--page-padding);
 }
 
 /* ===== 分区 ===== */

@@ -154,4 +154,29 @@ describe("PdfPreview pagination", () => {
       expect(ready).toHaveAttribute("data-pdf-breaks", "[894]");
     });
   });
+
+  it("uses editor-provided page breaks when available", async () => {
+    setMeasuredHeight(900);
+
+    render(
+      <PdfPreview
+        content={emptyResumeContent()}
+        resolved={{
+          source: "unified",
+          id: "professional",
+          templateId: "professional",
+          html: "<article></article>",
+          css: null,
+        }}
+        initialPagination={{ pageBreaks: [700], totalHeight: 1300 }}
+      />,
+    );
+
+    await waitFor(() => {
+      const ready = document.querySelector("[data-pdf-ready]");
+      expect(ready).toHaveAttribute("data-pdf-num-pages", "2");
+      expect(ready).toHaveAttribute("data-pdf-breaks", "[700]");
+      expect(ready).toHaveAttribute("data-pdf-total-height", "1300");
+    });
+  });
 });

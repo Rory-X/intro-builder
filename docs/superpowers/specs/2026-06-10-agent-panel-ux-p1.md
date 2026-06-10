@@ -1,7 +1,7 @@
 # Spec: Agent Panel UX P1 优化
 
-**日期**: 2026-06-10  
-**作者**: Claude Code  
+**日期**: 2026-06-10
+**作者**: Claude Code
 **状态**: Draft
 
 ## 1. 背景
@@ -52,7 +52,7 @@ function handleApply(operation: ResumeOperation) {
     value: currentValue,
     timestamp: Date.now(),
   });
-  
+
   onApply(operation);
 }
 
@@ -63,7 +63,7 @@ function handleUndo() {
     setUndoSnapshot(null);
     return;
   }
-  
+
   form.setValue(undoSnapshot.fieldPath, undoSnapshot.value);
   flushAutosave();
   setUndoSnapshot(null);

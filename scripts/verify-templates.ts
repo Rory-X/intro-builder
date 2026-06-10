@@ -57,31 +57,31 @@ type SlotCheck = {
 const SLOT_CHECKS: SlotCheck[] = [
   {
     name: "photo",
-    description: "头像 (<img data-bind=\"profile.photo\"> 或 basics.photo)",
-    test: (html) => /data-bind=["'](profile|basics)\.photo["']/.test(html),
+    description: "头像 (<img data-bind=\"basic.photo\">)",
+    test: (html) => /<img\b[^>]*data-bind=["']basic\.photo["'][^>]*>/i.test(html),
   },
   {
-    name: "profile.name",
-    description: "姓名 (profile.name 或 basics.name)",
-    test: (html) => /data-bind=["'](profile|basics)\.name["']/.test(html),
+    name: "basic.name",
+    description: "姓名 (basic.name)",
+    test: (html) => /data-bind=["']basic\.name["']/.test(html),
   },
   {
-    name: "profile.title",
-    description: "求职方向 (profile.title 或 basics.title)",
-    test: (html) => /data-bind=["'](profile|basics)\.title["']/.test(html),
+    name: "basic.title",
+    description: "求职岗位 (basic.title)",
+    test: (html) => /data-bind=["']basic\.title["']/.test(html),
   },
   {
-    name: "profile.status",
-    description: "求职状态 (profile.status 或 basics.status)",
-    test: (html) => /data-bind=["'](profile|basics)\.status["']/.test(html),
+    name: "basic.status",
+    description: "求职状态 (basic.status)",
+    test: (html) => /data-bind=["']basic\.status["']/.test(html),
   },
   {
     name: "contacts",
-    description: "联系方式 (profile.contacts 或 basics.email/phone/location/website)",
+    description: "联系方式 (profile.contacts + contact.icon/contact.label)",
     test: (html) =>
-      /data-bind=["']profile\.contacts["']/.test(html) ||
-      (/data-bind=["']basics\.email["']/.test(html) &&
-        /data-bind=["']basics\.phone["']/.test(html)),
+      /data-bind=["']profile\.contacts["']/.test(html) &&
+      /data-bind=["']contact\.icon["']/.test(html) &&
+      /data-bind=["']contact\.label["']/.test(html),
   },
   {
     name: "sectionOrder",
@@ -148,11 +148,116 @@ type CoverageResult = {
   missing: string[];
 };
 
+type HardcodedContentResult = {
+  templateId: string;
+  templateName: string;
+  legacyBindings: string[];
+  demoContent: string[];
+};
+
+type SectionTemplateSplitResult = {
+  templateId: string;
+  templateName: string;
+  missing: string[];
+};
+
+type ItemLayoutResult = {
+  templateId: string;
+  templateName: string;
+  issues: string[];
+};
+
+type ForbiddenBindingResult = {
+  templateId: string;
+  templateName: string;
+  bindings: string[];
+};
+
+const LEGACY_BODY_BINDINGS = [
+  "item.header.title",
+  "item.header.subtitle",
+  "item.header.dateRange",
+  "item.header.location",
+] as const;
+
+const FORBIDDEN_BINDING_PATTERNS = [
+  /^basics\./,
+  /^basics\.icon\./,
+  /^profile\.(name|title|status|summary)$/,
+] as const;
+
+const DEMO_CONTENT_LITERALS = [
+  "张三",
+  "字节跳动",
+  "美团",
+  "北京邮电大学",
+  "前端工程师",
+  "前端实习生",
+] as const;
+
+function hasBinding(html: string, binding: string): boolean {
+  const escaped = binding.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return new RegExp(`data-bind=["']${escaped}["']`).test(html);
+}
+
+function listBindings(html: string): string[] {
+  return Array.from(
+    new Set(Array.from(html.matchAll(/data-bind=["']([^"']+)["']/g), (match) => match[1])),
+  ).sort();
+}
+
 function checkSlotCoverage(id: string, name: string, html: string): CoverageResult {
   const missing = SLOT_CHECKS
     .filter((check) => !check.test(html))
     .map((check) => check.name);
   return { templateId: id, templateName: name, missing };
+}
+
+function checkHardcodedContent(id: string, name: string, html: string): HardcodedContentResult | null {
+  const legacyBindings = LEGACY_BODY_BINDINGS.filter((binding) => hasBinding(html, binding));
+  const demoContent = DEMO_CONTENT_LITERALS.filter((literal) => html.includes(literal));
+  if (legacyBindings.length === 0 && demoContent.length === 0) return null;
+  return { templateId: id, templateName: name, legacyBindings, demoContent };
+}
+
+function checkForbiddenBindings(id: string, name: string, html: string): ForbiddenBindingResult | null {
+  const bindings = listBindings(html).filter((binding) =>
+    FORBIDDEN_BINDING_PATTERNS.some((pattern) => pattern.test(binding)),
+  );
+  if (bindings.length === 0) return null;
+  return { templateId: id, templateName: name, bindings };
+}
+
+function collectSectionTemplateBaseIds(html: string): string[] {
+  return Array.from(
+    html.matchAll(
+      /<slot\b(?=[^>]*\bdata-bind=["']sectionOrder["'])(?=[^>]*\bdata-template=["']([^"']+)["'])[^>]*>/g,
+    ),
+    (match) => match[1],
+  );
+}
+
+function hasTemplate(html: string, id: string): boolean {
+  const escaped = id.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return new RegExp(`<template[^>]*\\bid=["']${escaped}["']`, "i").test(html);
+}
+
+function collectSectionItemTemplateIds(html: string): string[] {
+  return Array.from(
+    html.matchAll(
+      /<slot\b(?=[^>]*\bdata-bind=["']section\.items["'])(?=[^>]*\bdata-template=["']([^"']+)["'])[^>]*>/g,
+    ),
+    (match) => match[1],
+  );
+}
+
+function extractTemplate(html: string, id: string): string {
+  const escaped = id.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const match = new RegExp(
+    `<template[^>]*\\bid=["']${escaped}["'][^>]*>([\\s\\S]*?)<\\/template>`,
+    "i",
+  ).exec(html);
+  return match?.[1] ?? "";
 }
 
 async function runSlotCoverageCheck() {
@@ -200,6 +305,323 @@ async function runSlotCoverageCheck() {
   }
 
   console.log("");
+}
+
+async function runHardcodedContentCheck() {
+  console.log("\n─── Hardcoded Template Content Check ───\n");
+
+  const publishedRows = await withTransientRetry("hardcoded content check", () =>
+    db
+      .select({ id: templates.id, name: templates.name, html: templates.html })
+      .from(templates)
+      .where(eq(templates.status, "published")),
+  );
+
+  const results = publishedRows
+    .filter((row) => row.html)
+    .map((row) => checkHardcodedContent(row.id, row.name, row.html ?? ""))
+    .filter((result): result is HardcodedContentResult => result !== null);
+
+  if (results.length === 0) {
+    console.log("  No legacy item.header.* slots or demo resume text found ✓\n");
+    return;
+  }
+
+  for (const result of results) {
+    console.log(`  ${result.templateId} (${result.templateName})`);
+    if (result.legacyBindings.length > 0) {
+      console.log(`    legacy slots: ${result.legacyBindings.join("、")}`);
+    }
+    if (result.demoContent.length > 0) {
+      console.log(`    demo text: ${result.demoContent.join("、")}`);
+    }
+  }
+
+  fail("published templates contain legacy item slots or demo resume text");
+}
+
+async function runForbiddenBindingCheck() {
+  console.log("\n─── Forbidden Slot Binding Check ───\n");
+
+  const publishedRows = await withTransientRetry("forbidden binding check", () =>
+    db
+      .select({ id: templates.id, name: templates.name, html: templates.html })
+      .from(templates)
+      .where(eq(templates.status, "published")),
+  );
+
+  const results = publishedRows
+    .filter((row) => row.html)
+    .map((row) => checkForbiddenBindings(row.id, row.name, row.html ?? ""))
+    .filter((result): result is ForbiddenBindingResult => result !== null);
+
+  if (results.length === 0) {
+    console.log("  No forbidden basics.* or profile identity bindings found ✓\n");
+    return;
+  }
+
+  for (const result of results) {
+    console.log(`  ${result.templateId} (${result.templateName})`);
+    console.log(`    forbidden: ${result.bindings.join("、")}`);
+  }
+  fail("published templates contain forbidden slot bindings");
+}
+
+async function runSectionTemplateSplitCheck() {
+  console.log("\n─── Section Template Split Check ───\n");
+
+  const publishedRows = await withTransientRetry("section template split check", () =>
+    db
+      .select({ id: templates.id, name: templates.name, html: templates.html })
+      .from(templates)
+      .where(eq(templates.status, "published")),
+  );
+
+  const results: SectionTemplateSplitResult[] = [];
+  for (const row of publishedRows) {
+    const html = row.html ?? "";
+    const missing: string[] = [];
+    for (const baseId of new Set(collectSectionTemplateBaseIds(html))) {
+      if (!hasTemplate(html, `${baseId}-list`)) missing.push(`${baseId}-list`);
+      if (!hasTemplate(html, `${baseId}-block`)) missing.push(`${baseId}-block`);
+    }
+    if (missing.length > 0) {
+      results.push({ templateId: row.id, templateName: row.name, missing });
+    }
+  }
+
+  if (results.length === 0) {
+    console.log("  All sectionOrder templates have list/block variants ✓\n");
+    return;
+  }
+
+  for (const result of results) {
+    console.log(`  ${result.templateId} (${result.templateName})`);
+    console.log(`    缺: ${result.missing.join("、")}`);
+  }
+  fail("published templates have unsplit section templates");
+}
+
+async function runItemLayoutCheck() {
+  console.log("\n─── Item Layout Check ───\n");
+
+  const publishedRows = await withTransientRetry("item layout check", () =>
+    db
+      .select({ id: templates.id, name: templates.name, html: templates.html })
+      .from(templates)
+      .where(eq(templates.status, "published")),
+  );
+
+  const results: ItemLayoutResult[] = [];
+  const expected = [
+    "item.title",
+    "item.dateRange",
+    "item.subtitle",
+    "item.location",
+    "item.meta",
+    "item.link",
+    "item.bullets",
+  ] as const;
+
+  for (const row of publishedRows) {
+    const html = row.html ?? "";
+    const issues: string[] = [];
+    for (const itemTemplateId of new Set(collectSectionItemTemplateIds(html))) {
+      const itemTemplate = extractTemplate(html, itemTemplateId);
+      if (!itemTemplate) {
+        issues.push(`${itemTemplateId}: missing item template`);
+        continue;
+      }
+      const positions = expected.map((binding) => itemTemplate.indexOf(binding));
+      if (positions.some((pos) => pos < 0)) {
+        issues.push(`${itemTemplateId}: missing ${expected.filter((_, i) => positions[i] < 0).join(", ")}`);
+        continue;
+      }
+      for (let i = 1; i < positions.length; i++) {
+        if (positions[i] <= positions[i - 1]) {
+          issues.push(`${itemTemplateId}: item fields are not in expected order`);
+          break;
+        }
+      }
+    }
+    if (issues.length > 0) {
+      results.push({ templateId: row.id, templateName: row.name, issues });
+    }
+  }
+
+  if (results.length === 0) {
+    console.log("  All item templates follow expected field order ✓\n");
+    return;
+  }
+
+  for (const result of results) {
+    console.log(`  ${result.templateId} (${result.templateName})`);
+    for (const issue of result.issues) console.log(`    ${issue}`);
+  }
+  fail("published templates have item layouts that diverge from expected field order");
+}
+
+const META_LINK_TEXT_PROPS = [
+  "color",
+  "font-size",
+  "font-weight",
+  "font-style",
+  "font-family",
+  "letter-spacing",
+  "line-height",
+  "text-transform",
+] as const;
+
+function parseDeclarations(body: string): Map<string, string> {
+  const declarations = new Map<string, string>();
+  for (const part of body.split(";")) {
+    const separator = part.indexOf(":");
+    if (separator < 0) continue;
+    const property = part.slice(0, separator).trim().toLowerCase();
+    const value = part.slice(separator + 1).trim();
+    if (property && value) declarations.set(property, value);
+  }
+  return declarations;
+}
+
+function selectorTargetsClass(selector: string, className: string): boolean {
+  return new RegExp(`\\.${className}(?![\\w-])`).test(selector);
+}
+
+function collectEffectiveTextDeclarations(css: string, className: string): Map<string, string> {
+  const result = new Map<string, string>();
+  for (const match of css.matchAll(/([^{}]+)\{([^{}]*)\}/g)) {
+    const selector = match[1].trim();
+    if (!selectorTargetsClass(selector, className)) continue;
+    if (selector.includes(`.${className}:empty`)) continue;
+    const declarations = parseDeclarations(match[2]);
+    for (const property of META_LINK_TEXT_PROPS) {
+      const value = declarations.get(property);
+      if (value) result.set(property, value);
+    }
+  }
+  return result;
+}
+
+async function runItemMetaLinkTypographyCheck() {
+  console.log("\n─── Item Meta/Link Typography Check ───\n");
+
+  const publishedRows = await withTransientRetry("item meta/link typography check", () =>
+    db
+      .select({ id: templates.id, name: templates.name, css: templates.css })
+      .from(templates)
+      .where(eq(templates.status, "published")),
+  );
+
+  const results: Array<{ templateId: string; templateName: string; issues: string[] }> = [];
+  for (const row of publishedRows) {
+    const css = row.css ?? "";
+    const pairs = [
+      { meta: "item-meta", link: "item-link" },
+      { meta: "entry-meta", link: "entry-link" },
+    ] as const;
+    const issues: string[] = [];
+    for (const pair of pairs) {
+      const meta = collectEffectiveTextDeclarations(css, pair.meta);
+      const link = collectEffectiveTextDeclarations(css, pair.link);
+      if (meta.size === 0 || link.size === 0) continue;
+      for (const property of META_LINK_TEXT_PROPS) {
+        const metaValue = meta.get(property);
+        if (!metaValue) continue;
+        const linkValue = link.get(property);
+        if (linkValue !== metaValue) {
+          issues.push(`${pair.link}.${property}: expected ${metaValue}, got ${linkValue ?? "(missing)"}`);
+        }
+      }
+    }
+    if (issues.length > 0) {
+      results.push({ templateId: row.id, templateName: row.name, issues });
+    }
+  }
+
+  if (results.length === 0) {
+    console.log("  All item links match item meta typography ✓\n");
+    return;
+  }
+
+  for (const result of results) {
+    console.log(`  ${result.templateId} (${result.templateName})`);
+    for (const issue of result.issues) console.log(`    ${issue}`);
+  }
+  fail("published templates have item links that diverge from item meta typography");
+}
+
+async function runCrimsonTypographyCheck() {
+  console.log("\n─── Crimson Body Typography Check ───\n");
+
+  const [row] = await withTransientRetry("crimson typography check", () =>
+    db
+      .select({ id: templates.id, name: templates.name, css: templates.css })
+      .from(templates)
+      .where(eq(templates.id, "handcoded-crimson")),
+  );
+
+  if (!row?.css) {
+    console.log("  handcoded-crimson CSS not found; skipped\n");
+    return;
+  }
+
+  const bannerBlock = row.css.match(/\.crimson-banner\s*\{([^{}]*)\}/)?.[1] ?? "";
+  const bannerDescendantBlocks = Array.from(
+    row.css.matchAll(/\.crimson-banner[^{]*\{([^{}]*)\}/g),
+    (match) => match[1],
+  ).join("\n");
+  const bannerIssues: string[] = [];
+  if (!/font-family\s*:\s*(?!var\()[^;]+;/.test(bannerBlock)) {
+    bannerIssues.push("banner must set a fixed font-family");
+  }
+  if (!/line-height\s*:\s*(?!var\()[^;]+;/.test(bannerBlock)) {
+    bannerIssues.push("banner must set a fixed line-height");
+  }
+  if (/var\(--font-size\)|var\(--line-height\)|var\(--font-family\)/.test(bannerDescendantBlocks)) {
+    bannerIssues.push("banner selectors must not depend on layout typography variables");
+  }
+  const titleBlock = row.css.match(/\.crimson-section-title h2\s*\{([^{}]*)\}/)?.[1] ?? "";
+  if (!/line-height\s*:\s*(?!var\()[^;]+;/.test(titleBlock)) {
+    bannerIssues.push("section title h2 must set a fixed line-height so body line-height cannot resize the title bar");
+  }
+
+  const violations: string[] = [];
+  const blockRe = /([^{}]+)\{([^{}]*)\}/g;
+  let match: RegExpExecArray | null;
+  while ((match = blockRe.exec(row.css)) !== null) {
+    const selector = match[1].trim();
+    const body = match[2];
+    if (selector.includes(".crimson-banner")) continue;
+    if (selector.includes("[data-pagination-header]")) continue;
+    if (selector.includes(".crimson-section-title")) continue;
+
+    const hasFixedFontSize = /font-size\s*:\s*\d+(?:\.\d+)?px\b/.test(body);
+    const hasFixedLineHeight = /line-height\s*:\s*\d+(?:\.\d+)?\b/.test(body);
+    if (hasFixedFontSize || hasFixedLineHeight) {
+      const fixedProps = body
+        .split(";")
+        .map((part) => part.trim())
+        .filter((part) =>
+          /^font-size\s*:\s*\d+(?:\.\d+)?px\b/.test(part) ||
+          /^line-height\s*:\s*\d+(?:\.\d+)?\b/.test(part),
+        );
+      violations.push(`${selector} -> ${fixedProps.join("; ")}`);
+    }
+  }
+
+  if (bannerIssues.length === 0 && violations.length === 0) {
+    console.log("  Crimson banner typography is fixed; body typography uses CSS variables ✓\n");
+    return;
+  }
+
+  for (const issue of bannerIssues) {
+    console.log(`  ${issue}`);
+  }
+  for (const violation of violations) {
+    console.log(`  ${violation}`);
+  }
+  fail("handcoded-crimson typography violates banner/body typography boundaries");
 }
 
 // ─── Main ───────────────────────────────────────────────────────────────────
@@ -263,6 +685,12 @@ async function main() {
 
   // Slot coverage check
   await runSlotCoverageCheck();
+  await runForbiddenBindingCheck();
+  await runHardcodedContentCheck();
+  await runSectionTemplateSplitCheck();
+  await runItemLayoutCheck();
+  await runItemMetaLinkTypographyCheck();
+  await runCrimsonTypographyCheck();
 }
 
 main().catch((e) => {

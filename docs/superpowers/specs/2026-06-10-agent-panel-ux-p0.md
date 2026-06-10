@@ -1,7 +1,7 @@
 # Spec: Agent Panel UX P0 优化
 
-**日期**: 2026-06-10  
-**作者**: Claude Code  
+**日期**: 2026-06-10
+**作者**: Claude Code
 **状态**: Draft
 
 ## 1. 背景

@@ -1,7 +1,7 @@
 # Plan: AI 辅助功能 UX 升级 + 重写跳过的测试
 
-**日期**: 2026-06-10  
-**Spec**: [2026-06-10-ai-helpers-dialog-upgrade.md](../specs/2026-06-10-ai-helpers-dialog-upgrade.md)  
+**日期**: 2026-06-10
+**Spec**: [2026-06-10-ai-helpers-dialog-upgrade.md](../specs/2026-06-10-ai-helpers-dialog-upgrade.md)
 **状态**: Draft
 
 ## 概述
@@ -186,9 +186,9 @@ it("recovers from Agent error and allows retry", async () => {
   fireEvent.click(screen.getByRole("button", { name: "诊断整份简历" }));
 
   expect(await screen.findByText(/req_retry_test/)).toBeInTheDocument();
-  
+
   fireEvent.click(screen.getByRole("button", { name: "重新发送上一条" }));
-  
+
   await waitFor(() => {
     expect(fetchMock).toHaveBeenCalledTimes(2);
   });
@@ -265,14 +265,14 @@ it("applies proposed operation only after user confirms", async () => {
   await waitFor(() => {
     expect(screen.getByText("已完成 1 个工具调用")).toBeInTheDocument();
   });
-  
+
   expect(screen.getByText("等待确认 1 条修改建议")).toBeInTheDocument();
   expect(await screen.findByText(/应用个人总结改写/)).toBeInTheDocument();
 
   expect(applyOperation).not.toHaveBeenCalled();
 
   fireEvent.click(screen.getByRole("button", { name: "应用" }));
-  
+
   expect(applyOperation).toHaveBeenCalledWith(
     expect.objectContaining({ id: "op_1" }),
   );
@@ -481,20 +481,20 @@ pnpm build        # ✅
 
 ### 风险 1: Dialog 可能影响性能
 
-**可能性**: 低  
-**影响**: 中  
+**可能性**: 低
+**影响**: 中
 **缓解**: Dialog 内容懒加载，只在打开时渲染
 
 ### 风险 2: 移动端 Dialog 体验不佳
 
-**可能性**: 中  
-**影响**: 高  
+**可能性**: 中
+**影响**: 高
 **缓解**: 使用响应式设计，移动端 Dialog 占据大部分屏幕，测试时重点验证
 
 ### 风险 3: 测试重写后仍不稳定
 
-**可能性**: 低  
-**影响**: 中  
+**可能性**: 低
+**影响**: 中
 **缓解**: 参考成功的 ag-ui 测试模式，使用相同的辅助函数和等待策略
 
 ---

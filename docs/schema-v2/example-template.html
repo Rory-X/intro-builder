@@ -1,47 +1,69 @@
 <header class="tpl-header">
   <div class="banner-bg">
-    <img src="{{assets[0].url}}" class="banner-img" alt="" />
+    <img src="https://example.com/banner.png" class="banner-img" alt="" />
   </div>
-  <img data-bind="basics.photo" class="avatar" />
-  <h1 class="name"><slot data-bind="basics.name"></slot></h1>
-</header>
-
-<div class="tpl-body">
-  <div class="subtitle-row">
-    <slot data-bind="basics.title"></slot>
-    <span class="dot-sep">·</span>
-    <slot data-bind="basics.status"></slot>
-  </div>
+  <img data-bind="basic.photo" class="avatar" alt="头像" />
+  <h1 class="name"><slot data-bind="basic.name"></slot></h1>
+  <p class="headline">
+    <slot data-bind="basic.title"></slot>
+    <span class="headline-sep"> · </span>
+    <slot data-bind="basic.status"></slot>
+  </p>
 
   <div class="contact-bar">
-    <span class="contact-item"><slot data-bind="basics.phone"></slot></span>
-    <span class="contact-sep">|</span>
-    <span class="contact-item"><slot data-bind="basics.email"></slot></span>
-    <span class="contact-sep">|</span>
-    <span class="contact-item"><slot data-bind="basics.location"></slot></span>
-    <span class="contact-sep">|</span>
-    <span class="contact-item"><slot data-bind="basics.website"></slot></span>
+    <slot data-bind="profile.contacts" data-template="contact-item"></slot>
   </div>
+</header>
 
+<main class="tpl-body">
   <slot data-bind="sectionOrder" data-template="section-tpl"></slot>
 
-  <template id="section-tpl">
-    <section class="resume-section" data-pagination-section>
-      <h2 class="section-title"><slot data-bind="section.icon"></slot><slot data-bind="section.title"></slot></h2>
+  <template id="contact-item">
+    <a class="contact-item" href="#">
+      <slot data-bind="contact.icon"></slot>
+      <slot data-bind="contact.label"></slot>
+    </a>
+  </template>
+
+  <template id="section-tpl-list">
+    <section class="resume-section">
+      <h2 class="section-title">
+        <slot data-bind="section.icon"></slot>
+        <slot data-bind="section.title"></slot>
+      </h2>
       <div class="section-content">
         <slot data-bind="section.items" data-template="item-tpl"></slot>
       </div>
     </section>
   </template>
 
+  <template id="section-tpl-block">
+    <section class="resume-section">
+      <h2 class="section-title">
+        <slot data-bind="section.icon"></slot>
+        <slot data-bind="section.title"></slot>
+      </h2>
+      <div class="section-content">
+        <div class="section-body"><slot data-bind="section.body"></slot></div>
+      </div>
+    </section>
+  </template>
+
   <template id="item-tpl">
-    <div class="resume-item" data-pagination-item>
+    <article class="resume-item">
       <div class="item-header">
         <span class="item-title"><slot data-bind="item.title"></slot></span>
         <span class="item-date"><slot data-bind="item.dateRange"></slot></span>
       </div>
-      <div class="item-subtitle"><slot data-bind="item.subtitle"></slot></div>
+      <div class="item-subtitle">
+        <span class="item-role"><slot data-bind="item.subtitle"></slot></span>
+        <span class="item-location"><slot data-bind="item.location"></slot></span>
+      </div>
+      <div class="item-meta-row">
+        <span class="item-meta"><slot data-bind="item.meta"></slot></span>
+        <a class="item-link" href="#"><slot data-bind="item.link"></slot></a>
+      </div>
       <div class="item-body"><slot data-bind="item.bullets"></slot></div>
-    </div>
+    </article>
   </template>
-</div>
+</main>

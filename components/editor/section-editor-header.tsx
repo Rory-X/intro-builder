@@ -27,7 +27,7 @@ const SECTION_COLOR: Record<string, { accent: string; iconBg: string; icon: stri
   awards: { accent: "bg-yellow-500", iconBg: "bg-yellow-500/10", icon: "text-yellow-500" },
   research: { accent: "bg-teal-500", iconBg: "bg-teal-500/10", icon: "text-teal-500" },
   portfolio: { accent: "bg-pink-500", iconBg: "bg-pink-500/10", icon: "text-pink-500" },
-  custom: { accent: "bg-gray-500", iconBg: "bg-gray-500/10", icon: "text-gray-500" },
+  custom: { accent: "bg-indigo-500", iconBg: "bg-indigo-500/10", icon: "text-indigo-500" },
 };
 
 export function SectionEditorHeader({ sectionKey, itemCount, isOpen, onToggle, onAdd, addLabel = "新增", helper }: Props) {

@@ -13,7 +13,7 @@ describe("ClientTemplateRenderFromSerializable", () => {
         resolved={{
           source: "unified",
           id: "test-x",
-          html: '<div class="test"><slot data-bind="basics.name"></slot></div>',
+          html: '<div class="test"><slot data-bind="basic.name"></slot></div>',
           css: null,
           templateId: "test-x",
           sectionIcons: {},
@@ -34,7 +34,7 @@ describe("TemplateRender (server) preResolved short-circuit", () => {
       description: null,
       thumbnailUrl: null,
       sectionIcons: {},
-      html: '<div><slot data-bind="basics.name"></slot></div>',
+      html: '<div><slot data-bind="basic.name"></slot></div>',
       css: null,
       category: null,
       features: null,

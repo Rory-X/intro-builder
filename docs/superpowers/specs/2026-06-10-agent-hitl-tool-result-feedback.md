@@ -1,7 +1,7 @@
 # Spec: Agent Tool Result 回传机制
 
-**日期**: 2026-06-10  
-**作者**: Claude Opus 4.8  
+**日期**: 2026-06-10
+**作者**: Claude Opus 4.8
 **状态**: Draft
 
 ## 1. 背景与问题
@@ -222,7 +222,7 @@ function handleAgentMessageRequest(body: unknown) {
 
   // 🔴 新增：检查是否是 resume 请求
   const resume = Array.isArray(parsed.resume) ? parsed.resume : [];
-  
+
   if (resume.length > 0) {
     // 构造系统消息，告诉 Agent 用户的批准结果
     const feedbackMessage = buildApprovalFeedback(resume);
@@ -239,7 +239,7 @@ function handleAgentMessageRequest(body: unknown) {
 function buildApprovalFeedback(resume: ResumeEntry[]): string {
   const approved = resume.filter(r => r.status === "resolved" && r.payload?.approved);
   const rejected = resume.filter(r => r.status === "cancelled" || !r.payload?.approved);
-  
+
   return [
     "用户批准结果：",
     approved.length > 0 ? `已应用：${approved.map(r => r.interruptId).join(", ")}` : null,
@@ -294,13 +294,13 @@ function AgentTurnArtifactsPanel({
   // ...
 }) {
   const submitInterrupts = useAgentAgUiInterruptSubmit();
-  
+
   async function handleApply(operation: ResumeOperation) {
     // 1. Web 写入表单
     applyOperation(operation);
     onOperationApplied(turnArtifact.id, operation.id);
     flushAutosave();
-    
+
     // 2. 🔴 新增：回传 runtime
     if (submitInterrupts) {
       await submitInterrupts([{
@@ -310,7 +310,7 @@ function AgentTurnArtifactsPanel({
       }]);
     }
   }
-  
+
   async function handleReject(operationId: string) {
     // 🔴 新增：回传拒绝
     if (submitInterrupts) {
@@ -321,7 +321,7 @@ function AgentTurnArtifactsPanel({
       }]);
     }
   }
-  
+
   return (
     <div>
       {turnArtifact.operations.map((operation) => (
@@ -346,7 +346,7 @@ function AgentTurnArtifactsPanel({
 ```
 User: "帮我优化工作经历"
   ↓
-Agent server: 
+Agent server:
   - 生成 3 个 operations
   - 输出 RUN_FINISHED with interrupts: [op1, op2, op3]
   ↓
@@ -360,7 +360,7 @@ Web 调用 submitInterruptResponses([
   { interruptId: "op3", status: "cancelled", payload: { approved: false } },
 ])
   ↓
-AG-UI runtime: 
+AG-UI runtime:
   - 发送 POST /v1/agent/messages with resume: [...]
   ↓
 Agent server:
@@ -406,7 +406,7 @@ Web:
 
 ### 风险 2：Agent server resume 逻辑复杂
 
-**缓解**: 
+**缓解**:
 - 先实现简单版本：直接把 resume 结果拼成文本，append 到 messages
 - 后续优化：Agent provider 支持结构化 resume 数据
 
@@ -414,7 +414,7 @@ Web:
 
 如果用户花 10 秒逐个批准 3 个 operations：
 
-**缓解**: 
+**缓解**:
 - 支持批量批准（未来优化）
 - 或：只在用户点「继续对话」后才 submit（不是逐个 submit）
 

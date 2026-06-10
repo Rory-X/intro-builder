@@ -1,7 +1,7 @@
 # Agent HITL Tool Result 回传机制 - 实施总结
 
-**日期**: 2026-06-10  
-**分支**: `worktree-agent-hitl-tool-result`  
+**日期**: 2026-06-10
+**分支**: `worktree-agent-hitl-tool-result`
 **Commit**: `501fbb6`
 
 ---
@@ -252,7 +252,7 @@ pnpm tsc --noEmit
 pnpm test tests/unit/agent-panel.test.tsx
 ```
 
-**结果**: 
+**结果**:
 - ✅ 新增的 2 个测试逻辑正确
 - ⚠️ 部分测试在清理阶段报错（interrupt pending）
 

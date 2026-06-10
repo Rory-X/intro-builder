@@ -57,22 +57,24 @@ describe("StyleEditor", () => {
     expect(trigger.className).not.toContain("text-primary-foreground");
   });
 
-  it("heading gap and body line-height are independent", () => {
+  it("section title gap and body line-height are independent", () => {
     let form!: UseFormReturn<ResumeContent>;
     render(<Harness onReady={(readyForm) => { form = readyForm; }} />);
 
     fireEvent.click(screen.getByRole("button", { name: "排版" }));
 
-    // Adjust heading gap first; body line-height should remain at 1.6.
-    fireEvent.click(screen.getByRole("button", { name: "标题间距：8px" }));
+    // Adjust section gap first; body line-height and same-section heading gap should remain unchanged.
     fireEvent.click(screen.getByRole("button", { name: "标题间距：16px" }));
-    expect(form.getValues("styleSettings")?.headingGap).toBe(16);
+    fireEvent.click(screen.getByRole("button", { name: "标题间距：20px" }));
+    expect(form.getValues("styleSettings")?.sectionGap).toBe(20);
+    expect(form.getValues("styleSettings")?.headingGap).toBe(8);
     expect(form.getValues("styleSettings")?.bodyLineHeight).toBe(1.6);
 
-    // Then adjust body; heading gap should keep the 16 we just set.
+    // Then adjust body; section gap and same-section heading gap should keep their values.
     fireEvent.click(screen.getByRole("button", { name: "正文行距：1.6" }));
     fireEvent.click(screen.getByRole("button", { name: "正文行距：1.9" }));
-    expect(form.getValues("styleSettings")?.headingGap).toBe(16);
+    expect(form.getValues("styleSettings")?.sectionGap).toBe(20);
+    expect(form.getValues("styleSettings")?.headingGap).toBe(8);
     expect(form.getValues("styleSettings")?.bodyLineHeight).toBe(1.9);
   });
 

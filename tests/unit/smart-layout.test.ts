@@ -7,7 +7,8 @@ import {
 import type { StyleSettings } from "@/lib/resume-schema";
 
 // 新行为（zoo 确认）：
-// - 美观 floor：font 11 / lineHeight 1.25 / sectionGap 8 / itemGap 4 / headingGap 4。
+// - 美观 floor：font 11 / lineHeight 1.25 / sectionGap 8 / itemGap 4。
+// - headingGap 是同一 section 内标题到正文的模板间距，不由智能排版压缩。
 // - 分两段（FONT_KNEE=0.5）：scale ∈ [0.5,1] 只压间距/行距、字号保持 current；
 //   scale ∈ [0,0.5] 间距已触底、改为分级压字号到 floor。
 const current: StyleSettings = {
@@ -44,7 +45,7 @@ describe("interpolateSettings", () => {
     expect(result.pagePadding).toBe(40); // 页边距不压
     expect(result.sectionGap).toBe(8);
     expect(result.itemGap).toBe(4);
-    expect(result.headingGap).toBe(4);
+    expect(result.headingGap).toBe(8);
   });
 
   it("at the knee (scale=0.5): gaps bottomed out, font still at current", () => {
@@ -52,7 +53,7 @@ describe("interpolateSettings", () => {
     expect(result.bodyLineHeight).toBe(1.25);
     expect(result.sectionGap).toBe(8);
     expect(result.itemGap).toBe(4);
-    expect(result.headingGap).toBe(4);
+    expect(result.headingGap).toBe(8);
     expect(result.fontSize).toBe(14);
   });
 

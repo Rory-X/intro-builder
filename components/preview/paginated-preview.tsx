@@ -531,7 +531,12 @@ export const PaginatedPreview = forwardRef<HTMLDivElement, Props>(function Pagin
   const numPages = pageOffsets.length;
 
   return (
-    <div ref={containerRef} className="relative w-full" onDoubleClick={handleDoubleClick}>
+    <div
+      ref={containerRef}
+      data-paginated-preview-root=""
+      className="relative w-full"
+      onDoubleClick={handleDoubleClick}
+    >
       {/* Invisible measurement container */}
       <div
         ref={measureRef}

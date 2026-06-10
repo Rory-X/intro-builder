@@ -49,6 +49,7 @@ export default async function PreviewPage({
         resolved={toSerializable(resolved)}
         content={content}
         styleSettings={content.styleSettings}
+        initialPagination={parsePaginationData(_breaks)}
       />
     );
   }
@@ -64,4 +65,25 @@ export default async function PreviewPage({
       />
     </div>
   );
+}
+
+function parsePaginationData(value: string | undefined): { pageBreaks: number[]; totalHeight: number } | undefined {
+  if (!value) return undefined;
+  try {
+    const parsed = JSON.parse(Buffer.from(value, "base64url").toString("utf8")) as unknown;
+    if (
+      typeof parsed === "object" &&
+      parsed !== null &&
+      Array.isArray((parsed as { pageBreaks?: unknown }).pageBreaks) &&
+      typeof (parsed as { totalHeight?: unknown }).totalHeight === "number"
+    ) {
+      const pageBreaks = (parsed as { pageBreaks: unknown[] }).pageBreaks
+        .filter((item): item is number => typeof item === "number" && Number.isFinite(item));
+      const totalHeight = (parsed as { totalHeight: number }).totalHeight;
+      if (totalHeight > 0) return { pageBreaks, totalHeight };
+    }
+  } catch {
+    return undefined;
+  }
+  return undefined;
 }
