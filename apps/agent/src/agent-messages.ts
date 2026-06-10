@@ -292,12 +292,21 @@ export function toAgUiAgentEvents({
     messageId,
   });
 
-  // Check if there are operations requiring approval
+  events.push(createAgUiRunFinishedEvent({ requestId, threadId, result }));
+
+  return events;
+}
+
+export function createAgUiRunFinishedEvent({
+  requestId,
+  threadId,
+  result,
+}: ToAgUiAgentEventsInput): BaseEvent {
+  const runId = requestId;
   const needsApproval = result.proposedOperations.length > 0;
 
   if (needsApproval) {
-    // Output interrupt for HITL approval flow
-    events.push({
+    return {
       type: EventType.RUN_FINISHED,
       threadId,
       runId,
@@ -311,18 +320,15 @@ export function toAgUiAgentEvents({
           metadata: { operation },
         })),
       },
-    });
-  } else {
-    // No operations, complete successfully
-    events.push({
-      type: EventType.RUN_FINISHED,
-      threadId,
-      runId,
-      outcome: { type: "success" },
-    });
+    };
   }
 
-  return events;
+  return {
+    type: EventType.RUN_FINISHED,
+    threadId,
+    runId,
+    outcome: { type: "success" },
+  };
 }
 
 export function toAgUiAgentToolEvents({
