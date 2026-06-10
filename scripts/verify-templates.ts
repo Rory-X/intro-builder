@@ -161,6 +161,12 @@ type SectionTemplateSplitResult = {
   missing: string[];
 };
 
+type ItemLayoutResult = {
+  templateId: string;
+  templateName: string;
+  issues: string[];
+};
+
 const LEGACY_BODY_BINDINGS = [
   "item.header.title",
   "item.header.subtitle",
@@ -208,6 +214,24 @@ function collectSectionTemplateBaseIds(html: string): string[] {
 function hasTemplate(html: string, id: string): boolean {
   const escaped = id.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   return new RegExp(`<template[^>]*\\bid=["']${escaped}["']`, "i").test(html);
+}
+
+function collectSectionItemTemplateIds(html: string): string[] {
+  return Array.from(
+    html.matchAll(
+      /<slot\b(?=[^>]*\bdata-bind=["']section\.items["'])(?=[^>]*\bdata-template=["']([^"']+)["'])[^>]*>/g,
+    ),
+    (match) => match[1],
+  );
+}
+
+function extractTemplate(html: string, id: string): string {
+  const escaped = id.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const match = new RegExp(
+    `<template[^>]*\\bid=["']${escaped}["'][^>]*>([\\s\\S]*?)<\\/template>`,
+    "i",
+  ).exec(html);
+  return match?.[1] ?? "";
 }
 
 async function runSlotCoverageCheck() {
@@ -323,6 +347,65 @@ async function runSectionTemplateSplitCheck() {
     console.log(`    缺: ${result.missing.join("、")}`);
   }
   fail("published templates have unsplit section templates");
+}
+
+async function runItemLayoutCheck() {
+  console.log("\n─── Item Layout Check ───\n");
+
+  const publishedRows = await withTransientRetry("item layout check", () =>
+    db
+      .select({ id: templates.id, name: templates.name, html: templates.html })
+      .from(templates)
+      .where(eq(templates.status, "published")),
+  );
+
+  const results: ItemLayoutResult[] = [];
+  const expected = [
+    "item.title",
+    "item.dateRange",
+    "item.meta",
+    "item.link",
+    "item.subtitle",
+    "item.location",
+    "item.bullets",
+  ] as const;
+
+  for (const row of publishedRows) {
+    const html = row.html ?? "";
+    const issues: string[] = [];
+    for (const itemTemplateId of new Set(collectSectionItemTemplateIds(html))) {
+      const itemTemplate = extractTemplate(html, itemTemplateId);
+      if (!itemTemplate) {
+        issues.push(`${itemTemplateId}: missing item template`);
+        continue;
+      }
+      const positions = expected.map((binding) => itemTemplate.indexOf(binding));
+      if (positions.some((pos) => pos < 0)) {
+        issues.push(`${itemTemplateId}: missing ${expected.filter((_, i) => positions[i] < 0).join(", ")}`);
+        continue;
+      }
+      for (let i = 1; i < positions.length; i++) {
+        if (positions[i] <= positions[i - 1]) {
+          issues.push(`${itemTemplateId}: item fields are not in crimson order`);
+          break;
+        }
+      }
+    }
+    if (issues.length > 0) {
+      results.push({ templateId: row.id, templateName: row.name, issues });
+    }
+  }
+
+  if (results.length === 0) {
+    console.log("  All item templates follow crimson field order ✓\n");
+    return;
+  }
+
+  for (const result of results) {
+    console.log(`  ${result.templateId} (${result.templateName})`);
+    for (const issue of result.issues) console.log(`    ${issue}`);
+  }
+  fail("published templates have item layouts that diverge from crimson");
 }
 
 async function runCrimsonTypographyCheck() {
@@ -461,6 +544,7 @@ async function main() {
   await runSlotCoverageCheck();
   await runHardcodedContentCheck();
   await runSectionTemplateSplitCheck();
+  await runItemLayoutCheck();
   await runCrimsonTypographyCheck();
 }
 

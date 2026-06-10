@@ -162,7 +162,14 @@ stdout 最后一行 JSON：
         <span class="item-title"><slot data-bind="item.title"></slot></span>
         <span class="item-date"><slot data-bind="item.dateRange"></slot></span>
       </div>
-      <div class="item-subtitle"><slot data-bind="item.subtitle"></slot></div>
+      <div class="item-meta-row">
+        <span class="item-meta"><slot data-bind="item.meta"></slot></span>
+        <a class="item-link"><slot data-bind="item.link"></slot></a>
+      </div>
+      <div class="item-subtitle">
+        <span class="item-role"><slot data-bind="item.subtitle"></slot></span>
+        <span class="item-location"><slot data-bind="item.location"></slot></span>
+      </div>
       <div class="item-body"><slot data-bind="item.bullets"></slot></div>
     </div>
   </template>

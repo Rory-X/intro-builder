@@ -28,6 +28,7 @@ type PatchResult = {
 const PATCH_MARKER = "intro-builder template db patch 2026-06";
 const SECTION_BODY_PATCH_MARKER = "intro-builder template db patch 2026-06 section.body";
 const SECTION_SPLIT_PATCH_MARKER = "intro-builder template db patch 2026-06 section split";
+const CRIMSON_ITEM_LAYOUT_PATCH_MARKER = "intro-builder template db patch 2026-06 crimson item layout";
 const PROFILE_TYPOGRAPHY_CSS = `
 
 /* ${PATCH_MARKER}: fixed profile typography boundary */
@@ -64,6 +65,67 @@ const SECTION_BODY_CSS = `
   line-height: var(--body-line-height);
 }
 .section-body:empty {
+  display: none;
+}
+`;
+const CRIMSON_ITEM_LAYOUT_CSS = `
+
+/* ${CRIMSON_ITEM_LAYOUT_PATCH_MARKER}: align item meta/link and role/location rows with crimson */
+.item-header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+.item-title {
+  min-width: 0;
+}
+.item-date {
+  text-align: right;
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+.item-meta-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 2px;
+  font-size: calc(var(--font-size) * 0.92);
+  line-height: var(--line-height);
+}
+.item-meta {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.item-link {
+  text-align: right;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.item-subtitle {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 2px;
+}
+.item-role {
+  min-width: 0;
+}
+.item-location {
+  margin-left: auto;
+  text-align: right;
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+.item-meta:empty,
+.item-link:empty,
+.item-role:empty,
+.item-location:empty {
+  display: none;
+}
+.item-meta-row:has(.item-meta:empty):has(.item-link:empty) {
   display: none;
 }
 `;
@@ -249,6 +311,65 @@ ${indentTemplateInner(blockInner)}
   return next;
 }
 
+function patchCrimsonItemLayoutHtml(html: string, changes: string[]): string {
+  let next = html;
+  for (const itemTemplateId of collectSectionItemTemplateIds(next)) {
+    const template = extractTemplate(next, itemTemplateId);
+    if (!template) continue;
+    if (isCrimsonItemLayout(template.inner)) continue;
+
+    const root = splitRootElement(template.inner);
+    if (!root) continue;
+
+    const replacement = `<template id="${itemTemplateId}">
+${indentTemplateInner(`${root.open}
+      <div class="item-header">
+        <span class="item-title"><slot data-bind="item.title"></slot></span>
+        <span class="item-date"><slot data-bind="item.dateRange"></slot></span>
+      </div>
+      <div class="item-meta-row"><span class="item-meta"><slot data-bind="item.meta"></slot></span><a class="item-link"><slot data-bind="item.link"></slot></a></div>
+      <div class="item-subtitle"><span class="item-role"><slot data-bind="item.subtitle"></slot></span><span class="item-location"><slot data-bind="item.location"></slot></span></div>
+      <div class="item-body"><slot data-bind="item.bullets"></slot></div>
+    ${root.close}`)}
+  </template>`;
+
+    next = `${next.slice(0, template.start)}${replacement}${next.slice(template.end)}`;
+    changes.push(`align ${itemTemplateId} item layout with crimson`);
+  }
+  return next;
+}
+
+function collectSectionItemTemplateIds(html: string): string[] {
+  return Array.from(
+    html.matchAll(
+      /<slot\b(?=[^>]*\bdata-bind=["']section\.items["'])(?=[^>]*\bdata-template=["']([^"']+)["'])[^>]*>/g,
+    ),
+    (match) => match[1],
+  );
+}
+
+function isCrimsonItemLayout(html: string): boolean {
+  return (
+    (/\bclass=["'][^"']*\bitem-meta-row\b/.test(html) &&
+      /\bclass=["'][^"']*\bitem-role\b/.test(html) &&
+      /\bclass=["'][^"']*\bitem-location\b/.test(html)) ||
+    (/\bclass=["'][^"']*\bentry-meta-row\b/.test(html) &&
+      /\bclass=["'][^"']*\bentry-role\b/.test(html) &&
+      /\bclass=["'][^"']*\bentry-location\b/.test(html))
+  );
+}
+
+function splitRootElement(html: string): { open: string; close: string } | null {
+  const trimmed = html.trim();
+  const open = trimmed.match(/^<([a-zA-Z][\w:-]*)([^>]*)>/);
+  if (!open) return null;
+  const tag = open[1];
+  const closeRe = new RegExp(`</${escapeRegExp(tag)}>\\s*$`, "i");
+  const close = trimmed.match(closeRe);
+  if (!close) return null;
+  return { open: open[0], close: close[0].trim() };
+}
+
 function hasTemplate(html: string, id: string): boolean {
   return new RegExp(`<template[^>]*\\bid=["']${escapeRegExp(id)}["']`, "i").test(html);
 }
@@ -318,6 +439,7 @@ function patchTemplate(row: DbTemplate): PatchResult | null {
     html = patchItemLinkHtml(html, changes);
     html = patchSectionBodyHtml(html, changes);
     html = patchSectionTemplateSplit(html, changes);
+    html = patchCrimsonItemLayoutHtml(html, changes);
   }
 
   if (css) {
@@ -340,6 +462,11 @@ function patchTemplate(row: DbTemplate): PatchResult | null {
     if (!css.includes(SECTION_SPLIT_PATCH_MARKER)) {
       css = `${css.trimEnd()}\n\n/* ${SECTION_SPLIT_PATCH_MARKER}: section templates are split into list/block variants */\n`;
       changes.push("append section split marker");
+    }
+
+    if (!css.includes(CRIMSON_ITEM_LAYOUT_PATCH_MARKER)) {
+      css = `${css.trimEnd()}${CRIMSON_ITEM_LAYOUT_CSS}`;
+      changes.push("append crimson item layout CSS");
     }
 
     if (row.id === "modern" && !css.includes(".modern-status:not(:empty)::before")) {
