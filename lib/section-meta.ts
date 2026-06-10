@@ -29,7 +29,7 @@ export const SECTION_META: Record<string, SectionMeta> = {
   awards: { icon: Award, iconName: "Award", label: "荣誉奖项", color: "text-yellow-500" },
   research: { icon: FlaskConical, iconName: "FlaskConical", label: "研究经历", color: "text-teal-500" },
   portfolio: { icon: Palette, iconName: "Palette", label: "作品集", color: "text-pink-500" },
-  custom: { icon: LayoutList, iconName: "LayoutList", label: "自定义", color: "text-gray-500" },
+  custom: { icon: LayoutList, iconName: "LayoutList", label: "自定义", color: "text-indigo-500" },
 };
 
 /** Get meta for a section key, falling back to custom style for unknown keys */
