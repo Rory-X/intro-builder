@@ -46,6 +46,16 @@ export function mapAgUiRunToAgentMessageRequest(
     return { ok: false, message: "messages must not be empty" };
   }
 
+  // Handle interrupt resume: inject approval feedback as system message
+  if (input.resume && Array.isArray(input.resume) && input.resume.length > 0) {
+    const feedbackMessage = buildApprovalFeedbackMessage(input.resume);
+    messages.push({
+      id: `system_approval_${Date.now()}`,
+      role: "assistant",
+      content: feedbackMessage,
+    });
+  }
+
   return {
     ok: true,
     request: {
@@ -56,6 +66,45 @@ export function mapAgUiRunToAgentMessageRequest(
       context: introBuilder.context,
     },
   };
+}
+
+function buildApprovalFeedbackMessage(
+  resume: Array<{
+    interruptId: string;
+    status: "resolved" | "cancelled";
+    payload?: unknown;
+  }>,
+): string {
+  const approved = resume.filter(
+    (entry) => entry.status === "resolved" && isApprovedPayload(entry.payload),
+  );
+  const rejected = resume.filter(
+    (entry) =>
+      entry.status === "cancelled" ||
+      (entry.status === "resolved" && !isApprovedPayload(entry.payload)),
+  );
+
+  const parts: string[] = ["用户已审核你的修改建议："];
+
+  if (approved.length > 0) {
+    parts.push(
+      `✓ 已批准并应用：${approved.map((e) => e.interruptId).join(", ")}`,
+    );
+  }
+
+  if (rejected.length > 0) {
+    parts.push(`✗ 已拒绝：${rejected.map((e) => e.interruptId).join(", ")}`);
+  }
+
+  parts.push(
+    "请基于用户的选择继续对话。被拒绝的建议不要重复提及，已应用的建议可以进一步优化。",
+  );
+
+  return parts.join("\n");
+}
+
+function isApprovedPayload(payload: unknown): boolean {
+  return isRecord(payload) && payload.approved === true;
 }
 
 function getIntroBuilderForwardedProps(value: unknown): Record<string, unknown> | null {

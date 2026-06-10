@@ -533,8 +533,49 @@ function AgentTurnArtifactsPanel({
   applyOperation: (operation: ResumeOperation) => void;
   flushAutosave: () => void;
 }) {
+  const submitInterrupts = useAgentAgUiInterruptSubmit();
+
   if (!hasVisibleTurnArtifacts(turnArtifact)) {
     return null;
+  }
+
+  async function handleApplyOperation(operation: ResumeOperation) {
+    // 1. Web writes to form
+    applyOperation(operation);
+    onOperationApplied(turnArtifact.id, operation.id);
+    flushAutosave();
+
+    // 2. Submit approval to AG-UI runtime
+    if (submitInterrupts) {
+      try {
+        await submitInterrupts([
+          {
+            interruptId: operation.id,
+            status: "resolved",
+            payload: { approved: true },
+          },
+        ]);
+      } catch (error) {
+        console.error("[agent-panel] Failed to submit approval:", error);
+      }
+    }
+  }
+
+  async function handleRejectOperation(operationId: string) {
+    // Submit rejection to AG-UI runtime
+    if (submitInterrupts) {
+      try {
+        await submitInterrupts([
+          {
+            interruptId: operationId,
+            status: "cancelled",
+            payload: { approved: false },
+          },
+        ]);
+      } catch (error) {
+        console.error("[agent-panel] Failed to submit rejection:", error);
+      }
+    }
   }
 
   return (
@@ -573,11 +614,8 @@ function AgentTurnArtifactsPanel({
             <AgentConfirmationCard
               key={operation.id}
               operation={operation}
-              onApply={(nextOperation) => {
-                applyOperation(nextOperation);
-                onOperationApplied(turnArtifact.id, nextOperation.id);
-                flushAutosave();
-              }}
+              onApply={handleApplyOperation}
+              onReject={handleRejectOperation}
             />
           ))}
         </div>

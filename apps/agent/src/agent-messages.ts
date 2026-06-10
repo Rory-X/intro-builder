@@ -287,18 +287,40 @@ export function toAgUiAgentEvents({
 
   appendAgUiToolEvents(events, result, messageId);
 
-  events.push(
-    {
-      type: EventType.TEXT_MESSAGE_END,
-      messageId,
-    },
-    {
+  events.push({
+    type: EventType.TEXT_MESSAGE_END,
+    messageId,
+  });
+
+  // Check if there are operations requiring approval
+  const needsApproval = result.proposedOperations.length > 0;
+
+  if (needsApproval) {
+    // Output interrupt for HITL approval flow
+    events.push({
+      type: EventType.RUN_FINISHED,
+      threadId,
+      runId,
+      outcome: {
+        type: "interrupt",
+        interrupts: result.proposedOperations.map((operation) => ({
+          id: operation.id,
+          reason: "approval_required",
+          message: `${operation.label}: ${operation.changeSummary}`,
+          toolCallId: operation.toolCallId,
+          metadata: { operation },
+        })),
+      },
+    });
+  } else {
+    // No operations, complete successfully
+    events.push({
       type: EventType.RUN_FINISHED,
       threadId,
       runId,
       outcome: { type: "success" },
-    },
-  );
+    });
+  }
 
   return events;
 }

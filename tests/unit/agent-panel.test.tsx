@@ -516,6 +516,143 @@ describe("AgentPanel", () => {
         Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy();
   });
+
+  it("submits interrupt response when user approves an operation", async () => {
+    const fetchMock = vi.fn<
+      (...args: [RequestInfo | URL, RequestInit?]) => Promise<Response>
+    >(async () => {
+      return agUiResponse({
+        text: "我建议优化这段经历。",
+        toolCalls: [
+          {
+            id: "tool_1",
+            name: "resume_update_section",
+            status: "completed",
+            title: "更新经历",
+            summary: "改写工作经历",
+            input: { fieldPath: "experience.0.content" },
+            result: { operationIds: ["op_1"] },
+          },
+        ],
+        proposedOperations: [
+          {
+            id: "op_1",
+            toolCallId: "tool_1",
+            label: "应用经历改写",
+            section: "experience",
+            fieldPath: "experience.0.content",
+            operation: "update_section",
+            beforePlainText: "负责开发。",
+            afterPlainText: "围绕稳定性目标推进前端优化。",
+            replacementTiptapJson: { type: "doc", content: [] },
+            changeSummary: "补足任务与行动。",
+            riskFlags: [],
+          },
+        ],
+      });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const applyOperation = vi.fn();
+    render(<AgentPanel {...panelProps({ applyOperation })} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "诊断整份简历" }));
+
+    await waitFor(() => {
+      expect(screen.getByText("应用经历改写")).toBeInTheDocument();
+    });
+
+    // Click "应用" button
+    fireEvent.click(screen.getByRole("button", { name: "应用" }));
+
+    // Verify applyOperation was called
+    await waitFor(() => {
+      expect(applyOperation).toHaveBeenCalledWith(
+        expect.objectContaining({
+          id: "op_1",
+          label: "应用经历改写",
+        }),
+      );
+    });
+
+    // Verify interrupt response was submitted
+    await waitFor(() => {
+      const resumeCalls = fetchMock.mock.calls.filter((call) => {
+        const body = JSON.parse(String(call[1]?.body));
+        return body.resume && Array.isArray(body.resume);
+      });
+      expect(resumeCalls.length).toBeGreaterThan(0);
+      const resumeBody = JSON.parse(String(resumeCalls[0][1]?.body));
+      expect(resumeBody.resume).toContainEqual({
+        interruptId: "op_1",
+        status: "resolved",
+        payload: { approved: true },
+      });
+    });
+  });
+
+  it("submits interrupt response when user rejects an operation", async () => {
+    const fetchMock = vi.fn<
+      (...args: [RequestInfo | URL, RequestInit?]) => Promise<Response>
+    >(async () => {
+      return agUiResponse({
+        text: "我建议优化这段经历。",
+        toolCalls: [
+          {
+            id: "tool_1",
+            name: "resume_update_section",
+            status: "completed",
+            title: "更新经历",
+            summary: "改写工作经历",
+            input: { fieldPath: "experience.0.content" },
+            result: { operationIds: ["op_1"] },
+          },
+        ],
+        proposedOperations: [
+          {
+            id: "op_1",
+            toolCallId: "tool_1",
+            label: "应用经历改写",
+            section: "experience",
+            fieldPath: "experience.0.content",
+            operation: "update_section",
+            beforePlainText: "负责开发。",
+            afterPlainText: "围绕稳定性目标推进前端优化。",
+            replacementTiptapJson: { type: "doc", content: [] },
+            changeSummary: "补足任务与行动。",
+            riskFlags: [],
+          },
+        ],
+      });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<AgentPanel {...panelProps()} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "诊断整份简历" }));
+
+    await waitFor(() => {
+      expect(screen.getByText("应用经历改写")).toBeInTheDocument();
+    });
+
+    // Click "忽略" button
+    fireEvent.click(screen.getByRole("button", { name: "忽略" }));
+
+    // Verify interrupt response was submitted with cancelled status
+    await waitFor(() => {
+      const resumeCalls = fetchMock.mock.calls.filter((call) => {
+        const body = JSON.parse(String(call[1]?.body));
+        return body.resume && Array.isArray(body.resume);
+      });
+      expect(resumeCalls.length).toBeGreaterThan(0);
+      const resumeBody = JSON.parse(String(resumeCalls[0][1]?.body));
+      expect(resumeBody.resume).toContainEqual({
+        interruptId: "op_1",
+        status: "cancelled",
+        payload: { approved: false },
+      });
+    });
+  });
 });
 
 function agUiResponse({
@@ -547,8 +684,29 @@ function agUiResponse({
       role: "tool" as const,
       content: JSON.stringify({ toolCall, proposedOperations }),
     })),
-    { type: EventType.RUN_FINISHED, threadId: "resume_1", runId: "req_test" },
   ];
+
+  // If there are operations, output interrupt instead of success
+  const ops = proposedOperations as Array<{ id: string; label: string; changeSummary: string; toolCallId: string }>;
+  if (ops.length > 0) {
+    events.push({
+      type: EventType.RUN_FINISHED,
+      threadId: "resume_1",
+      runId: "req_test",
+      outcome: {
+        type: "interrupt",
+        interrupts: ops.map((op) => ({
+          id: op.id,
+          reason: "approval_required",
+          message: `${op.label}: ${op.changeSummary}`,
+          toolCallId: op.toolCallId,
+          metadata: { operation: op },
+        })),
+      },
+    });
+  } else {
+    events.push({ type: EventType.RUN_FINISHED, threadId: "resume_1", runId: "req_test" });
+  }
 
   return new Response(events.map((event) => `data: ${JSON.stringify(event)}\n\n`).join(""), {
     status: 200,
