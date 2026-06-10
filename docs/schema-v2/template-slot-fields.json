@@ -65,8 +65,8 @@
         "section.body": {
           "type": "rich-text",
           "description": "分区级富文本（技能、自定义模块的正文内容）",
-          "required_in_template": false,
-          "note": "当前批量模板暂不强制使用 section.body；块状模块继续通过 section.items -> item.bullets 渲染，避免双渲染"
+          "required_in_template": true,
+          "note": "模板必须为 section.body 留出显示位置；当同一 section 模板同时包含 section.body 和 section.items 时，渲染引擎会让 block section 优先走 section.body，避免双渲染"
         },
         "section.items": {
           "type": "loop",
@@ -174,9 +174,9 @@
       "severity": "error"
     },
     {
-      "rule": "section_body_optional_for_batch_templates",
-      "description": "批量模板暂不强制 section.body；若使用必须避免和 section.items 双渲染",
-      "severity": "info"
+      "rule": "section_body_present",
+      "description": "模板应为 section.body 留出显示位置；block section 优先使用该槽",
+      "severity": "error"
     },
     {
       "rule": "no_standalone_city",

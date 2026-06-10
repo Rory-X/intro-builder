@@ -94,6 +94,11 @@ const SLOT_CHECKS: SlotCheck[] = [
     test: (html) => /data-bind=["']section\.title["']/.test(html),
   },
   {
+    name: "section.body",
+    description: "块状模块内容 (section.body)",
+    test: (html) => /data-bind=["']section\.body["']/.test(html),
+  },
+  {
     name: "section.items",
     description: "列表模块 (section.items)",
     test: (html) => /data-bind=["']section\.items["']/.test(html),

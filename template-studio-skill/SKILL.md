@@ -145,6 +145,7 @@ stdout 最后一行 JSON：
   <template id="section-tpl">
     <section class="resume-section">
       <h2 class="section-title"><slot data-bind="section.title"></slot></h2>
+      <div class="section-body"><slot data-bind="section.body"></slot></div>
       <slot data-bind="section.items" data-template="item-tpl"></slot>
     </section>
   </template>
@@ -181,7 +182,7 @@ section title 内部 padding 用 **em**（跟字号联动），禁 px。
 
 - value：`basics.{name,title,status,email,phone,location,website,summary}` 用 `<slot>`；`basics.photo` **必须**用 `<img data-bind="basics.photo">`（不写 src，引擎注入 URL）
 - loop：`sectionOrder`（单栏）、`sidebarSections` / `mainSections`（双栏，引擎未实现）、`section.items`（条目循环）
-- section 内：`section.{id,title,icon}`
+- section 内：`section.{id,title,icon,body}`；`section.body` 用于 skills/summary/awards/portfolio/custom 这类块状模块
 - item 内：`item.{title,subtitle,dateRange,location,bullets,tags,link}`
 
 item 字段从 section 派生：experience.company/title→item.title/subtitle；education.school/(degree+major+gpa)→item.title/subtitle；projects.name/role + tags=stack；skills→bullets 整块。

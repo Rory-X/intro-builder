@@ -110,6 +110,7 @@ const REQUIRED_HEADER_BINDINGS = [
 const REQUIRED_BODY_BINDINGS = [
   "sectionOrder",
   "section.title",
+  "section.body",
   "section.items",
   "item.title",
   "item.subtitle",
@@ -302,10 +303,13 @@ async function main() {
           `\n\nSection and item titles must be dynamic slots. Use:\n` +
           `  <slot data-bind="sectionOrder" data-template="section-tpl"></slot>\n` +
           `  <slot data-bind="section.title"></slot>\n` +
+          `  <slot data-bind="section.body"></slot>\n` +
           `  <slot data-bind="section.items" data-template="item-tpl"></slot>\n` +
           `  <slot data-bind="item.title"></slot>\n` +
           `  <slot data-bind="item.subtitle"></slot>\n` +
           `  <slot data-bind="item.dateRange"></slot>\n` +
+          `  <slot data-bind="item.location"></slot>\n` +
+          `  <slot data-bind="item.link"></slot>\n` +
           `  <slot data-bind="item.bullets"></slot>`,
       );
     }

@@ -38,6 +38,7 @@
 
     "section_bindings": [
       { "data-bind": "section.title", "description": "分区标题，如「工作经历」「教育背景」" },
+      { "data-bind": "section.body", "description": "块状模块正文，如「专业技能」「个人总结」；同一模板中可和 section.items 并存，block section 优先走此槽" },
       { "data-bind": "section.id", "description": "分区 ID，如 experience、education" }
     ],
 

@@ -674,6 +674,38 @@ describe("SlotRenderer — section fixture integration", () => {
     expect(container.querySelectorAll(".fixture-section").length).toBe(3);
   });
 
+  it("does not double-render block sections when one template includes section.body and section.items", () => {
+    const mixed = makeContent({
+      skills: richDoc("Python、Go、Rust"),
+      sectionOrder: ["experience", "skills"],
+    });
+    const { container } = render_({
+      html: `<article>
+        <slot data-bind="sectionOrder" data-template="section" />
+      </article>
+      <template id="section">
+        <section>
+          <h2><slot data-bind="section.title" /></h2>
+          <div class="body"><slot data-bind="section.body" /></div>
+          <slot data-bind="section.items" data-template="item" />
+        </section>
+      </template>
+      <template id="item">
+        <div class="item">
+          <slot data-bind="item.title" />
+          <slot data-bind="item.bullets" />
+        </div>
+      </template>`,
+      css: ".item { color: black; }",
+      content: mixed,
+      templateId: "fixture",
+    });
+    const text = container.textContent ?? "";
+    expect(text).toContain("字节跳动");
+    expect(text.match(/主导编辑器重构/g)).toHaveLength(1);
+    expect(text.match(/Python、Go、Rust/g)).toHaveLength(1);
+  });
+
   it("renders list sections with item details", () => {
     const { container } = render_({
       html: SECTION_FIXTURE_HTML,

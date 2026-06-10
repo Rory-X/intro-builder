@@ -95,7 +95,7 @@
 | Binding | 类型 | 说明 |
 |---------|------|------|
 | `section.title` | string | 分区标题（如"工作经历""教育背景"） |
-| `section.body` | rich-text | 分区级富文本内容；当前批量模板暂不强制使用，块状模块继续通过 `section.items` → `item.bullets` 渲染，避免双渲染 |
+| `section.body` | rich-text | 分区级富文本内容；模板必须留显示位置，block section 会优先走此槽 |
 | `section.items` | loop | 该分区下的条目列表 |
 
 ---
@@ -169,5 +169,5 @@
 - [ ] `item.location` 有显示位置（用户填了地点不应丢失）
 - [ ] `item.meta` 有显示位置（技术栈/GPA 不应丢失）
 - [ ] `item.link` 有显示位置（项目链接不应丢失）
-- [ ] `section.body` 暂不作为批量模板必填项；如使用，必须避免与 `section.items` 双渲染
+- [ ] `section.body` 有显示位置；同一 section 模板里可同时保留 `section.items`，引擎会避免 block 模块双渲染
 - [ ] 所有字段为空时布局不塌陷

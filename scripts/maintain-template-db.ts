@@ -26,6 +26,7 @@ type PatchResult = {
 };
 
 const PATCH_MARKER = "intro-builder template db patch 2026-06";
+const SECTION_BODY_PATCH_MARKER = "intro-builder template db patch 2026-06 section.body";
 const PROFILE_TYPOGRAPHY_CSS = `
 
 /* ${PATCH_MARKER}: fixed profile typography boundary */
@@ -52,6 +53,17 @@ const PROFILE_TYPOGRAPHY_CSS = `
   color: inherit;
   text-decoration: none;
   overflow-wrap: anywhere;
+}
+`;
+const SECTION_BODY_CSS = `
+
+/* ${SECTION_BODY_PATCH_MARKER}: block section body slot */
+.section-body {
+  font-size: var(--font-size);
+  line-height: var(--body-line-height);
+}
+.section-body:empty {
+  display: none;
 }
 `;
 
@@ -188,6 +200,18 @@ function patchItemLinkHtml(html: string, changes: string[]): string {
   return next;
 }
 
+function patchSectionBodyHtml(html: string, changes: string[]): string {
+  if (/data-bind=["']section\.body["']/.test(html)) return html;
+  const next = html.replace(
+    /<slot\b(?=[^>]*\bdata-bind=["']section\.items["'])(?=[^>]*\bdata-template=)[^>]*>(?:\s*<\/slot>)?/i,
+    (match) => `<div class="section-body"><slot data-bind="section.body"></slot></div>\n      ${match}`,
+  );
+  if (next !== html) {
+    changes.push("add section.body slot before section.items");
+  }
+  return next;
+}
+
 function patchSectionTitleLineHeight(css: string, changes: string[]): string {
   const patched = css.replace(/([^{}]*section-title[^{}]*)\{([^{}]*)\}/g, (block, selector: string, body: string) => {
     if (selector.includes("data-pagination-header")) return block;
@@ -212,6 +236,7 @@ function patchTemplate(row: DbTemplate): PatchResult | null {
     if (row.id === "modern") html = patchModernHtml(html, changes);
     if (row.id === "classic") html = patchClassicHtml(html, changes);
     html = patchItemLinkHtml(html, changes);
+    html = patchSectionBodyHtml(html, changes);
   }
 
   if (css) {
@@ -224,6 +249,11 @@ function patchTemplate(row: DbTemplate): PatchResult | null {
     if (!css.includes(PATCH_MARKER)) {
       css = `${css.trimEnd()}${PROFILE_TYPOGRAPHY_CSS}`;
       changes.push("append profile typography and empty item-link CSS");
+    }
+
+    if (!css.includes(SECTION_BODY_PATCH_MARKER)) {
+      css = `${css.trimEnd()}${SECTION_BODY_CSS}`;
+      changes.push("append section.body CSS");
     }
 
     if (row.id === "modern" && !css.includes(".modern-status:not(:empty)::before")) {
