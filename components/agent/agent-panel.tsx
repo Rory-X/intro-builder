@@ -1,6 +1,7 @@
 "use client";
 
 import { useRef, useState, type ReactNode } from "react";
+import * as React from "react";
 import {
   ActionBarPrimitive,
   ComposerPrimitive,
@@ -516,47 +517,53 @@ function AgentTurnArtifactsPanel({
   flushAutosave: () => void;
 }) {
   const submitInterrupts = useAgentAgUiInterruptSubmit();
+  const [decisions, setDecisions] = React.useState<Map<string, boolean>>(new Map());
 
   if (!hasVisibleTurnArtifacts(turnArtifact)) {
     return null;
   }
 
+  const allOperations = turnArtifact.operations || [];
+
   async function handleApplyOperation(operation: ResumeOperation) {
-    // 1. Web writes to form
     applyOperation(operation);
     onOperationApplied(turnArtifact.id, operation.id);
     flushAutosave();
 
-    // 2. Submit approval to AG-UI runtime
-    if (submitInterrupts) {
-      try {
-        await submitInterrupts([
-          {
-            interruptId: operation.id,
-            status: "resolved",
-            payload: { approved: true },
-          },
-        ]);
-      } catch (error) {
-        console.error("[agent-panel] Failed to submit approval:", error);
-      }
+    const newDecisions = new Map(decisions);
+    newDecisions.set(operation.id, true);
+    setDecisions(newDecisions);
+
+    // Submit all decisions once all operations have been decided
+    if (allOperations.every((op: ResumeOperation) => newDecisions.has(op.id))) {
+      await submitAllDecisions(newDecisions);
     }
   }
 
   async function handleRejectOperation(operationId: string) {
-    // Submit rejection to AG-UI runtime
-    if (submitInterrupts) {
-      try {
-        await submitInterrupts([
-          {
-            interruptId: operationId,
-            status: "cancelled",
-            payload: { approved: false },
-          },
-        ]);
-      } catch (error) {
-        console.error("[agent-panel] Failed to submit rejection:", error);
-      }
+    const newDecisions = new Map(decisions);
+    newDecisions.set(operationId, false);
+    setDecisions(newDecisions);
+
+    // Submit all decisions once all operations have been decided
+    if (allOperations.every((op: ResumeOperation) => newDecisions.has(op.id))) {
+      await submitAllDecisions(newDecisions);
+    }
+  }
+
+  async function submitAllDecisions(allDecisions: Map<string, boolean>) {
+    if (!submitInterrupts) return;
+
+    try {
+      const responses = allOperations.map((op: ResumeOperation) => ({
+        interruptId: op.id,
+        status: allDecisions.get(op.id) ? ("resolved" as const) : ("cancelled" as const),
+        payload: { approved: allDecisions.get(op.id) || false },
+      }));
+      await submitInterrupts(responses);
+      onInterruptResolved(turnArtifact.id);
+    } catch (error) {
+      console.error("[agent-panel] Failed to submit decisions:", error);
     }
   }
 
