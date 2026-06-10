@@ -29,6 +29,7 @@ type PatchResult = {
 const PATCH_MARKER = "intro-builder template db patch 2026-06";
 const SECTION_BODY_PATCH_MARKER = "intro-builder template db patch 2026-06 section.body";
 const SECTION_SPLIT_PATCH_MARKER = "intro-builder template db patch 2026-06 section split";
+const CONTACT_SPACING_MARKER = "intro-builder template db patch 2026-06 contact spacing";
 const PROFILE_TYPOGRAPHY_CSS = `
 
 /* ${PATCH_MARKER}: fixed profile typography boundary */
@@ -55,6 +56,23 @@ const PROFILE_TYPOGRAPHY_CSS = `
   color: inherit;
   text-decoration: none;
   overflow-wrap: anywhere;
+}
+`;
+const CONTACT_SPACING_CSS = `
+
+/* ${CONTACT_SPACING_MARKER}: 联系方式各项之间留间距 + 去竖线分隔。
+   独立 marker，不与 PROFILE_TYPOGRAPHY 的 marker 耦合（部分模板早已打过后者）。
+   用 margin 而非容器 gap：各模板联系方式容器 class 不统一
+   （contact-row / contact-line / contact-bar / *-contact），但 loop 项统一是 .contact-item。 */
+.contact-item:not(:last-child) {
+  margin-right: 0.9em;
+}
+/* 去掉个别模板联系方式区的竖线分隔（改用 icon + 间距）。只作用于联系方式容器，
+   不影响正文条目（.meta-row / .item-title）本身设计的分隔线。 */
+.contact-line > *:not(:last-child)::after,
+.creative-contact slot:not(:last-child)::after {
+  content: none !important;
+  margin-left: 0 !important;
 }
 `;
 const SECTION_BODY_CSS = `
@@ -268,15 +286,13 @@ function migrateLegacyContactContainers(html: string): string {
 }
 
 function buildContactContainerIdentityLine(inner: string): string {
+  // status 不在这里保留 —— 它属于 basic 区（姓名/岗位/状态），由 insertStatusBesideTitle
+  // 统一放到 basic.title 旁；若留在联系方式容器里，会渲染成「联系方式行顶着一个孤立
+  // 圆点 + 状态」，与 basic/profile 的字段归属相悖。这里只保留 title（少数模板把 title
+  // 原本嵌在联系方式容器内），避免迁移后 title 丢失。
   const hasTitle = /data-bind=["']basic\.title["']/.test(inner);
-  const hasStatus = /data-bind=["']basic\.status["']/.test(inner);
-  if (!hasTitle && !hasStatus) return "";
-
-  const title = hasTitle ? '<span class="contact-item"><slot data-bind="basic.title"></slot></span>' : "";
-  const status = hasStatus
-    ? '<span class="profile-status"><span class="profile-sep"> · </span><span class="profile-status-value"><slot data-bind="basic.status"></slot></span></span>'
-    : "";
-  return `${title}${status}`;
+  if (!hasTitle) return "";
+  return '<span class="contact-item"><slot data-bind="basic.title"></slot></span>';
 }
 
 function insertStatusBesideTitle(html: string): string {
@@ -499,6 +515,11 @@ export function patchTemplate(row: DbTemplate): PatchResult | null {
     if (!css.includes(SECTION_BODY_PATCH_MARKER)) {
       css = `${css.trimEnd()}${SECTION_BODY_CSS}`;
       changes.push("append section.body CSS");
+    }
+
+    if (!css.includes(CONTACT_SPACING_MARKER)) {
+      css = `${css.trimEnd()}${CONTACT_SPACING_CSS}`;
+      changes.push("append contact spacing CSS");
     }
 
     if (!css.includes(SECTION_SPLIT_PATCH_MARKER)) {
