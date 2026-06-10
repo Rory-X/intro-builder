@@ -176,11 +176,12 @@ export function AgentPanel({
     nextInterrupts: AgentAgUiInterrupt[],
     turnId = activeTurnIdRef.current,
   ) {
+    const questionInterrupts = getQuestionInterrupts(nextInterrupts);
     updateAgentTurn(turnId, (turn) => ({
       ...turn,
       interrupts: nextInterrupts,
       status:
-        nextInterrupts.length > 0
+        questionInterrupts.length > 0
           ? "awaiting-input"
           : turn.status === "awaiting-input"
             ? "complete"
@@ -200,7 +201,7 @@ export function AgentPanel({
       if (turn.operations.length > 0) {
         return { ...turn, status: "waiting-confirmation" };
       }
-      if (turn.interrupts.length > 0) {
+      if (getQuestionInterrupts(turn.interrupts).length > 0) {
         return { ...turn, status: "awaiting-input" };
       }
       return { ...turn, status: "complete" };
@@ -518,48 +519,50 @@ function AgentTurnArtifactsPanel({
 }) {
   const submitInterrupts = useAgentAgUiInterruptSubmit();
   const [decisions, setDecisions] = React.useState<Map<string, boolean>>(new Map());
+  const approvalInterrupts = getApprovalInterrupts(turnArtifact.interrupts);
+  const questionInterrupts = getQuestionInterrupts(turnArtifact.interrupts);
 
   if (!hasVisibleTurnArtifacts(turnArtifact)) {
     return null;
   }
 
-  const hasInterrupts = turnArtifact.interrupts.length > 0;
+  const hasApprovalInterrupts = approvalInterrupts.length > 0;
 
   async function handleApplyOperation(operation: ResumeOperation) {
     applyOperation(operation);
     onOperationApplied(turnArtifact.id, operation.id);
     flushAutosave();
 
-    if (!hasInterrupts) return;
+    if (!hasApprovalInterrupts) return;
 
     const newDecisions = new Map(decisions);
-    newDecisions.set(operation.id, true);
+    newDecisions.set(getApprovalInterruptDecisionId(approvalInterrupts, operation), true);
     setDecisions(newDecisions);
 
     // Submit all decisions once all interrupts have been decided
-    if (turnArtifact.interrupts.every((interrupt) => newDecisions.has(interrupt.id))) {
+    if (approvalInterrupts.every((interrupt) => newDecisions.has(interrupt.id))) {
       await submitAllDecisions(newDecisions);
     }
   }
 
   async function handleRejectOperation(operationId: string) {
-    if (!hasInterrupts) return;
+    if (!hasApprovalInterrupts) return;
 
     const newDecisions = new Map(decisions);
     newDecisions.set(operationId, false);
     setDecisions(newDecisions);
 
     // Submit all decisions once all interrupts have been decided
-    if (turnArtifact.interrupts.every((interrupt) => newDecisions.has(interrupt.id))) {
+    if (approvalInterrupts.every((interrupt) => newDecisions.has(interrupt.id))) {
       await submitAllDecisions(newDecisions);
     }
   }
 
   async function submitAllDecisions(allDecisions: Map<string, boolean>) {
-    if (!submitInterrupts || !hasInterrupts) return;
+    if (!submitInterrupts || !hasApprovalInterrupts) return;
 
     try {
-      const responses = turnArtifact.interrupts.map((interrupt) => ({
+      const responses = approvalInterrupts.map((interrupt) => ({
         interruptId: interrupt.id,
         status: allDecisions.get(interrupt.id) ? ("resolved" as const) : ("cancelled" as const),
         payload: { approved: allDecisions.get(interrupt.id) || false },
@@ -578,20 +581,20 @@ function AgentTurnArtifactsPanel({
     }
     flushAutosave();
 
-    if (!hasInterrupts) return;
+    if (!hasApprovalInterrupts) return;
 
     const allApproved = new Map(
-      turnArtifact.operations.map((op) => [op.id, true])
+      approvalInterrupts.map((interrupt) => [interrupt.id, true])
     );
     setDecisions(allApproved);
     await submitAllDecisions(allApproved);
   }
 
   async function handleRejectAll() {
-    if (!hasInterrupts) return;
+    if (!hasApprovalInterrupts) return;
 
     const allRejected = new Map(
-      turnArtifact.operations.map((op) => [op.id, false])
+      approvalInterrupts.map((interrupt) => [interrupt.id, false])
     );
     setDecisions(allRejected);
     await submitAllDecisions(allRejected);
@@ -614,10 +617,10 @@ function AgentTurnArtifactsPanel({
           ))}
         </div>
       ) : null}
-      {turnArtifact.interrupts.length > 0 ? (
+      {questionInterrupts.length > 0 ? (
         <div className="animate-in fade-in-0 slide-in-from-bottom-1 duration-200">
           <AgentQuestionCard
-            interrupts={turnArtifact.interrupts}
+            interrupts={questionInterrupts}
             onResolved={() => onInterruptResolved(turnArtifact.id)}
           />
         </div>
@@ -1083,7 +1086,9 @@ function hasVisibleTurnArtifacts(turnArtifact: AgentTurnArtifacts) {
 
 function getAgentTurnStatusText(turnArtifact: AgentTurnArtifacts) {
   if (turnArtifact.status === "applied") return "已应用";
-  if (turnArtifact.interrupts.length > 0) return "等待补充信息";
+  if (getQuestionInterrupts(turnArtifact.interrupts).length > 0) {
+    return "等待补充信息";
+  }
   if (countPendingOperations(turnArtifact) > 0) return "等待确认修改";
   if (turnArtifact.status === "reading") {
     return "AI 正在思考：正在读取简历上下文";
@@ -1120,5 +1125,25 @@ function readThreadMessageText(message: ThreadMessage): string {
 function hasRunningAssistantToolCall(message: ThreadMessage): boolean {
   return message.content.some(
     (part) => part.type === "tool-call" && part.result === undefined,
+  );
+}
+
+function getQuestionInterrupts(interrupts: AgentAgUiInterrupt[]) {
+  return interrupts.filter((interrupt) => interrupt.reason !== "approval_required");
+}
+
+function getApprovalInterrupts(interrupts: AgentAgUiInterrupt[]) {
+  return interrupts.filter((interrupt) => interrupt.reason === "approval_required");
+}
+
+function getApprovalInterruptDecisionId(
+  approvalInterrupts: AgentAgUiInterrupt[],
+  operation: ResumeOperation,
+) {
+  return (
+    approvalInterrupts.find((interrupt) => interrupt.id === operation.id)?.id ??
+    approvalInterrupts.find((interrupt) => interrupt.toolCallId === operation.toolCallId)
+      ?.id ??
+    operation.id
   );
 }
