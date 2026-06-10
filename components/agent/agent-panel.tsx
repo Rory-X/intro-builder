@@ -811,18 +811,25 @@ function AgentThreadMessage({
   if (message.role === "system") return null;
 
   if (message.role === "assistant") {
-    if (!text && !hasRunningAssistantToolCall(message) && !turnArtifact) return null;
+    const hasRunningToolCall = hasRunningAssistantToolCall(message);
+    if (!text && !hasRunningToolCall && !turnArtifact) return null;
 
     return (
       <>
-        {text || hasRunningAssistantToolCall(message) ? (
+        {text || hasRunningToolCall ? (
           <MessagePrimitive.Root className="group/message text-left">
             <div className="inline-block max-w-[85%] rounded-xl bg-muted px-3 py-2 text-sm text-foreground">
               <MessagePrimitive.Content
                 components={{
                   Text: AgentMarkdownText,
-                  ToolGroup: AgentAssistantUiToolGroup,
-                  tools: { Override: AgentAssistantUiToolPart },
+                  ToolGroup: hasRunningToolCall
+                    ? AgentAssistantUiToolGroup
+                    : AgentAssistantUiHiddenToolGroup,
+                  tools: {
+                    Override: hasRunningToolCall
+                      ? AgentAssistantUiToolPart
+                      : AgentAssistantUiHiddenToolPart,
+                  },
                 }}
               />
             </div>
@@ -946,6 +953,10 @@ function AgentUserMessageActions() {
   );
 }
 
+function AgentAssistantUiHiddenToolGroup() {
+  return null;
+}
+
 function AgentAssistantUiToolGroup({ children }: { children?: ReactNode }) {
   return (
     <div className="my-2 rounded-xl border border-sky-200/80 bg-sky-50/80 p-2 shadow-sm dark:border-sky-400/20 dark:bg-sky-950/30">
@@ -956,6 +967,10 @@ function AgentAssistantUiToolGroup({ children }: { children?: ReactNode }) {
       <div className="space-y-1">{children}</div>
     </div>
   );
+}
+
+function AgentAssistantUiHiddenToolPart() {
+  return null;
 }
 
 function AgentAssistantUiToolPart({

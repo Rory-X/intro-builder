@@ -212,7 +212,7 @@ describe("AgentPanel assistant-ui runtime", () => {
     const fetchMock = vi.fn<
       (...args: [RequestInfo | URL, RequestInit?]) => Promise<Response>
     >(async () => {
-      return agUiResponseWithToolResult({
+      return agUiToolLifecycleInterruptResponse({
         text: "我生成了一条可确认的修改建议。",
         toolCall: {
           id: "tool_agui_1",
@@ -251,6 +251,7 @@ describe("AgentPanel assistant-ui runtime", () => {
     expect(screen.getByText("等待确认 1 条修改建议")).toBeInTheDocument();
     expect(await screen.findByText(/改写个人总结/)).toBeInTheDocument();
     expect(screen.getByText("应用个人总结改写")).toBeInTheDocument();
+    expect(screen.queryByText("Agent 正在使用工具")).not.toBeInTheDocument();
     expect(applyOperation).not.toHaveBeenCalled();
 
     fireEvent.click(screen.getByRole("button", { name: "应用" }));
@@ -332,14 +333,19 @@ function agUiResponse(chunks: string[]): Response {
   });
 }
 
-function agUiResponseWithToolResult({
+function agUiToolLifecycleInterruptResponse({
   text,
   toolCall,
   proposedOperation,
 }: {
   text: string;
   toolCall: unknown;
-  proposedOperation: unknown;
+  proposedOperation: {
+    id: string;
+    label: string;
+    changeSummary: string;
+    toolCallId: string;
+  } & Record<string, unknown>;
 }): Response {
   const events: BaseEvent[] = [
     { type: EventType.RUN_STARTED, threadId: "resume_1", runId: "req_test" },
@@ -353,18 +359,49 @@ function agUiResponseWithToolResult({
       messageId: "msg_assistant_1",
       delta: text,
     },
+    {
+      type: EventType.TOOL_CALL_START,
+      toolCallId: proposedOperation.toolCallId,
+      toolCallName: "resume_update_section",
+      parentMessageId: "msg_assistant_1",
+    },
+    {
+      type: EventType.TOOL_CALL_ARGS,
+      toolCallId: proposedOperation.toolCallId,
+      delta: JSON.stringify({ fieldPath: proposedOperation.fieldPath }),
+    },
+    {
+      type: EventType.TOOL_CALL_END,
+      toolCallId: proposedOperation.toolCallId,
+    },
     { type: EventType.TEXT_MESSAGE_END, messageId: "msg_assistant_1" },
     {
       type: EventType.TOOL_CALL_RESULT,
-      messageId: "tool_agui_1_result",
-      toolCallId: "tool_agui_1",
+      messageId: `${proposedOperation.toolCallId}_result`,
+      toolCallId: proposedOperation.toolCallId,
       role: "tool",
       content: JSON.stringify({
         toolCall,
         proposedOperations: [proposedOperation],
       }),
     },
-    { type: EventType.RUN_FINISHED, threadId: "resume_1", runId: "req_test" },
+    {
+      type: EventType.RUN_FINISHED,
+      threadId: "resume_1",
+      runId: "req_test",
+      outcome: {
+        type: "interrupt",
+        interrupts: [
+          {
+            id: proposedOperation.id,
+            reason: "approval_required",
+            message: `${proposedOperation.label}: ${proposedOperation.changeSummary}`,
+            toolCallId: proposedOperation.toolCallId,
+            metadata: { operation: proposedOperation },
+          },
+        ],
+      },
+    },
   ];
 
   return new Response(events.map((event) => `data: ${JSON.stringify(event)}\n\n`).join(""), {
