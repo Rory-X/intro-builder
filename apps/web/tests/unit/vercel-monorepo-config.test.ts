@@ -8,6 +8,16 @@ function readJson<T>(relativePath: string): T {
 }
 
 describe("Vercel monorepo configuration", () => {
+  it("lets the Next.js framework preset collect the deployment output", () => {
+    const vercelConfig = readJson<{
+      framework?: string;
+      outputDirectory?: string;
+    }>("vercel.json");
+
+    expect(vercelConfig.framework).toBe("nextjs");
+    expect(vercelConfig.outputDirectory).toBeUndefined();
+  });
+
   it("keeps the root Next.js detector version aligned with the web app", () => {
     const rootPackage = readJson<{
       devDependencies?: Record<string, string>;
