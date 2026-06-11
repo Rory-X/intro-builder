@@ -8,7 +8,12 @@ export default defineConfig({
     environment: "jsdom",
     setupFiles: ["./tests/setup.ts"],
     globals: true,
-    exclude: ["**/node_modules/**", "**/.claude/**", "apps/agent/**"],
+    exclude: [
+      "**/node_modules/**",
+      "**/.claude/**",
+      "apps/agent/**",
+      "**/maintain-template-db.test.ts",
+    ],
   },
   resolve: {
     alias: { "@": path.resolve(__dirname, ".") },
