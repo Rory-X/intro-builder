@@ -43,11 +43,15 @@ import { db } from "@/db";
 import { currentUserId } from "@/lib/auth-helpers";
 import { signAgentToken } from "@/lib/agent/token";
 import { AgentClientError, createAgentClient } from "@/lib/agent/client";
-import { POST } from "@/app/api/agent/resume/helpers/[helperId]/route";
+import { maxDuration, POST } from "@/app/api/agent/resume/helpers/[helperId]/route";
 
 describe("POST /api/agent/resume/helpers/[helperId]", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+  });
+
+  it("allows long-running AI generation on Vercel", () => {
+    expect(maxDuration).toBe(120);
   });
 
   it("requires a Web user session", async () => {
@@ -160,6 +164,35 @@ describe("POST /api/agent/resume/helpers/[helperId]", () => {
       code: "rate_limited",
       requestId: "req_limited",
       retryAfterSeconds: 30,
+    });
+  });
+
+  it("returns an actionable message for Agent timeout errors", async () => {
+    (currentUserId as unknown as Mock).mockResolvedValue("user_123");
+    (db.query.resumes.findFirst as unknown as Mock).mockResolvedValue({
+      id: "resume_abc",
+    });
+    (signAgentToken as unknown as Mock).mockResolvedValue({
+      token: "signed-helper-token",
+      expiresAt: new Date("2026-06-08T08:02:00.000Z"),
+    });
+    const runResumeHelper = vi.fn().mockRejectedValue(
+      new AgentClientError("Agent request timed out", {
+        statusCode: 504,
+        error: "agent_timeout",
+        requestId: "req_agent_timeout",
+      }),
+    );
+    (createAgentClient as unknown as Mock).mockReturnValue({ runResumeHelper });
+
+    const response = await POST(jsonRequest(validBody()), routeContext("resume-diagnose"));
+
+    expect(response.status).toBe(504);
+    await expect(response.json()).resolves.toEqual({
+      error: "AI 生成超时，请稍后重试或减少简历内容后再试",
+      code: "agent_timeout",
+      requestId: "req_agent_timeout",
+      retryAfterSeconds: undefined,
     });
   });
 });

@@ -175,6 +175,7 @@ export type CreateAgentClientOptions = {
   baseUrl?: string;
   timeoutMs?: number;
   streamTimeoutMs?: number;
+  generationTimeoutMs?: number;
   fetchFn?: typeof fetch;
   createRequestId?: () => string;
 };
@@ -236,6 +237,7 @@ export type AgentClient = {
 
 const DEFAULT_AGENT_BASE_URL = "http://127.0.0.1:8787";
 const DEFAULT_TIMEOUT_MS = 10_000;
+const DEFAULT_GENERATION_TIMEOUT_MS = 90_000;
 const DEFAULT_STREAM_TIMEOUT_MS = 90_000; // Stream requests need longer timeout (AI generation can take time)
 const AGENT_ERROR_CODES = new Set<string>([
   "bad_request",
@@ -260,6 +262,9 @@ export function createAgentClient({
   streamTimeoutMs = process.env.AGENT_STREAM_TIMEOUT_MS
     ? Number(process.env.AGENT_STREAM_TIMEOUT_MS)
     : DEFAULT_STREAM_TIMEOUT_MS,
+  generationTimeoutMs = process.env.AGENT_GENERATION_TIMEOUT_MS
+    ? Number(process.env.AGENT_GENERATION_TIMEOUT_MS)
+    : DEFAULT_GENERATION_TIMEOUT_MS,
   fetchFn = fetch,
   createRequestId = () => `req_${randomUUID()}`,
 }: CreateAgentClientOptions = {}): AgentClient {
@@ -283,7 +288,7 @@ export function createAgentClient({
         token,
         requestId,
         body: request,
-        timeoutMs,
+        timeoutMs: generationTimeoutMs,
         fetchFn,
       });
     },
@@ -295,7 +300,7 @@ export function createAgentClient({
         token,
         requestId,
         body: request,
-        timeoutMs,
+        timeoutMs: generationTimeoutMs,
         fetchFn,
       });
     },

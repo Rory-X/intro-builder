@@ -85,9 +85,7 @@ export async function requestResumeHelper({
     if (!response.ok) {
       setState({
         status: "error",
-        message: isRecord(responseBody) && typeof responseBody.error === "string"
-          ? responseBody.error
-          : "Agent 服务暂不可用，请稍后再试",
+        message: resumeHelperErrorMessage(responseBody),
       });
       return;
     }
@@ -156,6 +154,20 @@ function isSuggestion(value: unknown): value is ResumeHelperResponse["result"]["
     typeof value.example === "string" &&
     Array.isArray(value.riskFlags)
   );
+}
+
+function resumeHelperErrorMessage(responseBody: unknown): string {
+  if (isRecord(responseBody)) {
+    const code = responseBody.code;
+    if (code === "agent_timeout" || code === "provider_timeout") {
+      return "AI 生成超时，请稍后重试或减少简历内容后再试";
+    }
+    if (typeof responseBody.error === "string") {
+      return responseBody.error;
+    }
+  }
+
+  return "Agent 服务暂不可用，请稍后再试";
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

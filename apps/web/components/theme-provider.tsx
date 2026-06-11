@@ -1,7 +1,10 @@
 "use client";
 
 import * as React from "react";
-import { ThemeProvider as NextThemesProvider } from "next-themes";
+import {
+  ThemeProvider as NextThemesProvider,
+  type ThemeProviderProps as NextThemesProviderProps,
+} from "next-themes";
 
 // next-themes renders an inline <script> to prevent theme flicker on first
 // paint. React 19 warns on any <script> rendered inside a component, even
@@ -25,6 +28,6 @@ if (typeof window !== "undefined" && process.env.NODE_ENV === "development") {
 export function ThemeProvider({
   children,
   ...props
-}: React.ComponentProps<typeof NextThemesProvider>) {
+}: React.PropsWithChildren<NextThemesProviderProps>) {
   return <NextThemesProvider {...props}>{children}</NextThemesProvider>;
 }
