@@ -50,41 +50,60 @@ This version has breaking changes — APIs, conventions, and file structure may 
 ## 3. 仓库地图（只列 Agent 真正要看的）
 
 ```
-app/
-  (marketing)/        公开落地页
-  (auth)/             /login、/verify-request（魔法链接）
-  (app)/              登录后：dashboard、templates、settings、/resume/[id]/edit
-  api/pdf/[id]/       Puppeteer PDF 路由（复用 /resume/[id]/preview）
-  api/agent/          前端到 Agent 服务的会话、消息、runs 与富文本润色桥接
-  api/collab/         协作邀请、加入、owner token、session 状态
-  api/import-resume/  PDF / Word 简历导入
-  api/upload-photo/   Vercel Blob 上传
-  collab/[token]/     导师 / 协作者进入页
-  docs/、blog/        Fumadocs 文档与内容页
-  r/[slug]/           公开只读简历
-apps/agent/           独立 Agent HTTP 服务、工具、缓存、鉴权与测试
-components/
-  agent/              Agent 面板、模式切换、工具卡、简历助手入口
-  collab/             批注、高亮、协作者在线状态、语音控件
-  editor/             各分区编辑器（basics、experience、education、…）
-  preview/            live-preview、preview-panel、template-renderer
-  shell/              app header、brand、user menu
-  templates/          模板选择、缩略图与预览抽屉
-  ui/                 shadcn 原语 —— 不要手改，必要时用 shadcn CLI 重新生成
-db/                   Drizzle schema + migrations + 驱动选择器
-hooks/                use-resume-autosave.ts（去抖串行队列）
-lib/
-  resume-schema.ts    Zod schema；简历内容契约
-  auth.ts             NextAuth v5 实例与 handlers
-  agent/              AG-UI 消息契约、run adapter、chat context、token
-  templates/          registry、uploaded HTML slot 渲染、共享原语
-  style-presets.ts    密度 / 行高 / 页边距预设
-  client/             仅客户端工具（导出预览图等）
-  pdf-route-helpers.ts Puppeteer launch 配置 + 字体等待
-partykit/             Yjs 协作服务与鉴权工具
-proxy.ts              鉴权拦截 /dashboard、/resume/*/edit、/resume/*/preview
-docs/superpowers/     specs/ 与 plans/ —— vibe 流程的落地物
-tests/unit/           每个单元一个文件；文件名镜像源文件路径
+apps/
+  web/                # Next.js 主站
+    app/              # App Router 路由
+      (marketing)/    # 公开落地页
+      (auth)/         # /login、/verify-request（魔法链接）
+      (app)/          # 登录后：dashboard、templates、settings、/resume/[id]/edit
+      api/pdf/[id]/   # Puppeteer PDF 路由（复用 /resume/[id]/preview）
+      api/agent/      # 前端到 Agent 服务的会话、消息、runs 与富文本润色桥接
+      api/collab/     # 协作邀请、加入、owner token、session 状态
+      api/import-resume/ # PDF / Word 简历导入
+      api/upload-photo/  # Vercel Blob 上传
+      collab/[token]/ # 导师 / 协作者进入页
+      docs/、blog/    # Fumadocs 文档与内容页
+      r/[slug]/       # 公开只读简历
+    components/       # UI 组件
+      agent/          # Agent 面板、模式切换、工具卡、简历助手入口
+      collab/         # 批注、高亮、协作者在线状态、语音控件
+      editor/         # 各分区编辑器（basics、experience、education、…）
+      preview/        # live-preview、preview-panel、template-renderer
+      shell/          # app header、brand、user menu
+      templates/      # 模板选择、缩略图与预览抽屉
+      ui/             # shadcn 原语 —— 不要手改，必要时用 shadcn CLI 重新生成
+    lib/              # Web 专用工具
+      resume-schema.ts # Zod schema；简历内容契约
+      auth.ts         # NextAuth v5 实例与 handlers
+      agent/          # AG-UI 消息契约、run adapter、chat context、token
+      templates/      # registry、uploaded HTML slot 渲染、共享原语
+      style-presets.ts # 密度 / 行高 / 页边距预设
+      client/         # 仅客户端工具（导出预览图等）
+      pdf-route-helpers.ts # Puppeteer launch 配置 + 字体等待
+    hooks/            # React hooks
+      use-resume-autosave.ts # 去抖串行队列
+    db/               # Drizzle schema + migrations + 驱动选择器
+    proxy.ts          # 鉴权拦截 /dashboard、/resume/*/edit、/resume/*/preview
+    tests/unit/       # 每个单元一个文件；文件名镜像源文件路径
+  agent/              # Agent 微服务
+    src/              # Agent 服务代码（http、auth、redis、agent-messages）
+    Dockerfile        # Docker 部署
+  partykit/           # WebSocket 协同服务
+    src/              # PartyKit server
+packages/
+  shared/             # 跨应用共享代码
+    src/
+      types/          # 共享类型（resume、agent、tiptap）
+      schemas/        # Zod schemas（resume-schema）
+      utils/          # 通用工具（tiptap、slug）
+  config/             # 共享配置（eslint、typescript）
+docs/
+  superpowers/        # specs/ 与 plans/ —— vibe 流程的落地物
+  agent/              # Agent 架构文档
+scripts/              # monorepo 脚本
+  db/                 # 数据库迁移、检查
+  dev/                # 开发环境初始化
+  templates/          # 模板验证
 ```
 
 ## 4. Vibe 协作流程（不要跳步）

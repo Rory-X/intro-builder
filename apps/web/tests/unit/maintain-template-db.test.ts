@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { DbTemplate } from "@/db/schema";
-import { patchTemplate } from "@/scripts/maintain-template-db";
+import { patchTemplate } from "../../../../scripts/maintain-template-db";
 
 function templateRow(overrides: Partial<DbTemplate>): DbTemplate {
   return {

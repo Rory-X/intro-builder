@@ -1,18 +1,28 @@
 {
-  "name": "intro-web",
+  "name": "intro-builder",
   "version": "0.4.1",
   "private": true,
   "scripts": {
-    "dev": "pnpm --filter @intro-builder/web dev",
-    "build": "pnpm --filter @intro-builder/web build",
-    "start": "pnpm --filter @intro-builder/web start",
-    "lint": "pnpm --recursive lint",
+    "dev": "pnpm --parallel --filter './apps/*' dev",
+    "dev:web": "pnpm --filter @intro-builder/web dev",
+    "dev:agent": "pnpm --filter @intro-builder/agent dev",
+    "dev:partykit": "pnpm --filter @intro-builder/partykit dev",
+
+    "build": "pnpm --filter './apps/*' build",
+    "build:web": "pnpm --filter @intro-builder/web build",
+    "build:agent": "pnpm --filter @intro-builder/agent build",
+
     "test": "pnpm --recursive test",
+    "lint": "pnpm --recursive lint",
     "typecheck": "pnpm --recursive typecheck",
-    "verify": "pnpm lint && pnpm typecheck && pnpm test && pnpm build"
+
+    "verify": "pnpm lint && pnpm typecheck && pnpm test && pnpm build",
+
+    "db:migrate": "tsx scripts/db/apply-favorites-migration.ts",
+    "dev:ensure-user": "tsx scripts/dev/ensure-dev-user.ts"
   },
   "devDependencies": {
-    "typescript": "^5",
+    "typescript": "^5.9.3",
     "tsx": "^4.22.3"
   }
 }
