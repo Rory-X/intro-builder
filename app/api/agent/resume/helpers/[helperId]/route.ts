@@ -12,6 +12,7 @@ import { signAgentToken } from "@/lib/agent/token";
 import { currentUserId } from "@/lib/auth-helpers";
 
 export const dynamic = "force-dynamic";
+export const maxDuration = 120;
 
 type RouteContext = {
   params: Promise<{ helperId: string }>;
@@ -68,7 +69,7 @@ export async function POST(req: Request, context: RouteContext) {
     if (error instanceof AgentClientError) {
       return Response.json(
         {
-          error: "Agent 服务暂不可用",
+          error: agentClientErrorMessage(error),
           code: error.error,
           requestId: error.requestId,
           retryAfterSeconds: error.retryAfterSeconds,
@@ -80,6 +81,14 @@ export async function POST(req: Request, context: RouteContext) {
     console.error("[agent-resume-helper] route failed:", error);
     return Response.json({ error: "Agent 服务暂不可用" }, { status: 503 });
   }
+}
+
+function agentClientErrorMessage(error: AgentClientError): string {
+  if (error.error === "agent_timeout" || error.error === "provider_timeout") {
+    return "AI 生成超时，请稍后重试或减少简历内容后再试";
+  }
+
+  return "Agent 服务暂不可用";
 }
 
 async function readResumeHelperRequest(

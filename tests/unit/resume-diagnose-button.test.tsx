@@ -62,6 +62,30 @@ describe("ResumeDiagnoseButton", () => {
     });
     expect(await screen.findByText("整体内容完整，但工作经历缺少可验证结果。")).toBeInTheDocument();
   });
+
+  it("shows an actionable timeout message when diagnosis generation times out", async () => {
+    const fetchMock = vi.fn<
+      (...args: [RequestInfo | URL, RequestInit?]) => Promise<Response>
+    >(async () => {
+      return new Response(
+        JSON.stringify({
+          error: "Agent 服务暂不可用",
+          code: "agent_timeout",
+          requestId: "req_timeout",
+        }),
+        { status: 504, headers: { "content-type": "application/json" } },
+      );
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    renderWithForm(<ResumeDiagnoseButton resumeId="resume_abc" />);
+
+    fireEvent.click(screen.getByRole("button", { name: "AI 诊断" }));
+
+    expect(
+      await screen.findByText("AI 生成超时，请稍后重试或减少简历内容后再试"),
+    ).toBeInTheDocument();
+  });
 });
 
 function renderWithForm(ui: React.ReactNode) {

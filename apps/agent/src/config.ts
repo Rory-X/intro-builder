@@ -92,7 +92,7 @@ export function loadConfig(env: Env = process.env): AgentConfig {
     modelTimeoutMs: parseIntegerEnv(
       env.AGENT_MODEL_TIMEOUT_MS,
       "AGENT_MODEL_TIMEOUT_MS",
-      20_000,
+      90_000,
       { min: 1, max: 120_000 },
     ),
     langfuse: {

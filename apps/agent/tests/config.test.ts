@@ -24,7 +24,7 @@ describe("agent config", () => {
       modelBaseUrl: undefined,
       modelApiKey: undefined,
       modelName: undefined,
-      modelTimeoutMs: 20_000,
+      modelTimeoutMs: 90_000,
       langfuse: {
         enabled: false,
         publicKey: undefined,

@@ -5,7 +5,9 @@ import { describe, expect, it, vi } from "vitest";
 import {
   AgentClientError,
   createAgentClient,
+  type RichTextPolishRequest,
   type RichTextPolishResponse,
+  type ResumeHelperRequest,
 } from "@/lib/agent/client";
 
 describe("Web Agent client", () => {
@@ -527,6 +529,81 @@ describe("Web Agent client", () => {
     await expectation;
     vi.useRealTimers();
   });
+
+  it("uses the longer generation timeout for resume helper requests", async () => {
+    vi.useFakeTimers();
+    try {
+      let upstreamSignal: AbortSignal | undefined;
+      const client = createAgentClient({
+        baseUrl: "https://agent.test",
+        timeoutMs: 10,
+        fetchFn: async (...args) =>
+          new Promise<Response>((_resolve, reject) => {
+            const init = args[1];
+            upstreamSignal = init?.signal ?? undefined;
+            init?.signal?.addEventListener("abort", () => {
+              reject(new DOMException("Aborted", "AbortError"));
+            });
+          }),
+      });
+
+      const pending = client.runResumeHelper({
+        token: "jwt-token",
+        helperId: "resume-diagnose",
+        request: validResumeHelperRequest(),
+      });
+      const rejected = pending.catch((error) => error);
+
+      await vi.advanceTimersByTimeAsync(10_001);
+
+      expect(upstreamSignal?.aborted).toBe(false);
+
+      await vi.advanceTimersByTimeAsync(79_999);
+      await expect(rejected).resolves.toMatchObject({
+        error: "agent_timeout",
+        statusCode: 504,
+      });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("uses the longer generation timeout for rich text polish requests", async () => {
+    vi.useFakeTimers();
+    try {
+      let upstreamSignal: AbortSignal | undefined;
+      const client = createAgentClient({
+        baseUrl: "https://agent.test",
+        timeoutMs: 10,
+        fetchFn: async (...args) =>
+          new Promise<Response>((_resolve, reject) => {
+            const init = args[1];
+            upstreamSignal = init?.signal ?? undefined;
+            init?.signal?.addEventListener("abort", () => {
+              reject(new DOMException("Aborted", "AbortError"));
+            });
+          }),
+      });
+
+      const pending = client.polishRichText({
+        token: "jwt-token",
+        request: validRichTextPolishRequest(),
+      });
+      const rejected = pending.catch((error) => error);
+
+      await vi.advanceTimersByTimeAsync(10_001);
+
+      expect(upstreamSignal?.aborted).toBe(false);
+
+      await vi.advanceTimersByTimeAsync(79_999);
+      await expect(rejected).resolves.toMatchObject({
+        error: "agent_timeout",
+        statusCode: 504,
+      });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 });
 
 function validAgentMessageRequest() {
@@ -551,6 +628,48 @@ function validAgentMessageRequest() {
           plainText: "负责业务系统前端开发，优化页面性能。",
         },
       ],
+    },
+  };
+}
+
+function validResumeHelperRequest(): ResumeHelperRequest {
+  return {
+    resumeId: "resume_abc",
+    locale: "zh-CN",
+    target: { kind: "resume", section: null, fieldPath: null },
+    context: {
+      resumeTitle: "前端开发工程师",
+      completeness: {
+        overall: 68,
+        sections: [{ key: "experience", label: "工作经历", score: 7, max: 10 }],
+      },
+      sections: [
+        {
+          key: "experience",
+          label: "工作经历",
+          plainText: "负责业务系统前端开发，优化页面性能。",
+        },
+      ],
+    },
+    intent: { mode: "diagnose", maxSuggestions: 5, strategy: "star" },
+  };
+}
+
+function validRichTextPolishRequest(): RichTextPolishRequest {
+  return {
+    resumeId: "resume_abc",
+    section: "experience",
+    fieldPath: "experience.0.content",
+    locale: "zh-CN",
+    content: {
+      format: "plain_text",
+      plainText: "负责业务系统前端开发，优化页面性能。",
+    },
+    intent: {
+      mode: "polish",
+      tone: "professional",
+      length: "same",
+      strategy: "star",
     },
   };
 }
