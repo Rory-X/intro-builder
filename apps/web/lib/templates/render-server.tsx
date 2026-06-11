@@ -45,6 +45,7 @@ export async function TemplateRender({
       styleSettings={layoutProps.styleSettings ?? DEFAULT_STYLE_SETTINGS}
       templateId={template.id}
       sectionIcons={template.sectionIcons}
+      interactive={layoutProps.interactive}
     />
   );
 }

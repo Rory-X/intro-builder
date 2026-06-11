@@ -65,6 +65,7 @@ const render_ = (props: Partial<Parameters<typeof SlotRenderer>[0]> = {}) =>
       styleSettings={props.styleSettings ?? DEFAULT_STYLE_SETTINGS}
       templateId={props.templateId ?? "test-tpl"}
       sectionIcons={props.sectionIcons}
+      interactive={props.interactive}
     />,
   );
 
@@ -832,34 +833,69 @@ describe("SlotRenderer — basics 头部自动补 data-pagination-header", () =>
   });
 });
 
-describe("SlotRenderer — basics 头部自动补 data-pagination-header", () => {
-  // 回归：除 professional 外的模板用裸 <header>，PDF 导出
-  // `header:not([data-pagination-header]){display:none}` 会把整块个人信息隐藏。
-  // 引擎层自动补标记，所有模板的 basics 头部都能在导出时保留。
-  it("裸 <header> 渲染后带 data-pagination-header", () => {
-    const { container } = render_({
-      html: '<article><header><h1><slot data-bind="basic.name" /></h1></header></article>',
-    });
-    const header = container.querySelector("header");
-    expect(header).not.toBeNull();
-    expect(header!.hasAttribute("data-pagination-header")).toBe(true);
+describe("SlotRenderer — interactive / inert links", () => {
+  const LINK_HTML =
+    '<article><a class="item-link" href="https://portfolio.example.com">作品集</a></article>';
+
+  // 缩略图里循环条目内的链接（dashboard 卡片把整卡包成 <a>，内部再出 <a> 会非法嵌套）
+  const LOOP_LINK_HTML = `
+    <article>
+      <slot data-bind="sectionOrder" data-template="section" />
+    </article>
+    <template id="section-list">
+      <section><slot data-bind="section.items" data-template="item" /></section>
+    </template>
+    <template id="section-block">
+      <section><slot data-bind="section.body" /></section>
+    </template>
+    <template id="item">
+      <div class="loop-item"><a class="deep-link" href="https://deep.example.com">深层链接</a></div>
+    </template>
+  `;
+
+  it("默认（不传 interactive）保留可点 <a href>", () => {
+    const { container } = render_({ html: LINK_HTML });
+    const a = container.querySelector("a.item-link");
+    expect(a).not.toBeNull();
+    expect(a?.getAttribute("href")).toBe("https://portfolio.example.com");
+    expect(a?.textContent).toBe("作品集");
   });
 
-  it("已手写 data-pagination-header 时不重复（幂等）", () => {
-    const { container } = render_({
-      html: '<article><header data-pagination-header class="pro"><h1><slot data-bind="basic.name" /></h1></header></article>',
-    });
-    const header = container.querySelector("header");
-    expect(header).not.toBeNull();
-    expect(header!.getAttribute("class")).toBe("pro");
-    expect(header!.hasAttribute("data-pagination-header")).toBe(true);
+  it("interactive=true 显式传入也保留可点 <a href>", () => {
+    const { container } = render_({ html: LINK_HTML, interactive: true });
+    expect(container.querySelector("a.item-link")?.getAttribute("href")).toBe(
+      "https://portfolio.example.com",
+    );
   });
 
-  it("basics 用 <div>（无 <header>）时不报错且正常渲染", () => {
+  it("interactive=false 把 <a> 降级为 <span>、去掉 href、保留 class 与文本", () => {
+    const { container } = render_({ html: LINK_HTML, interactive: false });
+    expect(container.querySelector("a")).toBeNull();
+    const span = container.querySelector("span.item-link");
+    expect(span).not.toBeNull();
+    expect(span?.hasAttribute("href")).toBe(false);
+    expect(span?.textContent).toBe("作品集");
+  });
+
+  it("interactive=false 时循环条目内的深层 <a> 也降级为 <span>（递归传播）", () => {
     const { container } = render_({
-      html: '<article><div class="basics"><h1><slot data-bind="basic.name" /></h1></div></article>',
+      html: LOOP_LINK_HTML,
+      content: makeContent({ sectionOrder: ["experience"] }),
+      interactive: false,
     });
-    expect(container.querySelector("header")).toBeNull();
-    expect(container.textContent).toContain("张三");
+    expect(container.querySelector("a")).toBeNull();
+    const span = container.querySelector("span.deep-link");
+    expect(span).not.toBeNull();
+    expect(span?.textContent).toBe("深层链接");
+  });
+
+  it("LOOP_LINK_HTML 在默认模式下确实渲染出深层 <a>（确认上一条不是空跑）", () => {
+    const { container } = render_({
+      html: LOOP_LINK_HTML,
+      content: makeContent({ sectionOrder: ["experience"] }),
+    });
+    expect(container.querySelector("a.deep-link")?.getAttribute("href")).toBe(
+      "https://deep.example.com",
+    );
   });
 });

@@ -185,6 +185,7 @@ export default async function DashboardPage() {
                             preResolved={resolved}
                             content={content}
                             sectionOrder={content.sectionOrder}
+                            interactive={false}
                           />
                         </TemplateThumbnail>
                         {/* Status badge */}
