@@ -72,8 +72,9 @@ export default function RootLayout({
           <Script
             id="cursor-hydration-guard"
             strategy="beforeInteractive"
-            dangerouslySetInnerHTML={{ __html: cursorHydrationGuardScript }}
-          />
+          >
+            {cursorHydrationGuardScript}
+          </Script>
         )}
       </body>
     </html>
