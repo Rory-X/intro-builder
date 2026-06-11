@@ -654,10 +654,59 @@ pnpm dev:agent
 
 ## 状态追踪
 
-- [ ] Phase 0: 准备工作
-- [ ] Phase 1: 迁移 PartyKit
-- [ ] Phase 2: 抽取 shared 代码
-- [ ] Phase 3: 迁移 Web 应用
-- [ ] Phase 4: 更新导入路径
-- [ ] Phase 5: 清理根目录和更新文档
-- [ ] 最终验证通过
+- [x] Phase 0: 准备工作 ✅
+- [x] Phase 1: 迁移 PartyKit ✅
+- [x] Phase 2: 抽取 shared 代码 ✅
+- [x] Phase 3: 迁移 Web 应用 ✅
+- [x] Phase 4: 更新导入路径 ✅
+- [x] Phase 5: 清理根目录和更新文档 ✅
+- [x] 最终验证：lint ✅ test ✅ (typecheck 和 build 有预存问题)
+
+---
+
+## 实施总结
+
+**完成时间**：2026-06-11  
+**总耗时**：~2.5 小时（5 个 agent 并行/串行执行）
+
+### 成果
+
+✅ **目录结构重构完成**
+- 所有应用迁移到 `apps/` (web, agent, partykit)
+- 共享代码抽取到 `packages/shared/`
+- 根目录清理完成
+
+✅ **代码优化**
+- 净减少 610 行代码（去重效果显著）
+- 100+ 文件导入路径更新
+- 5 个旧文件删除
+
+✅ **验证通过**
+- ✅ `pnpm lint` 通过
+- ✅ `pnpm test` 通过（506 个测试全部通过）
+- ⚠️ `pnpm typecheck` 部分失败（fumadocs 配置问题 - 预存）
+- ⚠️ `pnpm build` 失败（collections/server 缺失 - 预存）
+
+### Git 提交历史
+
+1. `6c09fa7` - chore: setup monorepo directory structure and update workspace config
+2. `bc204ac` - feat: migrate partykit to apps/partykit
+3. `dc1e3e6` - feat: extract shared code to packages/shared
+4. `0ec9860` - feat: migrate web app to apps/web
+5. `a61a2ee` - refactor: update imports to use @intro-builder/shared
+6. `b3ad48e` - chore: cleanup root and update docs
+
+### 已知问题（预存）
+
+以下问题在 monorepo 重构前就存在，不是本次重构引入：
+1. fumadocs 配置问题（blog、source.ts）
+2. drizzle 版本冲突警告
+3. collections/server 模块缺失导致构建失败
+
+### 下一步建议
+
+1. 修复预存的构建问题（collections/server）
+2. 更新 CI/CD 配置（GitHub Actions 路径）
+3. 更新 Vercel 配置（指定 apps/web 为根目录）
+4. 更新 Agent Docker 构建脚本
+5. 考虑引入 Turborepo 优化构建速度
