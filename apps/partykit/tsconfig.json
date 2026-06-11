@@ -1,11 +1,18 @@
 {
-  "extends": "../../tsconfig.json",
   "compilerOptions": {
-    "module": "ES2022",
     "target": "ES2022",
-    "lib": ["ES2022"],
+    "module": "ESNext",
     "moduleResolution": "bundler",
-    "noEmit": true
+    "strict": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+    "outDir": "dist",
+    "rootDir": "src",
+    "paths": {
+      "@intro-builder/shared": ["../../packages/shared/src"],
+      "@intro-builder/shared/*": ["../../packages/shared/src/*"]
+    }
   },
   "include": ["src/**/*"]
 }

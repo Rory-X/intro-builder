@@ -2,10 +2,8 @@
   "name": "@intro-builder/partykit",
   "version": "0.1.0",
   "private": true,
-  "main": "src/server.ts",
   "scripts": {
     "dev": "partykit dev",
-    "build": "partykit build",
     "deploy": "partykit deploy",
     "typecheck": "tsc --noEmit"
   },
@@ -13,11 +11,6 @@
     "@intro-builder/shared": "workspace:*",
     "jose": "^6.0.11",
     "partykit": "^0.0.111",
-    "partysocket": "^1.0.2",
-    "y-partykit": "^0.0.25"
-  },
-  "devDependencies": {
-    "@types/node": "^20.19.39",
-    "typescript": "^5.9.3"
+    "y-partykit": "^0.0.32"
   }
 }
