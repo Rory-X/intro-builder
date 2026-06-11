@@ -69,6 +69,7 @@ Agent 微服务逐步负责：
 - [decision-log.md](./decision-log.md): 微服务、assistant-ui、Redis、写回权等关键决策记录。
 - [service-contracts.md](./service-contracts.md): HTTP API、JWT claims、错误格式、AG-UI message stream 和 resume operation 约束。
 - [security-and-stability.md](./security-and-stability.md): auth、rate limit、timeout、observability、部署稳定性检查清单。
+- [observability-and-evals.md](./observability-and-evals.md): Langfuse tracing、隐私边界、offline eval 与 Langfuse experiment 命令。
 - [deployment.md](./deployment.md): 香港服务器、Docker Compose、GitHub Actions、DNS/Cloudflare 状态与运维命令。
 - [code-map.md](./code-map.md): Agent 服务、Web client、编辑器、富文本、测试入口地图。
 - [development.md](./development.md): 本地开发、Redis、命令、验证闸门。

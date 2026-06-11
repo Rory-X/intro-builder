@@ -178,6 +178,13 @@ Do not log:
 - full user email
 - full user id if not needed
 
+Langfuse tracing:
+
+- 默认关闭，只有 `LANGFUSE_TRACING_ENABLED=true` 且 key 完整时启用。
+- 默认只上传 metadata、长度、计数、状态和 hashed user id。
+- `LANGFUSE_CAPTURE_RAW_PAYLOADS=true` 只允许用于本地临时排查。
+- 评测命令见 [observability-and-evals.md](./observability-and-evals.md)；offline eval 不依赖 Langfuse。
+
 ## Readiness and Health
 
 `/health`:

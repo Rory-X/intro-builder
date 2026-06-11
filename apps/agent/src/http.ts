@@ -33,6 +33,12 @@ import {
 import type { AgentToolCall, ResumeOperation } from "./agent-tools.js";
 import type { AgentConfig } from "./config.js";
 import { createErrorEnvelope } from "./errors.js";
+import {
+  createAgentObservability,
+  type AgentMessageParseTrace,
+  type AgentMessageTrace,
+  type AgentObservability,
+} from "./observability.js";
 import { checkRateLimit, type RateLimitRedis } from "./rate-limit.js";
 import type { RedisReadyResult } from "./redis.js";
 import {
@@ -62,6 +68,7 @@ export type CreateAgentServerOptions = {
   richTextPolishProvider?: RichTextPolishProvider;
   resumeHelperProvider?: ResumeHelperProvider;
   agentMessageProvider?: AgentMessageProvider;
+  observability?: AgentObservability;
   createRequestId?: () => string;
 };
 
@@ -93,6 +100,7 @@ export function createAgentServer({
   richTextPolishProvider,
   resumeHelperProvider,
   agentMessageProvider,
+  observability = createAgentObservability(config),
   createRequestId = defaultCreateRequestId,
 }: CreateAgentServerOptions): Server {
   return createServer((request, response) => {
@@ -109,6 +117,7 @@ export function createAgentServer({
       richTextPolishProvider,
       resumeHelperProvider,
       agentMessageProvider,
+      observability,
       createRequestId,
     ).catch((error: unknown) => {
       if (response.headersSent) {
@@ -140,6 +149,7 @@ async function routeRequest(
   richTextPolishProvider: RichTextPolishProvider | undefined,
   resumeHelperProvider: ResumeHelperProvider | undefined,
   agentMessageProvider: AgentMessageProvider | undefined,
+  observability: AgentObservability,
   createRequestId: () => string,
 ): Promise<void> {
   const context = {
@@ -382,202 +392,251 @@ async function routeRequest(
       });
     }
 
-    const cacheKey = buildScopedCacheKey({
-      scope: "agent:chat",
-      session: auth.session,
-      resumeId: validation.request.resumeId,
-      config,
-      input: validation.request,
-    });
-    const cached = await readAiCache<AgentMessageCacheValue>(
-      aiCacheStore,
-      cacheKey,
-    );
-    if (cached) {
-      if (acceptsAgUiSse(request)) {
-        return sendAgUiEvents(
-          response,
-          toAgUiAgentEvents({
-            requestId: context.requestId,
-            threadId: validation.request.resumeId,
-            result: {
+    return observability.traceAgentMessageRun(
+      {
+        request: validation.request,
+        session: auth.session,
+        requestId: context.requestId,
+        cacheStatus: "miss",
+      },
+      async (trace) => {
+        const cacheKey = buildScopedCacheKey({
+          scope: "agent:chat",
+          session: auth.session,
+          resumeId: validation.request.resumeId,
+          config,
+          input: validation.request,
+        });
+        const cached = await readAiCache<AgentMessageCacheValue>(
+          aiCacheStore,
+          cacheKey,
+        );
+        if (cached) {
+          trace.recordCache("hit");
+          trace.recordParseResult(agentMessageCacheParseTrace(cached.value));
+          trace.recordRunOutput(agentMessageCacheRunOutput(cached.value));
+
+          if (acceptsAgUiSse(request)) {
+            return sendAgUiEvents(
+              response,
+              toAgUiAgentEvents({
+                requestId: context.requestId,
+                threadId: validation.request.resumeId,
+                result: {
+                  message: cached.value.message,
+                  toolCalls: cached.value.toolCalls,
+                  proposedOperations: cached.value.proposedOperations,
+                },
+              }),
+              context,
+              headerValue(request.headers.accept),
+            );
+          }
+
+          return sendJson(
+            response,
+            200,
+            {
+              status: "ok",
+              requestId: context.requestId,
               message: cached.value.message,
               toolCalls: cached.value.toolCalls,
               proposedOperations: cached.value.proposedOperations,
+              usage: cached.value.usage,
+              cached: true,
+              cachedAt: cached.createdAt,
             },
-          }),
-          context,
-          headerValue(request.headers.accept),
-        );
-      }
+            context,
+          );
+        }
+        trace.recordCache("miss");
 
-      return sendJson(
-        response,
-        200,
-        {
-          status: "ok",
+        if (rateLimitStore) {
+          try {
+            const rateLimit = await checkRateLimit({
+              redis: rateLimitStore,
+              scope: "agent:chat",
+              identityHash: hashIdentity(auth.session.userId),
+              limit: config.rateLimitMaxRequests,
+              windowSeconds: config.rateLimitWindowSeconds,
+              now: now(),
+            });
+            if (!rateLimit.allowed) {
+              trace.recordRunOutput({
+                status: "error",
+                error: "Too many Agent chat requests",
+              });
+              return sendError(response, 429, context, {
+                error: "rate_limited",
+                message: "Too many Agent chat requests",
+                retryAfterSeconds: rateLimit.retryAfterSeconds,
+              });
+            }
+          } catch {
+            trace.recordRunOutput({
+              status: "error",
+              error: "Rate limit store is unavailable",
+            });
+            return sendError(response, 503, context, {
+              error: "dependency_unavailable",
+              message: "Rate limit store is unavailable",
+              dependency: "redis",
+            });
+          }
+        }
+
+        const prompt = buildAgentMessagePrompt({
+          ...validation.request,
           requestId: context.requestId,
-          message: cached.value.message,
-          toolCalls: cached.value.toolCalls,
-          proposedOperations: cached.value.proposedOperations,
-          usage: cached.value.usage,
-          cached: true,
-          cachedAt: cached.createdAt,
-        },
-        context,
-      );
-    }
-
-    if (rateLimitStore) {
-      try {
-        const rateLimit = await checkRateLimit({
-          redis: rateLimitStore,
-          scope: "agent:chat",
-          identityHash: hashIdentity(auth.session.userId),
-          limit: config.rateLimitMaxRequests,
-          windowSeconds: config.rateLimitWindowSeconds,
-          now: now(),
         });
-        if (!rateLimit.allowed) {
-          return sendError(response, 429, context, {
-            error: "rate_limited",
-            message: "Too many Agent chat requests",
-            retryAfterSeconds: rateLimit.retryAfterSeconds,
+
+        try {
+          if (acceptsAgUiSse(request) && agentMessageProvider.stream) {
+            return streamAgentMessageEvents({
+              response,
+              provider: agentMessageProvider,
+              request: validation.request,
+              prompt,
+              session: auth.session,
+              requestId: context.requestId,
+              cacheKey,
+              aiCacheStore,
+              now,
+              accept: headerValue(request.headers.accept),
+              trace,
+              modelName: config.modelName,
+            });
+          }
+
+          const providerResult = await trace.traceGeneration(
+            {
+              modelName: config.modelName,
+              provider: "openai-compatible",
+              prompt,
+            },
+            () =>
+              agentMessageProvider.run({
+                request: validation.request,
+                prompt,
+                session: auth.session,
+                requestId: context.requestId,
+              }),
+          );
+          const parsed = parseAgentMessageProviderResponse(providerResult.content);
+          if (!parsed.ok) {
+            trace.recordParseResult({ ok: false, message: parsed.message });
+            trace.recordRunOutput({ status: "error", error: parsed.message });
+
+            if (acceptsAgUiSse(request)) {
+              return sendAgUiEvents(
+                response,
+                toAgUiRunErrorEvents({
+                  requestId: context.requestId,
+                  threadId: validation.request.resumeId,
+                  message: parsed.message,
+                  code: "dependency_unavailable",
+                }),
+                context,
+                headerValue(request.headers.accept),
+              );
+            }
+
+            return sendError(response, 503, context, {
+              error: "dependency_unavailable",
+              message: parsed.message,
+              dependency: "provider",
+            });
+          }
+          trace.recordParseResult(agentMessageResultParseTrace(parsed.result));
+          trace.recordRunOutput(agentMessageResultRunOutput(parsed.result));
+
+          const cacheValue: AgentMessageCacheValue = {
+            message: parsed.result.message,
+            toolCalls: parsed.result.toolCalls,
+            proposedOperations: parsed.result.proposedOperations,
+            usage: providerResult.usage,
+          };
+          await writeAiCache(aiCacheStore, cacheKey, cacheValue, "agent:chat", now);
+
+          if (acceptsAgUiSse(request)) {
+            return sendAgUiEvents(
+              response,
+              toAgUiAgentEvents({
+                requestId: context.requestId,
+                threadId: validation.request.resumeId,
+                result: parsed.result,
+              }),
+              context,
+              headerValue(request.headers.accept),
+            );
+          }
+
+          return sendJson(
+            response,
+            200,
+            {
+              status: "ok",
+              requestId: context.requestId,
+              message: parsed.result.message,
+              toolCalls: parsed.result.toolCalls,
+              proposedOperations: parsed.result.proposedOperations,
+              usage: providerResult.usage,
+            },
+            context,
+          );
+        } catch (error) {
+          if (error instanceof RichTextPolishProviderError) {
+            trace.recordRunOutput({ status: "error", error: error.message });
+            if (acceptsAgUiSse(request)) {
+              return sendAgUiEvents(
+                response,
+                toAgUiRunErrorEvents({
+                  requestId: context.requestId,
+                  threadId: validation.request.resumeId,
+                  message: error.message,
+                  code: error.code,
+                }),
+                context,
+                headerValue(request.headers.accept),
+              );
+            }
+
+            return sendError(
+              response,
+              error.code === "provider_timeout" ? 504 : 503,
+              context,
+              {
+                error: error.code,
+                message: error.message,
+                dependency:
+                  error.code === "dependency_unavailable" ? "provider" : undefined,
+              },
+            );
+          }
+          const message =
+            error instanceof Error ? error.message : "Provider request failed";
+          trace.recordRunOutput({ status: "error", error: message });
+          if (acceptsAgUiSse(request)) {
+            return sendAgUiEvents(
+              response,
+              toAgUiRunErrorEvents({
+                requestId: context.requestId,
+                threadId: validation.request.resumeId,
+                message,
+                code: "dependency_unavailable",
+              }),
+              context,
+              headerValue(request.headers.accept),
+            );
+          }
+
+          return sendError(response, 500, context, {
+            error: "internal_error",
+            message: error instanceof Error ? error.message : "Internal error",
           });
         }
-      } catch {
-        return sendError(response, 503, context, {
-          error: "dependency_unavailable",
-          message: "Rate limit store is unavailable",
-          dependency: "redis",
-        });
-      }
-    }
-
-    const prompt = buildAgentMessagePrompt({
-      ...validation.request,
-      requestId: context.requestId,
-    });
-
-    try {
-      if (acceptsAgUiSse(request) && agentMessageProvider.stream) {
-        return streamAgentMessageEvents({
-          response,
-          provider: agentMessageProvider,
-          request: validation.request,
-          prompt,
-          session: auth.session,
-          requestId: context.requestId,
-          cacheKey,
-          aiCacheStore,
-          now,
-          accept: headerValue(request.headers.accept),
-        });
-      }
-
-      const providerResult = await agentMessageProvider.run({
-        request: validation.request,
-        prompt,
-        session: auth.session,
-        requestId: context.requestId,
-      });
-      const parsed = parseAgentMessageProviderResponse(providerResult.content);
-      if (!parsed.ok) {
-        if (acceptsAgUiSse(request)) {
-          return sendAgUiEvents(
-            response,
-            toAgUiRunErrorEvents({
-              requestId: context.requestId,
-              threadId: validation.request.resumeId,
-              message: parsed.message,
-              code: "dependency_unavailable",
-            }),
-            context,
-            headerValue(request.headers.accept),
-          );
-        }
-
-        return sendError(response, 503, context, {
-          error: "dependency_unavailable",
-          message: parsed.message,
-          dependency: "provider",
-        });
-      }
-      const cacheValue: AgentMessageCacheValue = {
-        message: parsed.result.message,
-        toolCalls: parsed.result.toolCalls,
-        proposedOperations: parsed.result.proposedOperations,
-        usage: providerResult.usage,
-      };
-      await writeAiCache(aiCacheStore, cacheKey, cacheValue, "agent:chat", now);
-
-      if (acceptsAgUiSse(request)) {
-        return sendAgUiEvents(
-          response,
-          toAgUiAgentEvents({
-            requestId: context.requestId,
-            threadId: validation.request.resumeId,
-            result: parsed.result,
-          }),
-          context,
-          headerValue(request.headers.accept),
-        );
-      }
-
-      return sendJson(
-        response,
-        200,
-        {
-          status: "ok",
-          requestId: context.requestId,
-          message: parsed.result.message,
-          toolCalls: parsed.result.toolCalls,
-          proposedOperations: parsed.result.proposedOperations,
-          usage: providerResult.usage,
-        },
-        context,
-      );
-    } catch (error) {
-      if (error instanceof RichTextPolishProviderError) {
-        if (acceptsAgUiSse(request)) {
-          return sendAgUiEvents(
-            response,
-            toAgUiRunErrorEvents({
-              requestId: context.requestId,
-              threadId: validation.request.resumeId,
-              message: error.message,
-              code: error.code,
-            }),
-            context,
-            headerValue(request.headers.accept),
-          );
-        }
-
-        return sendError(response, error.code === "provider_timeout" ? 504 : 503, context, {
-          error: error.code,
-          message: error.message,
-          dependency: error.code === "dependency_unavailable" ? "provider" : undefined,
-        });
-      }
-      if (acceptsAgUiSse(request)) {
-        return sendAgUiEvents(
-          response,
-          toAgUiRunErrorEvents({
-            requestId: context.requestId,
-            threadId: validation.request.resumeId,
-            message: error instanceof Error ? error.message : "Provider request failed",
-            code: "dependency_unavailable",
-          }),
-          context,
-          headerValue(request.headers.accept),
-        );
-      }
-
-      return sendError(response, 500, context, {
-        error: "internal_error",
-        message: error instanceof Error ? error.message : "Internal error",
-      });
-    }
+      },
+    );
   }
 
   const resumeHelperMatch = url.pathname.match(/^\/v1\/resume\/helpers\/([^/]+)$/);
@@ -967,6 +1026,8 @@ async function streamAgentMessageEvents({
   aiCacheStore,
   now,
   accept,
+  trace,
+  modelName,
 }: {
   response: ServerResponse;
   provider: AgentMessageProvider;
@@ -978,6 +1039,8 @@ async function streamAgentMessageEvents({
   aiCacheStore: AiCacheStore | undefined;
   now: () => Date;
   accept?: string;
+  trace: AgentMessageTrace;
+  modelName?: string;
 }): Promise<void> {
   const encoder = new EventEncoder({ accept });
   const threadId = request.resumeId;
@@ -1005,40 +1068,53 @@ async function streamAgentMessageEvents({
   writeEvent({ type: EventType.RUN_STARTED, threadId, runId: requestId });
 
   try {
-    for await (const chunk of provider.stream!({
-      request,
-      prompt,
-      session,
-      requestId,
-    })) {
-      if (chunk.type === "usage") {
-        usage = chunk.usage;
-        continue;
-      }
+    await trace.traceGeneration(
+      {
+        modelName,
+        provider: "openai-compatible",
+        prompt,
+      },
+      async () => {
+        for await (const chunk of provider.stream!({
+          request,
+          prompt,
+          session,
+          requestId,
+        })) {
+          if (chunk.type === "usage") {
+            usage = chunk.usage;
+            continue;
+          }
 
-      content += chunk.delta;
-      const visibleContent = extractStreamingAgentMessageContent(content);
-      const delta = visibleContent.slice(emittedContent.length);
-      if (!delta) continue;
+          content += chunk.delta;
+          const visibleContent = extractStreamingAgentMessageContent(content);
+          const delta = visibleContent.slice(emittedContent.length);
+          if (!delta) continue;
 
-      if (!textStarted) {
-        writeEvent({
-          type: EventType.TEXT_MESSAGE_START,
-          messageId,
-          role: "assistant",
-        });
-        textStarted = true;
-      }
-      writeEvent({
-        type: EventType.TEXT_MESSAGE_CONTENT,
-        messageId,
-        delta,
-      });
-      emittedContent = visibleContent;
-    }
+          if (!textStarted) {
+            writeEvent({
+              type: EventType.TEXT_MESSAGE_START,
+              messageId,
+              role: "assistant",
+            });
+            textStarted = true;
+          }
+          writeEvent({
+            type: EventType.TEXT_MESSAGE_CONTENT,
+            messageId,
+            delta,
+          });
+          emittedContent = visibleContent;
+        }
+
+        return { content, usage };
+      },
+    );
 
     const parsed = parseAgentMessageProviderResponse(content);
     if (!parsed.ok) {
+      trace.recordParseResult({ ok: false, message: parsed.message });
+      trace.recordRunOutput({ status: "error", error: parsed.message });
       writeEvent({
         type: EventType.RUN_ERROR,
         threadId,
@@ -1049,6 +1125,7 @@ async function streamAgentMessageEvents({
       response.end();
       return;
     }
+    trace.recordParseResult(agentMessageResultParseTrace(parsed.result));
 
     const remainingContent = parsed.result.message.content.slice(
       emittedContent.length,
@@ -1076,6 +1153,7 @@ async function streamAgentMessageEvents({
       usage,
     };
     await writeAiCache(aiCacheStore, cacheKey, cacheValue, "agent:chat", now);
+    trace.recordRunOutput(agentMessageResultRunOutput(parsed.result));
 
     for (const event of toAgUiAgentToolEvents({
       messageId,
@@ -1089,6 +1167,10 @@ async function streamAgentMessageEvents({
     );
     response.end();
   } catch (error) {
+    trace.recordRunOutput({
+      status: "error",
+      error: error instanceof Error ? error.message : "Provider request failed",
+    });
     writeEvent({
       type: EventType.RUN_ERROR,
       threadId,
@@ -1118,6 +1200,46 @@ function toAgUiRunErrorEvents({
     { type: EventType.RUN_STARTED, threadId, runId: requestId },
     { type: EventType.RUN_ERROR, threadId, runId: requestId, message, code },
   ];
+}
+
+function agentMessageResultParseTrace(result: {
+  toolCalls: AgentToolCall[];
+  proposedOperations: ResumeOperation[];
+}): AgentMessageParseTrace {
+  return {
+    ok: true,
+    toolCallCount: result.toolCalls.length,
+    proposedOperationCount: result.proposedOperations.length,
+    interruptReasons:
+      result.proposedOperations.length > 0 ? ["approval_required"] : [],
+  };
+}
+
+function agentMessageResultRunOutput(result: {
+  toolCalls: AgentToolCall[];
+  proposedOperations: ResumeOperation[];
+}) {
+  return {
+    status: "ok" as const,
+    toolCallCount: result.toolCalls.length,
+    proposedOperationCount: result.proposedOperations.length,
+  };
+}
+
+function agentMessageCacheParseTrace(
+  cacheValue: AgentMessageCacheValue,
+): AgentMessageParseTrace {
+  return agentMessageResultParseTrace({
+    toolCalls: cacheValue.toolCalls,
+    proposedOperations: cacheValue.proposedOperations,
+  });
+}
+
+function agentMessageCacheRunOutput(cacheValue: AgentMessageCacheValue) {
+  return agentMessageResultRunOutput({
+    toolCalls: cacheValue.toolCalls,
+    proposedOperations: cacheValue.proposedOperations,
+  });
 }
 
 function delay(milliseconds: number): Promise<void> {

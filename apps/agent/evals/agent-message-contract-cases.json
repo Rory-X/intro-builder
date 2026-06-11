@@ -1,0 +1,119 @@
+[
+  {
+    "id": "valid-safe-operation",
+    "description": "Safe rewrite proposal with a missing-fact risk flag.",
+    "modelOutput": {
+      "message": {
+        "id": "msg_eval_safe",
+        "role": "assistant",
+        "content": "建议改写第一段经历，但结果指标需要你补充。"
+      },
+      "toolCalls": [
+        {
+          "id": "tool_eval_1",
+          "name": "resume_update_section",
+          "status": "completed",
+          "title": "改写工作经历",
+          "summary": "按 STAR 补足任务与行动。",
+          "input": { "fieldPath": "experience.0.content" },
+          "result": { "operationIds": ["op_eval_1"] }
+        }
+      ],
+      "proposedOperations": [
+        {
+          "id": "op_eval_1",
+          "toolCallId": "tool_eval_1",
+          "label": "优化工作经历",
+          "section": "experience",
+          "fieldPath": "experience.0.content",
+          "operation": "update_section",
+          "beforePlainText": "负责前端开发。",
+          "afterPlainText": "围绕页面性能问题推进前端优化，结果指标待补充。",
+          "changeSummary": "补足任务和行动，不编造结果。",
+          "riskFlags": [
+            {
+              "type": "needs_user_fact",
+              "message": "请补充真实性能提升指标。"
+            }
+          ]
+        }
+      ]
+    },
+    "expectations": {
+      "expectValidJson": true,
+      "expectContractValid": true,
+      "expectedOperationCount": 1,
+      "requiredRiskFlags": ["needs_user_fact"],
+      "requiredFieldPaths": ["experience.0.content"],
+      "forbiddenTokens": ["提升 300%", "月活翻倍"]
+    }
+  },
+  {
+    "id": "valid-conversational-answer",
+    "description": "Conversational answer with no operations still satisfies the contract.",
+    "modelOutput": {
+      "message": {
+        "id": "msg_eval_question",
+        "role": "assistant",
+        "content": "你这次主要投递哪个岗位？我需要用它判断经历重点。"
+      },
+      "toolCalls": [],
+      "proposedOperations": []
+    },
+    "expectations": {
+      "expectValidJson": true,
+      "expectContractValid": true,
+      "expectedOperationCount": 0,
+      "forbiddenTokens": ["提升 300%", "月活翻倍"]
+    }
+  },
+  {
+    "id": "detect-invalid-json",
+    "description": "Evaluator catches provider output that is not JSON.",
+    "modelOutput": "not-json",
+    "expectations": {
+      "expectValidJson": false,
+      "expectContractValid": false
+    }
+  },
+  {
+    "id": "detect-invalid-field-path",
+    "description": "Evaluator catches operations targeting unsupported resume fields.",
+    "modelOutput": {
+      "message": {
+        "id": "msg_eval_invalid_field",
+        "role": "assistant",
+        "content": "我建议改写姓名。"
+      },
+      "toolCalls": [
+        {
+          "id": "tool_eval_invalid_field",
+          "name": "resume_update_section",
+          "status": "completed",
+          "title": "改写姓名",
+          "summary": "不应允许 Agent 改写姓名。",
+          "input": { "fieldPath": "basics.name" },
+          "result": { "operationIds": ["op_eval_invalid_field"] }
+        }
+      ],
+      "proposedOperations": [
+        {
+          "id": "op_eval_invalid_field",
+          "toolCallId": "tool_eval_invalid_field",
+          "label": "改写姓名",
+          "section": "summary",
+          "fieldPath": "basics.name",
+          "operation": "update_section",
+          "beforePlainText": "张三",
+          "afterPlainText": "资深前端专家张三",
+          "changeSummary": "非法字段路径测试。",
+          "riskFlags": []
+        }
+      ]
+    },
+    "expectations": {
+      "expectValidJson": true,
+      "expectContractValid": false
+    }
+  }
+]
