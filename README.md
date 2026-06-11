@@ -1,13 +1,13 @@
 # intro-builder
 
 <p align="center">
-  <img src="./public/logo.png" alt="intro-builder logo" width="96" />
+  <img src="./apps/web/public/logo.png" alt="intro-builder logo" width="96" />
 </p>
 
 <p align="center">
   面向中文互联网求职者的在线简历工作台。
   <br />
-  结构化编辑、实时 A4 预览、智能导入、AI 润色、协同批注、PDF 导出与公开分享，一站完成从撰写到投递。
+  结构化编辑、实时 A4 预览、智能导入、AI 诊断与润色、协同批注、PDF 导出与公开分享，一站完成从撰写到投递。
 </p>
 
 <p align="center">
@@ -18,7 +18,7 @@
 
 ## 产品定位
 
-intro-builder 不是“填表后下载”的简历模板站，而是一个围绕中文互联网求职流程设计的在线工作台。用户可以把经历拆成结构化模块，在右侧实时看到 A4 纸张效果，并在同一份内容上切换模板、调整排版、邀请导师批注，最后导出与预览一致的 PDF，或生成公开只读链接发给 HR。
+intro-builder 不是“填表后下载”的简历模板站，而是一个围绕中文互联网求职流程设计的在线工作台。用户可以把经历拆成结构化模块，在右侧实时看到 A4 纸张效果，并在同一份内容上切换模板、调整排版、使用 AI Agent 诊断与润色、邀请导师批注，最后导出与预览一致的 PDF，或生成公开只读链接发给 HR。
 
 它关注三个问题：
 
@@ -40,7 +40,7 @@ intro-builder 不是“填表后下载”的简历模板站，而是一个围绕
   -> 结构化编辑内容
   -> 实时查看 A4 预览
   -> 切换模板与排版
-  -> AI 润色 / 完成度检查 / 导师批注
+  -> AI 诊断 / 润色改写 / 完成度检查 / 导师批注
   -> 导出 PDF 或生成公开链接
 ```
 
@@ -50,7 +50,8 @@ intro-builder 不是“填表后下载”的简历模板站，而是一个围绕
 
 - 结构化分区编辑：基础信息、教育、工作经历、项目、技能、自定义模块。
 - 富文本内容编辑：支持链接、对齐、颜色、下划线、字号等常见格式。
-- AI 润色：在经历、项目、教育、自定义模块中生成更适合简历语境的表达建议，确认后再应用。
+- AI 润色与改写：在经历、项目、教育、自定义模块中生成更适合简历语境的表达建议，确认后再应用。
+- Agent 诊断：基于 AG-UI / assistant-ui 的流式面板，结合当前简历上下文给出诊断、改写建议与工具卡反馈。
 - 完成度评分：在编辑器和 Dashboard 中提示简历内容完整度。
 - 拖拽排序：分区和条目都可以按投递重点重新排列。
 - 自动保存：2 秒防抖保存，串行队列避免在途保存覆盖新内容。
@@ -58,7 +59,7 @@ intro-builder 不是“填表后下载”的简历模板站，而是一个围绕
 ### 预览与排版
 
 - 实时 A4 预览：编辑时同步看到最终纸张效果。
-- 模板库：支持按互联网、商务、创意、学术、通用等类别浏览模板。
+- 模板库：支持按互联网、商务、创意、学术、通用等类别浏览模板，并持续扩展上传模板 Schema v2。
 - 一键试穿：把自己的简历内容直接套进模板预览，再决定是否应用。
 - 收藏模板：常用模板可以收藏，编辑器内快速切换。
 - 智能排版：在内容溢出时自动尝试压缩字号、行高和间距，让简历更接近一页可投递状态。
@@ -87,7 +88,7 @@ intro-builder 不是“填表后下载”的简历模板站，而是一个围绕
 
 ## 当前状态
 
-项目处于 v0.3 之后的持续迭代阶段，已上线三套内置模板，并在推进模板库、富文本润色、导入解析、协同批注、智能排版与 Agent 能力等产品切片。更多过程文档在 [docs/superpowers](./docs/superpowers) 与 [docs/agent](./docs/agent) 中。
+项目处于 v0.4.1 之后的持续迭代阶段，主线已经迁移到 pnpm workspace monorepo：`apps/web` 承载 Next.js 主站，`apps/agent` 承载独立 Agent HTTP 服务，`apps/partykit` 承载协同服务。产品侧已经覆盖模板库、上传模板 Schema v2、协作批注、文档站、邮箱验证码登录，以及基于 AG-UI / assistant-ui 的 Agent 面板与流式诊断链路。更多过程文档在 [docs/superpowers](./docs/superpowers) 与 [docs/agent](./docs/agent) 中。
 
 ## 项目结构
 
@@ -100,6 +101,8 @@ intro-builder 不是“填表后下载”的简历模板站，而是一个围绕
 - **packages/config/** - 共享配置（eslint、typescript）
 
 ## 开发
+
+建议使用 Node 22 与 pnpm 10。
 
 ```bash
 pnpm install          # 安装依赖
@@ -119,7 +122,7 @@ pnpm typecheck        # 类型检查
 pnpm build            # 构建所有应用
 ```
 
-关键开发约定见 [AGENTS.md](./AGENTS.md)。环境变量示例见 [apps/web/.env.example](./apps/web/.env.example)。Agent 微服务说明见 [docs/agent/README.md](./docs/agent/README.md)。
+关键开发约定见 [AGENTS.md](./AGENTS.md)。环境变量示例见 [apps/web/.env.example](./apps/web/.env.example) 与 [apps/agent/.env.example](./apps/agent/.env.example)。Agent 微服务说明见 [docs/agent/README.md](./docs/agent/README.md)。
 
 ## License
 
