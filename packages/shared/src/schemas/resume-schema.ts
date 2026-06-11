@@ -50,12 +50,8 @@ export const SkillGroup = z.object({
   items: z.array(z.string()).default([]),
 });
 
-/**
- * 将旧格式 SkillGroup[] 迁移为 TipTapJSON 富文本。
- * 每个 group 转为一个段落：`<strong>分类名：</strong>项目1、项目2`
- */
 function migrateSkills(input: unknown): unknown {
-  if (!Array.isArray(input)) return input; // 已是新格式（TipTapJSON 对象）
+  if (!Array.isArray(input)) return input;
   const groups = input as Array<{ category?: string; items?: string[] }>;
   if (groups.length === 0) return emptyDoc();
   const content = groups.map((g) => ({
@@ -65,7 +61,7 @@ function migrateSkills(input: unknown): unknown {
         { type: "text" as const, marks: [{ type: "bold" as const }], text: `${g.category}：` },
       ] : []),
       { type: "text" as const, text: (g.items ?? []).join("、") },
-    ].filter((node) => node.text), // 过滤空文本节点
+    ].filter((node) => node.text),
   }));
   return { type: "doc", content };
 }
@@ -89,7 +85,6 @@ export const CustomSection = z.object({
 
 export const DEFAULT_SECTION_ORDER = ["basics", "experience", "education", "projects", "skills"] as const;
 
-/** Preset module types available for adding */
 export const MODULE_PRESETS = [
   { id: "experience", label: "实习/工作经历", builtIn: true },
   { id: "education", label: "教育经历", builtIn: true },
@@ -101,13 +96,8 @@ export const MODULE_PRESETS = [
   { id: "portfolio", label: "作品集", builtIn: true },
 ] as const;
 
-/** Built-in section keys (have dedicated editors) */
 export const BUILTIN_SECTION_KEYS = new Set(["basics", "experience", "education", "projects", "research", "skills", "summary", "awards", "portfolio"]);
 
-// preprocess fires before defaults — required so a legacy row that has
-// `lineHeight: 1.8` but no bodyLineHeight can backfill the new field.
-// Without this, Zod fills it with default 1.6 and the user's adjusted
-// line-height silently disappears on first edit.
 export const StyleSettings = z.preprocess(
   (raw) => {
     if (typeof raw !== "object" || raw === null) return raw;
@@ -120,12 +110,8 @@ export const StyleSettings = z.preprocess(
   z.object({
     fontFamily: z.enum(["sans", "serif", "mono"]).default("sans"),
     fontSize: z.number().min(8).max(16).default(13),
-    // Deprecated: kept so legacy DB rows still parse and so the preprocess
-    // above can read it; new code reads bodyLineHeight (段内行高) and
-    // headingGap (标题与正文间距) instead.
     lineHeight: z.number().min(1.05).max(2.0).default(1.6),
     bodyLineHeight: z.number().min(1.05).max(2.0).default(1.6),
-    // 标题与下方正文之间的间距 (px) — applied as margin-bottom on h1..h4.
     headingGap: z.number().min(0).max(32).default(8),
     pagePadding: z.number().min(8).max(60).default(40),
     sectionGap: z.number().min(4).max(24).default(16),
@@ -155,9 +141,6 @@ export const ResumeContent = z.object({
   projects: z.array(Project).default([]),
   research: z.array(Research).default([]),
   skills: z.preprocess(migrateSkills, TipTapJSON).default(() => emptyDoc()),
-  // 一等公民富文本块模块（与 skills 同型）：个人总结 / 荣誉奖项 / 作品集。
-  // 历史上这三个曾寄生在 custom[]（id=summary/awards/portfolio），现已提升为
-  // 顶层字段；存量数据由 migrateContent 读时搬迁。
   summary: TipTapJSON.default(() => emptyDoc()),
   awards: TipTapJSON.default(() => emptyDoc()),
   portfolio: TipTapJSON.default(() => emptyDoc()),
