@@ -23,6 +23,7 @@
   },
   "devDependencies": {
     "typescript": "^5.9.3",
-    "tsx": "^4.22.3"
+    "tsx": "^4.22.3",
+    "next": "15.3.0"
   }
 }
