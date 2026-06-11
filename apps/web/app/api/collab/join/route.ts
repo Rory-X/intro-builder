@@ -27,6 +27,13 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "邀请已过期（24小时有效期）" }, { status: 410 });
   }
 
+  if (session.status === "ended") {
+    return NextResponse.json(
+      { error: "协作已结束，请联系对方重新邀请", status: "ended" },
+      { status: 410 },
+    );
+  }
+
   // Update session with mentor name, mark active
   await withDbRetry("collab.join.write", () =>
     db.update(collabSessions)

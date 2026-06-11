@@ -3,6 +3,7 @@ import { collabSessions, resumes } from "@/db/schema";
 import { eq } from "drizzle-orm";
 import { notFound } from "next/navigation";
 import { MentorJoinForm } from "./mentor-join-form";
+import { CollabEndedState } from "@/components/collab/collab-ended-state";
 import { withDbRetry } from "@/lib/db-retry";
 import type { Metadata } from "next";
 
@@ -18,6 +19,10 @@ export default async function CollabEntryPage({ params }: { params: Promise<{ to
   );
 
   if (!session) notFound();
+
+  if (session.status === "ended") {
+    return <CollabEndedState />;
+  }
 
   const expired = session.expiresAt < new Date();
 

@@ -73,7 +73,7 @@ export const collabSessions = pgTable("collab_session", {
   inviteToken: text("inviteToken").notNull(),
   mode: text("mode").$type<"edit" | "comment">().notNull().default("edit"),
   mentorName: text("mentorName"),
-  status: text("status").$type<"pending" | "active" | "expired">().notNull().default("pending"),
+  status: text("status").$type<"pending" | "active" | "ended" | "expired">().notNull().default("pending"),
   createdAt: timestamp("createdAt").notNull().defaultNow(),
   expiresAt: timestamp("expiresAt").notNull(),
 }, (t) => ({

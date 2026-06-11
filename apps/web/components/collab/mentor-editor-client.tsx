@@ -18,6 +18,7 @@ import { ProjectsEditor } from "@/components/editor/projects-editor";
 import { SkillsEditor } from "@/components/editor/skills-editor";
 import { SectionWrapper } from "@/components/editor/section-wrapper";
 import { CustomSectionEditor } from "@/components/editor/custom-section-editor";
+import { CollabEndedState } from "@/components/collab/collab-ended-state";
 import { PresenceBar } from "@/components/collab/presence-bar";
 import { VoiceChatControls } from "@/components/collab/voice-chat-controls";
 import { AnnotationPopover } from "@/components/collab/annotation-popover";
@@ -54,12 +55,27 @@ export function MentorEditorClient({ resumeTitle, initialContent, resolvedTempla
 
   const collabState = useCollabProvider(config);
 
+  const [ended, setEnded] = useState(false);
+
+  useEffect(() => {
+    if (!collabState) return;
+    return collabState.addJsonMessageListener((message) => {
+      if (message.type === "session-ended") {
+        setEnded(true);
+      }
+    });
+  }, [collabState]);
+
   if (!config) {
     return (
       <div className="flex min-h-screen items-center justify-center">
         <p className="text-muted-foreground">协作信息丢失，请重新通过邀请链接进入</p>
       </div>
     );
+  }
+
+  if (ended) {
+    return <CollabEndedState />;
   }
 
   if (!collabState?.isConnected) {

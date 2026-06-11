@@ -11,11 +11,15 @@ type PresenceUser = {
   color: string;
 };
 
+type JsonMessageHandler = (message: Record<string, unknown>) => void;
+
 type CollabState = {
   ydoc: Y.Doc;
   provider: unknown; // y-partykit WebsocketProvider (opaque)
   isConnected: boolean;
   presenceUsers: PresenceUser[];
+  sendJson: (message: Record<string, unknown>) => boolean;
+  addJsonMessageListener: (handler: JsonMessageHandler) => () => void;
 };
 
 type CollabConfig = {
@@ -62,6 +66,19 @@ export function useCollabProvider(config: CollabConfig | null): CollabState | nu
         },
       );
 
+      const jsonHandlers = new Set<JsonMessageHandler>();
+
+      const sendJson = (message: Record<string, unknown>) => {
+        if (!provider.ws || provider.ws.readyState !== WebSocket.OPEN) return false;
+        provider.ws.send(JSON.stringify(message));
+        return true;
+      };
+
+      const addJsonMessageListener = (handler: JsonMessageHandler) => {
+        jsonHandlers.add(handler);
+        return () => { jsonHandlers.delete(handler); };
+      };
+
       // Poll provider.wsconnected every 500ms since event-based detection
       // is unreliable across y-partykit versions
       let lastConnected = false;
@@ -72,7 +89,7 @@ export function useCollabProvider(config: CollabConfig | null): CollabState | nu
         const nowConnected = !!provider.wsconnected;
         if (nowConnected !== lastConnected || !lastConnected) {
           lastConnected = nowConnected;
-          setState({ ydoc, provider, isConnected: nowConnected, presenceUsers });
+          setState({ ydoc, provider, isConnected: nowConnected, presenceUsers, sendJson, addJsonMessageListener });
         }
       }, 500);
 
@@ -85,7 +102,10 @@ export function useCollabProvider(config: CollabConfig | null): CollabState | nu
               const msg = JSON.parse(event.data);
               if (msg.type === "presence") {
                 presenceUsers = msg.users;
-                setState({ ydoc, provider, isConnected: !!provider.wsconnected, presenceUsers });
+                setState({ ydoc, provider, isConnected: !!provider.wsconnected, presenceUsers, sendJson, addJsonMessageListener });
+              }
+              for (const handler of jsonHandlers) {
+                handler(msg);
               }
             } catch { /* binary Y.js messages */ }
           });
@@ -105,7 +125,7 @@ export function useCollabProvider(config: CollabConfig | null): CollabState | nu
       }
 
       // Initial state
-      setState({ ydoc, provider, isConnected: !!provider.wsconnected, presenceUsers });
+      setState({ ydoc, provider, isConnected: !!provider.wsconnected, presenceUsers, sendJson, addJsonMessageListener });
 
       // Store cleanup
       cleanupRef.current = () => {
@@ -131,4 +151,4 @@ export function useCollabProvider(config: CollabConfig | null): CollabState | nu
   return state;
 }
 
-export type { CollabState, CollabConfig, PresenceUser };
+export type { CollabState, CollabConfig, PresenceUser, JsonMessageHandler };
