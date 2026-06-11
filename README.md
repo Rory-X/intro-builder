@@ -89,26 +89,37 @@ intro-builder 不是“填表后下载”的简历模板站，而是一个围绕
 
 项目处于 v0.3 之后的持续迭代阶段，已上线三套内置模板，并在推进模板库、富文本润色、导入解析、协同批注、智能排版与 Agent 能力等产品切片。更多过程文档在 [docs/superpowers](./docs/superpowers) 与 [docs/agent](./docs/agent) 中。
 
-## 开发者入口
+## 项目结构
 
-README 以产品介绍为主。需要本地运行或参与开发时，可以从这些入口开始：
+本项目采用 pnpm workspace monorepo 结构：
+
+- **apps/web/** - Next.js 主站（简历编辑器、预览、PDF 导出）
+- **apps/agent/** - Agent 微服务（AI 能力：富文本润色、简历诊断、Agent Mode）
+- **apps/partykit/** - WebSocket 协同服务（实时协作编辑）
+- **packages/shared/** - 共享代码（types、schemas、utils）
+- **packages/config/** - 共享配置（eslint、typescript）
+
+## 开发
 
 ```bash
-pnpm install
-cp .env.example .env.local
-pnpm dev
+pnpm install          # 安装依赖
+pnpm dev              # 启动所有应用
+pnpm dev:web          # 只启动 Web
+pnpm dev:agent        # 只启动 Agent
+pnpm dev:partykit     # 只启动 PartyKit
+pnpm verify           # 运行所有检查（lint + typecheck + test + build）
 ```
 
-常用验证命令：
+常用单项命令：
 
 ```bash
-pnpm test
-pnpm tsc --noEmit
-pnpm lint
-pnpm build
+pnpm test             # 运行测试
+pnpm lint             # 运行 lint
+pnpm typecheck        # 类型检查
+pnpm build            # 构建所有应用
 ```
 
-关键开发约定见 [AGENTS.md](./AGENTS.md)。环境变量示例见 [.env.example](./.env.example)。Agent 微服务说明见 [docs/agent/README.md](./docs/agent/README.md)。
+关键开发约定见 [AGENTS.md](./AGENTS.md)。环境变量示例见 [apps/web/.env.example](./apps/web/.env.example)。Agent 微服务说明见 [docs/agent/README.md](./docs/agent/README.md)。
 
 ## License
 
