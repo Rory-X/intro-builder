@@ -11,7 +11,7 @@
     "moduleResolution": "bundler",
     "resolveJsonModule": true,
     "isolatedModules": true,
-    "jsx": "preserve",
+    "jsx": "react-jsx",
     "incremental": true,
     "plugins": [
       {
@@ -21,6 +21,7 @@
     "baseUrl": ".",
     "paths": {
       "@/*": ["./*"],
+      "collections/*": ["./.source/*"],
       "@shared/*": ["../../packages/shared/src/*"]
     }
   },
@@ -40,7 +41,8 @@
     "vitest.config.ts",
     "drizzle.config.ts",
     "source.config.ts",
-    ".next/types/**/*.ts"
+    ".next/types/**/*.ts",
+    ".next/dev/types/**/*.ts"
   ],
   "exclude": ["node_modules", "app/blog", "app/sitemap-blog.ts", "lib/source.ts", "tests"]
 }
