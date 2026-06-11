@@ -93,12 +93,6 @@
   margin-bottom: var(--item-gap);
 }
 
-.item-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: baseline;
-}
-
 .item-title {
   font-weight: 600;
   color: #2563eb;

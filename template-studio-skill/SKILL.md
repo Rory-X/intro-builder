@@ -62,7 +62,7 @@ python3 .claude/skills/image-analyzer/scripts/analyze.py <参考图路径> -r 2 
 
 以上是最常见的 5 类，**不穷举**——参考图里出现"CSS 写不出来"的视觉元素就走生图。多种装饰共存（顶部波浪 + 角落几何 = 两种）→ **多次跑生图，每次一个 role**，Step 2 给了示例。
 
-不命中任何一类 → **跳过 Step 2**，Step 6 的 `--assets` 传 `[]`，模板背景靠 CSS 实现。
+不命中任何一类 → **跳过 Step 2**，模板背景靠 CSS 实现。
 
 ### Step 2（条件步骤）：跑 extract-decoration.py 复刻装饰
 
@@ -92,7 +92,7 @@ python3 template-studio-skill/scripts/extract-decoration.py \
 
 stdout 最后一行 JSON：
 
-- 配置完整：`{"local_path":"...","blob_url":"https://..."}` —— **记下 blob_url**，每个装饰各一条，Step 5 的 HTML 和 Step 6 的 `--assets` 都要用
+- 配置完整：`{"local_path":"...","blob_url":"https://..."}` —— **记下 blob_url**，Step 5 的 HTML/CSS 直接引用它
 - 图像 API 未配置（`.env.local` 缺 `TEMPLATE_IMAGE_API_BASE_URL` / `_API_KEY` / `_MODEL`）：`{"skipped":true,"reason":"..."}` + stderr WARNING + 退出码 0。**主流程不阻塞**，但你**必须告诉用户**「这个模板设计上需要 XX 装饰，本次环境未配置生图，已用 CSS 简化版替代，配置好后可重跑此 skill 升级」
 
 `role` 三选一：`banner`（顶部/底部横幅）/ `decoration`（角落、侧边、背景水印）/ `icon`（小尺寸装饰图标）。
@@ -101,9 +101,9 @@ stdout 最后一行 JSON：
 
 ### Step 3：决定 layout
 
-参考图所有内容上下排 → `{"type":"vertical"}`。一侧有窄条 sidebar（放头像/技能/教育这种次要内容）→ `{"type":"horizontal","sidebar":{"side":"left|right","width":"240px","sections":["education","skills"]}}`。不确定就 vertical。
+参考图所有内容上下排 → 单栏。参考图有窄 sidebar → 只把 sidebar 当视觉外壳：放头像、姓名、职位、状态、联系方式这些 `basic.*` / `profile.contacts` 信息，正文仍通过主栏里的 `sectionOrder` 渲染。
 
-> ⚠️ **引擎当前 SlotRenderer 暂未实现 `sidebarSections` / `mainSections` loop binding**。如果你写双栏模板想立刻渲染，把分栏放在 `<article>` 里用 CSS Grid 自己实现，不要依赖 sidebar/main 这两个 binding。等下一轮引擎升级后双栏 binding 才生效。
+> ⚠️ 当前支持的是 CSS Grid/Flex 做“视觉双栏”，不是正文 section 分栏协议。SlotRenderer 没有 `sidebarSections` / `mainSections` loop binding；不要把 `skills` / `education` 等正文 section 自动分流到 sidebar。参考图 sidebar 如果放正文模块，本期改成主栏 section 展示。
 
 ### Step 4：决定 defaultStyleSettings
 
@@ -197,13 +197,20 @@ stdout 最后一行 JSON：
 
 section title 内部 padding 用 **em**（跟字号联动），禁 px。
 
+**C. 协议 class 合约**——重复内容角色必须用通用 class，模板自己的 class 只用于外层布局和品牌外壳。
+
+- 必须使用：`.contact-item`、`.section-body`、`.item-header`、`.item-title`、`.item-date`、`.item-subtitle`、`.item-role`、`.item-location`、`.item-meta-row`、`.item-meta`、`.item-link`、`.item-body`。
+- 可以自定义：`.tpl-header`、`.tpl-body`、`.resume-item`、`.sidebar`、`.main`、`.banner-img` 这类布局/装饰容器。
+- 禁止私有语义 class：`.pro-item-title`、`.entry-title`、`.modern-item-primary`、`.classic-body`、`.pro-body` 等。视觉差异写到协议 class 上，例如 `.resume-item .item-title { font-weight: 700; }`。
+- 不要把 renderer 底座 CSS 写进模板 CSS：空值隐藏、contact spacing、profile typography、section-body 基础字号行高、contact icon 基础尺寸都由 renderer 注入。
+
 ### Slot binding 速查
 
 - basic：顶部身份信息使用 `basic.name/title/status/photo`；`basic.photo` **必须**用 `<img data-bind="basic.photo">`。`basic.title` 和 `basic.status` 必须同一行、同样式、无 icon。
 - profile：联系方式使用 `profile.contacts` 循环 + `contact.icon/contact.label`。不要直绑 email/phone/location/website，也不要把 status 放进联系方式行。
 - loop：`sectionOrder`（正文分区）、`section.items`（条目循环）。`sectionOrder data-template="X"` 必须同时定义 `X-list` 和 `X-block`。
 - section 内：`section.{id,title,icon,kind,body}`；自我介绍和个人总结都通过 `section.body` 渲染，二者语义不同。
-- item 内：`item.{title,subtitle,dateRange,location,bullets,tags,link}`
+- item 内：`item.{title,subtitle,meta,dateRange,location,bullets,tags,link}`
 
 item 字段从 section 派生：experience.company/title→item.title/subtitle；education.school/(degree+major+gpa)→item.title/subtitle；projects.name/role + tags=stack；skills→bullets 整块。
 
@@ -221,8 +228,12 @@ item 字段从 section 派生：experience.company/title→item.title/subtitle�
 
 #### 6a 默认 draft 入库
 
+从仓库根执行下面命令，确保脚本能解析 `apps/web` 的依赖和 `@` alias：
+
 ```bash
-pnpm exec tsx --env-file=.env.local \
+NODE_PATH="$PWD/apps/web/node_modules" pnpm exec tsx \
+  --tsconfig apps/web/tsconfig.json \
+  --env-file=.env.local \
   template-studio-skill/scripts/insert-template.ts \
   --id <id> \
   --name "<中文 2-6 字>" \
@@ -231,9 +242,7 @@ pnpm exec tsx --env-file=.env.local \
   --features '["特点1","特点2","特点3"]' \
   --html path/to/template.html \
   --css  path/to/template.css \
-  --assets '[{"url":"<banner blob_url>","role":"banner"},{"url":"<corner blob_url>","role":"decoration"}]' \
-  --default-style-settings '{"fontFamily":"sans","fontSize":13,"lineHeight":1.6,"bodyLineHeight":1.6,"headingGap":8,"pagePadding":40,"sectionGap":16,"itemGap":12,"photoScale":1}' \
-  --layout '{"type":"vertical"}'
+  --default-style-settings '{"fontFamily":"sans","fontSize":13,"lineHeight":1.6,"bodyLineHeight":1.6,"headingGap":8,"pagePadding":40,"sectionGap":16,"itemGap":12,"photoScale":1}'
 ```
 
 不传 `--publish` 时默认写 `status='draft'`——**仅 dev-preview 路由可见**，dashboard / 编辑器模板库都看不到。脚本 stdout 会直接打印预览 URL：
@@ -246,7 +255,7 @@ upserted as DRAFT: <id> (<name>)
 
 **单文件简写**：HTML 顶部内嵌 `<style>...</style>` 会被脚本自动抽出来作为 css，可以只传 `--html` 不传 `--css`。
 
-**`--assets` 按 Step 1 判断结果填**：跳过了 Step 2（CSS 能搞定的装饰）→ `--assets '[]'`；跑了 N 次 Step 2 → 数组里写 N 条，role 对应。`--assets '[]'` 时 HTML 里**不要**留 banner img / 装饰图 placeholder，CSS 直接画背景。
+装饰资产不单独入库：Step 2 拿到的 blob URL 直接写进 HTML 的 `<img src="...">` 或 CSS 的 `background-image`。跳过 Step 2 时，HTML 里**不要**留 banner img / 装饰图 placeholder，CSS 直接画背景。
 
 #### 6b 预览 + 用户确认 + 迭代循环
 
@@ -265,7 +274,9 @@ upserted as DRAFT: <id> (<name>)
 
 ```bash
 # 把 6a 的命令原样重跑，仅在末尾加 --publish
-pnpm exec tsx --env-file=.env.local \
+NODE_PATH="$PWD/apps/web/node_modules" pnpm exec tsx \
+  --tsconfig apps/web/tsconfig.json \
+  --env-file=.env.local \
   template-studio-skill/scripts/insert-template.ts \
   --id <id> \
   ... 其它参数原样 ... \
@@ -276,7 +287,7 @@ stdout 应输出 `PUBLISHED: <id> (<name>)`。这时 dashboard / 编辑器模板
 
 > ⚠️ 反向也成立：对一个已 published 的模板**不带 `--publish`** 重跑会把它打回 draft（用户立刻看不到）。需要继续修改时这是 feature；不是要打回时记得带 `--publish`。
 
-**最终确认**：`pnpm exec tsx --env-file=.env.local scripts/verify-templates.ts` 看新 id 出现在 `listAllTemplatesAsync` 输出里（draft 不会出现，published 会）。
+**最终确认**：`NODE_PATH="$PWD/apps/web/node_modules" pnpm exec tsx --tsconfig apps/web/tsconfig.json --env-file=.env.local scripts/templates/verify-templates.ts` 看新 id 出现在 `listAllTemplatesAsync` 输出里（draft 不会出现，published 会）。
 
 ## 自查清单（publish 前过一遍）
 
@@ -288,9 +299,11 @@ stdout 应输出 `PUBLISHED: <id> (<name>)`。这时 dashboard / 编辑器模板
 - [ ] 不使用 `basics.*`、`basics.icon.*`、`profile.name/title/status/summary`
 - [ ] `sectionOrder` 同时定义 `*-list` 和 `*-block`，block 模板包含 `section.body`
 - [ ] item 模板包含 `item.location`、`item.meta`、`item.link`、`item.bullets`
+- [ ] item / section / contact 使用协议 class；没有 `.pro-item-title`、`.entry-title`、`.modern-item-primary`、`.classic-body`、`.pro-body`
+- [ ] CSS 不包含 renderer-owned 底座规则：空值隐藏、contact spacing、profile typography、section-body 基础字号行高、contact icon 基础尺寸
 - [ ] CSS 里 `font-size` / `font-family` / `line-height` 全部走 `var(--*)`
 - [ ] section margin-top 用 `var(--section-gap)`、item margin-bottom 用 `var(--item-gap)`、page padding 用 `var(--page-padding)`
-- [ ] 装饰图 URL 全部来自 `--upload-blob` 拿到的 https，不引用本地 `public/` 路径；`--assets` 数组与 HTML 中实际引用的 role 一一对应
+- [ ] 装饰图 URL 全部来自 `--upload-blob` 拿到的 https，不引用本地 `public/` 路径；没有无效 `<img src="">` 占位
 - [ ] features 是 3 条，每条 ≤60 字，无英文产品代号
 - [ ] name 是 2-6 个汉字
 - [ ] dev-preview 路由渲染无占位符告警

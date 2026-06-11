@@ -44,7 +44,7 @@ icon，也不放进 `profile.contacts`。
 ```html
 <slot data-bind="profile.contacts" data-template="contact-item">
   <template id="contact-item">
-    <a class="contact" href="#">
+    <a class="contact-item" href="#">
       <slot data-bind="contact.icon"></slot>
       <slot data-bind="contact.label"></slot>
     </a>
@@ -114,23 +114,27 @@ icon，也不放进 `profile.contacts`。
 
 ```html
 <template id="item">
-  <article class="item">
-    <div class="item-head">
-      <strong><slot data-bind="item.title"></slot></strong>
-      <span><slot data-bind="item.dateRange"></slot></span>
+  <article class="resume-item">
+    <div class="item-header">
+      <strong class="item-title"><slot data-bind="item.title"></slot></strong>
+      <span class="item-date"><slot data-bind="item.dateRange"></slot></span>
     </div>
-    <div class="item-sub">
-      <span><slot data-bind="item.subtitle"></slot></span>
-      <span><slot data-bind="item.location"></slot></span>
+    <div class="item-subtitle">
+      <span class="item-role"><slot data-bind="item.subtitle"></slot></span>
+      <span class="item-location"><slot data-bind="item.location"></slot></span>
     </div>
-    <div class="item-meta">
-      <slot data-bind="item.meta"></slot>
-      <a href="#"><slot data-bind="item.link"></slot></a>
+    <div class="item-meta-row">
+      <span class="item-meta"><slot data-bind="item.meta"></slot></span>
+      <a class="item-link" href="#"><slot data-bind="item.link"></slot></a>
     </div>
-    <slot data-bind="item.bullets"></slot>
+    <div class="item-body"><slot data-bind="item.bullets"></slot></div>
   </article>
 </template>
 ```
+
+重复内容角色必须使用协议 class：`.contact-item`、`.section-body`、`.item-header`、`.item-title`、`.item-date`、`.item-subtitle`、`.item-role`、`.item-location`、`.item-meta-row`、`.item-meta`、`.item-link`、`.item-body`。模板可以保留自己的外层布局 class，但不要为同一内容角色另起 `.pro-item-title`、`.entry-title`、`.modern-item-primary`、`.classic-body`、`.pro-body` 这类私有语义名。
+
+双栏模板当前只支持 CSS Grid/Flex 视觉双栏。sidebar 可以放 `basic.*` 和 `profile.contacts`，正文 section 仍通过主栏 `sectionOrder` 渲染；协议没有 `sidebarSections` / `mainSections` binding。
 
 ## 5. 模板检查清单
 
@@ -143,4 +147,5 @@ icon，也不放进 `profile.contacts`。
 - [ ] 自我介绍和个人总结都走正文 section，不放在顶部 profile。
 - [ ] `sectionOrder` 模板拆分为 `*-list` 和 `*-block`。
 - [ ] block 模板包含 `section.body`。
-- [ ] item 模板包含 `item.location`、`item.link`、`item.bullets`。
+- [ ] item 模板包含 `item.meta`、`item.location`、`item.link`、`item.bullets`。
+- [ ] item / section / contact 使用协议 class，不使用私有语义 class。

@@ -36,3 +36,8 @@ slot 协议。模板 Skill、模板库 HTML/CSS、SlotRenderer、verifier 都应
 
 `style-settings.json` 描述用户可调排版参数和 CSS 变量。模板 CSS 必须消费这些变量，
 否则排版控件、智能排版和 PDF 预览会漂移。
+
+重复内容角色使用协议 class（如 `.item-title`、`.item-date`、`.item-body`、
+`.section-body`、`.contact-item`）。模板 CSS 负责视觉值；SlotRenderer 负责空值隐藏、
+联系方式基础间距、头像/图标尺寸、section body 基础行高等 renderer 底座规则。不要把
+这些底座规则复制进模板库 CSS。

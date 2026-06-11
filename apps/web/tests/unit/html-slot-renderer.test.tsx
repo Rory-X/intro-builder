@@ -515,10 +515,17 @@ describe("SlotRenderer — CSS scope + style injection", () => {
     expect(root.style.getPropertyValue("--page-padding")).toBe("40px");
     expect(root.style.getPropertyValue("--section-gap")).toBe("16px");
     expect(root.style.getPropertyValue("--item-gap")).toBe("12px");
-    // Two <style> children: scoped customCss + renderer fixes (header font + marker color).
+    // Three <style> children: protocol base CSS + renderer fixes + scoped customCss.
+    // Protocol/base rules must be injected before template CSS so template
+    // typography (font-weight, color, size, etc.) can always win the cascade.
     const styleEls = root.querySelectorAll("style");
-    expect(styleEls.length).toBe(2);
-    expect(styleEls[0].textContent).toContain('[data-template-id="test-tpl"] .my-name');
+    expect(styleEls.length).toBe(3);
+    const protocolCss = styleEls[0].textContent ?? "";
+    expect(protocolCss).toContain(".contact-icon-lucide");
+    expect(protocolCss).toContain("width: 1em");
+    expect(protocolCss).toContain(".item-link:empty");
+    expect(protocolCss).toContain(".section-body:empty");
+    expect(styleEls[2].textContent).toContain('[data-template-id="test-tpl"] .my-name');
   });
 
   it("silently bails on forbidden CSS at-rules without crashing", () => {
@@ -526,11 +533,12 @@ describe("SlotRenderer — CSS scope + style injection", () => {
       html: '<article><h1><slot data-bind="basic.name" /></h1></article>',
       css: "@media (min-width: 600px) { .x { color: red } }",
     });
-    // Should still render the h1; only the renderer fixes <style> emitted
-    // (header font + marker color) since scopeCss threw.
+    // Should still render the h1; only renderer-owned styles are emitted
+    // since scopeCss threw.
     expect(container.querySelector("h1")?.textContent).toBe("张三");
     const styleEls = container.querySelectorAll("style");
-    expect(styleEls.length).toBe(1); // only renderer fixes, no scoped CSS
+    expect(styleEls.length).toBe(2); // protocol base + renderer fixes, no scoped CSS
+    expect(styleEls[0].textContent).toContain(".contact-icon-lucide");
   });
 });
 
@@ -724,9 +732,9 @@ describe("SlotRenderer — section fixture integration", () => {
 
 describe("SlotRenderer — item fields fixture", () => {
   const templates = [
-    { id: "classic", locationSelector: ".classic-item-location", metaSelector: ".classic-item-meta" },
-    { id: "professional", locationSelector: ".pro-item-location", metaSelector: ".pro-item-meta" },
-    { id: "modern", locationSelector: ".modern-item-location", metaSelector: ".modern-item-meta" },
+    { id: "classic", locationSelector: ".item-location", metaSelector: ".item-meta" },
+    { id: "professional", locationSelector: ".item-location", metaSelector: ".item-meta" },
+    { id: "modern", locationSelector: ".item-location", metaSelector: ".item-meta" },
   ] as const;
 
   const content = makeContent({
@@ -783,7 +791,7 @@ describe("SlotRenderer — item fields fixture", () => {
 
   it.each(templates)("renders project stack and link without mixing city into meta for $id", ({ id, metaSelector }) => {
     const { container } = render_({
-      html: itemFieldsFixtureHtml(`${id}-item-location`, metaSelector.slice(1)),
+      html: itemFieldsFixtureHtml("item-location", metaSelector.slice(1)),
       css: ".fixture-item { display: grid; }",
       content,
       templateId: id,

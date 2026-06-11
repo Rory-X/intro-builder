@@ -172,6 +172,7 @@ export function SlotRenderer({
 
   const headerFontFix = `[data-template-id="${templateId}"] [data-pagination-header] { font-size: var(--profile-font-size); }`;
   const markerFix = `[data-template-id="${templateId}"] li::marker { color: inherit; }`;
+  const protocolBaseCss = buildProtocolBaseCss(templateId);
 
   return (
     <div
@@ -179,8 +180,9 @@ export function SlotRenderer({
       data-resume-page=""
       style={cssVars as React.CSSProperties}
     >
-      {scopedCss && <style dangerouslySetInnerHTML={{ __html: scopedCss }} />}
+      <style dangerouslySetInnerHTML={{ __html: protocolBaseCss }} />
       <style dangerouslySetInnerHTML={{ __html: `${headerFontFix}\n${markerFix}` }} />
+      {scopedCss && <style dangerouslySetInnerHTML={{ __html: scopedCss }} />}
       {reactTree}
     </div>
   );
@@ -547,6 +549,94 @@ function placeholder(msg: string): ReactElement {
       [{msg}]
     </span>
   );
+}
+
+function buildProtocolBaseCss(templateId: string): string {
+  const scope = `[data-template-id="${templateId}"]`;
+  return `
+${scope} :where(.contact-icon-lucide),
+${scope} :where(.section-title svg),
+${scope} :where(.section-title [data-lucide]) {
+  width: 1em;
+  height: 1em;
+  flex-shrink: 0;
+}
+
+${scope} :where([data-pagination-header]) {
+  font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", sans-serif;
+  line-height: 1.35;
+}
+
+${scope} :where([data-pagination-header] h1),
+${scope} :where([data-pagination-header] .name),
+${scope} :where([data-pagination-header] [class*="name"]) {
+  line-height: 1.15;
+}
+
+${scope} :where([data-pagination-header] [class*="title"]),
+${scope} :where([data-pagination-header] [class*="subtitle"]),
+${scope} :where([data-pagination-header] [class*="status"]),
+${scope} :where([data-pagination-header] [class*="contact"]) {
+  line-height: 1.35;
+}
+
+${scope} :where(.contact-icon-lucide svg) {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+${scope} :where(.section-body) {
+  font-size: var(--font-size);
+  line-height: var(--body-line-height);
+}
+
+${scope} :where(.section-body:empty),
+${scope} :where(.item-link:empty),
+${scope} :where(.item-meta:empty),
+${scope} :where(.item-role:empty),
+${scope} :where(.item-location:empty) {
+  display: none;
+}
+
+${scope} :where(.item-header),
+${scope} :where(.item-subtitle),
+${scope} :where(.item-meta-row) {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+${scope} :where(.item-title),
+${scope} :where(.item-role),
+${scope} :where(.item-meta),
+${scope} :where(.item-link) {
+  min-width: 0;
+}
+
+${scope} :where(.item-date),
+${scope} :where(.item-location) {
+  flex-shrink: 0;
+  text-align: right;
+  white-space: nowrap;
+}
+
+${scope} :where(.item-link) {
+  margin-left: 0.75em;
+  color: inherit;
+  text-decoration: none;
+  overflow-wrap: anywhere;
+}
+
+${scope} :where(.item-meta) {
+  overflow-wrap: anywhere;
+}
+
+${scope} :where(.contact-item:not(:last-child)) {
+  margin-right: 0.9em;
+}
+`;
 }
 
 function fontFamilyValue(family: StyleSettings["fontFamily"]): string {

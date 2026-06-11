@@ -3,8 +3,8 @@
 Extract a decorative background from a reference resume image via any
 OpenAI-images-edits-compatible API (gpt-image-2, doubao Seed/Seedream,
 qwen-image, Stable Diffusion proxies, etc.). Optionally upload the result
-to Vercel Blob and print the CDN URL — used by the template-studio skill
-to feed --assets.
+to Vercel Blob and print the CDN URL, which template HTML/CSS can reference
+directly.
 
 Configuration (all in .env.local):
   TEMPLATE_IMAGE_API_BASE_URL   required, e.g. https://bmc-llm-relay.bluemediagroup.cn/v1
@@ -22,9 +22,8 @@ Legacy fallbacks (read if TEMPLATE_IMAGE_* unset):
 Graceful degradation: when image API config is missing/incomplete, the
 script prints a WARNING to stderr and exits with code 0, stdout: {"skipped":
 true, "reason":"..."}. The skill caller should detect skipped=true and
-proceed WITHOUT --assets — the template just won't have a decorative
-background. Other steps (HTML/CSS authoring, insert-template.ts) are
-unaffected.
+proceed with CSS-only decoration. Other steps (HTML/CSS authoring,
+insert-template.ts) are unaffected.
 
 Usage:
   # With config (recommended)
@@ -102,9 +101,8 @@ def load_image_api_config() -> Optional[dict]:
 def emit_skipped(reason: str) -> int:
     """Graceful skip path: warn to stderr, JSON to stdout, exit 0.
 
-    Caller (skill / pipeline) should detect skipped=true and continue
-    without --assets so the template still inserts cleanly, just without
-    a decorative background.
+    Caller (skill / pipeline) should detect skipped=true and continue with
+    CSS-only decoration so the template still inserts cleanly.
     """
     print(f"WARNING: {reason}", file=sys.stderr)
     print(
