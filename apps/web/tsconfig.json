@@ -24,6 +24,23 @@
       "@shared/*": ["../../packages/shared/src/*"]
     }
   },
-  "include": ["next-env.d.ts", "./**/*.ts", "./**/*.tsx", ".next/types/**/*.ts"],
-  "exclude": ["node_modules", "../../scripts"]
+  "include": [
+    "next-env.d.ts",
+    "app/**/*.ts",
+    "app/**/*.tsx",
+    "components/**/*.ts",
+    "components/**/*.tsx",
+    "lib/**/*.ts",
+    "lib/**/*.tsx",
+    "hooks/**/*.ts",
+    "hooks/**/*.tsx",
+    "db/**/*.ts",
+    "proxy.ts",
+    "next.config.ts",
+    "vitest.config.ts",
+    "drizzle.config.ts",
+    "source.config.ts",
+    ".next/types/**/*.ts"
+  ],
+  "exclude": ["node_modules", "app/blog", "app/sitemap-blog.ts", "lib/source.ts", "tests"]
 }
