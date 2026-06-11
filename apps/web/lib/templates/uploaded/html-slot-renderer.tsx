@@ -435,24 +435,16 @@ function renderIconSlot(node: Element, iconName: string, iconColor?: string): Re
   delete props["data-bind"];
   const style = iconColor ? { color: iconColor } : undefined;
 
-  // className 必须传给 Icon（即 SVG 元素），否则 CSS 的 width/height 规则
-  // 不会约束 SVG 的默认 24x24 尺寸，导致图标巨大。
-  // span 仅作为布局容器帮助 vertical-align；不用相同 class 避免
-  // opacity 等属性在 span+svg 双层叠加。
-  const className = props.className as string | undefined;
+  const className = (props.className as string | undefined) || "contact-icon-lucide";
   const iconElement = (
     <Icon aria-hidden="true" focusable="false" className={className} style={style} />
   );
 
-  if (className) {
-    return (
-      <span style={{ display: "inline-flex", verticalAlign: "middle" }}>
-        {iconElement}
-      </span>
-    );
-  }
-
-  return iconElement;
+  return (
+    <span style={{ display: "inline-flex", verticalAlign: "middle" }}>
+      {iconElement}
+    </span>
+  );
 }
 
 function selectTemplateForSection(
