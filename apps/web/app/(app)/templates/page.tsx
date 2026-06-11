@@ -6,7 +6,7 @@ import { resumes } from "@/db/schema";
 import { withDbRetry } from "@/lib/db-retry";
 import { listUploadedTemplates } from "@/lib/templates/uploaded/fetch";
 import { getTemplateMetaAsync } from "@/lib/templates/registry-server";
-import { migrateContent } from "@/lib/migrate-content";
+import { migrateContent } from "@intro-builder/shared/utils";
 import { demoResume } from "@/lib/demo-resume";
 import {
   uploadedTemplateToSerializable,

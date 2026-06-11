@@ -2,8 +2,8 @@ import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
 import { renderHook, act } from "@testing-library/react";
 import { useForm } from "react-hook-form";
 import { useResumeAutosave } from "@/hooks/use-resume-autosave";
-import type { ResumeContent } from "@/lib/resume-schema";
-import { emptyResumeContent } from "@/lib/resume-schema";
+import type { ResumeContent } from "@intro-builder/shared/schemas";
+import { emptyResumeContent } from "@intro-builder/shared/schemas";
 
 function useTestAutosave(onSave: (c: ResumeContent, t: string) => Promise<void>) {
   const form = useForm<ResumeContent>({ defaultValues: emptyResumeContent() });

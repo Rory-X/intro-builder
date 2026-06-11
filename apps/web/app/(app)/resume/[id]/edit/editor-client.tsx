@@ -11,7 +11,7 @@ import {
 import { useForm, FormProvider } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { toast } from "sonner";
-import { ResumeContent } from "@/lib/resume-schema";
+import { ResumeContent } from "@intro-builder/shared/schemas";
 import { computeCompletenessScore } from "@/lib/completeness-score";
 import { saveResume, setTemplate, toggleShare } from "./actions";
 import { useResumeAutosave } from "@/hooks/use-resume-autosave";
@@ -50,7 +50,7 @@ import { CustomSectionEditor } from "@/components/editor/custom-section-editor";
 import { StyleEditor } from "@/components/editor/style-editor";
 import { TemplateSwitchPanel, type TemplatePanelItem } from "@/components/editor/template-switch-panel";
 import { arrayMove } from "@/lib/array-move";
-import { DEFAULT_SECTION_ORDER, BUILTIN_SECTION_KEYS } from "@/lib/resume-schema";
+import { DEFAULT_SECTION_ORDER, BUILTIN_SECTION_KEYS } from "@intro-builder/shared/schemas";
 import { cn } from "@/lib/utils";
 import { exportPreviewImage } from "@/lib/client/export-preview-image";
 import { CompletenessScore } from "@/components/editor/completeness-score";
@@ -67,7 +67,7 @@ import { AnnotationList } from "@/components/collab/annotation-list";
 import { ResumeDiagnoseButton } from "@/components/agent/resume-diagnose-button";
 import { AgentModeToggle } from "@/components/agent/agent-mode-toggle";
 import { AgentPanel } from "@/components/agent/agent-panel";
-import type { ResumeOperation } from "@/lib/agent/agent-message-contract";
+import type { ResumeOperation } from "@intro-builder/shared/types";
 
 type Props = {
   id: string;

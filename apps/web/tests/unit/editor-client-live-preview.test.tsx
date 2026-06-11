@@ -1,7 +1,7 @@
 import { act, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import EditorClient from "@/app/(app)/resume/[id]/edit/editor-client";
-import { DEFAULT_STYLE_SETTINGS, emptyResumeContent } from "@/lib/resume-schema";
+import { DEFAULT_STYLE_SETTINGS, emptyResumeContent } from "@intro-builder/shared/schemas";
 import type { AllTemplatesItem } from "@/lib/templates/registry";
 import type { SerializableResolvedTemplate } from "@/lib/templates/render";
 

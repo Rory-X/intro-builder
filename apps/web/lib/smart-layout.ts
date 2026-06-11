@@ -5,7 +5,7 @@
  * Pure algorithm module: no DOM or React dependencies.
  */
 
-import type { StyleSettings } from "@/lib/resume-schema";
+import type { StyleSettings } from "@intro-builder/shared/schemas";
 import { A4_HEIGHT_PX } from "@/lib/pagination";
 
 export { A4_HEIGHT_PX };

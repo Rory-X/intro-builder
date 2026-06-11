@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { newSlug } from "@/lib/slug";
+import { newSlug } from "@intro-builder/shared/utils";
 
 describe("newSlug", () => {
   it("returns a 10-char url-safe string", () => {

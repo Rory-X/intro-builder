@@ -2,9 +2,9 @@ import { describe, expect, it } from "vitest";
 import {
   computeCompletenessScore,
 } from "@/lib/completeness-score";
-import type { ResumeContent } from "@/lib/resume-schema";
-import { emptyResumeContent } from "@/lib/resume-schema";
-import { emptyDoc } from "@/lib/tiptap-types";
+import type { ResumeContent } from "@intro-builder/shared/schemas";
+import { emptyResumeContent } from "@intro-builder/shared/schemas";
+import { emptyDoc } from "@intro-builder/shared/types";
 
 /** Helper: create a TipTap doc with actual text content */
 function filledDoc() {

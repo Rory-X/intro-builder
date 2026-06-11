@@ -1,4 +1,4 @@
-import { DEFAULT_STYLE_SETTINGS, type StyleSettings } from "@/lib/resume-schema";
+import { DEFAULT_STYLE_SETTINGS, type StyleSettings } from "@intro-builder/shared/schemas";
 
 export type DensityPresetId = "compact" | "standard" | "relaxed";
 export type LineHeightPresetId = "compact" | "standard" | "relaxed";

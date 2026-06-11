@@ -3,8 +3,8 @@ import { and, eq } from "drizzle-orm";
 import { auth } from "@/lib/auth";
 import { db } from "@/db";
 import { resumes } from "@/db/schema";
-import { ResumeContent } from "@/lib/resume-schema";
-import { newSlug } from "@/lib/slug";
+import { ResumeContent } from "@intro-builder/shared/schemas";
+import { newSlug } from "@intro-builder/shared/utils";
 import { withDbRetry } from "@/lib/db-retry";
 import {
   getTemplateMetaAsync,

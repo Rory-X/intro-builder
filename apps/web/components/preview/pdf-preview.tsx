@@ -12,7 +12,7 @@
  */
 
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
-import type { ResumeContent, StyleSettings } from "@/lib/resume-schema";
+import type { ResumeContent, StyleSettings } from "@intro-builder/shared/schemas";
 import {
   ClientTemplateRenderFromSerializable,
   type SerializableResolvedTemplate,

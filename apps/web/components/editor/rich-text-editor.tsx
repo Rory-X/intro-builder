@@ -19,7 +19,7 @@ import {
   RICH_TEXT_FONT_SIZES,
   RICH_TEXT_FONT_SIZE_LABELS,
 } from "@/lib/rich-text-prose";
-import { TipTapJSON as TipTapJSONSchema, type TipTapJSON } from "@/lib/tiptap-types";
+import { TipTapJSON as TipTapJSONSchema, type TipTapJSON } from "@intro-builder/shared/types";
 import { cn } from "@/lib/utils";
 
 /**

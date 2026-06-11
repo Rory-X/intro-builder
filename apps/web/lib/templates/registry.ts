@@ -1,4 +1,4 @@
-import type { StyleSettings } from "@/lib/resume-schema";
+import type { StyleSettings } from "@intro-builder/shared/schemas";
 import type { TemplateId, TemplateLayoutProps } from "./types";
 import type { UploadedTemplate } from "./uploaded/types";
 

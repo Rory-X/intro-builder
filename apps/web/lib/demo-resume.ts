@@ -1,5 +1,5 @@
-import type { ResumeContent } from "@/lib/resume-schema";
-import { bulletsToDoc, emptyDoc } from "@/lib/tiptap-types";
+import type { ResumeContent } from "@intro-builder/shared/schemas";
+import { bulletsToDoc, emptyDoc } from "@intro-builder/shared/types";
 
 export const demoResume: ResumeContent = {
   basics: {

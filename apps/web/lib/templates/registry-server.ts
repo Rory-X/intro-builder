@@ -4,7 +4,7 @@ import {
   listUploadedTemplates,
 } from "./uploaded/fetch";
 import { DENSITY_PRESETS } from "@/lib/style-presets";
-import type { StyleSettings } from "@/lib/resume-schema";
+import type { StyleSettings } from "@intro-builder/shared/schemas";
 import type {
   AllTemplatesItem,
   ResolvedTemplateMeta,

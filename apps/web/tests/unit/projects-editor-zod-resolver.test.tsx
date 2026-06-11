@@ -3,7 +3,7 @@ import { FormProvider, useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { describe, expect, it, vi } from "vitest";
 import { ProjectsEditor } from "@/components/editor/projects-editor";
-import { emptyResumeContent, ResumeContent } from "@/lib/resume-schema";
+import { emptyResumeContent, ResumeContent } from "@intro-builder/shared/schemas";
 
 vi.mock("@atlaskit/pragmatic-drag-and-drop/element/adapter", () => ({
   draggable: () => () => {},

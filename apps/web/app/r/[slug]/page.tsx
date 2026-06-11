@@ -3,7 +3,7 @@ import type { Metadata } from "next";
 import { and, eq } from "drizzle-orm";
 import { db } from "@/db";
 import { resumes } from "@/db/schema";
-import { migrateContent } from "@/lib/migrate-content";
+import { migrateContent } from "@intro-builder/shared/utils";
 import { TemplateRender } from "@/lib/templates/render-server";
 import { withDbRetry } from "@/lib/db-retry";
 

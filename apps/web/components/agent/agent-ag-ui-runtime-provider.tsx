@@ -27,7 +27,7 @@ import {
 import type {
   AgentResumeContext,
   AgentWorkflowId,
-} from "@/lib/agent/agent-message-contract";
+} from "@intro-builder/shared/types";
 
 type IntroBuilderForwardedProps = {
   resumeId: string;

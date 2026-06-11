@@ -9,7 +9,7 @@
 import { useEffect, useState, useRef } from "react";
 import { useForm, FormProvider } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { ResumeContent, DEFAULT_SECTION_ORDER, BUILTIN_SECTION_KEYS } from "@/lib/resume-schema";
+import { ResumeContent, DEFAULT_SECTION_ORDER, BUILTIN_SECTION_KEYS } from "@intro-builder/shared/schemas";
 import { LivePreview } from "@/components/preview/live-preview";
 import { BasicsEditor } from "@/components/editor/basics-editor";
 import { ExperienceEditor } from "@/components/editor/experience-editor";
@@ -29,7 +29,7 @@ import { useAnnotations } from "@/hooks/use-annotations";
 import { Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { SerializableResolvedTemplate } from "@/lib/templates/render";
-import type { ResumeContent as ResumeContentType } from "@/lib/resume-schema";
+import type { ResumeContent as ResumeContentType } from "@intro-builder/shared/schemas";
 
 type Props = {
   resumeTitle: string;

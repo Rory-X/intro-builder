@@ -1,6 +1,6 @@
 "use client";
 
-import type { AgentWorkflowId } from "@/lib/agent/agent-message-contract";
+import type { AgentWorkflowId } from "@intro-builder/shared/types";
 import { Button } from "@/components/ui/button";
 
 const WORKFLOWS: Array<{

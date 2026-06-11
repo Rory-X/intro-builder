@@ -5,7 +5,7 @@ import Link from "next/link";
 import type { AllTemplatesItem, TemplateCategory } from "@/lib/templates/registry";
 import type { SerializableResolvedTemplate } from "@/lib/templates/render";
 import { ClientTemplateRenderFromSerializable } from "@/lib/templates/render";
-import type { ResumeContent } from "@/lib/resume-schema";
+import type { ResumeContent } from "@intro-builder/shared/schemas";
 import { TemplateThumbnail } from "@/components/templates/template-thumbnail";
 import { ScrollReveal } from "@/components/marketing/scroll-reveal";
 import { Button } from "@/components/ui/button";

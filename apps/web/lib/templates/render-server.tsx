@@ -2,7 +2,7 @@ import { SlotRenderer } from "./uploaded/html-slot-renderer";
 import { getTemplateMetaAsync } from "./registry-server";
 import type { ResolvedTemplateMeta } from "./registry";
 import type { TemplateLayoutProps } from "./types";
-import { DEFAULT_STYLE_SETTINGS } from "@/lib/resume-schema";
+import { DEFAULT_STYLE_SETTINGS } from "@intro-builder/shared/schemas";
 
 /**
  * Server-side: resolve `id` (built-in or DB-stored) to the HTML+CSS template

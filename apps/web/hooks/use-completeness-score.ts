@@ -2,7 +2,7 @@
 
 import { useMemo } from "react";
 import { useWatch } from "react-hook-form";
-import type { ResumeContent } from "@/lib/resume-schema";
+import type { ResumeContent } from "@intro-builder/shared/schemas";
 import { computeCompletenessScore } from "@/lib/completeness-score";
 
 // Re-export the pure function and types for backward compatibility

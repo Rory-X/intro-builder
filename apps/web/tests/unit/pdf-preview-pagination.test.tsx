@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { render, waitFor } from "@testing-library/react";
 import { PdfPreview } from "@/components/preview/pdf-preview";
-import { emptyResumeContent } from "@/lib/resume-schema";
+import { emptyResumeContent } from "@intro-builder/shared/schemas";
 
 vi.mock("@/lib/templates/render", () => ({
   ClientTemplateRenderFromSerializable: () => (

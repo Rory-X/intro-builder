@@ -1,7 +1,7 @@
 import { notFound } from "next/navigation";
 import { and, eq } from "drizzle-orm";
 import { requireUserId } from "@/lib/auth-helpers";
-import { migrateContent } from "@/lib/migrate-content";
+import { migrateContent } from "@intro-builder/shared/utils";
 import { db } from "@/db";
 import { resumes } from "@/db/schema";
 import { withDbRetry } from "@/lib/db-retry";

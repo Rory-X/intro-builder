@@ -1,7 +1,7 @@
-import type { ResumeContent } from "@/lib/resume-schema";
-import { bulletsToDoc, emptyDoc } from "@/lib/tiptap-types";
-import type { TipTapJSON } from "@/lib/tiptap-types";
-import { DEFAULT_SECTION_ORDER } from "@/lib/resume-schema";
+import type { ResumeContent } from "@intro-builder/shared/schemas";
+import { bulletsToDoc, emptyDoc } from "@intro-builder/shared/types";
+import type { TipTapJSON } from "@intro-builder/shared/types";
+import { DEFAULT_SECTION_ORDER } from "@intro-builder/shared/schemas";
 import OpenAI from "openai";
 
 /** Convert parsed skill groups from AI into TipTapJSON rich text. */

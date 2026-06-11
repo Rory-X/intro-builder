@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { ResumeContent } from "@/lib/resume-schema";
+import type { ResumeContent } from "@intro-builder/shared/schemas";
 
 type ResumeFormApi = {
   watch: (callback: (data: ResumeContent) => void) => { unsubscribe: () => void };

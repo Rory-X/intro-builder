@@ -3,7 +3,7 @@ import { collabSessions, resumes } from "@/db/schema";
 import { eq } from "drizzle-orm";
 import { notFound } from "next/navigation";
 import { MentorEditorClient } from "@/components/collab/mentor-editor-client";
-import { migrateContent } from "@/lib/migrate-content";
+import { migrateContent } from "@intro-builder/shared/utils";
 import { getTemplateMetaAsync } from "@/lib/templates/registry-server";
 import { toSerializable } from "@/lib/templates/render";
 import { withDbRetry } from "@/lib/db-retry";

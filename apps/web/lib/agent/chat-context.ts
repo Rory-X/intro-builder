@@ -1,7 +1,7 @@
 import { getSectionMeta } from "@/lib/section-meta";
-import type { ResumeContent } from "@/lib/resume-schema";
+import type { ResumeContent } from "@intro-builder/shared/schemas";
 import { tiptapPlainText } from "@/lib/agent/resume-helper-context";
-import type { AgentResumeContext } from "@/lib/agent/agent-message-contract";
+import type { AgentResumeContext } from "@intro-builder/shared/types";
 
 const MAX_TOTAL_CONTEXT_CHARS = 12_000;
 const MAX_SECTION_CHARS = 4_000;

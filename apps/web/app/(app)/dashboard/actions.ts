@@ -5,7 +5,7 @@ import { eq, and } from "drizzle-orm";
 import { requireUserId } from "@/lib/auth-helpers";
 import { db } from "@/db";
 import { resumes } from "@/db/schema";
-import { emptyResumeContent } from "@/lib/resume-schema";
+import { emptyResumeContent } from "@intro-builder/shared/schemas";
 import { withDbRetry } from "@/lib/db-retry";
 import {
   getDefaultTemplateId,

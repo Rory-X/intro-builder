@@ -2,7 +2,7 @@ import { fireEvent, render, screen } from "@testing-library/react";
 import { FormProvider, useForm } from "react-hook-form";
 import { describe, expect, it } from "vitest";
 import { BasicsEditor } from "@/components/editor/basics-editor";
-import { emptyResumeContent, type ResumeContent } from "@/lib/resume-schema";
+import { emptyResumeContent, type ResumeContent } from "@intro-builder/shared/schemas";
 
 function Harness() {
   const form = useForm<ResumeContent>({ defaultValues: emptyResumeContent() });

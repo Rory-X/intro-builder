@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { LINE_HEIGHT_PRESETS, PAGE_PADDING_PRESETS } from "@/lib/style-presets";
-import { DEFAULT_STYLE_SETTINGS } from "@/lib/resume-schema";
+import { DEFAULT_STYLE_SETTINGS } from "@intro-builder/shared/schemas";
 
 describe("layout presets", () => {
   it("splits line-height and page-padding presets so font size is never overwritten", () => {

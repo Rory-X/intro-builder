@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { act, render, screen } from "@testing-library/react";
 import { PreviewPanel } from "@/components/preview/preview-panel";
-import { emptyResumeContent } from "@/lib/resume-schema";
+import { emptyResumeContent } from "@intro-builder/shared/schemas";
 import type { SerializableResolvedTemplate } from "@/lib/templates/render";
 
 vi.mock("@tiptap/html", () => ({

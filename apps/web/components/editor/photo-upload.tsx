@@ -2,7 +2,7 @@
 import { useRef, useState } from "react";
 import { useFormContext } from "react-hook-form";
 import { Camera, Loader2, User } from "lucide-react";
-import { DEFAULT_STYLE_SETTINGS, type ResumeContent } from "@/lib/resume-schema";
+import { DEFAULT_STYLE_SETTINGS, type ResumeContent } from "@intro-builder/shared/schemas";
 
 const PHOTO_SCALE_OPTIONS = [
   { value: 0.75, label: "75%" },

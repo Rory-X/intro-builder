@@ -1,6 +1,6 @@
-import type { ResumeContent } from "@/lib/resume-schema";
-import type { TipTapJSON } from "@/lib/tiptap-types";
-import { emptyDoc } from "@/lib/tiptap-types";
+import type { ResumeContent } from "@intro-builder/shared/schemas";
+import type { TipTapJSON } from "@intro-builder/shared/types";
+import { emptyDoc } from "@intro-builder/shared/types";
 import { getSectionMeta } from "@/lib/section-meta";
 import type { SectionIconDeclaration } from "./types";
 

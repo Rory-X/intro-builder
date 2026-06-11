@@ -4,8 +4,8 @@
 import { describe, it, expect } from 'vitest';
 import { SlotRenderer } from '@/lib/templates/uploaded/html-slot-renderer';
 import { render } from '@testing-library/react';
-import type { ResumeContent } from '@/lib/resume-schema';
-import { emptyDoc } from '@/lib/tiptap-types';
+import type { ResumeContent } from '@intro-builder/shared/schemas';
+import { emptyDoc } from '@intro-builder/shared/types';
 
 const mockContent: ResumeContent = {
   basics: {

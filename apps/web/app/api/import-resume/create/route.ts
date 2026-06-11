@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { db } from "@/db";
 import { resumes } from "@/db/schema";
-import { ResumeContent as ResumeContentSchema } from "@/lib/resume-schema";
+import { ResumeContent as ResumeContentSchema } from "@intro-builder/shared/schemas";
 import { getDefaultTemplateId } from "@/lib/templates/registry-server";
 import { withDbRetry } from "@/lib/db-retry";
 

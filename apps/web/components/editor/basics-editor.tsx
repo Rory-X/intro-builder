@@ -4,7 +4,7 @@ import { useFormContext } from "react-hook-form";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
-import type { ResumeContent } from "@/lib/resume-schema";
+import type { ResumeContent } from "@intro-builder/shared/schemas";
 import { cn } from "@/lib/utils";
 import { PhotoScaleControl, PhotoUpload } from "./photo-upload";
 import { SectionEditorHeader } from "./section-editor-header";

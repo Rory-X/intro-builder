@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { buildResumeHelperContext } from "@/lib/agent/resume-helper-context";
-import type { ResumeContent } from "@/lib/resume-schema";
+import type { ResumeContent } from "@intro-builder/shared/schemas";
 
 describe("buildResumeHelperContext", () => {
   it("extracts capped plain text from resume content", () => {

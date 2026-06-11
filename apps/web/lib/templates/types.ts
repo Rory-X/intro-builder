@@ -1,4 +1,4 @@
-import type { ResumeContent, StyleSettings } from "@/lib/resume-schema";
+import type { ResumeContent, StyleSettings } from "@intro-builder/shared/schemas";
 
 export type TemplateId = string;
 

@@ -2,7 +2,7 @@
 import { useState } from "react";
 import { useFormContext } from "react-hook-form";
 import { RichTextEditor } from "./rich-text-editor";
-import type { ResumeContent } from "@/lib/resume-schema";
+import type { ResumeContent } from "@intro-builder/shared/schemas";
 import { SectionEditorHeader } from "./section-editor-header";
 import { cn } from "@/lib/utils";
 

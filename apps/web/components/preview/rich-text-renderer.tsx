@@ -1,6 +1,6 @@
 import { generateHTML } from "@tiptap/html";
 import { tiptapExtensions } from "@/lib/tiptap-extensions";
-import type { TipTapJSON } from "@/lib/tiptap-types";
+import type { TipTapJSON } from "@intro-builder/shared/types";
 import { RICH_TEXT_BASE_PX } from "@/lib/rich-text-prose";
 
 /**

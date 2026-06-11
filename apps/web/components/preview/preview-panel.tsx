@@ -1,5 +1,5 @@
 import { forwardRef } from "react";
-import type { ResumeContent } from "@/lib/resume-schema";
+import type { ResumeContent } from "@intro-builder/shared/schemas";
 import type { SerializableResolvedTemplate } from "@/lib/templates/render";
 import { PaginatedPreview } from "./paginated-preview";
 

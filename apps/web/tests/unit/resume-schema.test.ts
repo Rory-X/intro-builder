@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { ResumeContent, StyleSettings, DEFAULT_STYLE_SETTINGS, emptyResumeContent } from "@/lib/resume-schema";
+import { ResumeContent, StyleSettings, DEFAULT_STYLE_SETTINGS, emptyResumeContent } from "@intro-builder/shared/schemas";
 
 describe("ResumeContent v2", () => {
   it("accepts empty default skeleton", () => {

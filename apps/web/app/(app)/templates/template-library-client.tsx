@@ -10,7 +10,7 @@ import { Search, Star } from "lucide-react";
 import { toast } from "sonner";
 import { ClientTemplateRenderFromSerializable } from "@/lib/templates/render";
 import type { SerializableResolvedTemplate } from "@/lib/templates/render";
-import type { ResumeContent } from "@/lib/resume-schema";
+import type { ResumeContent } from "@intro-builder/shared/schemas";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Input } from "@/components/ui/input";
 import { TemplateThumbnail } from "@/components/templates/template-thumbnail";

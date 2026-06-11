@@ -4,7 +4,7 @@ import { useState } from "react";
 import { diffWords } from "diff";
 import { ChevronDown, ChevronUp } from "lucide-react";
 
-import type { ResumeOperation } from "@/lib/agent/agent-message-contract";
+import type { ResumeOperation } from "@intro-builder/shared/types";
 import { Button } from "@/components/ui/button";
 
 export function AgentConfirmationCard({

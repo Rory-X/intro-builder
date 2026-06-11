@@ -1,6 +1,6 @@
 import { RichTextRenderer } from "@/components/preview/rich-text-renderer";
 import { RICH_TEXT_PROSE_CLASS } from "@/lib/rich-text-prose";
-import type { TipTapJSON } from "@/lib/tiptap-types";
+import type { TipTapJSON } from "@intro-builder/shared/types";
 import { cn } from "@/lib/utils";
 
 /** @deprecated Use RICH_TEXT_PROSE_CLASS */

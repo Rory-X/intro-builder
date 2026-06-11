@@ -1,6 +1,6 @@
 import { getSectionMeta } from "@/lib/section-meta";
-import type { ResumeContent } from "@/lib/resume-schema";
-import type { TipTapJSON } from "@/lib/tiptap-types";
+import type { ResumeContent } from "@intro-builder/shared/schemas";
+import type { TipTapJSON } from "@intro-builder/shared/types";
 
 const MAX_TOTAL_CONTEXT_CHARS = 12_000;
 const MAX_SECTION_CHARS = 4_000;

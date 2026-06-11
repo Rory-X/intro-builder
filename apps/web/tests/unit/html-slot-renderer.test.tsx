@@ -1,8 +1,8 @@
 import { describe, it, expect } from "vitest";
 import { render } from "@testing-library/react";
 import { SlotRenderer } from "@/lib/templates/uploaded/html-slot-renderer";
-import { emptyResumeContent, type ResumeContent, DEFAULT_STYLE_SETTINGS } from "@/lib/resume-schema";
-import { emptyDoc } from "@/lib/tiptap-types";
+import { emptyResumeContent, type ResumeContent, DEFAULT_STYLE_SETTINGS } from "@intro-builder/shared/schemas";
+import { emptyDoc } from "@intro-builder/shared/types";
 
 function richDoc(text: string): ReturnType<typeof emptyDoc> {
   return {

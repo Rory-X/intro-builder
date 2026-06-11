@@ -4,7 +4,7 @@ import {
   findOptimalSettings,
   A4_HEIGHT_PX,
 } from "@/lib/smart-layout";
-import type { StyleSettings } from "@/lib/resume-schema";
+import type { StyleSettings } from "@intro-builder/shared/schemas";
 
 // 新行为（zoo 确认）：
 // - 美观 floor：font 11 / lineHeight 1.25 / sectionGap 8 / itemGap 4。

@@ -1,6 +1,6 @@
 import type { TemplateLayoutProps } from "./types";
 import { SlotRenderer } from "./uploaded/html-slot-renderer";
-import { DEFAULT_STYLE_SETTINGS } from "@/lib/resume-schema";
+import { DEFAULT_STYLE_SETTINGS } from "@intro-builder/shared/schemas";
 import type { ResolvedTemplateMeta } from "./registry";
 import type { UploadedTemplate } from "./uploaded/types";
 

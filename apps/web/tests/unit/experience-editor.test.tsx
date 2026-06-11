@@ -2,7 +2,7 @@ import { fireEvent, render, screen } from "@testing-library/react";
 import { FormProvider, useForm } from "react-hook-form";
 import { describe, expect, it, vi } from "vitest";
 import { ExperienceEditor } from "@/components/editor/experience-editor";
-import { emptyResumeContent, type ResumeContent } from "@/lib/resume-schema";
+import { emptyResumeContent, type ResumeContent } from "@intro-builder/shared/schemas";
 
 vi.mock("@atlaskit/pragmatic-drag-and-drop/element/adapter", () => ({
   draggable: () => () => {},

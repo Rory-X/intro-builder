@@ -3,7 +3,7 @@ import { FormProvider, useForm } from "react-hook-form";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ProjectsEditor } from "@/components/editor/projects-editor";
 import { useResumeAutosave } from "@/hooks/use-resume-autosave";
-import { emptyResumeContent, type ResumeContent } from "@/lib/resume-schema";
+import { emptyResumeContent, type ResumeContent } from "@intro-builder/shared/schemas";
 
 vi.mock("@atlaskit/pragmatic-drag-and-drop/element/adapter", () => ({
   draggable: () => () => {},

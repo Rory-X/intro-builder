@@ -3,7 +3,7 @@ import { and, eq } from "drizzle-orm";
 import { requireUserId } from "@/lib/auth-helpers";
 import { db } from "@/db";
 import { resumes } from "@/db/schema";
-import { migrateContent } from "@/lib/migrate-content";
+import { migrateContent } from "@intro-builder/shared/utils";
 import { TemplateRender } from "@/lib/templates/render-server";
 import { getTemplateMetaAsync } from "@/lib/templates/registry-server";
 import { toSerializable } from "@/lib/templates/render";

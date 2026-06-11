@@ -7,8 +7,8 @@ import parse, {
   type HTMLReactParserOptions,
 } from "html-react-parser";
 import React, { type ReactElement } from "react";
-import type { ResumeContent, StyleSettings } from "@/lib/resume-schema";
-import type { TipTapJSON } from "@/lib/tiptap-types";
+import type { ResumeContent, StyleSettings } from "@intro-builder/shared/schemas";
+import type { TipTapJSON } from "@intro-builder/shared/types";
 import { FONT_MAP } from "@/lib/font-map";
 import { ResumeRichText } from "@/lib/templates/shared/resume-rich-text";
 import {

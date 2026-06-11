@@ -2,7 +2,7 @@ import { fireEvent, render, screen } from "@testing-library/react";
 import { FormProvider, useForm } from "react-hook-form";
 import { describe, expect, it, vi } from "vitest";
 import { ModuleManager } from "@/components/editor/module-manager";
-import { emptyResumeContent, type ResumeContent } from "@/lib/resume-schema";
+import { emptyResumeContent, type ResumeContent } from "@intro-builder/shared/schemas";
 
 vi.mock("motion/react", async () => {
   const React = await import("react");

@@ -1,6 +1,6 @@
 "use client";
 
-import type { AgentToolCall } from "@/lib/agent/agent-message-contract";
+import type { AgentToolCall } from "@intro-builder/shared/types";
 
 export function AgentToolCard({ toolCall }: { toolCall: AgentToolCall }) {
   return (

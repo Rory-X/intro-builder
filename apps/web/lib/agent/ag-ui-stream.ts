@@ -4,7 +4,7 @@ import { EventEncoder } from "@ag-ui/encoder";
 import type {
   AgentToolCall,
   ResumeOperation,
-} from "@/lib/agent/agent-message-contract";
+} from "@intro-builder/shared/types";
 
 export type AgUiResumeToolResult = {
   toolCall: AgentToolCall;

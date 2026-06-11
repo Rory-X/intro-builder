@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { Mock } from "vitest";
-import { emptyResumeContent } from "@/lib/resume-schema";
+import { emptyResumeContent } from "@intro-builder/shared/schemas";
 
 vi.mock("@/lib/auth", () => ({ auth: vi.fn() }));
 vi.mock("@/db", () => ({

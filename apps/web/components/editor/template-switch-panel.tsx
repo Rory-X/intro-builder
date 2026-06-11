@@ -5,7 +5,7 @@ import Link from "next/link";
 import { TemplateThumbnail } from "@/components/templates/template-thumbnail";
 import { ClientTemplateRenderFromSerializable } from "@/lib/templates/render";
 import type { SerializableResolvedTemplate } from "@/lib/templates/render";
-import type { ResumeContent } from "@/lib/resume-schema";
+import type { ResumeContent } from "@intro-builder/shared/schemas";
 import { cn } from "@/lib/utils";
 
 export type TemplatePanelItem = {

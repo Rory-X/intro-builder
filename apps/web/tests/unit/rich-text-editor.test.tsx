@@ -1,7 +1,7 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { RichTextEditor } from "@/components/editor/rich-text-editor";
-import type { TipTapJSON } from "@/lib/tiptap-types";
+import type { TipTapJSON } from "@intro-builder/shared/types";
 
 const paragraphDoc: TipTapJSON = {
   type: "doc",

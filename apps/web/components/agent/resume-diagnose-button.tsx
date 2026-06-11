@@ -11,7 +11,7 @@ import {
   type ResumeHelperContextSnapshot,
 } from "@/lib/agent/resume-helper-context";
 import type { ResumeHelperResponse } from "@/lib/agent/client";
-import type { ResumeContent } from "@/lib/resume-schema";
+import type { ResumeContent } from "@intro-builder/shared/schemas";
 
 export function ResumeDiagnoseButton({ resumeId }: { resumeId: string }) {
   const form = useFormContext<ResumeContent>();

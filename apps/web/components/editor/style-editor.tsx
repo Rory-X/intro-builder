@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { FONT_MAP, type FontKey } from "@/lib/font-map";
-import { DEFAULT_STYLE_SETTINGS, type ResumeContent } from "@/lib/resume-schema";
+import { DEFAULT_STYLE_SETTINGS, type ResumeContent } from "@intro-builder/shared/schemas";
 import { cn } from "@/lib/utils";
 import { ChevronDown, RotateCcw, SlidersHorizontal } from "lucide-react";
 

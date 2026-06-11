@@ -2,7 +2,7 @@
 
 import { useCallback, useRef, useState } from "react";
 import { useFormContext } from "react-hook-form";
-import type { ResumeContent, StyleSettings } from "@/lib/resume-schema";
+import type { ResumeContent, StyleSettings } from "@intro-builder/shared/schemas";
 import type { TemplateId } from "@/lib/templates/registry";
 import { findOptimalSettings, type SmartLayoutResult } from "@/lib/smart-layout";
 import { mergeStyleSettings } from "@/lib/templates/shared/merge-style-settings";

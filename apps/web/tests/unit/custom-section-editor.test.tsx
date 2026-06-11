@@ -2,8 +2,8 @@ import { fireEvent, render, screen } from "@testing-library/react";
 import { FormProvider, useForm } from "react-hook-form";
 import { describe, expect, it, vi } from "vitest";
 import { CustomSectionEditor } from "@/components/editor/custom-section-editor";
-import { emptyResumeContent, type ResumeContent } from "@/lib/resume-schema";
-import { emptyDoc } from "@/lib/tiptap-types";
+import { emptyResumeContent, type ResumeContent } from "@intro-builder/shared/schemas";
+import { emptyDoc } from "@intro-builder/shared/types";
 
 vi.mock("@/components/editor/rich-text-editor", () => ({
   RichTextEditor: () => <div data-testid="rich-text-editor" />,

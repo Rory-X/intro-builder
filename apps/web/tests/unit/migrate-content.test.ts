@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { migrateContent } from "@/lib/migrate-content";
+import { migrateContent } from "@intro-builder/shared/utils";
 
 describe("migrateContent", () => {
   it("returns v2 unchanged when content field exists on experience", () => {

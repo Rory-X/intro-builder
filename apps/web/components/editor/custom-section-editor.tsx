@@ -3,7 +3,7 @@ import { useFormContext } from "react-hook-form";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { RichTextEditor } from "./rich-text-editor";
-import type { ResumeContent } from "@/lib/resume-schema";
+import type { ResumeContent } from "@intro-builder/shared/schemas";
 import { SectionEditorHeader } from "./section-editor-header";
 import { useState } from "react";
 import { cn } from "@/lib/utils";

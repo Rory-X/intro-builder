@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
 
 import { buildAgentResumeContext } from "@/lib/agent/chat-context";
-import type { ResumeContent } from "@/lib/resume-schema";
-import type { TipTapJSON } from "@/lib/tiptap-types";
+import type { ResumeContent } from "@intro-builder/shared/schemas";
+import type { TipTapJSON } from "@intro-builder/shared/types";
 
 describe("buildAgentResumeContext", () => {
   it("builds capped sections with field paths for Agent tools", () => {

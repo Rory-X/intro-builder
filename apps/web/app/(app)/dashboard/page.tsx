@@ -10,7 +10,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Plus, MoreVertical, Edit, Copy, FolderOpen, Share2, Clock, FileText, Layers, BookOpen, CircleHelp } from "lucide-react";
 import { createResume, deleteResume, duplicateResume } from "./actions";
-import { migrateContent } from "@/lib/migrate-content";
+import { migrateContent } from "@intro-builder/shared/utils";
 import { getTemplateMetaAsync } from "@/lib/templates/registry-server";
 import { TemplateRender } from "@/lib/templates/render-server";
 import { TemplateThumbnail } from "@/components/templates/template-thumbnail";

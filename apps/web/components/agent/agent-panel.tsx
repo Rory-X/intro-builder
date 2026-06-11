@@ -46,8 +46,8 @@ import type {
   AgentResumeContext,
   AgentWorkflowId,
   ResumeOperation,
-} from "@/lib/agent/agent-message-contract";
-import type { ResumeContent } from "@/lib/resume-schema";
+} from "@intro-builder/shared/types";
+import type { ResumeContent } from "@intro-builder/shared/schemas";
 
 type AgentRetryRequest = {
   content: string;

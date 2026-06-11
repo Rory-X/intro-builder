@@ -3,7 +3,7 @@ import { randomUUID } from "node:crypto";
 import type {
   AgentMessageRequest,
   AgentMessageResponse,
-} from "@/lib/agent/agent-message-contract";
+} from "@intro-builder/shared/types";
 
 export type AgentErrorCode =
   | "bad_request"

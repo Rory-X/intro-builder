@@ -3,7 +3,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { FormProvider, useForm } from "react-hook-form";
 
 import { ResumeDiagnoseButton } from "@/components/agent/resume-diagnose-button";
-import type { ResumeContent } from "@/lib/resume-schema";
+import type { ResumeContent } from "@intro-builder/shared/schemas";
 
 describe("ResumeDiagnoseButton", () => {
   afterEach(() => {

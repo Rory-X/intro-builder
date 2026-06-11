@@ -12,7 +12,7 @@ import type {
   AgentMessageRequest,
   AgentResumeContext,
   AgentWorkflowId,
-} from "@/lib/agent/agent-message-contract";
+} from "@intro-builder/shared/types";
 import { currentUserId } from "@/lib/auth-helpers";
 
 export const dynamic = "force-dynamic";

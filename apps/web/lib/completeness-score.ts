@@ -1,5 +1,5 @@
-import type { ResumeContent } from "@/lib/resume-schema";
-import type { TipTapJSON } from "@/lib/tiptap-types";
+import type { ResumeContent } from "@intro-builder/shared/schemas";
+import type { TipTapJSON } from "@intro-builder/shared/types";
 
 export type SectionScore = {
   key: string;

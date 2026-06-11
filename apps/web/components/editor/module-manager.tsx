@@ -7,9 +7,9 @@ import { Button } from "@/components/ui/button";
 import { Popover, PopoverTrigger, PopoverContent } from "@/components/ui/popover";
 import { Input } from "@/components/ui/input";
 import { getSectionMeta } from "@/lib/section-meta";
-import { MODULE_PRESETS, BUILTIN_SECTION_KEYS } from "@/lib/resume-schema";
-import type { ResumeContent } from "@/lib/resume-schema";
-import { emptyDoc } from "@/lib/tiptap-types";
+import { MODULE_PRESETS, BUILTIN_SECTION_KEYS } from "@intro-builder/shared/schemas";
+import type { ResumeContent } from "@intro-builder/shared/schemas";
+import { emptyDoc } from "@intro-builder/shared/types";
 import { cn } from "@/lib/utils";
 
 type Props = {

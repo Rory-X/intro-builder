@@ -3,7 +3,7 @@ import { EventType, type BaseEvent } from "@ag-ui/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { AgentPanel } from "@/components/agent/agent-panel";
-import { emptyResumeContent } from "@/lib/resume-schema";
+import { emptyResumeContent } from "@intro-builder/shared/schemas";
 
 class MockResizeObserver {
   observe = vi.fn();

@@ -2,7 +2,7 @@
 
 import { forwardRef } from "react";
 import { useWatch } from "react-hook-form";
-import type { ResumeContent } from "@/lib/resume-schema";
+import type { ResumeContent } from "@intro-builder/shared/schemas";
 import type { SerializableResolvedTemplate } from "@/lib/templates/render";
 import { PreviewPanel } from "./preview-panel";
 

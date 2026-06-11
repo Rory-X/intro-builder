@@ -15,7 +15,7 @@ import {
   ClientTemplateRenderFromSerializable,
   type SerializableResolvedTemplate,
 } from "@/lib/templates/render";
-import type { ResumeContent } from "@/lib/resume-schema";
+import type { ResumeContent } from "@intro-builder/shared/schemas";
 import { cn } from "@/lib/utils";
 
 /** 弹窗里一份可选简历的精简数据（content 用于缩略图渲染）。 */

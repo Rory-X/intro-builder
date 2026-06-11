@@ -5,7 +5,7 @@ import type {
   AgentMessageRequest,
   AgentResumeContext,
   AgentWorkflowId,
-} from "@/lib/agent/agent-message-contract";
+} from "@intro-builder/shared/types";
 
 export type AgUiRunAdapterResult =
   | { ok: true; request: AgentMessageRequest }
