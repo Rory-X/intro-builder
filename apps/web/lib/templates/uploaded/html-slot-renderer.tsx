@@ -177,8 +177,9 @@ export function SlotRenderer({
   // 不再全局注入 h1-h4 的 margin-bottom —— 那会把 section title 内部的 h2
   // 也撑开（bar 背景变大的 bug 根源）。
 
-  const headerFontFix = `[data-template-id="${templateId}"] [data-pagination-header] { font-size: var(--profile-font-size); }`;
+  const headerFontFix = `[data-template-id="${templateId}"] [data-pagination-header] { --font-size: ${profileFontSize}px; }`;
   const markerFix = `[data-template-id="${templateId}"] li::marker { color: inherit; }`;
+  const protocolBaseCss = buildProtocolBaseCss(templateId);
 
   return (
     <div
@@ -186,8 +187,9 @@ export function SlotRenderer({
       data-resume-page=""
       style={cssVars as React.CSSProperties}
     >
-      {scopedCss && <style dangerouslySetInnerHTML={{ __html: scopedCss }} />}
+      <style dangerouslySetInnerHTML={{ __html: protocolBaseCss }} />
       <style dangerouslySetInnerHTML={{ __html: `${headerFontFix}\n${markerFix}` }} />
+      {scopedCss && <style dangerouslySetInnerHTML={{ __html: scopedCss }} />}
       {reactTree}
     </div>
   );
@@ -307,7 +309,7 @@ function renderSlotElement(
       return placeholder(`ctx 不可用: ${binding}（必须在 profile.contacts loop 内）`);
     }
     if (binding === "contact.icon") {
-      return renderIconSlot(node, p.ctx.contact.icon);
+      return renderIconSlot(node, p.ctx.contact.icon, undefined, true);
     }
     const fn = CONTACT_BINDINGS[binding as keyof typeof CONTACT_BINDINGS];
     return <>{fn(p.ctx)}</>;
@@ -427,7 +429,7 @@ function renderLoop(
   return placeholder(`未知 loop: ${loopName}`);
 }
 
-function renderIconSlot(node: Element, iconName: string, iconColor?: string): ReactElement {
+function renderIconSlot(node: Element, iconName: string, iconColor?: string, isContact?: boolean): ReactElement {
   if (!iconName) return <></>;
   const Icon = lookupLucideIcon(iconName);
   if (!Icon) return <></>;
@@ -435,7 +437,9 @@ function renderIconSlot(node: Element, iconName: string, iconColor?: string): Re
   delete props["data-bind"];
   const style = iconColor ? { color: iconColor } : undefined;
 
-  const className = (props.className as string | undefined) || "contact-icon-lucide";
+  // Contact icons need contact-icon-lucide class for base CSS sizing;
+  // section icons are sized by `.section-title svg` selector — no fallback class needed.
+  const className = (props.className as string | undefined) || (isContact ? "contact-icon-lucide" : undefined);
   const iconElement = (
     <Icon aria-hidden="true" focusable="false" className={className} style={style} />
   );
@@ -555,6 +559,76 @@ function placeholder(msg: string): ReactElement {
       [{msg}]
     </span>
   );
+}
+
+function buildProtocolBaseCss(templateId: string): string {
+  const scope = `[data-template-id="${templateId}"]`;
+  return `
+${scope} :where(.contact-icon-lucide),
+${scope} :where(.section-title svg),
+${scope} :where(.section-title [data-lucide]) {
+  width: 1em;
+  height: 1em;
+  flex-shrink: 0;
+}
+
+${scope} :where(.contact-icon-lucide svg) {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+${scope} :where(.section-body) {
+  font-size: var(--font-size);
+  line-height: var(--body-line-height);
+}
+
+${scope} :where(.section-body:empty),
+${scope} :where(.item-link:empty),
+${scope} :where(.item-meta:empty),
+${scope} :where(.item-role:empty),
+${scope} :where(.item-location:empty) {
+  display: none;
+}
+
+${scope} :where(.item-header),
+${scope} :where(.item-subtitle),
+${scope} :where(.item-meta-row) {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+${scope} :where(.item-title),
+${scope} :where(.item-role),
+${scope} :where(.item-meta),
+${scope} :where(.item-link) {
+  min-width: 0;
+}
+
+${scope} :where(.item-date),
+${scope} :where(.item-location) {
+  flex-shrink: 0;
+  text-align: right;
+  white-space: nowrap;
+}
+
+${scope} :where(.item-link) {
+  margin-left: 0.75em;
+  color: inherit;
+  text-decoration: none;
+  overflow-wrap: anywhere;
+}
+
+${scope} :where(.item-meta) {
+  overflow-wrap: anywhere;
+}
+
+${scope} :where(.contact-item:not(:last-child)) {
+  margin-right: 0.9em;
+}
+`;
 }
 
 function fontFamilyValue(family: StyleSettings["fontFamily"]): string {
