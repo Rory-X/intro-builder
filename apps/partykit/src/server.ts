@@ -92,8 +92,17 @@ export default class CollabServer implements Party.Server {
   }
 
   onClose(conn: Party.Connection) {
+    const meta = this.connections.get(conn.id);
     this.connections.delete(conn.id);
     this.broadcastPresence();
+
+    // When the owner disconnects, notify remaining connections so mentor can verify session state
+    if (meta?.role === "owner") {
+      const msg = JSON.stringify({ type: "owner-disconnected" });
+      for (const c of this.room.getConnections()) {
+        c.send(msg);
+      }
+    }
   }
 
   private broadcastPresence() {
