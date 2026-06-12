@@ -3,7 +3,9 @@
  * after the agent writes HTML+CSS for a v2 SlotRenderer template.
  *
  * Usage:
- *   pnpm exec tsx --env-file=.env.local template-studio-skill/scripts/insert-template.ts \
+ *   NODE_PATH="$PWD/apps/web/node_modules" pnpm exec tsx \
+ *        --tsconfig apps/web/tsconfig.json --env-file=.env.local \
+ *        template-studio-skill/scripts/insert-template.ts \
  *        --id <id> --name "<name>" --description "<desc>" \
  *        --category <enum> --features '["...","...","..."]' \
  *        --html path/to/template.html \
@@ -26,11 +28,15 @@
  *   1  caller error (missing args, bad JSON, missing DATABASE_URL)
  *   2  DB error
  */
-import { neon } from "@neondatabase/serverless";
 import { parseArgs } from "node:util";
 import { readFileSync } from "node:fs";
+import { pathToFileURL } from "node:url";
+import { createRequire } from "node:module";
+import { join } from "node:path";
 // Single source of truth for the row shape.
 import { SectionIconsSchema } from "@/lib/templates/uploaded/types";
+import { StyleSettings } from "../../packages/shared/src/schemas";
+import type { StyleSettings as StyleSettingsValue } from "../../packages/shared/src/schemas";
 
 function fail(code: number, msg: string): never {
   console.error(`ERROR: ${msg}`);
@@ -57,6 +63,10 @@ function parseConfig<T>(
     );
   }
   return result.data;
+}
+
+export function parseDefaultStyleSettings(raw: string): StyleSettingsValue {
+  return parseConfig("--default-style-settings", raw, StyleSettings);
 }
 
 /**
@@ -117,6 +127,68 @@ const FORBIDDEN_BINDING_PATTERNS = [
   /^profile\.(name|title|status|summary)$/,
 ] as const;
 
+const REQUIRED_PROTOCOL_CLASSES = [
+  "contact-item",
+  "section-body",
+  "item-header",
+  "item-title",
+  "item-date",
+  "item-subtitle",
+  "item-role",
+  "item-location",
+  "item-meta-row",
+  "item-meta",
+  "item-link",
+  "item-body",
+] as const;
+
+const PRIVATE_SEMANTIC_CLASSES = [
+  "pro-item-header",
+  "pro-item-title",
+  "pro-item-date",
+  "pro-item-secondary",
+  "pro-item-subtitle",
+  "pro-item-location",
+  "pro-item-meta",
+  "pro-item-link",
+  "pro-body",
+  "entry-title",
+  "entry-date",
+  "entry-subtitle",
+  "entry-role",
+  "entry-location",
+  "entry-meta-row",
+  "entry-meta",
+  "entry-link",
+  "entry-bullets",
+  "classic-item-header",
+  "classic-item-primary",
+  "classic-item-title",
+  "classic-item-subtitle",
+  "classic-item-date",
+  "classic-item-location",
+  "classic-item-meta",
+  "classic-item-link",
+  "classic-body",
+  "modern-item-header",
+  "modern-item-primary",
+  "modern-item-date",
+  "modern-item-subtitle",
+  "modern-item-location",
+  "modern-item-meta",
+  "modern-item-link",
+  "modern-item-body",
+  "modern-section-body",
+] as const;
+
+const RENDERER_OWNED_CSS_PATTERNS: Array<[RegExp, string]> = [
+  [/fixed profile typography boundary|\[data-pagination-header\]/, "profile typography"],
+  [/section\.body: block section body slot|\.section-body:empty/, "section.body"],
+  [/contact spacing|\.contact-item:not\(:last-child\)/, "contact spacing"],
+  [/\.item-link:empty/, "empty item-link"],
+  [/\.contact-icon-lucide\s*(?:svg)?\s*\{/, "contact icon sizing"],
+];
+
 function hasBinding(html: string, binding: string): boolean {
   const escaped = binding.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   return new RegExp(`data-bind=["']${escaped}["']`).test(html);
@@ -139,6 +211,50 @@ function checkForbiddenBindings(html: string): string[] {
 
 function hasPhotoImgBinding(html: string): boolean {
   return /<img\b[^>]*data-bind=["']basic\.photo["'][^>]*>/i.test(html);
+}
+
+function classTokens(html: string): Set<string> {
+  const tokens = new Set<string>();
+  for (const match of html.matchAll(/\bclass=["']([^"']+)["']/gi)) {
+    for (const token of match[1].split(/\s+/)) {
+      if (token) tokens.add(token);
+    }
+  }
+  return tokens;
+}
+
+export function checkTemplateProtocol({ html, css }: { html: string; css: string | null }): string[] {
+  const errors: string[] = [];
+  const tokens = classTokens(html);
+
+  for (const className of REQUIRED_PROTOCOL_CLASSES) {
+    if (!tokens.has(className)) {
+      errors.push(`HTML is missing protocol class: ${className}`);
+    }
+  }
+
+  for (const className of PRIVATE_SEMANTIC_CLASSES) {
+    if (tokens.has(className)) {
+      errors.push(`HTML uses private semantic class: ${className}`);
+    }
+  }
+
+  if (css) {
+    for (const className of PRIVATE_SEMANTIC_CLASSES) {
+      const pattern = new RegExp(`\\.${className.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(?![\\w-])`);
+      if (pattern.test(css)) {
+        errors.push(`CSS uses private semantic selector: ${className}`);
+      }
+    }
+
+    for (const [pattern, label] of RENDERER_OWNED_CSS_PATTERNS) {
+      if (pattern.test(css)) {
+        errors.push(`CSS contains renderer-owned protocol CSS: ${label}`);
+      }
+    }
+  }
+
+  return Array.from(new Set(errors));
 }
 
 async function main() {
@@ -202,14 +318,10 @@ async function main() {
     fail(1, `--features invalid: ${(e as Error).message}. Expected JSON array of 3 strings, each ≤ 60 chars.`);
   }
 
-  // Parse defaultStyleSettings if provided, otherwise null (DB stays null)
-  let defaultStyleSettings: unknown = null;
+  // Parse defaultStyleSettings if provided, otherwise null (DB falls back to standard settings).
+  let defaultStyleSettings: StyleSettingsValue | null = null;
   if (values["default-style-settings"]) {
-    try {
-      defaultStyleSettings = JSON.parse(values["default-style-settings"]);
-    } catch (e) {
-      fail(1, `--default-style-settings is not valid JSON: ${(e as Error).message}`);
-    }
+    defaultStyleSettings = parseDefaultStyleSettings(values["default-style-settings"]);
   }
 
   // Validates sectionIcons against the same Zod schema fetch.ts uses to read.
@@ -295,6 +407,17 @@ async function main() {
           `Do not use <slot data-bind="basic.photo">.`,
       );
     }
+
+    const protocolErrors = checkTemplateProtocol({ html: customHtml, css: customCss });
+    if (protocolErrors.length > 0) {
+      fail(
+        1,
+        `--custom-html/--custom-css violates the template protocol:\n  ` +
+          protocolErrors.join("\n  ") +
+          `\n\nUse common semantic classes (.item-title, .item-date, .item-body, ` +
+          `.section-body, .contact-item). Keep template-specific classes for layout shells only.`,
+      );
+    }
   }
 
   // v2 dual-constraint pre-flight: refuse to insert CSS that hardcodes
@@ -319,6 +442,10 @@ async function main() {
   const dbUrl = process.env.DATABASE_URL;
   if (!dbUrl) fail(1, "DATABASE_URL not set — pass --env-file=.env.local to tsx");
 
+  // Use createRequire from apps/web to resolve @neondatabase/serverless
+  // (pnpm strict isolation prevents dynamic import from this script's location)
+  const webRequire = createRequire(join(process.cwd(), "apps/web/package.json"));
+  const { neon } = webRequire("@neondatabase/serverless");
   const sql = neon(dbUrl);
 
   const status = values.publish ? "published" : "draft";
@@ -376,7 +503,9 @@ async function main() {
   }
 }
 
-main().catch((e) => {
-  console.error(e);
-  process.exit(2);
-});
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+  main().catch((e) => {
+    console.error(e);
+    process.exit(2);
+  });
+}

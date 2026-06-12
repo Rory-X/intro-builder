@@ -3,6 +3,7 @@ import { collabSessions, resumes } from "@/db/schema";
 import { eq } from "drizzle-orm";
 import { notFound } from "next/navigation";
 import { MentorEditorClient } from "@/components/collab/mentor-editor-client";
+import { CollabEndedState } from "@/components/collab/collab-ended-state";
 import { migrateContent } from "@intro-builder/shared/utils";
 import { getTemplateMetaAsync } from "@/lib/templates/registry-server";
 import { toSerializable } from "@/lib/templates/render";
@@ -20,7 +21,9 @@ export default async function MentorEditPage({ params }: { params: Promise<{ tok
     ).limit(1),
   );
 
-  if (!session || session.expiresAt < new Date()) notFound();
+  if (!session) notFound();
+  if (session.status === "ended") return <CollabEndedState />;
+  if (session.expiresAt < new Date()) notFound();
 
   const [resume] = await withDbRetry("collab.resume", () =>
     db.select().from(resumes).where(

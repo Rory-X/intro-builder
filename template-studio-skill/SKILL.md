@@ -12,15 +12,11 @@ description: 把一张参考简历（图/PDF 截图）做成 intro-builder 的�
 ## 你需要从用户拿到
 
 1. **参考图路径**——项目里某个 PNG/JPG。PDF 先 `pdftoppm -r 150 input.pdf out -png` 转图。
-2. **id**——kebab-case，如 `red-banner`、`blue-fresh`。DB 主键，唯一。**只用于内部识别**（用户看不到）。避免参考图原品牌代号（`abbey` 这种），改用描述性英文（color + style）。
-3. **name**——**纯中文 2-6 字**。用户在模板库看到的就是这个。
-   - ❌ `Abbey`、`Crimson Banner`、`陈媛媛 Abbey`、`v2 PoC`
-   - ✅ 视觉型：`红调封面`、`蓝调清新`；场景型：`互联网职场`、`商务严选`
-4. **description**——一句话面向**普通求职者**：写**适合什么人 + 视觉特点**。不要技术名词。
-   - ❌ 「Skill v2 PoC：红色 banner + 粉底 section title」
-   - ✅ 「红色封面横幅 + 粉底分区标题，适合设计 / 创意 / 营销岗」
+2. **id**——kebab-case，如 `red-banner`、`blue-fresh`。DB 主键，唯一。只用于内部识别（用户看不到）。避免参考图原品牌代号，改用描述性英文（color + style）。
+3. **name**——纯中文 2-6 字。用户在模板库看到的就是这个。用「视觉特征 + 风格」或「场景 + 调性」命名。
+4. **description**——一句话面向普通求职者：写适合什么人 + 视觉特点。面向的是选模板的人，不是做模板的人。
 5. **category**——`academic | tech | business | creative | general` 五选一。决定模板库 tab 归属。
-6. **features**——**3 条**模板特点文案，每条 ≤60 字，写"适合谁 + 视觉特点 + 实用提示"。
+6. **features**——3 条模板特点文案，每条 ≤ 60 字。描述模板的排版结构优势（信息密度、留白节奏、视觉层次、适合人群、内容承载量）。结构能力比颜色装饰更持久——颜色可以换，但「双栏高密度」「大留白舒适阅读」这些是模板的核心卖点。
 
 ## 流程 6 步
 
@@ -28,278 +24,161 @@ description: 把一张参考简历（图/PDF 截图）做成 intro-builder 的�
 
 **首选**：用 `Read` 工具直接看参考图。
 
-**如果 `Read` 返回 `[Unsupported Image]`（当前模型无 vision 能力）**→ 立即调用 image-analyzer skill 做程序化分析：
+**如果 `Read` 返回 `[Unsupported Image]`**→ 调用 image-analyzer skill：
 
 ```bash
-# 快速概览（一行总结）
 python3 .claude/skills/image-analyzer/scripts/analyze.py <参考图路径> -r 4 --summary-only
-
-# 完整结构化数据（写入文件供后续步骤引用）
 python3 .claude/skills/image-analyzer/scripts/analyze.py <参考图路径> -r 2 -o /tmp/template-ref-analysis.json
 ```
 
-从分析结果中提取模板设计所需的关键信息：
-- `colors.palette[0]` → header 背景色
-- `colors.mode == "grayscale"` → 无彩色，纯黑白灰设计
-- `layout.header_region` → header 高度和位置
-- `layout.layout_type` → 单栏还是双栏
-- `decorations.solid_bars` → 是否有装饰横条/分割线
-- `text.text_clusters[].estimated_font_size_px` → 标题 vs 正文字号
-- `text.text_clusters[].alignment` → 文字对齐方式
-- `spacing.typical_section_gap_px` → section 间距参考值
+从分析结果中提取关键设计信息：配色、布局类型、装饰元素、字号层级、对齐方式、间距节奏。
 
-**只有 CSS 画不出来的复杂装饰**才走生图复刻；CSS 能搞定的（纯色横条、实色边框、简单矩形色块、规则圆环）**直接在 Step 5 的 CSS 里写**，不调脚本。
+**判断标准**：CSS 能画的（纯色块、实线边框、简单矩形、规则圆环、线性渐变）直接在 CSS 里写。CSS 画不出来的复杂装饰才走生图——比如不规则曲线、复杂纹理、手绘插画、多元素几何组合、渐变+形状的复合体。
 
-**典型需调生图的情况**（命中即跑，不互斥）：
-
-| # | 装饰类型 | 例子 |
-|---|---|---|
-| 1 | 不规则波浪线 / 曲线带 | 顶部蓝色海浪 banner、底部装饰曲线 |
-| 2 | 复杂条纹 / 斜纹 / 网格 / 点阵纹理 | 半透明斜纹背景、彩色条纹封面 |
-| 3 | 参考图独有的手绘 / 插画装饰 | 手绘叶子、抽象笔刷、几何拼贴 |
-| 4 | 多元素几何组合 | 圆环+三角+菱形混排的角落水印 |
-| 5 | 渐变 + 形状的复合装饰 | 带渐变的不规则色块、半透明形状叠加 |
-
-以上是最常见的 5 类，**不穷举**——参考图里出现"CSS 写不出来"的视觉元素就走生图。多种装饰共存（顶部波浪 + 角落几何 = 两种）→ **多次跑生图，每次一个 role**，Step 2 给了示例。
-
-不命中任何一类 → **跳过 Step 2**，Step 6 的 `--assets` 传 `[]`，模板背景靠 CSS 实现。
+多种装饰共存时每种单独跑一次生图。全部可 CSS 实现则跳过 Step 2。
 
 ### Step 2（条件步骤）：跑 extract-decoration.py 复刻装饰
 
-只在 Step 1 判断"需要调生图"时跑。每个装饰资产**单独跑一次**，role 区分用途：
+每个装饰资产单独跑一次，role 区分用途：
 
 ```bash
-# 第 1 个装饰：顶部波浪 banner
 python3 template-studio-skill/scripts/extract-decoration.py \
   --reference <参考图路径> \
-  --prompt "<针对 banner 的 prompt>" \
-  --output /tmp/<id>-banner.png \
-  --upload-blob --id <id> --role banner
-
-# 第 2 个装饰：右上角几何水印（如有）
-python3 template-studio-skill/scripts/extract-decoration.py \
-  --reference <参考图路径> \
-  --prompt "<针对 corner 装饰的 prompt>" \
-  --output /tmp/<id>-corner.png \
-  --upload-blob --id <id> --role decoration
+  --prompt "<描述要复刻的装饰>" \
+  --output /tmp/<id>-<role>.png \
+  --upload-blob --id <id> --role <banner|decoration|icon>
 ```
 
-每个装饰的 prompt **收紧三件事**才能稳定输出：
+prompt 写法要点：指明装饰位置 + 明确要移除的内容（文字、照片、图标）+ 限定只复刻参考图里已有的元素。生图模型容易"创造性发挥"——prompt 越收紧越稳定。
 
-1. **指明位置**：`place the decoration in the TOP-RIGHT corner only, exactly mirroring the input`
-2. **禁止编造**：`Do NOT add any decorative elements that do not exist in the input — no extra triangles, dot patterns, halftone, etc.`
-3. **明确移除**：`Completely remove ALL text, photos, icons, bullet points, section titles, colored bars`
+stdout 最后一行 JSON 返回 `blob_url`（记下来，Step 5 直接引用）。如果图像 API 未配置会返回 `{"skipped":true}`，主流程不阻塞，告知用户当前用 CSS 简化版替代即可。
 
-stdout 最后一行 JSON：
-
-- 配置完整：`{"local_path":"...","blob_url":"https://..."}` —— **记下 blob_url**，每个装饰各一条，Step 5 的 HTML 和 Step 6 的 `--assets` 都要用
-- 图像 API 未配置（`.env.local` 缺 `TEMPLATE_IMAGE_API_BASE_URL` / `_API_KEY` / `_MODEL`）：`{"skipped":true,"reason":"..."}` + stderr WARNING + 退出码 0。**主流程不阻塞**，但你**必须告诉用户**「这个模板设计上需要 XX 装饰，本次环境未配置生图，已用 CSS 简化版替代，配置好后可重跑此 skill 升级」
-
-`role` 三选一：`banner`（顶部/底部横幅）/ `decoration`（角落、侧边、背景水印）/ `icon`（小尺寸装饰图标）。
-
-`Read` 每张输出 PNG 确认效果。位置/数量不对就调 prompt 再跑——丑装饰会污染整套模板。
+`Read` 输出 PNG 确认效果，不满意就调 prompt 重跑。
 
 ### Step 3：决定 layout
 
-参考图所有内容上下排 → `{"type":"vertical"}`。一侧有窄条 sidebar（放头像/技能/教育这种次要内容）→ `{"type":"horizontal","sidebar":{"side":"left|right","width":"240px","sections":["education","skills"]}}`。不确定就 vertical。
+观察参考图的信息流向：所有内容上下排 = 单栏；有窄 sidebar = 视觉双栏。
 
-> ⚠️ **引擎当前 SlotRenderer 暂未实现 `sidebarSections` / `mainSections` loop binding**。如果你写双栏模板想立刻渲染，把分栏放在 `<article>` 里用 CSS Grid 自己实现，不要依赖 sidebar/main 这两个 binding。等下一轮引擎升级后双栏 binding 才生效。
+视觉双栏的实现方式是 CSS Grid/Flex——sidebar 只放 profile 信息（头像、姓名、职位、联系方式），所有正文 section 统一通过 `sectionOrder` 在主栏渲染。这是因为 SlotRenderer 用单一 `sectionOrder` 循环驱动所有正文，布局差异完全靠 CSS 解决。
 
 ### Step 4：决定 defaultStyleSettings
 
-模板首次应用时写入简历的初始排版。9 字段，类型见 `docs/schema-v2/style-settings.json`。三档起点按需微调：
+模板首次应用时写入简历的初始排版参数。参照 `docs/schema-v2/style-settings.json` 的 9 个字段。根据参考图的信息密度选择起点：
 
-| 档 | fontSize | bodyLineHeight | headingGap | pagePadding | sectionGap | itemGap |
-|---|---|---|---|---|---|---|
-| compact | 12 | 1.5 | 6 | 32 | 12 | 8 |
-| standard | 13 | 1.6 | 8 | 40 | 16 | 12 |
-| spacious | 14 | 1.7 | 12 | 48 | 20 | 16 |
+| 风格 | fontSize | bodyLineHeight | pagePadding | sectionGap | itemGap |
+|---|---|---|---|---|---|
+| 紧凑 | 12 | 1.5 | 32 | 12 | 8 |
+| 标准 | 13 | 1.6 | 40 | 16 | 12 |
+| 宽松 | 14 | 1.7 | 48 | 20 | 16 |
 
-`fontFamily` 默认 `sans`；`lineHeight` 设成同 `bodyLineHeight`（向后兼容）；`photoScale` 默认 1。
+生效链路：`defaultStyleSettings` 存在 templates 表 → 用户切模板时写入 `resume.content.styleSettings` → 渲染器消费 styleSettings 注入 CSS 变量。
 
 ### Step 5：写 HTML + CSS
 
-参考 `docs/schema-v2/example-template.html` + `example-template.css`。两条骨架：
+先 `Read docs/schema-v2/example-template.html` + `example-template.css`——从中学习 **slot 协议语法**（binding 写法、template id 命名、class 约定）。但视觉结构完全由参考图驱动，不要照搬 example 的排列方式。example 是语法参考，不是布局模板。
 
-**A. HTML 必须包含 basic headline、profile contacts 和完整正文 slot**——缺字段 = 用户填的内容在模板里永远不渲染。顶部身份信息使用 `basic.*`；联系方式使用 `profile.contacts` 循环；自我介绍和个人总结都属于正文 section，不放进顶部 profile。装饰图按 Step 1 判断结果插入：有 banner asset 就放 `<img src="<blob_url>">`，没有就用 CSS 画背景（如 `.tpl-header { background: linear-gradient(...) }`），不要保留无用的 `<img src="">`。
+#### 必备 binding
 
-```html
-<header class="tpl-header">
-  <!-- 有装饰资产时插入 banner img；无则删掉这行，用 CSS 画背景 -->
-  <img src="<Step 2 拿到的 banner blob_url>" class="banner-img" alt="" />
+模板的职责是把用户填写的内容渲染出来。漏掉任何 binding = 用户填了但永远看不到。完整清单：
 
-  <img data-bind="basic.photo" class="avatar" alt="头像" />
-  <h1 class="name"><slot data-bind="basic.name"></slot></h1>
-</header>
-<div class="tpl-body">
-  <div class="meta">
-    <slot data-bind="basic.title"></slot> · <slot data-bind="basic.status"></slot>
-  </div>
-  <div class="contact">
-    <slot data-bind="profile.contacts" data-template="contact-item"></slot>
-  </div>
+- **顶部身份**：`basic.name`、`basic.title`、`basic.status`、`basic.photo`（必须用 `<img data-bind="basic.photo">`）
+- **联系方式**：`profile.contacts` 循环 → `contact.icon` + `contact.label`
+- **正文**：`sectionOrder` 循环，同时提供 `*-list` 模板（含 `section.items` → item 循环）和 `*-block` 模板（含 `section.body`，用于自我介绍/个人总结等纯文本 section）
+- **item 模板内**：`item.title`、`item.dateRange`、`item.subtitle`、`item.location`、`item.meta`、`item.link`、`item.bullets`
+- **section 模板内**：`section.title`、`section.icon`（可选）
 
-  <slot data-bind="sectionOrder" data-template="section-tpl"></slot>
+#### CSS 变量合约
 
-  <template id="contact-item">
-    <a class="contact-item" href="#">
-      <slot data-bind="contact.icon"></slot>
-      <slot data-bind="contact.label"></slot>
-    </a>
-  </template>
+用户在编辑器里能实时调字号、间距、行高。这些维度必须用 CSS 变量，否则用户拖滑块时模板毫无反应。具体哪些属性用哪些变量名，参照 `docs/schema-v2/example-template.css`——它是 var() 用法的活文档。
 
-  <template id="section-tpl-list">
-    <section class="resume-section">
-      <h2 class="section-title"><slot data-bind="section.title"></slot></h2>
-      <slot data-bind="section.items" data-template="item-tpl"></slot>
-    </section>
-  </template>
+核心原则：**用户可调的维度走 var()，模板品牌特征可硬编码**（颜色、圆角、阴影、装饰定位）。
 
-  <template id="section-tpl-block">
-    <section class="resume-section">
-      <h2 class="section-title"><slot data-bind="section.title"></slot></h2>
-      <div class="section-body"><slot data-bind="section.body"></slot></div>
-    </section>
-  </template>
+#### CSS 编写注意
 
-  <template id="item-tpl">
-    <div class="resume-item">
-      <div class="item-header">
-        <span class="item-title"><slot data-bind="item.title"></slot></span>
-        <span class="item-date"><slot data-bind="item.dateRange"></slot></span>
-      </div>
-      <div class="item-subtitle">
-        <span class="item-role"><slot data-bind="item.subtitle"></slot></span>
-        <span class="item-location"><slot data-bind="item.location"></slot></span>
-      </div>
-      <div class="item-meta-row">
-        <span class="item-meta"><slot data-bind="item.meta"></slot></span>
-        <a class="item-link" href="#"><slot data-bind="item.link"></slot></a>
-      </div>
-      <div class="item-body"><slot data-bind="item.bullets"></slot></div>
-    </div>
-  </template>
-</div>
-```
+- **头像居中**：`<img>` 是 replaced element，`text-align: center` 对它无效。用 `display: block; margin: 0 auto` 或绝对定位居中。
+- **contact 间距**：renderer 底座已注入 contact item 之间的 margin，模板只需设容器为 flex 布局，不要额外加列方向的 gap（会叠加）。
+- **section title 内 padding**：用 em 单位（跟字号联动），px 在用户调字号时比例会失调。
 
-**B. CSS 变量合约**——用户可调维度必须用 `var(--*)`，否则用户在编辑器调字号/边距时模板物理失效：
+#### 协议 class
 
-| 必须 var() | 可硬编码 |
-|---|---|
-| `font-size: var(--font-size)` | 颜色、背景、阴影 |
-| `font-family: var(--font-family)` | 圆角 |
-| `line-height: var(--line-height)` | banner / 卡片 / 图标的内层 padding |
-| `padding: 0 var(--page-padding)`（page 级） | 装饰图绝对定位坐标 |
-| `margin-top: var(--section-gap)`（section 间距） | |
-| `margin-bottom: var(--item-gap)`（item 间距） | |
-| `margin-bottom: var(--heading-gap)`（标题与正文） | |
-| `transform: scale(var(--photo-scale))`（头像） | |
+renderer 底座 CSS 通过特定 class 名提供基础行为（空值隐藏、icon 尺寸约束、间距归一化）。模板需要使用这些 class 才能享受底座能力：
 
-section title 内部 padding 用 **em**（跟字号联动），禁 px。
+内容角色 class（`.contact-item`、`.item-header`、`.item-title`、`.item-date`、`.item-subtitle`、`.item-location`、`.item-meta-row`、`.item-meta`、`.item-link`、`.item-body`、`.section-body`）——这些是 renderer 识别的语义钩子。
 
-### Slot binding 速查
+布局容器 class 自由命名（`.tpl-header`、`.tpl-body`、`.sidebar` 等）——这些只有你的模板用。
 
-- basic：顶部身份信息使用 `basic.name/title/status/photo`；`basic.photo` **必须**用 `<img data-bind="basic.photo">`。`basic.title` 和 `basic.status` 必须同一行、同样式、无 icon。
-- profile：联系方式使用 `profile.contacts` 循环 + `contact.icon/contact.label`。不要直绑 email/phone/location/website，也不要把 status 放进联系方式行。
-- loop：`sectionOrder`（正文分区）、`section.items`（条目循环）。`sectionOrder data-template="X"` 必须同时定义 `X-list` 和 `X-block`。
-- section 内：`section.{id,title,icon,kind,body}`；自我介绍和个人总结都通过 `section.body` 渲染，二者语义不同。
-- item 内：`item.{title,subtitle,dateRange,location,bullets,tags,link}`
+原则：**视觉差异写到协议 class 上**（`.item-title { font-weight: 700 }`），而不是发明私有 class 绕开协议。renderer 的 icon 注入、空值隐藏等底座能力依赖这些 class 名，绕开就失去底座保障。
 
-item 字段从 section 派生：experience.company/title→item.title/subtitle；education.school/(degree+major+gpa)→item.title/subtitle；projects.name/role + tags=stack；skills→bullets 整块。
+#### renderer 底座已处理的事
 
-### 安全规则
+以下由 renderer 自动注入，模板 CSS 里写了会重复或冲突：
+- contact icon 尺寸（自动注入 `contact-icon-lucide` class + `1em` 约束）
+- 空值字段隐藏（`:empty { display: none }`）
+- contact item 间距
+- profile 区域基础 typography
+- section-body 基础字号行高
 
-禁 `<script>` / `on*` 属性 / `<iframe>` / `position: fixed` / `*` 选择器 / 裸 element 选择器（`body{...}`）/ `@media` / `@keyframes`。
+#### 安全边界
 
-### A4 单页约束
+`<script>` / `on*` 事件 / `<iframe>` / `position: fixed` / `*` 全局选择器 / 裸元素选择器（`body{}`）/ `@media` / `@keyframes` 都不允许进模板——insert-template 脚本会校验拦截。原因：模板运行在用户简历页面内，这些构造会影响页面其他部分或引入安全风险。
 
-800px 容器内 `<article>` 总高度 ≤ 1123px（A4 @96dpi）。section margin-top ≤ 22px、entry padding 别太奢侈。超出时 smart-layout 会压可调维度（var 那些），但**硬编码 padding 算法压不动**——所以可调维度全用 var()，模板默认状态塞下 demoResume，溢出部分让算法兜底。
+#### A4 约束
+
+800px 容器内总高度 ≤ 1123px（A4 @96dpi）。超出时 smart-layout 算法会压缩 var() 维度来自适应——但只有走 var() 的维度能被压缩，硬编码的 padding 算法动不了。所以 var() 覆盖越全，自适应能力越强。
 
 ### Step 6：draft 入库 → 预览 → 用户确认 → publish
 
-**绝不可以一步到位直接 publish**。模板入库分三阶段，中间预留人工审查与迭代循环——直到用户口头确认「这个模板和参考图一致、可以发布」，才升级到 publish。
+模板入库分三步，中间必须有人工审查。
 
-#### 6a 默认 draft 入库
+#### 6a. draft 入库
 
 ```bash
-pnpm exec tsx --env-file=.env.local \
+NODE_PATH="$PWD/apps/web/node_modules" pnpm exec tsx \
+  --tsconfig apps/web/tsconfig.json \
+  --env-file=.env.local \
   template-studio-skill/scripts/insert-template.ts \
   --id <id> \
-  --name "<中文 2-6 字>" \
+  --name "<中文名>" \
   --description "<一句话>" \
   --category <enum> \
   --features '["特点1","特点2","特点3"]' \
   --html path/to/template.html \
-  --css  path/to/template.css \
-  --assets '[{"url":"<banner blob_url>","role":"banner"},{"url":"<corner blob_url>","role":"decoration"}]' \
-  --default-style-settings '{"fontFamily":"sans","fontSize":13,"lineHeight":1.6,"bodyLineHeight":1.6,"headingGap":8,"pagePadding":40,"sectionGap":16,"itemGap":12,"photoScale":1}' \
-  --layout '{"type":"vertical"}'
+  --css path/to/template.css \
+  --default-style-settings '<JSON>'
 ```
 
-不传 `--publish` 时默认写 `status='draft'`——**仅 dev-preview 路由可见**，dashboard / 编辑器模板库都看不到。脚本 stdout 会直接打印预览 URL：
+不传 `--publish` = draft 状态，仅 dev-preview 路由可见。脚本 stdout 打印预览 URL。
 
-```
-upserted as DRAFT: <id> (<name>)
-  preview: http://localhost:3000/dev-preview/template/<id>
-  确认无误后用 --publish 重跑同一命令切换到 published
-```
+HTML 顶部内嵌 `<style>` 会被脚本自动提取，可以只传 `--html`。装饰 blob URL 直接写进 HTML/CSS，不单独入库。
 
-**单文件简写**：HTML 顶部内嵌 `<style>...</style>` 会被脚本自动抽出来作为 css，可以只传 `--html` 不传 `--css`。
+#### 6b. 预览 + 迭代
 
-**`--assets` 按 Step 1 判断结果填**：跳过了 Step 2（CSS 能搞定的装饰）→ `--assets '[]'`；跑了 N 次 Step 2 → 数组里写 N 条，role 对应。`--assets '[]'` 时 HTML 里**不要**留 banner img / 装饰图 placeholder，CSS 直接画背景。
+把预览 URL 发给用户，让他对照参考图检查。用户提修改意见 → 改 HTML/CSS → 重跑 6a（ON CONFLICT UPDATE 刷新 draft）→ 用户再看。循环直到用户确认通过。
 
-#### 6b 预览 + 用户确认 + 迭代循环
+收集修改意见时先把所有问题澄清完再动手——避免改一轮暴露新问题再改一轮。
 
-确保本地 `pnpm dev` 已起。把 6a stdout 的预览 URL **完整发给用户**，并明确告诉他：
+#### 6c. publish
 
-> 模板已以 draft 入库，请打开预览链接对照参考图检查：<br>
-> http://localhost:3000/dev-preview/template/&lt;id&gt;<br>
-> 顶部会有 ⚠️ DRAFT 标识。**确认后回复"通过"或"OK"**；如有问题请描述需要调整的地方（例如「banner 太厚」「字号需要小一点」「头像应该圆形不是方形」），我会迭代修改后重新入库 draft，再请你预览。
+用户确认后，6a 命令末尾加 `--publish` 重跑。stdout 输出 `PUBLISHED` 即上线。
 
-**循环规则**：
-- 用户提反馈 → 改 HTML/CSS/assets/styleSettings → **重跑 6a 命令**（不传 `--publish`）—— ON CONFLICT UPDATE 会原地刷新这条 draft —— 让用户重新预览
-- **不要在用户没明确确认时擅自 publish**。即便你觉得"已经很像了"
-- 用户的修改诉求**先全部澄清完整**再动手改，避免改一轮触发新一轮反馈
+注意：对已 published 的模板不带 `--publish` 重跑会打回 draft（用户立刻看不到）——这是修改功能，不是 bug。
 
-#### 6c 用户确认后切到 published
+## 自查清单
 
-```bash
-# 把 6a 的命令原样重跑，仅在末尾加 --publish
-pnpm exec tsx --env-file=.env.local \
-  template-studio-skill/scripts/insert-template.ts \
-  --id <id> \
-  ... 其它参数原样 ... \
-  --publish
-```
+publish 前过一遍核心项：
 
-stdout 应输出 `PUBLISHED: <id> (<name>)`。这时 dashboard / 编辑器模板库才能看到这个模板。
-
-> ⚠️ 反向也成立：对一个已 published 的模板**不带 `--publish`** 重跑会把它打回 draft（用户立刻看不到）。需要继续修改时这是 feature；不是要打回时记得带 `--publish`。
-
-**最终确认**：`pnpm exec tsx --env-file=.env.local scripts/verify-templates.ts` 看新 id 出现在 `listAllTemplatesAsync` 输出里（draft 不会出现，published 会）。
-
-## 自查清单（publish 前过一遍）
-
-- [ ] **draft 入库 + 用户口头确认**：6a 跑过，6b 把预览链接发给用户，等到用户明确说"通过/OK"才进入 6c。**绝不可以一步到位 publish**
-- [ ] **装饰判断**：参考图里 CSS 画不出来的装饰（波浪/复杂条纹/手绘/几何组合/渐变形状）都已通过 Step 2 复刻；CSS 能搞定的没多余调生图
-- [ ] HTML 顶部使用 `basic.name/title/status/photo`，其中 `basic.photo` 用 `<img data-bind="basic.photo">`
-- [ ] `basic.title` 和 `basic.status` 同行、同样式、无 icon，且不放入联系方式行
-- [ ] 联系方式使用 `profile.contacts` 循环 + `contact.icon/contact.label`
-- [ ] 不使用 `basics.*`、`basics.icon.*`、`profile.name/title/status/summary`
-- [ ] `sectionOrder` 同时定义 `*-list` 和 `*-block`，block 模板包含 `section.body`
-- [ ] item 模板包含 `item.location`、`item.meta`、`item.link`、`item.bullets`
-- [ ] CSS 里 `font-size` / `font-family` / `line-height` 全部走 `var(--*)`
-- [ ] section margin-top 用 `var(--section-gap)`、item margin-bottom 用 `var(--item-gap)`、page padding 用 `var(--page-padding)`
-- [ ] 装饰图 URL 全部来自 `--upload-blob` 拿到的 https，不引用本地 `public/` 路径；`--assets` 数组与 HTML 中实际引用的 role 一一对应
-- [ ] features 是 3 条，每条 ≤60 字，无英文产品代号
-- [ ] name 是 2-6 个汉字
-- [ ] dev-preview 路由渲染无占位符告警
-- [ ] 800px 容器内 article 不超 1123px
+- [ ] 经过 draft → 用户预览确认 → publish 三步，没有跳过人工审查
+- [ ] 所有必备 binding 都在（basic.*/profile.contacts/sectionOrder 含 list+block/item 全字段）
+- [ ] CSS 可调维度走 var()（参照 example-template.css）
+- [ ] 使用协议 class，视觉差异写在协议 class 上
+- [ ] 装饰图来自 blob URL 或 CSS 实现，无空 src 占位
+- [ ] 800px 容器内不超 1123px
+- [ ] name 2-6 汉字，features 3 条 ≤60 字
 
 ## 故障排查
 
-- **图像 API 配置**：`.env.local` 必须配三件套——`TEMPLATE_IMAGE_API_BASE_URL`（例如 `https://bmc-llm-relay.bluemediagroup.cn/v1`）、`TEMPLATE_IMAGE_API_KEY`、`TEMPLATE_IMAGE_MODEL`（如 `gpt-image-2` / `doubao-seedream-3-0` / `wanx-v1` 等任一兼容 OpenAI `/images/edits` 协议的模型）。可选 `TEMPLATE_IMAGE_SIZE`（默认 `1024x1536`）。三件套缺任一 → Step 2 自动跳过，模板不带装饰背景但其它流程正常
-- **API 兼容性**：脚本走 OpenAI `/images/edits` multipart 协议（`image` + `prompt` + `size` + `n`），响应支持 `b64_json` 或 `url` 两种 payload。换模型只改 `TEMPLATE_IMAGE_MODEL` + 必要时换 `TEMPLATE_IMAGE_API_BASE_URL`，脚本无需修改
-- **生图 30-60s**：HTTP 000 是网络抖动，重跑即可。装饰提取尽量一次成功，反复试浪费配额
-- **prompt 怎么改都不对**：可能是 model 极限（精确数量/排列复刻不出来）。接受"风格 + 位置"对齐即可，细节用 CSS 调
-- **slot 校验失败**：按错误信息补齐 `basic.*`、`profile.contacts/contact.*`、`section.*` 或 `item.*`。不要用 `basics.*` 或 `profile.name/title/status/summary` 规避校验。
+- **图像 API**：`.env.local` 需配 `TEMPLATE_IMAGE_API_BASE_URL` + `_API_KEY` + `_MODEL`。缺任一则 Step 2 跳过，不影响主流程
+- **生图慢（30-60s）**：HTTP 000 是网络抖动，重跑即可
+- **prompt 调不对**：可能是模型极限。接受"风格+位置"对齐，细节用 CSS 调
+- **slot 校验失败**：按错误信息补齐对应 binding。字段名以 `docs/schema-v2/` 为准
+- **neon 包找不到**：脚本用 `createRequire` 从 `apps/web/package.json` 解析依赖，确保从仓库根执行

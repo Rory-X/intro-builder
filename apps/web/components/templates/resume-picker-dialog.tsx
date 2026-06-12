@@ -156,6 +156,7 @@ export function ResumePickerDialog({
                           content={r.content}
                           sectionOrder={r.content.sectionOrder}
                           styleSettings={r.content.styleSettings}
+                          interactive={false}
                         />
                       </TemplateThumbnail>
                     ) : (

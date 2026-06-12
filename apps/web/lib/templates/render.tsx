@@ -74,6 +74,7 @@ export function ClientTemplateRenderFromSerializable({
       styleSettings={layoutProps.styleSettings ?? DEFAULT_STYLE_SETTINGS}
       templateId={resolved.templateId}
       sectionIcons={resolved.sectionIcons}
+      interactive={layoutProps.interactive}
     />
   );
 }

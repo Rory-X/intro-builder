@@ -212,6 +212,7 @@ function TemplateGrid({
                   content={previewContent}
                   sectionOrder={previewContent.sectionOrder}
                   styleSettings={previewContent.styleSettings}
+                  interactive={false}
                 />
               </TemplateThumbnail>
             </div>

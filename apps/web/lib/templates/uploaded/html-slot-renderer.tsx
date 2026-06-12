@@ -52,6 +52,12 @@ export type SlotRendererProps = {
   styleSettings: StyleSettings;
   templateId: string;
   sectionIcons?: Record<string, SectionIconDeclaration>;
+  /**
+   * 交互模式。默认 true：`<a>` 原样渲染、链接可点（公开页 / 编辑器预览 / 抽屉）。
+   * 传 false：把 `<a>` 降级成 `<span>`（去掉 href），用于缩略图——dashboard 卡片
+   * 与模板库网格把整卡包成可点元素，内部再出现 `<a>` 会触发非法的链接嵌套。
+   */
+  interactive?: boolean;
 };
 
 /** DOMPurify whitelist —— spec §4.6 SAFE_TAGS */
@@ -88,6 +94,7 @@ export function SlotRenderer({
   styleSettings,
   templateId,
   sectionIcons: sectionIconsProp,
+  interactive = true,
 }: SlotRendererProps) {
   // 1. Sanitize HTML
   // Pre-step: HTML5 doesn't treat <slot /> as self-closing (it's not a void
@@ -163,7 +170,7 @@ export function SlotRenderer({
 
   // 6. Parse main HTML, walking nodes; replace <slot> elements
   const reactTree = parse(mainHtmlWithHeader, makeParserOptions({
-    content, templates, ctx: rootCtx, depth: 0, sectionIcons,
+    content, templates, ctx: rootCtx, depth: 0, sectionIcons, interactive,
   }));
 
   // heading-gap 由各模板 CSS 自行控制（section-title 容器的 margin-bottom）。
@@ -194,6 +201,7 @@ type ParserCtx = {
   ctx: IterationContext;
   depth: number;
   sectionIcons: Record<string, SectionIconDeclaration>;
+  interactive: boolean;
 };
 
 function makeParserOptions(p: ParserCtx): HTMLReactParserOptions {
@@ -210,6 +218,14 @@ function makeParserOptions(p: ParserCtx): HTMLReactParserOptions {
       // 兼容数据库中已存在的模板 HTML（professional / classic / modern）
       if (node.attribs?.["data-bind"] != null) {
         return renderLegacyDataBind(node, p);
+      }
+      // 非交互模式（缩略图）：把 <a> 降级成 <span>、去掉 href，避免内部链接
+      // 嵌套进外层可点元素（dashboard 卡片 <a> / 模板库网格 <button>）。
+      // 就地改写后返回 undefined，复用默认转换渲染 <span>，保留 class/title/data-* 与子节点。
+      if (!p.interactive && node.name === "a") {
+        node.name = "span";
+        if (node.attribs) delete node.attribs.href;
+        return undefined;
       }
       return undefined;
     },
@@ -419,24 +435,16 @@ function renderIconSlot(node: Element, iconName: string, iconColor?: string): Re
   delete props["data-bind"];
   const style = iconColor ? { color: iconColor } : undefined;
 
-  // className 必须传给 Icon（即 SVG 元素），否则 CSS 的 width/height 规则
-  // 不会约束 SVG 的默认 24x24 尺寸，导致图标巨大。
-  // span 仅作为布局容器帮助 vertical-align；不用相同 class 避免
-  // opacity 等属性在 span+svg 双层叠加。
-  const className = props.className as string | undefined;
+  const className = (props.className as string | undefined) || "contact-icon-lucide";
   const iconElement = (
     <Icon aria-hidden="true" focusable="false" className={className} style={style} />
   );
 
-  if (className) {
-    return (
-      <span style={{ display: "inline-flex", verticalAlign: "middle" }}>
-        {iconElement}
-      </span>
-    );
-  }
-
-  return iconElement;
+  return (
+    <span style={{ display: "inline-flex", verticalAlign: "middle" }}>
+      {iconElement}
+    </span>
+  );
 }
 
 function selectTemplateForSection(

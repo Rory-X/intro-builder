@@ -36,6 +36,13 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "会话已过期" }, { status: 410 });
   }
 
+  if (collab.status === "ended") {
+    return NextResponse.json(
+      { error: "协作已结束", status: "ended" },
+      { status: 410 },
+    );
+  }
+
   // Issue PartyKit connection JWT for owner
   const secret = new TextEncoder().encode(process.env.COLLAB_JWT_SECRET!);
   const partyToken = await new SignJWT({

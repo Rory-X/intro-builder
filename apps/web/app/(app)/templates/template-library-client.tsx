@@ -356,6 +356,7 @@ function TemplateCard({
             content={content}
             sectionOrder={content.sectionOrder}
             styleSettings={content.styleSettings}
+            interactive={false}
           />
         </TemplateThumbnail>
       </button>

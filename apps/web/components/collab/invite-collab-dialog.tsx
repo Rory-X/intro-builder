@@ -11,20 +11,41 @@ type Props = {
   resumeId: string;
   onSessionCreated: (sessionId: string) => void;
   isActive?: boolean;
+  sessionId?: string | null;
+  onEndSession?: (sessionId: string) => Promise<void>;
 };
 
-export function InviteCollabDialog({ resumeId, onSessionCreated, isActive = false }: Props) {
+export function InviteCollabDialog({ resumeId, onSessionCreated, isActive = false, sessionId, onEndSession }: Props) {
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const [inviteUrl, setInviteUrl] = useState("");
   const [copied, setCopied] = useState(false);
   const [error, setError] = useState("");
   const [mode, setMode] = useState<"edit" | "comment">("edit");
+  const [ending, setEnding] = useState(false);
 
   function handleReset() {
     setInviteUrl("");
     setError("");
     setCopied(false);
+  }
+
+  async function handleEndSession() {
+    if (!sessionId || !onEndSession) {
+      handleReset();
+      return;
+    }
+    setEnding(true);
+    setError("");
+    try {
+      await onEndSession(sessionId);
+      handleReset();
+      setOpen(false);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "结束协作失败");
+    } finally {
+      setEnding(false);
+    }
   }
 
   async function handleCreate() {
@@ -74,7 +95,25 @@ export function InviteCollabDialog({ resumeId, onSessionCreated, isActive = fals
             <p className="mt-0.5 text-xs text-muted-foreground">选择协作模式，生成邀请链接</p>
           </div>
 
-          {!inviteUrl && !loading && (
+          {isActive && sessionId && !inviteUrl && (
+            <div className="space-y-2 rounded-lg border bg-muted/30 p-3">
+              <p className="text-xs font-medium">协作进行中</p>
+              <p className="text-[11px] text-muted-foreground">结束后导师会立即看到协作已结束，原链接也会失效。</p>
+              <Button
+                onClick={handleEndSession}
+                size="sm"
+                variant="outline"
+                disabled={ending}
+                className="w-full text-xs text-destructive hover:text-destructive"
+              >
+                {ending ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : null}
+                结束协作
+              </Button>
+              {error && <p className="text-center text-xs text-destructive">{error}</p>}
+            </div>
+          )}
+
+          {!isActive && !inviteUrl && !loading && (
             <>
               <div className="flex gap-2">
                 <button
@@ -106,7 +145,7 @@ export function InviteCollabDialog({ resumeId, onSessionCreated, isActive = fals
             </div>
           )}
 
-          {error && (
+          {error && !(isActive && sessionId && !inviteUrl) && (
             <p className="text-center text-xs text-destructive">{error}</p>
           )}
 
@@ -121,8 +160,15 @@ export function InviteCollabDialog({ resumeId, onSessionCreated, isActive = fals
               <p className="text-[11px] text-muted-foreground">
                 链接有效期 24 小时，导师打开后输入昵称即可进入
               </p>
-              <Button onClick={handleReset} size="sm" variant="outline" className="w-full text-xs text-destructive hover:text-destructive">
-                取消协作
+              <Button
+                onClick={handleEndSession}
+                size="sm"
+                variant="outline"
+                disabled={ending}
+                className="w-full text-xs text-destructive hover:text-destructive"
+              >
+                {ending ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : null}
+                结束协作
               </Button>
             </div>
           )}

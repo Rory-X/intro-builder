@@ -340,6 +340,23 @@ export default function EditorClient({ id, initialTitle, initialTemplate, initia
   }, [collabSessionId, collabConfig]);
 
   const collabState = useCollabProvider(collabConfig);
+
+  const handleEndCollabSession = useCallback(async (sid: string) => {
+    const res = await fetch("/api/collab/end", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ sessionId: sid }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      throw new Error(data.error || "结束协作失败");
+    }
+    collabState?.sendJson({ type: "session-end" });
+    setCollabConfig(null);
+    setCollabSessionId(null);
+    toast.success("已结束协作");
+  }, [collabState]);
+
   const collabSync = useCollabFormSync({
     ydoc: collabState?.ydoc ?? null,
     form,
@@ -764,7 +781,7 @@ export default function EditorClient({ id, initialTitle, initialTemplate, initia
             </PopoverContent>
           </Popover>
 
-          <InviteCollabDialog resumeId={id} onSessionCreated={(sid) => setCollabSessionId(sid)} isActive={collabSessionId !== null} />
+          <InviteCollabDialog resumeId={id} onSessionCreated={(sid) => setCollabSessionId(sid)} isActive={collabSessionId !== null} sessionId={collabSessionId} onEndSession={handleEndCollabSession} />
           <ExportButton
             resumeId={id}
             filename={title}

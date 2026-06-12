@@ -22,30 +22,33 @@ export const demoResume: ResumeContent = {
       start: "2018.09",
       end: "2022.06",
       gpa: "3.7/4.0",
-      highlights: { type: "doc", content: [] },
+      highlights: bulletsToDoc([
+        "主修：数据结构、操作系统、计算机网络、编译原理；连续三年专业奖学金",
+      ]),
     },
   ],
   experience: [
     {
       company: "字节跳动",
-      title: "前端工程师",
+      title: "高级前端工程师",
       start: "2022.07",
       end: "至今",
       location: "北京",
       content: bulletsToDoc([
-        "主导企业协作工具的编辑器重构，核心链路加载耗时降低 40%",
-        "设计并落地组件库可访问性规范，WCAG AA 通过率 98%",
-        "推动 CI 中的视觉回归测试接入，减少 UI 回退事故 60%",
+        "主导企业协作工具的编辑器重构，重写协同光标与分页渲染链路，核心链路加载耗时降低 40%",
+        "设计并落地组件库可访问性规范，建立键盘导航与 ARIA 基线，WCAG AA 通过率从 71% 提升至 98%",
+        "推动 CI 中的视觉回归测试接入，覆盖 120+ 关键组件快照，减少 UI 回退事故 60%",
       ]),
     },
     {
       company: "美团",
-      title: "前端实习生",
+      title: "前端工程师",
       start: "2021.07",
-      end: "2021.12",
+      end: "2022.06",
       location: "北京",
       content: bulletsToDoc([
         "参与点评 PC 端列表页重构，首屏 LCP 从 3.2s 降至 1.4s",
+        "搭建基于 Web Vitals 的前端性能监控看板，覆盖核心页面 P75 指标",
       ]),
     },
   ],
@@ -59,7 +62,20 @@ export const demoResume: ResumeContent = {
       stack: ["Next.js", "TypeScript", "Tailwind"],
       link: "github.com/zhangsan/intro-builder",
       content: bulletsToDoc([
-        "面向求职者的开源简历生成器，支持多模板与公开分享链接",
+        "面向求职者的开源简历生成器，支持结构化编辑、多模板套用与公开分享链接",
+        "实现实时分页预览与 Puppeteer PDF 导出，预览与导出复用同一套 DOM 保证一致",
+      ]),
+    },
+    {
+      name: "可视化埋点平台",
+      role: "前端负责人",
+      location: "北京",
+      start: "2023.03",
+      end: "2023.09",
+      stack: ["React", "Vite", "D3.js"],
+      link: "github.com/zhangsan/track-studio",
+      content: bulletsToDoc([
+        "提供圈选式可视化埋点配置，业务侧无需写代码即可上报事件，接入成本降低 70%",
       ]),
     },
   ],
@@ -69,15 +85,19 @@ export const demoResume: ResumeContent = {
     content: [
       { type: "paragraph", content: [
         { type: "text", marks: [{ type: "bold" }], text: "语言：" },
-        { type: "text", text: "TypeScript、JavaScript、Python" },
+        { type: "text", text: "TypeScript、JavaScript、Python、Go" },
       ]},
       { type: "paragraph", content: [
         { type: "text", marks: [{ type: "bold" }], text: "框架：" },
-        { type: "text", text: "React、Next.js、Vue" },
+        { type: "text", text: "React、Next.js、Vue、Node.js" },
       ]},
       { type: "paragraph", content: [
-        { type: "text", marks: [{ type: "bold" }], text: "工具：" },
-        { type: "text", text: "Vite、Playwright、Docker" },
+        { type: "text", marks: [{ type: "bold" }], text: "工程：" },
+        { type: "text", text: "Vite、Webpack、Playwright、Vitest、Docker" },
+      ]},
+      { type: "paragraph", content: [
+        { type: "text", marks: [{ type: "bold" }], text: "数据与云：" },
+        { type: "text", text: "PostgreSQL、Redis、GraphQL、Kubernetes、CI/CD" },
       ]},
     ],
   },

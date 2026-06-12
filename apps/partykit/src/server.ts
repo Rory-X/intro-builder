@@ -61,6 +61,17 @@ export default class CollabServer implements Party.Server {
     try {
       const data = JSON.parse(message);
 
+      // Relay session-end to all OTHER connections
+      if (data.type === "session-end") {
+        const relay = JSON.stringify({ type: "session-ended", reason: "owner-ended" });
+        for (const conn of this.room.getConnections()) {
+          if (conn.id !== sender.id) {
+            conn.send(relay);
+          }
+        }
+        return;
+      }
+
       // Relay WebRTC voice signaling messages to all OTHER connections
       const voiceTypes = [
         "voice-ring", "voice-accept", "voice-reject", "voice-cancel",
