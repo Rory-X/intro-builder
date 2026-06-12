@@ -60,7 +60,7 @@ export function MentorEditorClient({ resumeTitle, initialContent, resolvedTempla
   useEffect(() => {
     if (!collabState) return;
     return collabState.addJsonMessageListener((message) => {
-      if (message.type === "session-ended") {
+      if (message.type === "session-ended" || message.type === "owner-disconnected") {
         setEnded(true);
       }
     });

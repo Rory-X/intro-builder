@@ -78,6 +78,36 @@ describe("MentorEditorClient ended state", () => {
     expect(await screen.findByText("协作已结束")).toBeInTheDocument();
     expect(screen.getByText("作者已结束本次协作，请联系对方重新邀请。")).toBeInTheDocument();
   });
+
+  it("shows ended screen when owner-disconnected is received", async () => {
+    window.sessionStorage.setItem("collab:token", "token");
+    window.sessionStorage.setItem("collab:roomId", "room");
+    window.sessionStorage.setItem("collab:displayName", "导师");
+
+    render(
+      <MentorEditorClient
+        resumeTitle="测试简历"
+        initialContent={minimalContent()}
+        resolvedTemplate={{
+          id: "classic",
+          name: "Classic",
+          description: "",
+          tags: [],
+          html: "<div></div>",
+          css: "",
+          defaultStyleSettings: {},
+        }}
+        mode="edit"
+      />,
+    );
+
+    await waitFor(() => expect(messageHandler).toBeTruthy());
+    await act(async () => {
+      messageHandler?.({ type: "owner-disconnected" });
+    });
+
+    expect(await screen.findByText("协作已结束")).toBeInTheDocument();
+  });
 });
 
 function minimalContent(): ResumeContent {
