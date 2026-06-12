@@ -58,4 +58,4 @@ jobs:
         env:
           PARTYKIT_LOGIN: ${{ secrets.PARTYKIT_LOGIN }}
           PARTYKIT_TOKEN: ${{ secrets.PARTYKIT_TOKEN }}
-        run: pnpm --filter @intro-builder/partykit deploy
+        run: pnpm --filter @intro-builder/partykit run deploy
