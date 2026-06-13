@@ -1057,7 +1057,56 @@ describe("agent HTTP service", () => {
       "req-client-agent-message-stream",
     );
     expect(events[0]?.type).toBe(EventType.RUN_STARTED);
-    expect(events[1]?.type).toBe(EventType.TEXT_MESSAGE_START);
+    const textStartIndex = events.findIndex(
+      (event) => event.type === EventType.TEXT_MESSAGE_START,
+    );
+    const contextStatusIndex = events.findIndex(
+      (event) =>
+        event.type === EventType.STATE_DELTA &&
+        event.delta.some((patch) => patch.path === "/contextStatus"),
+    );
+    const contextActivityIndex = events.findIndex(
+      (event) =>
+        event.type === EventType.ACTIVITY_SNAPSHOT &&
+        event.activityType === "context_status",
+    );
+    expect(events[1]).toEqual(
+      expect.objectContaining({
+        type: EventType.STATE_SNAPSHOT,
+        snapshot: {
+          contextStatus: null,
+          workspace: null,
+          workflow: {
+            workflowId: "resume-diagnose",
+            nodeId: "intake_goal",
+            loopCount: 0,
+            completedNodeIds: [],
+          },
+        },
+      }),
+    );
+    expect(events[contextStatusIndex]).toEqual(
+      expect.objectContaining({
+        type: EventType.STATE_DELTA,
+        delta: [
+          expect.objectContaining({
+            path: "/contextStatus",
+            value: expect.objectContaining({
+              effectiveInputBudgetTokens: 200_000,
+            }),
+          }),
+        ],
+      }),
+    );
+    expect(events[contextActivityIndex]).toEqual(
+      expect.objectContaining({
+        type: EventType.ACTIVITY_SNAPSHOT,
+        activityType: "context_status",
+      }),
+    );
+    expect(contextStatusIndex).toBeGreaterThan(1);
+    expect(contextActivityIndex).toBeGreaterThan(1);
+    expect(textStartIndex).toBeGreaterThan(contextActivityIndex);
     expect(events.at(-2)?.type).toBe(EventType.TEXT_MESSAGE_END);
     expect(events.at(-1)?.type).toBe(EventType.RUN_FINISHED);
     const textDeltas = events
@@ -1117,6 +1166,132 @@ describe("agent HTTP service", () => {
       .map((event) => event.delta)
       .join("")).toBe("实时吐字。");
     expect(events.at(-1)?.type).toBe(EventType.RUN_FINISHED);
+  });
+
+  it("routes streaming Agent results through the v2 workflow runtime tail", async () => {
+    const providerContent = JSON.stringify({
+      message: {
+        id: "msg_assistant_stream_runtime",
+        role: "assistant",
+        content: "我需要先确认目标岗位，同时准备一条可预览的修改建议。",
+      },
+      toolCalls: [
+        {
+          id: "tool_stream_update",
+          name: "resume_update_section",
+          status: "completed",
+          title: "生成预览修改",
+          summary: "基于当前经历生成一条待确认建议。",
+          input: { fieldPath: "experience.0.content" },
+          result: { operationIds: ["op_stream_update"] },
+        },
+      ],
+      proposedOperations: [
+        {
+          id: "op_stream_update",
+          toolCallId: "tool_stream_update",
+          label: "应用经历预览改写",
+          section: "experience",
+          fieldPath: "experience.0.content",
+          operation: "update_section",
+          beforePlainText: "负责业务系统前端开发，优化页面性能。",
+          afterPlainText: "围绕业务系统页面性能瓶颈推进前端优化；结果指标待补充。",
+          replacementTiptapJson: { type: "doc", content: [] },
+          changeSummary: "补足任务与行动，并提示补充真实结果。",
+          riskFlags: [
+            {
+              type: "needs_user_fact",
+              message: "请补充真实性能提升指标。",
+            },
+          ],
+        },
+      ],
+      questions: [
+        {
+          id: "question_target_role",
+          message: "这次主要投递哪个岗位？",
+          field: "goal.targetRole",
+        },
+      ],
+    });
+    const provider = new StreamingAgentMessageProvider([
+      providerContent.slice(0, 160),
+      providerContent.slice(160),
+    ]);
+    const server = await listenOnRandomPort({
+      replayStore: new FakeReplayStore(),
+      agentMessageProvider: provider,
+    });
+    const token = await signAgentToken({
+      sub: "user_123",
+      resumeId: "resume_abc",
+      scope: "agent:chat",
+      jti: "jti_agent_message_stream_runtime_tail",
+    });
+
+    const response = await fetch(server.url("/v1/agent/messages"), {
+      method: "POST",
+      headers: {
+        accept: "text/event-stream",
+        authorization: `Bearer ${token}`,
+        "content-type": "application/json",
+        "x-request-id": "req-client-agent-message-stream-runtime-tail",
+      },
+      body: JSON.stringify(validAgentMessageBody()),
+    });
+    provider.release();
+    const events = parseSseEvents(await response.text());
+
+    expect(response.status).toBe(200);
+    expect(events).toContainEqual(expect.objectContaining({
+      type: EventType.STATE_DELTA,
+      delta: [
+        expect.objectContaining({
+          path: "/workspace",
+          value: expect.objectContaining({
+            changeSets: [
+              expect.objectContaining({
+                operationIds: ["op_stream_update"],
+              }),
+            ],
+          }),
+        }),
+      ],
+    }));
+    expect(events).toContainEqual(expect.objectContaining({
+      type: EventType.ACTIVITY_SNAPSHOT,
+      activityType: "resume_workspace",
+      content: expect.objectContaining({
+        changeSets: [
+          expect.objectContaining({
+            operationIds: ["op_stream_update"],
+          }),
+        ],
+      }),
+    }));
+    expect(events).toContainEqual(expect.objectContaining({
+      type: EventType.TOOL_CALL_RESULT,
+      toolCallId: "tool_stream_update",
+      content: expect.stringContaining('"op_stream_update"'),
+    }));
+    expect(events.at(-1)).toMatchObject({
+      type: EventType.RUN_FINISHED,
+      outcome: {
+        type: "interrupt",
+        interrupts: [
+          {
+            id: "question_target_role",
+            reason: "input_required",
+            metadata: { kind: "question", field: "goal.targetRole" },
+          },
+          {
+            id: "op_stream_update",
+            reason: "approval_required",
+            toolCallId: "tool_stream_update",
+          },
+        ],
+      },
+    });
   });
 
   it("streams tool results instead of RUN_ERROR when provider operations omit toolCallId", async () => {
@@ -1547,6 +1722,91 @@ describe("agent HTTP service", () => {
     });
   });
 
+  it("accepts create-from-zero Agent messages without a resume-scoped JWT", async () => {
+    const provider = new FakeAgentMessageProvider(
+      JSON.stringify({
+        message: {
+          id: "msg_create_zero",
+          role: "assistant",
+          content: "我先确认目标岗位和基础资料。",
+        },
+        toolCalls: [],
+        proposedOperations: [],
+        questions: [
+          {
+            id: "question_target_role",
+            message: "你这次主要投递哪个岗位？",
+            field: "goal.targetRole",
+          },
+        ],
+      }),
+    );
+    const server = await listenOnRandomPort({
+      replayStore: new FakeReplayStore(),
+      agentMessageProvider: provider,
+    });
+    const token = await signAgentToken({
+      sub: "user_123",
+      scope: "agent:chat",
+      jti: "jti_agent_message_create_zero",
+    });
+
+    const response = await fetch(server.url("/v1/agent/messages"), {
+      method: "POST",
+      headers: {
+        accept: "text/event-stream",
+        authorization: `Bearer ${token}`,
+        "content-type": "application/json",
+        "x-request-id": "req-client-agent-message-create-zero",
+      },
+      body: JSON.stringify({
+        resumeId: null,
+        mode: "create_from_zero",
+        locale: "zh-CN",
+        workflowId: "create-from-zero",
+        messages: [
+          {
+            id: "msg_user_create",
+            role: "user",
+            content: "从 0 帮我做一份前端工程师简历",
+          },
+        ],
+        context: null,
+      }),
+    });
+    const events = parseSseEvents(await response.text());
+
+    expect(response.status).toBe(200);
+    expect(provider.calls[0]?.request).toMatchObject({
+      resumeId: null,
+      mode: "create_from_zero",
+      workflowId: "create-from-zero",
+      context: null,
+    });
+    expect(provider.calls[0]?.prompt.user).toContain(
+      "当前还没有可读取的简历快照",
+    );
+    expect(events[0]).toMatchObject({
+      type: EventType.RUN_STARTED,
+      threadId: "agent_create_from_zero",
+      runId: "req-client-agent-message-create-zero",
+    });
+    expect(events.at(-1)).toMatchObject({
+      type: EventType.RUN_FINISHED,
+      threadId: "agent_create_from_zero",
+      runId: "req-client-agent-message-create-zero",
+      outcome: {
+        type: "interrupt",
+        interrupts: [
+          expect.objectContaining({
+            id: "question_target_role",
+            reason: "input_required",
+          }),
+        ],
+      },
+    });
+  });
+
   it("returns dependency_unavailable when no Agent message provider is configured", async () => {
     const server = await listenOnRandomPort({
       replayStore: new FakeReplayStore(),
@@ -1575,6 +1835,154 @@ describe("agent HTTP service", () => {
       requestId: "req-client-agent-message-provider",
       dependency: "provider",
     });
+  });
+
+  it("uses request-scoped model settings for Agent messages without caching the access key", async () => {
+    const originalFetch = globalThis.fetch;
+    const providerFetch = vi
+      .spyOn(globalThis, "fetch")
+      .mockImplementation((async (input, init) => {
+        const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
+        if (url === "https://models.example.test/v1/chat/completions") {
+          return new Response(
+            JSON.stringify({
+              choices: [
+                {
+                  message: {
+                    content: JSON.stringify({
+                      message: {
+                        id: "msg_custom_model",
+                        role: "assistant",
+                        content: "我会使用你设置的模型继续。",
+                      },
+                      toolCalls: [],
+                      proposedOperations: [],
+                    }),
+                  },
+                },
+              ],
+              usage: {
+                prompt_tokens: 321,
+                completion_tokens: 45,
+              },
+            }),
+            {
+              status: 200,
+              headers: { "content-type": "application/json" },
+            },
+          );
+        }
+        return originalFetch(input, init);
+      }) as typeof fetch);
+    const cacheStore = new FakeAiCacheStore();
+    const server = await listenOnRandomPort({
+      replayStore: new FakeReplayStore(),
+      aiCacheStore: cacheStore,
+    });
+    const token = await signAgentToken({
+      sub: "user_123",
+      resumeId: "resume_abc",
+      scope: "agent:chat",
+      jti: "jti_agent_message_model_settings",
+    });
+
+    const response = await fetch(server.url("/v1/agent/messages"), {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${token}`,
+        "content-type": "application/json",
+        "x-request-id": "req-client-agent-message-model-settings",
+      },
+      body: JSON.stringify({
+        ...validAgentMessageBody(),
+        modelConfig: {
+          baseUrl: "https://models.example.test/v1",
+          apiKey: "sk-request-scoped",
+          modelName: "gpt-5-mini",
+        },
+      }),
+    });
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      status: "ok",
+      requestId: "req-client-agent-message-model-settings",
+      message: {
+        id: "msg_custom_model",
+        content: "我会使用你设置的模型继续。",
+      },
+      usage: {
+        provider: "openai-compatible",
+        model: "gpt-5-mini",
+        inputTokens: 321,
+        outputTokens: 45,
+      },
+    });
+    expect(providerFetch).toHaveBeenCalledWith(
+      "https://models.example.test/v1/chat/completions",
+      expect.objectContaining({
+        headers: expect.objectContaining({
+          authorization: "Bearer sk-request-scoped",
+        }),
+      }),
+    );
+    expect(Array.from(cacheStore.entries.keys()).join("\n")).not.toContain(
+      "sk-request-scoped",
+    );
+  });
+
+  it("rejects unsafe request-scoped model URLs before any provider fetch", async () => {
+    const originalFetch = globalThis.fetch;
+    const fetchSpy = vi
+      .spyOn(globalThis, "fetch")
+      .mockImplementation((async (input, init) => {
+        return originalFetch(input, init);
+      }) as typeof fetch);
+    const server = await listenOnRandomPort({
+      replayStore: new FakeReplayStore(),
+      aiCacheStore: new FakeAiCacheStore(),
+    });
+    const token = await signAgentToken({
+      sub: "user_123",
+      resumeId: "resume_abc",
+      scope: "agent:chat",
+      jti: "jti_agent_message_unsafe_model_settings",
+    });
+
+    const response = await fetch(server.url("/v1/agent/messages"), {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${token}`,
+        "content-type": "application/json",
+        "x-request-id": "req-client-agent-message-unsafe-model-settings",
+      },
+      body: JSON.stringify({
+        ...validAgentMessageBody(),
+        modelConfig: {
+          baseUrl: "http://127.0.0.1:11434/v1",
+          apiKey: "sk-request-scoped",
+          modelName: "gpt-5-mini",
+        },
+      }),
+    });
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toEqual({
+      error: "bad_request",
+      message: "modelConfig.baseUrl is not allowed",
+      requestId: "req-client-agent-message-unsafe-model-settings",
+    });
+    expect(
+      fetchSpy.mock.calls.some(([input]) => {
+        const url =
+          typeof input === "string"
+            ? input
+            : input instanceof URL
+              ? input.href
+              : input.url;
+        return url === "http://127.0.0.1:11434/v1/chat/completions";
+      }),
+    ).toBe(false);
   });
 });
 

@@ -77,7 +77,7 @@ export type AgentMessageTraceMetadata = {
   environment: string;
   modelName: string | null;
   userHash: string;
-  resumeId: string;
+  resumeId: string | null;
   activeSection: string | null;
   messageCount: number;
   sectionCount: number;
@@ -149,9 +149,9 @@ export function buildAgentMessageTraceMetadata({
     modelName: config.modelName ?? null,
     userHash: hashIdentifier(session.userId),
     resumeId: request.resumeId,
-    activeSection: request.context.activeSection,
+    activeSection: request.context?.activeSection ?? null,
     messageCount: request.messages.length,
-    sectionCount: request.context.sections.length,
+    sectionCount: request.context?.sections.length ?? 0,
     cacheStatus,
     captureRawPayloads: config.langfuse.captureRawPayloads,
   };
@@ -162,12 +162,13 @@ export function buildAgentMessageTraceMetadata({
         role: message.role,
         content: message.content,
       })),
-      sections: request.context.sections.map((section) => ({
-        key: section.key,
-        label: section.label,
-        fieldPath: section.fieldPath,
-        plainText: section.plainText,
-      })),
+      sections:
+        request.context?.sections.map((section) => ({
+          key: section.key,
+          label: section.label,
+          fieldPath: section.fieldPath,
+          plainText: section.plainText,
+        })) ?? [],
     };
   }
 
@@ -363,11 +364,12 @@ class LangfuseAgentMessageTrace implements AgentMessageTrace {
 function buildSafeRunInput(request: AgentMessageRequest): Record<string, unknown> {
   return {
     workflowId: request.workflowId,
+    mode: request.mode ?? "optimize_existing",
     locale: request.locale,
-    activeSection: request.context.activeSection,
+    activeSection: request.context?.activeSection ?? null,
     messageCount: request.messages.length,
-    sectionCount: request.context.sections.length,
-    completenessOverall: request.context.completeness.overall,
+    sectionCount: request.context?.sections.length ?? 0,
+    completenessOverall: request.context?.completeness.overall ?? null,
   };
 }
 

@@ -43,12 +43,17 @@ describe("AgentPanel", () => {
     fireEvent.click(screen.getByRole("button", { name: "发送" }));
   }
 
-  it("renders Agent panel safety copy and workflow entry", () => {
+  it("renders a compact conversation header and composer status", () => {
     render(<AgentPanel {...panelProps()} />);
 
-    expect(screen.getByText("简历 Agent")).toBeInTheDocument();
-    expect(screen.getByText("AI 会读取当前表单快照，修改需你确认。")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "切回编辑" })).toBeInTheDocument();
+    expect(screen.getByText("新对话")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "返回编辑" })).toBeInTheDocument();
+    expect(
+      screen.getByRole("status", { name: "上下文状态：待更新" }),
+    ).toBeInTheDocument();
+    expect(screen.queryByText("上下文待更新")).not.toBeInTheDocument();
+    expect(screen.queryByText("简历 Agent")).not.toBeInTheDocument();
+    expect(screen.queryByText(/AI 会读取当前表单快照/)).not.toBeInTheDocument();
   });
 
   it("renders assistant-ui thread and composer primitives inside the panel", () => {
@@ -73,7 +78,8 @@ describe("AgentPanel", () => {
 
     render(<AgentPanel {...panelProps()} />);
 
-    expect(screen.getByText("从这些问题开始")).toBeInTheDocument();
+    expect(screen.getByText("你好。")).toBeInTheDocument();
+    expect(screen.getByText("想怎么优化这份简历？")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "帮我找最值得改的一处" }));
 
     await waitFor(() => {
@@ -223,7 +229,7 @@ describe("AgentPanel", () => {
     sendMessage("请诊断这份简历");
 
     expect(await screen.findByTestId("agent-loading-indicator")).toHaveTextContent(
-      "AI 正在思考",
+      "正在读取简历上下文",
     );
     expect(screen.getByText(/正在读取简历上下文/)).toBeInTheDocument();
     expect(screen.queryByText("Agent 活动")).not.toBeInTheDocument();
@@ -275,7 +281,7 @@ describe("AgentPanel", () => {
     expect(screen.getByTestId("agent-assistant-ui-composer-input")).toBeEnabled();
   });
 
-  it("renders Agent error codes and request ids for easier debugging", async () => {
+  it("renders Agent errors without exposing internal codes or request ids", async () => {
     const fetchMock = vi.fn<
       (...args: [RequestInfo | URL, RequestInit?]) => Promise<Response>
     >(async () => {
@@ -293,8 +299,9 @@ describe("AgentPanel", () => {
     render(<AgentPanel {...panelProps()} />);
     sendMessage("请诊断这份简历");
 
-    expect(await screen.findByText(/dependency_unavailable/)).toBeInTheDocument();
-    expect(screen.getByText(/req_agent_debug/)).toBeInTheDocument();
+    expect(await screen.findByText("Agent 服务暂不可用")).toBeInTheDocument();
+    expect(screen.queryByText(/dependency_unavailable/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/req_agent_debug/)).not.toBeInTheDocument();
   });
 
   it("lets the user retry the last Agent request after a transient error", async () => {
@@ -323,7 +330,8 @@ describe("AgentPanel", () => {
     render(<AgentPanel {...panelProps()} />);
     sendMessage("请诊断这份简历");
 
-    expect(await screen.findByText(/req_retry_once/)).toBeInTheDocument();
+    expect(await screen.findByText("Agent 服务暂不可用")).toBeInTheDocument();
+    expect(screen.queryByText(/req_retry_once/)).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "重新发送上一条" }));
 
     await waitFor(() => {
@@ -371,7 +379,8 @@ describe("AgentPanel", () => {
     sendMessage("请诊断这份简历");
 
     // Wait for error card to appear
-    expect(await screen.findByText(/req_retry_test/)).toBeInTheDocument();
+    expect(await screen.findByText("Agent 服务暂不可用")).toBeInTheDocument();
+    expect(screen.queryByText(/req_retry_test/)).not.toBeInTheDocument();
 
     // Click retry button
     fireEvent.click(screen.getByRole("button", { name: "重新发送上一条" }));
@@ -428,7 +437,7 @@ describe("AgentPanel", () => {
 
     // Step 2: wait for tool call to complete
     await waitFor(() => {
-      expect(screen.getByText("已完成 1 个工具调用")).toBeInTheDocument();
+      expect(screen.getByText("已完成 1 个动作")).toBeInTheDocument();
     });
 
     // Step 3: wait for confirmation card to appear

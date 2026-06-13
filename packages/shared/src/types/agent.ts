@@ -1,8 +1,11 @@
+import type { AgentSessionSnapshot } from "./agent-v2";
+
 export type AgentWorkflowId =
   | "resume-diagnose"
   | "target-role-match"
   | "experience-star"
-  | "pre-export-check";
+  | "pre-export-check"
+  | "create-from-zero";
 
 export type AgentChatMessage = {
   id: string;
@@ -26,12 +29,21 @@ export type AgentResumeContext = {
   }>;
 };
 
+export type AgentModelConfig = {
+  baseUrl: string;
+  apiKey: string;
+  modelName: string;
+};
+
 export type AgentMessageRequest = {
-  resumeId: string;
+  resumeId: string | null;
+  mode?: "optimize_existing" | "create_from_zero";
   locale: "zh-CN";
   workflowId: AgentWorkflowId | null;
   messages: AgentChatMessage[];
-  context: AgentResumeContext;
+  context: AgentResumeContext | null;
+  modelConfig?: AgentModelConfig;
+  sessionSnapshot?: AgentSessionSnapshot;
 };
 
 export type AgentToolName =

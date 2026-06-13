@@ -35,6 +35,116 @@ describe("agent messages", () => {
     });
   });
 
+  it("accepts a durable Agent session snapshot on message requests", () => {
+    const result = validateAgentMessageRequest(
+      validBody({ sessionSnapshot: agentSessionSnapshot() }),
+    );
+
+    expect(result).toMatchObject({
+      ok: true,
+      request: {
+        sessionSnapshot: expect.objectContaining({
+          sessionId: "agent_session_resume_abc",
+          status: "waiting_user",
+        }),
+      },
+    });
+  });
+
+  it("accepts create-from-zero requests without an existing resume snapshot", () => {
+    const result = validateAgentMessageRequest({
+      resumeId: null,
+      mode: "create_from_zero",
+      locale: "zh-CN",
+      workflowId: "create-from-zero",
+      messages: [
+        {
+          id: "msg_user_create",
+          role: "user",
+          content: "从 0 帮我做一份前端工程师简历",
+        },
+      ],
+      context: null,
+    });
+
+    expect(result).toEqual({
+      ok: true,
+      request: {
+        resumeId: null,
+        mode: "create_from_zero",
+        locale: "zh-CN",
+        workflowId: "create-from-zero",
+        messages: [
+          {
+            id: "msg_user_create",
+            role: "user",
+            content: "从 0 帮我做一份前端工程师简历",
+          },
+        ],
+        context: null,
+      },
+    });
+  });
+
+  it("keeps optimize-existing requests strict about resume snapshots", () => {
+    const result = validateAgentMessageRequest({
+      ...validBody(),
+      mode: "optimize_existing",
+      context: null,
+    });
+
+    expect(result).toEqual({
+      ok: false,
+      statusCode: 400,
+      error: "bad_request",
+      message: "context is required",
+    });
+  });
+
+  it("rejects unsafe request-scoped model base URLs", () => {
+    for (const baseUrl of [
+      "http://127.0.0.1:11434/v1",
+      "http://169.254.169.254/latest",
+      "file:///tmp/model",
+      "not a url",
+    ]) {
+      const result = validateAgentMessageRequest(
+        validBody({
+          modelConfig: {
+            baseUrl,
+            apiKey: "sk-test-local",
+            modelName: "gpt-5-mini",
+          },
+        }),
+      );
+
+      expect(result).toEqual({
+        ok: false,
+        statusCode: 400,
+        error: "bad_request",
+        message: "modelConfig.baseUrl is not allowed",
+      });
+    }
+  });
+
+  it("rejects malformed durable Agent session snapshots", () => {
+    const result = validateAgentMessageRequest(
+      validBody({
+        sessionSnapshot: {
+          sessionId: "agent_session_resume_abc",
+          contextStatus: { effectiveInputBudgetTokens: 42 },
+        },
+      }),
+    );
+
+    expect(result).toEqual({
+      ok: false,
+      statusCode: 400,
+      error: "bad_request",
+      message: "sessionSnapshot is invalid",
+    });
+  });
+
   it("rejects contexts that exceed the plain text limit", () => {
     const result = validateAgentMessageRequest(
       validBody({
@@ -76,8 +186,37 @@ describe("agent messages", () => {
     expect(prompt.developer).toContain("所有简历修改必须作为 proposedOperations 返回");
     expect(prompt.developer).toContain("使用 STAR 原则时，不得编造 Result 指标");
     expect(prompt.developer).toContain("toolCalls: [] 和 proposedOperations: []");
+    expect(prompt.developer).toContain("questions");
     expect(prompt.user).toContain("workflowId: resume-diagnose");
     expect(prompt.user).toContain("experience.0.content");
+  });
+
+  it("builds a create-from-zero prompt without reading resume context sections", () => {
+    const result = validateAgentMessageRequest({
+      resumeId: null,
+      mode: "create_from_zero",
+      locale: "zh-CN",
+      workflowId: "create-from-zero",
+      messages: [
+        {
+          id: "msg_user_create",
+          role: "user",
+          content: "从 0 帮我做一份前端工程师简历",
+        },
+      ],
+      context: null,
+    });
+    if (!result.ok) throw new Error("expected valid create-from-zero request");
+
+    const prompt = buildAgentMessagePrompt({
+      ...result.request,
+      requestId: "req_agent_create",
+    });
+
+    expect(prompt.user).toContain("workflowId: create-from-zero");
+    expect(prompt.user).toContain("当前还没有可读取的简历快照");
+    expect(prompt.user).not.toContain("undefined");
+    expect(prompt.user).not.toContain("sections:");
   });
 
   it("parses provider response with tool calls and proposed operations", () => {
@@ -149,6 +288,50 @@ describe("agent messages", () => {
         toolCalls: [],
         proposedOperations: [],
       },
+    });
+  });
+
+  it("parses provider questions for human-in-the-loop follow-up", () => {
+    const parsed = parseAgentMessageProviderResponse(
+      JSON.stringify({
+        message: {
+          id: "msg_assistant_question",
+          role: "assistant",
+          content: "我需要确认目标岗位后再继续。",
+        },
+        toolCalls: [],
+        proposedOperations: [],
+        questions: [
+          {
+            id: "question_target_role",
+            message: "你这次主要投递哪个岗位？",
+            field: "goal.targetRole",
+            responseSchema: {
+              type: "object",
+              properties: { answer: { type: "string", minLength: 1 } },
+              required: ["answer"],
+            },
+          },
+        ],
+      }),
+    );
+
+    expect(parsed).toEqual({
+      ok: true,
+      result: expect.objectContaining({
+        questions: [
+          {
+            id: "question_target_role",
+            message: "你这次主要投递哪个岗位？",
+            field: "goal.targetRole",
+            responseSchema: {
+              type: "object",
+              properties: { answer: { type: "string", minLength: 1 } },
+              required: ["answer"],
+            },
+          },
+        ],
+      }),
     });
   });
 
@@ -264,6 +447,237 @@ describe("agent messages", () => {
       toolCallId: "tool_1",
       content: expect.stringContaining('"proposedOperations"'),
     }));
+  });
+
+  it("emits v2 context status state and activity before assistant text", () => {
+    const parsed = parseAgentMessageProviderResponse(
+      JSON.stringify({
+        message: {
+          id: "msg_assistant_context",
+          role: "assistant",
+          content: "我会先读取当前简历。",
+        },
+        toolCalls: [],
+        proposedOperations: [],
+      }),
+    );
+    if (!parsed.ok) throw new Error("expected parse success");
+
+    const events = toAgUiAgentEvents({
+      requestId: "req_agent",
+      threadId: "resume_abc",
+      request: validBody(),
+      result: parsed.result,
+    });
+
+    const stateDeltaIndex = events.findIndex(
+      (event) => event.type === EventType.STATE_DELTA,
+    );
+    const activityIndex = events.findIndex(
+      (event) =>
+        event.type === EventType.ACTIVITY_SNAPSHOT &&
+        event.activityType === "context_status",
+    );
+    const textStartIndex = events.findIndex(
+      (event) => event.type === EventType.TEXT_MESSAGE_START,
+    );
+
+    expect(stateDeltaIndex).toBeGreaterThan(0);
+    expect(activityIndex).toBeGreaterThan(0);
+    expect(stateDeltaIndex).toBeLessThan(textStartIndex);
+    expect(activityIndex).toBeLessThan(textStartIndex);
+    expect(events[stateDeltaIndex]).toEqual(
+      expect.objectContaining({
+        type: EventType.STATE_DELTA,
+        delta: [
+          expect.objectContaining({
+            op: "replace",
+            path: "/contextStatus",
+            value: expect.objectContaining({
+              effectiveInputBudgetTokens: 200_000,
+              status: "healthy",
+            }),
+          }),
+        ],
+      }),
+    );
+    expect(events[activityIndex]).toEqual(
+      expect.objectContaining({
+        type: EventType.ACTIVITY_SNAPSHOT,
+        activityType: "context_status",
+        content: expect.objectContaining({
+          effectiveInputBudgetTokens: 200_000,
+          status: "healthy",
+        }),
+      }),
+    );
+  });
+
+  it("emits v2 resume workspace state with staged change sets before run finish", () => {
+    const parsed = parseAgentMessageProviderResponse(
+      JSON.stringify({
+        message: {
+          id: "msg_assistant_workspace",
+          role: "assistant",
+          content: "我生成了一组待确认修改。",
+        },
+        toolCalls: [
+          {
+            id: "tool_1",
+            name: "resume_update_section",
+            status: "completed",
+            title: "更新经历",
+            summary: "改写工作经历。",
+            input: { fieldPath: "experience.0.content" },
+            result: { operationIds: ["op_1"] },
+          },
+        ],
+        proposedOperations: [
+          {
+            id: "op_1",
+            toolCallId: "tool_1",
+            label: "应用经历改写",
+            section: "experience",
+            fieldPath: "experience.0.content",
+            operation: "update_section",
+            beforePlainText: "负责开发。",
+            afterPlainText: "围绕稳定性目标推进前端优化。",
+            replacementTiptapJson: { type: "doc", content: [] },
+            changeSummary: "补足任务与行动。",
+            riskFlags: [],
+          },
+        ],
+      }),
+    );
+    if (!parsed.ok) throw new Error("expected parse success");
+
+    const events = toAgUiAgentEvents({
+      requestId: "req_agent",
+      threadId: "resume_abc",
+      request: validBody(),
+      result: parsed.result,
+    });
+
+    const toolResultIndex = events.findIndex(
+      (event) => event.type === EventType.TOOL_CALL_RESULT,
+    );
+    const workspaceStateIndex = events.findIndex(
+      (event) =>
+        event.type === EventType.STATE_DELTA &&
+        event.delta.some((patch) => patch.path === "/workspace"),
+    );
+    const workspaceActivityIndex = events.findIndex(
+      (event) =>
+        event.type === EventType.ACTIVITY_SNAPSHOT &&
+        event.activityType === "resume_workspace",
+    );
+    const runFinishedIndex = events.findIndex(
+      (event) => event.type === EventType.RUN_FINISHED,
+    );
+
+    expect(toolResultIndex).toBeGreaterThan(0);
+    expect(workspaceStateIndex).toBeGreaterThan(toolResultIndex);
+    expect(workspaceActivityIndex).toBeGreaterThan(toolResultIndex);
+    expect(workspaceStateIndex).toBeLessThan(runFinishedIndex);
+    expect(workspaceActivityIndex).toBeLessThan(runFinishedIndex);
+    expect(events[workspaceStateIndex]).toEqual(
+      expect.objectContaining({
+        type: EventType.STATE_DELTA,
+        delta: [
+          expect.objectContaining({
+            op: "replace",
+            path: "/workspace",
+            value: expect.objectContaining({
+              mode: "optimize_existing",
+              resumeId: "resume_abc",
+              goal: expect.objectContaining({
+                workflowId: "resume-diagnose",
+                resumeTitle: "前端开发工程师",
+              }),
+              changeSets: [
+                expect.objectContaining({
+                  id: "changeset_req_agent",
+                  status: "staged",
+                  operationIds: ["op_1"],
+                  operations: [expect.objectContaining({ id: "op_1" })],
+                }),
+              ],
+            }),
+          }),
+        ],
+      }),
+    );
+    expect(events[workspaceActivityIndex]).toEqual(
+      expect.objectContaining({
+        type: EventType.ACTIVITY_SNAPSHOT,
+        activityType: "resume_workspace",
+        content: expect.objectContaining({
+          changeSets: [
+            expect.objectContaining({
+              id: "changeset_req_agent",
+              operationIds: ["op_1"],
+            }),
+          ],
+        }),
+      }),
+    );
+  });
+
+  it("emits durable workflow cursor state before run finish", () => {
+    const parsed = parseAgentMessageProviderResponse(
+      JSON.stringify({
+        message: {
+          id: "msg_assistant_workflow",
+          role: "assistant",
+          content: "我需要先确认目标岗位。",
+        },
+        toolCalls: [],
+        proposedOperations: [],
+        questions: [
+          {
+            id: "question_target_role",
+            message: "你这次主要投递哪个岗位？",
+          },
+        ],
+      }),
+    );
+    if (!parsed.ok) throw new Error("expected parse success");
+
+    const events = toAgUiAgentEvents({
+      requestId: "req_agent",
+      threadId: "resume_abc",
+      request: validBody({ sessionSnapshot: agentSessionSnapshot() }),
+      result: parsed.result,
+    });
+
+    const workflowStateIndex = events.findIndex(
+      (event) =>
+        event.type === EventType.STATE_DELTA &&
+        event.delta.some((patch) => patch.path === "/workflow"),
+    );
+    const runFinishedIndex = events.findIndex(
+      (event) => event.type === EventType.RUN_FINISHED,
+    );
+
+    expect(workflowStateIndex).toBeGreaterThan(0);
+    expect(workflowStateIndex).toBeLessThan(runFinishedIndex);
+    expect(events[workflowStateIndex]).toEqual(
+      expect.objectContaining({
+        type: EventType.STATE_DELTA,
+        delta: [
+          expect.objectContaining({
+            op: "replace",
+            path: "/workflow",
+            value: {
+              workflowId: "resume-diagnose",
+              nodeId: "await_user_input",
+              loopCount: 2,
+              completedNodeIds: ["intake_goal"],
+            },
+          }),
+        ],
+      }),
+    );
   });
 
   it("extracts partial assistant content from streaming provider JSON", () => {
@@ -448,6 +862,64 @@ function validBody(overrides: Record<string, unknown> = {}) {
       ],
     },
     ...overrides,
+  };
+}
+
+function agentSessionSnapshot() {
+  return {
+    sessionId: "agent_session_resume_abc",
+    threadId: "resume_abc",
+    resumeId: "resume_abc",
+    userIdHash: "sha256:user",
+    mode: "optimize_existing",
+    status: "waiting_user",
+    workflow: {
+      workflowId: "resume-diagnose",
+      nodeId: "intake_goal",
+      loopCount: 1,
+      completedNodeIds: [],
+    },
+    workspace: {
+      resumeId: "resume_abc",
+      mode: "optimize_existing",
+      goal: {
+        workflowId: "resume-diagnose",
+        resumeTitle: "前端工程师",
+        targetRole: "增长型前端工程师",
+        locale: "zh-CN",
+      },
+      facts: [],
+      draftResume: null,
+      changeSets: [],
+      decisions: [],
+      qualityReport: null,
+      updatedAt: "2026-06-12T08:45:00.000Z",
+    },
+    contextStatus: {
+      effectiveInputBudgetTokens: 200_000,
+      modelInputLimitTokens: 214_000,
+      reservedOutputTokens: 8_000,
+      reservedSystemTokens: 6_000,
+      usedInputTokens: 48_000,
+      utilization: 0.24,
+      status: "healthy",
+      policy: "full_context",
+      sources: [],
+      lastCompactionAt: null,
+      warnings: [],
+    },
+    pendingInterrupts: [
+      {
+        id: "question_target_role",
+        reason: "input_required",
+        message: "你这次主要投递哪个岗位？",
+        toolCallId: null,
+        metadata: { kind: "question" },
+      },
+    ],
+    lastResumeContentHash: null,
+    createdAt: "2026-06-12T08:30:00.000Z",
+    updatedAt: "2026-06-12T08:45:00.000Z",
   };
 }
 

@@ -444,7 +444,7 @@ async function requestStream({
   fetchFn: typeof fetch;
 }): Promise<AgentClientResult<AgentStreamResponse>> {
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+  const connectionTimeout = setTimeout(() => controller.abort(), timeoutMs);
 
   try {
     const response = await fetchFn(joinUrl(baseUrl, path), {
@@ -458,17 +458,16 @@ async function requestStream({
       body: JSON.stringify(body),
       signal: controller.signal,
     });
+    clearTimeout(connectionTimeout);
 
     const responseRequestId = response.headers.get("x-request-id") ?? requestId;
 
     if (!response.ok) {
-      clearTimeout(timeout);
       const responseBody = await readJson(response);
       throw errorFromEnvelope(response.status, responseRequestId, responseBody);
     }
 
     if (!response.body) {
-      clearTimeout(timeout);
       throw new AgentClientError("Agent stream response body is empty", {
         statusCode: 503,
         error: "agent_unavailable",
@@ -476,16 +475,19 @@ async function requestStream({
       });
     }
 
-    // Keep timeout active until first chunk arrives or stream ends
     return {
       data: {
-        body: withStreamCleanup(response.body, () => clearTimeout(timeout)),
+        body: withStreamIdleTimeout(response.body, {
+          timeoutMs,
+          requestId: responseRequestId,
+          abort: () => controller.abort(),
+        }),
         contentType: response.headers.get("content-type") ?? "text/event-stream",
       },
       requestId: responseRequestId,
     };
   } catch (error) {
-    clearTimeout(timeout);
+    clearTimeout(connectionTimeout);
     if (error instanceof AgentClientError) throw error;
 
     if (isAbortError(error)) {
@@ -504,24 +506,69 @@ async function requestStream({
   }
 }
 
-function withStreamCleanup(
+function withStreamIdleTimeout(
   stream: ReadableStream<Uint8Array>,
-  cleanup: () => void,
+  {
+    timeoutMs,
+    requestId,
+    abort,
+  }: {
+    timeoutMs: number;
+    requestId: string;
+    abort: () => void;
+  },
 ): ReadableStream<Uint8Array> {
   const reader = stream.getReader();
+  let timeout: ReturnType<typeof setTimeout> | null = null;
+  let timedOut = false;
+
+  function clearIdleTimeout() {
+    if (timeout) {
+      clearTimeout(timeout);
+      timeout = null;
+    }
+  }
+
+  function armIdleTimeout(controller: ReadableStreamDefaultController<Uint8Array>) {
+    clearIdleTimeout();
+    timeout = setTimeout(() => {
+      timedOut = true;
+      abort();
+      controller.error(
+        new AgentClientError("Agent request timed out", {
+          statusCode: 504,
+          error: "agent_timeout",
+          requestId,
+        }),
+      );
+      void reader.cancel();
+    }, timeoutMs);
+  }
 
   return new ReadableStream<Uint8Array>({
+    start(controller) {
+      armIdleTimeout(controller);
+    },
     async pull(controller) {
-      const { done, value } = await reader.read();
-      if (done) {
-        cleanup();
-        controller.close();
-        return;
+      try {
+        armIdleTimeout(controller);
+        const { done, value } = await reader.read();
+        clearIdleTimeout();
+        if (done) {
+          controller.close();
+          return;
+        }
+        controller.enqueue(value);
+        armIdleTimeout(controller);
+      } catch (error) {
+        clearIdleTimeout();
+        if (!timedOut) {
+          controller.error(error);
+        }
       }
-      controller.enqueue(value);
     },
     async cancel(reason) {
-      cleanup();
+      clearIdleTimeout();
       await reader.cancel(reason);
     },
   });

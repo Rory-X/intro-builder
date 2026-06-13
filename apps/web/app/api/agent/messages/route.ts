@@ -28,17 +28,22 @@ export async function POST(req: Request) {
     return Response.json({ error: parsed.message }, { status: 400 });
   }
 
-  const resume = await db.query.resumes.findFirst({
-    where: and(eq(resumes.id, parsed.request.resumeId), eq(resumes.userId, userId)),
-  });
-  if (!resume) {
-    return Response.json({ error: "简历不存在" }, { status: 404 });
+  if (parsed.request.resumeId !== null) {
+    const resume = await db.query.resumes.findFirst({
+      where: and(
+        eq(resumes.id, parsed.request.resumeId),
+        eq(resumes.userId, userId),
+      ),
+    });
+    if (!resume) {
+      return Response.json({ error: "简历不存在" }, { status: 404 });
+    }
   }
 
   try {
     const signed = await signAgentToken({
       userId,
-      resumeId: parsed.request.resumeId,
+      ...(parsed.request.resumeId ? { resumeId: parsed.request.resumeId } : {}),
       scope: "agent:chat",
     });
     const agent = createAgentClient();
@@ -105,9 +110,20 @@ async function readAgentMessageRequest(
   }
 
   if (!isRecord(body)) return { ok: false, message: "请求体必须是对象" };
-  if (!isNonEmptyString(body.resumeId)) return { ok: false, message: "缺少 resumeId" };
+  const mode =
+    body.mode === "create_from_zero" || body.resumeId === null
+      ? "create_from_zero"
+      : "optimize_existing";
+  if (mode === "optimize_existing" && !isNonEmptyString(body.resumeId)) {
+    return { ok: false, message: "缺少 resumeId" };
+  }
+  if (mode === "create_from_zero" && body.resumeId !== null) {
+    return { ok: false, message: "从零创建不能绑定已有简历" };
+  }
   if (body.locale !== "zh-CN") return { ok: false, message: "locale 必须是 zh-CN" };
-  if (!isSupportedWorkflowId(body.workflowId)) {
+  const workflowId =
+    body.workflowId ?? (mode === "create_from_zero" ? "create-from-zero" : null);
+  if (!isSupportedWorkflowId(workflowId)) {
     return { ok: false, message: "workflowId 不支持" };
   }
   if (!Array.isArray(body.messages) || !body.messages.every(isAgentChatMessage)) {
@@ -116,18 +132,26 @@ async function readAgentMessageRequest(
   if (body.messages.length === 0) {
     return { ok: false, message: "messages 不能为空" };
   }
-  if (!isAgentResumeContext(body.context)) {
+  if (mode === "create_from_zero" && body.context !== null) {
+    return { ok: false, message: "从零创建不能读取已有简历上下文" };
+  }
+  if (mode === "optimize_existing" && !isAgentResumeContext(body.context)) {
     return { ok: false, message: "context 不合法" };
   }
+  const resumeId: string | null =
+    mode === "create_from_zero" ? null : String(body.resumeId);
+  const context: AgentResumeContext | null =
+    mode === "create_from_zero" ? null : (body.context as AgentResumeContext);
 
   return {
     ok: true,
     request: {
-      resumeId: body.resumeId,
+      resumeId,
+      ...(mode === "create_from_zero" ? { mode } : {}),
       locale: body.locale,
-      workflowId: body.workflowId,
+      workflowId,
       messages: body.messages,
-      context: body.context,
+      context,
     },
   };
 }
@@ -138,7 +162,8 @@ function isSupportedWorkflowId(value: unknown): value is AgentWorkflowId | null 
     value === "resume-diagnose" ||
     value === "target-role-match" ||
     value === "experience-star" ||
-    value === "pre-export-check"
+    value === "pre-export-check" ||
+    value === "create-from-zero"
   );
 }
 

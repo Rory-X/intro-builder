@@ -20,21 +20,40 @@ import {
 import { AssistantRuntimeProvider as AssistantUiRuntimeProvider } from "@assistant-ui/react";
 
 import {
+  extractAgUiContextStatus,
+  extractAgUiResumeWorkspace,
   extractAgUiResumeToolResult,
   readAgUiSseStream,
+  type AgUiContextStatus,
+  type AgUiResumeWorkspace,
   type AgUiResumeToolResult,
 } from "@/lib/agent/ag-ui-stream";
 import type {
   AgentResumeContext,
+  AgentResumeSessionMode,
   AgentWorkflowId,
 } from "@intro-builder/shared/types";
 
-type IntroBuilderForwardedProps = {
+type AgentRunIntent = {
+  mode: AgentResumeSessionMode;
+  workflowId: AgentWorkflowId | null;
+};
+
+type IntroBuilderForwardedProps =
+  | {
   resumeId: string;
+      mode?: "optimize_existing";
   locale: "zh-CN";
   workflowId: AgentWorkflowId | null;
   context: AgentResumeContext;
-};
+    }
+  | {
+      resumeId: null;
+      mode: "create_from_zero";
+      locale: "zh-CN";
+      workflowId: "create-from-zero";
+      context: null;
+    };
 
 type RunParameters = Parameters<HttpAgent["runAgent"]>[0];
 type RunSubscriber = Parameters<HttpAgent["runAgent"]>[1];
@@ -42,12 +61,14 @@ type RunSubscriber = Parameters<HttpAgent["runAgent"]>[1];
 export type AgentAgUiRuntimeProviderProps = {
   children: ReactNode;
   getIntroBuilderForwardedProps: (
-    workflowId: AgentWorkflowId | null,
+    intent: AgentRunIntent,
   ) => IntroBuilderForwardedProps;
   onRunStart: (messages: readonly { role?: unknown }[]) => void;
   onTextDelta: () => void;
   onRunSettled: () => void;
   onError: (message: string) => void;
+  onContextStatus: (status: AgUiContextStatus) => void;
+  onResumeWorkspace: (workspace: AgUiResumeWorkspace) => void;
   onToolResult: (result: AgUiResumeToolResult) => void;
   onInterrupts: (interrupts: AgentAgUiInterrupt[]) => void;
 };
@@ -87,6 +108,8 @@ export function AgentAgUiRuntimeProvider({
   onTextDelta,
   onRunSettled,
   onError,
+  onContextStatus,
+  onResumeWorkspace,
   onToolResult,
   onInterrupts,
 }: AgentAgUiRuntimeProviderProps) {
@@ -99,6 +122,8 @@ export function AgentAgUiRuntimeProvider({
         onTextDelta,
         onRunSettled,
         onError,
+        onContextStatus,
+        onResumeWorkspace,
         onToolResult,
         onInterrupts,
       }),
@@ -108,6 +133,8 @@ export function AgentAgUiRuntimeProvider({
       onTextDelta,
       onRunSettled,
       onError,
+      onContextStatus,
+      onResumeWorkspace,
       onToolResult,
       onInterrupts,
     ],
@@ -117,7 +144,7 @@ export function AgentAgUiRuntimeProvider({
     showThinking: true,
     onError: (error) => {
       if (isAbortError(error)) return;
-      onError(error.message || "Agent 服务暂不可用");
+      onError(readUserFacingAgentError(error.message || "Agent 服务暂不可用"));
     },
   });
   const submitInterruptResponses = useCallback<AgentAgUiInterruptSubmit>(
@@ -138,7 +165,7 @@ export function AgentAgUiRuntimeProvider({
 
 class IntroBuilderHttpAgent extends HttpAgent {
   private readonly getIntroBuilderForwardedProps: (
-    workflowId: AgentWorkflowId | null,
+    intent: AgentRunIntent,
   ) => IntroBuilderForwardedProps;
   private readonly onRunStart: (messages: readonly { role?: unknown }[]) => void;
   private readonly onRunSettled: () => void;
@@ -150,17 +177,21 @@ class IntroBuilderHttpAgent extends HttpAgent {
     onTextDelta,
     onRunSettled,
     onError,
+    onContextStatus,
+    onResumeWorkspace,
     onToolResult,
     onInterrupts,
   }: {
     url: string;
     getIntroBuilderForwardedProps: (
-      workflowId: AgentWorkflowId | null,
+      intent: AgentRunIntent,
     ) => IntroBuilderForwardedProps;
     onRunStart: (messages: readonly { role?: unknown }[]) => void;
     onTextDelta: () => void;
     onRunSettled: () => void;
     onError: (message: string) => void;
+    onContextStatus: (status: AgUiContextStatus) => void;
+    onResumeWorkspace: (workspace: AgUiResumeWorkspace) => void;
     onToolResult: (result: AgUiResumeToolResult) => void;
     onInterrupts: (interrupts: AgentAgUiInterrupt[]) => void;
   }) {
@@ -174,6 +205,8 @@ class IntroBuilderHttpAgent extends HttpAgent {
       void observeAgUiResponse(response.clone(), {
         onTextDelta,
         onError,
+        onContextStatus,
+        onResumeWorkspace,
         onToolResult,
         onInterrupts,
       });
@@ -192,7 +225,7 @@ class IntroBuilderHttpAgent extends HttpAgent {
     options?: { signal?: AbortSignal },
   ): Promise<RunAgentResult> {
     const forwardedProps = readForwardedProps(parameters?.forwardedProps);
-    const workflowId = readForwardedWorkflowId(forwardedProps);
+    const intent = readForwardedAgentRunIntent(forwardedProps);
     const abortController = new AbortController();
     const abortSignal = options?.signal;
 
@@ -214,7 +247,7 @@ class IntroBuilderHttpAgent extends HttpAgent {
           abortController,
           forwardedProps: {
             ...forwardedProps,
-            introBuilder: this.getIntroBuilderForwardedProps(workflowId),
+            introBuilder: this.getIntroBuilderForwardedProps(intent),
           },
         },
         subscriber,
@@ -235,11 +268,15 @@ async function observeAgUiResponse(
   {
     onTextDelta,
     onError,
+    onContextStatus,
+    onResumeWorkspace,
     onToolResult,
     onInterrupts,
   }: {
     onTextDelta: () => void;
     onError: (message: string) => void;
+    onContextStatus: (status: AgUiContextStatus) => void;
+    onResumeWorkspace: (workspace: AgUiResumeWorkspace) => void;
     onToolResult: (result: AgUiResumeToolResult) => void;
     onInterrupts: (interrupts: AgentAgUiInterrupt[]) => void;
   },
@@ -260,6 +297,14 @@ async function observeAgUiResponse(
       if (event.type === EventType.RUN_ERROR) {
         onError(readRunErrorEvent(event));
       }
+      const contextStatus = extractAgUiContextStatus(event);
+      if (contextStatus) {
+        onContextStatus(contextStatus);
+      }
+      const resumeWorkspace = extractAgUiResumeWorkspace(event);
+      if (resumeWorkspace) {
+        onResumeWorkspace(resumeWorkspace);
+      }
       const interrupts = extractAgUiInterrupts(event);
       if (interrupts.length > 0) {
         onInterrupts(interrupts);
@@ -272,7 +317,11 @@ async function observeAgUiResponse(
     }
   } catch (error) {
     if (isAbortError(error)) return;
-    onError(error instanceof Error ? error.message : "Agent 服务暂不可用");
+    onError(
+      readUserFacingAgentError(
+        error instanceof Error ? error.message : "Agent 服务暂不可用",
+      ),
+    );
   }
 }
 
@@ -350,21 +399,30 @@ function readForwardedProps(value: unknown): Record<string, unknown> {
   return isRecord(value) ? value : {};
 }
 
-function readForwardedWorkflowId(
+function readForwardedAgentRunIntent(
   forwardedProps: Record<string, unknown>,
-): AgentWorkflowId | null {
+): AgentRunIntent {
   const runConfig = isRecord(forwardedProps.runConfig)
     ? forwardedProps.runConfig
     : null;
+  const custom = isRecord(runConfig?.custom) ? runConfig.custom : null;
   const introBuilder = isRecord(forwardedProps.introBuilder)
     ? forwardedProps.introBuilder
     : null;
-
-  return (
+  const mode =
+    readAgentResumeSessionMode(custom?.mode) ??
+    readAgentResumeSessionMode(runConfig?.mode) ??
+    readAgentResumeSessionMode(forwardedProps.mode) ??
+    readAgentResumeSessionMode(introBuilder?.mode) ??
+    "optimize_existing";
+  const workflowId =
+    readWorkflowId(custom?.workflowId) ??
     readWorkflowId(runConfig?.workflowId) ??
     readWorkflowId(forwardedProps.workflowId) ??
-    readWorkflowId(introBuilder?.workflowId)
-  );
+    readWorkflowId(introBuilder?.workflowId) ??
+    (mode === "create_from_zero" ? "create-from-zero" : null);
+
+  return { mode, workflowId };
 }
 
 function readWorkflowId(value: unknown): AgentWorkflowId | null {
@@ -372,10 +430,16 @@ function readWorkflowId(value: unknown): AgentWorkflowId | null {
     value === "resume-diagnose" ||
     value === "target-role-match" ||
     value === "experience-star" ||
-    value === "pre-export-check"
+    value === "pre-export-check" ||
+    value === "create-from-zero"
   ) {
     return value;
   }
+  return null;
+}
+
+function readAgentResumeSessionMode(value: unknown): AgentResumeSessionMode | null {
+  if (value === "optimize_existing" || value === "create_from_zero") return value;
   return null;
 }
 
@@ -402,23 +466,39 @@ async function readErrorBody(response: Response): Promise<unknown> {
 
 function readAgentError(value: unknown): string {
   if (isRecord(value)) {
-    const error = readNonEmptyString(value.error) ?? "Agent 服务暂不可用";
-    const code = readNonEmptyString(value.code);
-    const requestId = readNonEmptyString(value.requestId);
     const retryAfterSeconds =
       typeof value.retryAfterSeconds === "number" ? value.retryAfterSeconds : null;
-    const diagnostics = [
-      code ? `code: ${code}` : null,
-      requestId ? `requestId: ${requestId}` : null,
-      retryAfterSeconds ? `${retryAfterSeconds} 秒后可重试` : null,
-    ].filter(Boolean);
-
-    if (diagnostics.length > 0) {
-      return `${error}（${diagnostics.join("，")}）`;
+    if (retryAfterSeconds) {
+      return `Agent 服务暂不可用，${retryAfterSeconds} 秒后可重试`;
     }
-    return error;
+    return readUserFacingAgentError(
+      readNonEmptyString(value.error) ?? "Agent 服务暂不可用",
+    );
   }
   return "Agent 服务暂不可用";
+}
+
+function readUserFacingAgentError(message: string): string {
+  if (message.includes("HTTP ") || message.includes("requestId")) {
+    return "Agent 服务暂不可用";
+  }
+  if (message.includes("dependency_unavailable")) {
+    return "Agent 服务暂不可用";
+  }
+  if (containsInternalAgentDetail(message)) {
+    return "Agent 服务暂不可用";
+  }
+  return message || "Agent 服务暂不可用";
+}
+
+function containsInternalAgentDetail(message: string): boolean {
+  return (
+    /\b(?:draftResume|contextStatus|effectiveInputBudgetTokens|modelInputLimitTokens|workspace|fieldPath|toolCall|resumeId|sessionSnapshot|profileSummary)\b/.test(
+      message,
+    ) ||
+    /\b[a-z][a-zA-Z0-9_]*(?:\.[a-z][a-zA-Z0-9_]*)+\b/.test(message) ||
+    /\bis required\b/.test(message)
+  );
 }
 
 function readNonEmptyString(value: unknown): string | null {

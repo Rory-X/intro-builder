@@ -1,0 +1,1064 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Agent Change Set Apply PoC</title>
+    <style>
+      :root {
+        color-scheme: light;
+        --bg: #f7f8fa;
+        --panel: #ffffff;
+        --panel-subtle: #fbfcfd;
+        --ink: #172033;
+        --muted: #647084;
+        --line: #dce2ea;
+        --line-strong: #c3ccd8;
+        --blue: #246bfe;
+        --blue-soft: #edf4ff;
+        --green: #1f8a55;
+        --green-soft: #eaf8f0;
+        --amber: #a76505;
+        --amber-soft: #fff4db;
+        --red: #c73434;
+        --red-soft: #fff0ee;
+        --purple: #6a48d7;
+        --purple-soft: #f1edff;
+        --shadow: 0 12px 28px rgba(23, 32, 51, 0.08);
+        --radius: 8px;
+        font-family:
+          Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont,
+          "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        min-height: 100vh;
+        background: var(--bg);
+        color: var(--ink);
+      }
+
+      button,
+      input {
+        font: inherit;
+      }
+
+      button {
+        border: 1px solid var(--line);
+        background: var(--panel);
+        color: var(--ink);
+        border-radius: 7px;
+        min-height: 34px;
+        padding: 0 12px;
+        cursor: pointer;
+      }
+
+      button:hover {
+        border-color: var(--line-strong);
+        background: #f7f9fc;
+      }
+
+      button.primary {
+        border-color: var(--blue);
+        background: var(--blue);
+        color: #fff;
+      }
+
+      button.primary:hover {
+        background: #1d5ee0;
+      }
+
+      button.ghost {
+        border-color: transparent;
+        background: transparent;
+      }
+
+      button:disabled {
+        cursor: default;
+        opacity: 0.48;
+      }
+
+      .app {
+        display: grid;
+        grid-template-rows: 58px minmax(0, 1fr);
+        min-height: 100vh;
+      }
+
+      .topbar {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 20px;
+        border-bottom: 1px solid var(--line);
+        background: rgba(255, 255, 255, 0.9);
+        padding: 0 20px;
+        backdrop-filter: blur(10px);
+      }
+
+      .brand {
+        display: flex;
+        align-items: center;
+        gap: 11px;
+        min-width: 260px;
+      }
+
+      .mark {
+        display: grid;
+        place-items: center;
+        width: 30px;
+        height: 30px;
+        border-radius: 7px;
+        background: #172033;
+        color: #fff;
+        font-weight: 700;
+        font-size: 13px;
+      }
+
+      .brand strong {
+        display: block;
+        line-height: 1.1;
+        font-size: 14px;
+      }
+
+      .brand span {
+        color: var(--muted);
+        font-size: 12px;
+      }
+
+      .top-actions {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+
+      .stage {
+        display: grid;
+        grid-template-columns: minmax(270px, 0.7fr) minmax(420px, 1.08fr) minmax(330px, 0.84fr);
+        gap: 14px;
+        min-height: 0;
+        padding: 14px;
+      }
+
+      .column {
+        display: flex;
+        min-height: 0;
+        flex-direction: column;
+        gap: 12px;
+      }
+
+      .surface {
+        border: 1px solid var(--line);
+        border-radius: var(--radius);
+        background: var(--panel);
+        box-shadow: var(--shadow);
+      }
+
+      .section-head {
+        display: flex;
+        align-items: flex-start;
+        justify-content: space-between;
+        gap: 12px;
+        border-bottom: 1px solid var(--line);
+        padding: 13px 14px 12px;
+      }
+
+      .section-head h2,
+      .section-head h3 {
+        margin: 0;
+        font-size: 14px;
+        line-height: 1.25;
+      }
+
+      .section-head p {
+        margin: 5px 0 0;
+        color: var(--muted);
+        font-size: 12px;
+        line-height: 1.45;
+      }
+
+      .agent-thread {
+        flex: 1;
+        min-height: 0;
+        overflow: auto;
+      }
+
+      .timeline {
+        padding: 14px;
+      }
+
+      .step {
+        display: grid;
+        grid-template-columns: 26px minmax(0, 1fr);
+        gap: 10px;
+        position: relative;
+      }
+
+      .step + .step {
+        margin-top: 16px;
+      }
+
+      .step + .step::before {
+        content: "";
+        position: absolute;
+        left: 12px;
+        top: -16px;
+        width: 1px;
+        height: 16px;
+        background: var(--line);
+      }
+
+      .dot {
+        display: grid;
+        place-items: center;
+        width: 26px;
+        height: 26px;
+        border: 1px solid var(--line);
+        border-radius: 999px;
+        background: #fff;
+        color: var(--muted);
+        font-size: 13px;
+      }
+
+      .step.done .dot {
+        border-color: #b7dec8;
+        background: var(--green-soft);
+        color: var(--green);
+      }
+
+      .step.active .dot {
+        border-color: #c7bcff;
+        background: var(--purple-soft);
+        color: var(--purple);
+      }
+
+      .step h3 {
+        margin: 2px 0 4px;
+        font-size: 13px;
+        line-height: 1.25;
+      }
+
+      .step p {
+        margin: 0;
+        color: var(--muted);
+        font-size: 12px;
+        line-height: 1.5;
+      }
+
+      .composer {
+        border-top: 1px solid var(--line);
+        padding: 12px;
+      }
+
+      .composer-box {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: #fff;
+        padding: 7px;
+      }
+
+      .composer-box input {
+        width: 100%;
+        border: 0;
+        outline: none;
+        color: var(--ink);
+      }
+
+      .change-toolbar {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        border-bottom: 1px solid var(--line);
+        padding: 10px 12px;
+      }
+
+      .tabs,
+      .bulk-actions,
+      .risk-stack {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        flex-wrap: wrap;
+      }
+
+      .tab {
+        min-height: 30px;
+        border-radius: 999px;
+        padding: 0 11px;
+        font-size: 12px;
+      }
+
+      .tab.active {
+        border-color: #bed2ff;
+        background: var(--blue-soft);
+        color: #174eb8;
+      }
+
+      .change-list {
+        flex: 1;
+        min-height: 0;
+        overflow: auto;
+        padding: 12px;
+      }
+
+      .summary-strip {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 8px;
+        margin-bottom: 12px;
+      }
+
+      .metric {
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: var(--panel-subtle);
+        padding: 10px;
+      }
+
+      .metric b {
+        display: block;
+        font-size: 20px;
+        line-height: 1;
+      }
+
+      .metric span {
+        display: block;
+        margin-top: 6px;
+        color: var(--muted);
+        font-size: 12px;
+      }
+
+      .change-card {
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: #fff;
+      }
+
+      .change-card + .change-card {
+        margin-top: 10px;
+      }
+
+      .change-card.applied {
+        border-color: #9ed2b4;
+        background: #fbfffd;
+      }
+
+      .change-card.ignored {
+        opacity: 0.58;
+      }
+
+      .change-main {
+        display: grid;
+        grid-template-columns: 28px minmax(0, 1fr) auto;
+        gap: 10px;
+        padding: 12px;
+      }
+
+      .check {
+        margin-top: 2px;
+        width: 18px;
+        height: 18px;
+      }
+
+      .change-title {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        flex-wrap: wrap;
+        margin-bottom: 6px;
+      }
+
+      .change-title strong {
+        font-size: 13px;
+      }
+
+      .badge {
+        display: inline-flex;
+        align-items: center;
+        min-height: 22px;
+        border-radius: 999px;
+        padding: 0 8px;
+        font-size: 11px;
+        font-weight: 600;
+      }
+
+      .badge.low {
+        background: var(--green-soft);
+        color: var(--green);
+      }
+
+      .badge.medium {
+        background: var(--amber-soft);
+        color: var(--amber);
+      }
+
+      .badge.high {
+        background: var(--red-soft);
+        color: var(--red);
+      }
+
+      .badge.kind {
+        background: #eef1f5;
+        color: #465267;
+      }
+
+      .change-desc {
+        margin: 0 0 10px;
+        color: var(--muted);
+        font-size: 12px;
+        line-height: 1.45;
+      }
+
+      .diff {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 8px;
+      }
+
+      .diff-pane {
+        border: 1px solid var(--line);
+        border-radius: 7px;
+        overflow: hidden;
+        background: var(--panel-subtle);
+      }
+
+      .diff-pane h4 {
+        margin: 0;
+        border-bottom: 1px solid var(--line);
+        padding: 7px 9px;
+        color: var(--muted);
+        font-size: 11px;
+        font-weight: 700;
+      }
+
+      .diff-pane p {
+        margin: 0;
+        padding: 9px;
+        font-size: 12px;
+        line-height: 1.55;
+      }
+
+      .before p {
+        color: #7a4650;
+        background: #fff6f6;
+      }
+
+      .after p {
+        color: #24563a;
+        background: #f5fff8;
+      }
+
+      .card-actions {
+        display: flex;
+        align-items: center;
+        gap: 7px;
+      }
+
+      .card-actions button {
+        min-height: 30px;
+        padding: 0 10px;
+        font-size: 12px;
+      }
+
+      .facts {
+        border: 1px solid #efd28d;
+        border-radius: 8px;
+        background: #fffaf0;
+        padding: 12px;
+      }
+
+      .facts h3 {
+        margin: 0 0 8px;
+        color: #7c4b00;
+        font-size: 13px;
+      }
+
+      .facts ul {
+        margin: 0;
+        padding-left: 18px;
+        color: #7c4b00;
+        font-size: 12px;
+        line-height: 1.6;
+      }
+
+      .preview-wrap {
+        flex: 1;
+        min-height: 0;
+        overflow: auto;
+        padding: 16px;
+      }
+
+      .page {
+        width: min(100%, 390px);
+        min-height: 552px;
+        margin: 0 auto;
+        border: 1px solid #cad2dd;
+        background: #fff;
+        box-shadow: 0 14px 34px rgba(23, 32, 51, 0.12);
+        padding: 26px 28px;
+      }
+
+      .resume-head {
+        border-bottom: 2px solid #192033;
+        padding-bottom: 12px;
+      }
+
+      .resume-head h1 {
+        margin: 0;
+        font-size: 22px;
+        letter-spacing: 0;
+      }
+
+      .resume-head p {
+        margin: 6px 0 0;
+        color: #5d687a;
+        font-size: 11px;
+      }
+
+      .resume-section {
+        margin-top: 17px;
+      }
+
+      .resume-section h2 {
+        margin: 0 0 9px;
+        color: #192033;
+        font-size: 12px;
+      }
+
+      .resume-item {
+        border-left: 2px solid #dde4ee;
+        padding-left: 10px;
+      }
+
+      .resume-item + .resume-item {
+        margin-top: 12px;
+      }
+
+      .resume-item h3 {
+        margin: 0;
+        font-size: 11px;
+      }
+
+      .resume-item p,
+      .resume-item li {
+        color: #3d4758;
+        font-size: 10.5px;
+        line-height: 1.55;
+      }
+
+      .resume-item p {
+        margin: 5px 0 0;
+      }
+
+      .resume-item ul {
+        margin: 5px 0 0;
+        padding-left: 16px;
+      }
+
+      .preview-note {
+        border-top: 1px solid var(--line);
+        padding: 11px 14px;
+        color: var(--muted);
+        font-size: 12px;
+        line-height: 1.45;
+      }
+
+      .preview-note b {
+        color: var(--ink);
+      }
+
+      .applied-line {
+        outline: 2px solid rgba(36, 107, 254, 0.18);
+        background: #f7fbff;
+      }
+
+      .empty-state {
+        display: none;
+        border: 1px dashed var(--line-strong);
+        border-radius: 8px;
+        color: var(--muted);
+        padding: 18px;
+        text-align: center;
+        font-size: 13px;
+      }
+
+      @media (max-width: 1120px) {
+        .stage {
+          grid-template-columns: 1fr;
+        }
+
+        .column,
+        .agent-thread,
+        .change-list,
+        .preview-wrap {
+          min-height: auto;
+        }
+
+        .agent-thread,
+        .change-list {
+          max-height: none;
+        }
+      }
+
+      @media (max-width: 700px) {
+        .topbar {
+          align-items: flex-start;
+          flex-direction: column;
+          height: auto;
+          padding: 12px;
+        }
+
+        .top-actions {
+          width: 100%;
+          justify-content: space-between;
+        }
+
+        .stage {
+          padding: 10px;
+        }
+
+        .change-main,
+        .diff,
+        .summary-strip {
+          grid-template-columns: 1fr;
+        }
+
+        .card-actions {
+          justify-content: flex-start;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="app">
+      <header class="topbar">
+        <div class="brand">
+          <div class="mark">IB</div>
+          <div>
+            <strong>Agent 变更集 Apply PoC</strong>
+            <span>模拟更长的简历编辑 loop：诊断、追问、生成、验证、应用</span>
+          </div>
+        </div>
+        <div class="top-actions">
+          <button class="ghost" id="resetBtn">重置</button>
+          <button class="primary" id="applySelectedTop">应用选中项</button>
+        </div>
+      </header>
+
+      <main class="stage">
+        <section class="column surface">
+          <div class="section-head">
+            <div>
+              <h2>Agent 编辑会话</h2>
+              <p>不是一轮短回答，而是一组可追踪的编辑阶段。</p>
+            </div>
+            <span class="badge kind">Session #A42</span>
+          </div>
+
+          <div class="agent-thread">
+            <div class="timeline">
+              <div class="step done">
+                <div class="dot">✓</div>
+                <div>
+                  <h3>读取简历与岗位目标</h3>
+                  <p>已读取 6 个模块，目标岗位为前端工程师，当前完整度 72。</p>
+                </div>
+              </div>
+              <div class="step done">
+                <div class="dot">✓</div>
+                <div>
+                  <h3>诊断关键缺口</h3>
+                  <p>主要问题是经历缺少结果指标、项目职责偏宽泛、技能缺上下文。</p>
+                </div>
+              </div>
+              <div class="step active">
+                <div class="dot">•</div>
+                <div>
+                  <h3>生成待应用变更集</h3>
+                  <p>已生成 4 条修改，其中 2 条低风险可批量应用，1 条需要补事实。</p>
+                </div>
+              </div>
+              <div class="step">
+                <div class="dot">4</div>
+                <div>
+                  <h3>等待确认与继续优化</h3>
+                  <p>应用后 Agent 会基于实际采纳项继续检查格式、篇幅和风险。</p>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="facts">
+            <h3>Agent 需要补充的事实</h3>
+            <ul>
+              <li>首页性能优化是否有真实指标，例如 LCP、首屏、转化率。</li>
+              <li>后台权限系统是否服务过真实用户规模或业务团队。</li>
+            </ul>
+          </div>
+
+          <div class="composer">
+            <div class="composer-box">
+              <input value="先应用低风险修改，指标我稍后补" aria-label="reply" />
+              <button>发送</button>
+            </div>
+          </div>
+        </section>
+
+        <section class="column surface">
+          <div class="section-head">
+            <div>
+              <h2>待应用变更集</h2>
+              <p>把多个工具结果收束成一个可审核、可批量、可回滚的编辑包。</p>
+            </div>
+            <span class="badge medium" id="pendingBadge">4 待处理</span>
+          </div>
+
+          <div class="change-toolbar">
+            <div class="tabs">
+              <button class="tab active" data-filter="all">全部</button>
+              <button class="tab" data-filter="low">低风险</button>
+              <button class="tab" data-filter="medium">需确认</button>
+            </div>
+            <div class="bulk-actions">
+              <button id="selectLow">选中低风险</button>
+              <button class="primary" id="applySelected">应用选中项</button>
+            </div>
+          </div>
+
+          <div class="change-list">
+            <div class="summary-strip">
+              <div class="metric">
+                <b id="score">72</b>
+                <span>简历完整度</span>
+              </div>
+              <div class="metric">
+                <b id="appliedCount">0</b>
+                <span>已应用修改</span>
+              </div>
+              <div class="metric">
+                <b>1</b>
+                <span>需要补事实</span>
+              </div>
+            </div>
+
+            <article class="change-card" data-risk="low" data-id="exp">
+              <div class="change-main">
+                <input class="check" type="checkbox" checked aria-label="select experience" />
+                <div>
+                  <div class="change-title">
+                    <strong>强化工作经历第一条</strong>
+                    <span class="badge low">低风险</span>
+                    <span class="badge kind">experience.0.content</span>
+                  </div>
+                  <p class="change-desc">不编造指标，只把职责、行动和业务对象说清楚。</p>
+                  <div class="diff">
+                    <div class="diff-pane before">
+                      <h4>当前文本</h4>
+                      <p>负责业务系统前端开发，优化页面性能和用户体验。</p>
+                    </div>
+                    <div class="diff-pane after">
+                      <h4>建议改为</h4>
+                      <p>围绕业务系统的页面加载与交互瓶颈，负责前端模块重构、资源加载优化与关键路径梳理，提升核心页面的可维护性与使用体验。</p>
+                    </div>
+                  </div>
+                </div>
+                <div class="card-actions">
+                  <button class="apply-one">应用</button>
+                  <button class="ignore-one">忽略</button>
+                </div>
+              </div>
+            </article>
+
+            <article class="change-card" data-risk="low" data-id="proj">
+              <div class="change-main">
+                <input class="check" type="checkbox" checked aria-label="select project" />
+                <div>
+                  <div class="change-title">
+                    <strong>压实项目贡献描述</strong>
+                    <span class="badge low">低风险</span>
+                    <span class="badge kind">projects.0.content</span>
+                  </div>
+                  <p class="change-desc">把“参与开发”改成更具体的模块、协作和交付边界。</p>
+                  <div class="diff">
+                    <div class="diff-pane before">
+                      <h4>当前文本</h4>
+                      <p>参与后台管理系统开发，实现多个页面和接口联调。</p>
+                    </div>
+                    <div class="diff-pane after">
+                      <h4>建议改为</h4>
+                      <p>负责后台管理系统中权限配置、列表筛选与数据录入模块开发，完成组件抽象、接口联调和异常状态处理，支撑运营同学完成日常配置流程。</p>
+                    </div>
+                  </div>
+                </div>
+                <div class="card-actions">
+                  <button class="apply-one">应用</button>
+                  <button class="ignore-one">忽略</button>
+                </div>
+              </div>
+            </article>
+
+            <article class="change-card" data-risk="medium" data-id="metric">
+              <div class="change-main">
+                <input class="check" type="checkbox" aria-label="select metric" />
+                <div>
+                  <div class="change-title">
+                    <strong>补充性能结果占位</strong>
+                    <span class="badge medium">需补事实</span>
+                    <span class="badge kind">experience.0.content</span>
+                  </div>
+                  <p class="change-desc">可以先插入待确认占位，等用户补真实指标后再最终应用。</p>
+                  <div class="diff">
+                    <div class="diff-pane before">
+                      <h4>当前文本</h4>
+                      <p>优化页面性能和用户体验。</p>
+                    </div>
+                    <div class="diff-pane after">
+                      <h4>建议改为</h4>
+                      <p>将真实性能指标补充到结果部分，例如“首屏加载时间从 X 降至 Y”或“LCP 改善 X%”。</p>
+                    </div>
+                  </div>
+                </div>
+                <div class="card-actions">
+                  <button class="apply-one">应用</button>
+                  <button class="ignore-one">忽略</button>
+                </div>
+              </div>
+            </article>
+
+            <article class="change-card" data-risk="medium" data-id="skills">
+              <div class="change-main">
+                <input class="check" type="checkbox" aria-label="select skills" />
+                <div>
+                  <div class="change-title">
+                    <strong>重组技能模块</strong>
+                    <span class="badge medium">需确认</span>
+                    <span class="badge kind">skills.content</span>
+                  </div>
+                  <p class="change-desc">把技术栈从罗列改成按前端、工程化、协作工具分组。</p>
+                  <div class="diff">
+                    <div class="diff-pane before">
+                      <h4>当前文本</h4>
+                      <p>React、TypeScript、Next.js、Node.js、Git、Tailwind、Webpack。</p>
+                    </div>
+                    <div class="diff-pane after">
+                      <h4>建议改为</h4>
+                      <p>前端开发：React、TypeScript、Next.js；工程化：Webpack、Tailwind CSS；协作与后端基础：Git、Node.js。</p>
+                    </div>
+                  </div>
+                </div>
+                <div class="card-actions">
+                  <button class="apply-one">应用</button>
+                  <button class="ignore-one">忽略</button>
+                </div>
+              </div>
+            </article>
+
+            <div class="empty-state" id="emptyState">当前筛选下没有待处理修改。</div>
+          </div>
+        </section>
+
+        <section class="column surface">
+          <div class="section-head">
+            <div>
+              <h2>实时预览</h2>
+              <p>应用只改变 Web 持有的草稿状态，保存仍走 autosave。</p>
+            </div>
+            <span class="badge low" id="previewState">未应用</span>
+          </div>
+
+          <div class="preview-wrap">
+            <div class="page" aria-label="resume preview">
+              <div class="resume-head">
+                <h1>林予安</h1>
+                <p>前端工程师 · React / TypeScript / Next.js · 上海</p>
+              </div>
+              <section class="resume-section">
+                <h2>工作经历</h2>
+                <div class="resume-item">
+                  <h3>某互联网公司 · 前端开发</h3>
+                  <p id="previewExp">负责业务系统前端开发，优化页面性能和用户体验。</p>
+                </div>
+              </section>
+              <section class="resume-section">
+                <h2>项目经历</h2>
+                <div class="resume-item">
+                  <h3>后台管理系统</h3>
+                  <p id="previewProj">参与后台管理系统开发，实现多个页面和接口联调。</p>
+                </div>
+              </section>
+              <section class="resume-section">
+                <h2>技能</h2>
+                <div class="resume-item">
+                  <p id="previewSkills">React、TypeScript、Next.js、Node.js、Git、Tailwind、Webpack。</p>
+                </div>
+              </section>
+            </div>
+          </div>
+
+          <div class="preview-note">
+            <b>PoC 重点：</b>用户不是被迫逐张确认工具卡，而是在一个变更集中审查、筛选、批量应用，并能立刻看到预览影响。
+          </div>
+        </section>
+      </main>
+    </div>
+
+    <script>
+      const state = {
+        applied: new Set(),
+        ignored: new Set(),
+        filter: "all",
+      };
+
+      const replacements = {
+        exp: {
+          target: "previewExp",
+          text:
+            "围绕业务系统的页面加载与交互瓶颈，负责前端模块重构、资源加载优化与关键路径梳理，提升核心页面的可维护性与使用体验。",
+        },
+        proj: {
+          target: "previewProj",
+          text:
+            "负责后台管理系统中权限配置、列表筛选与数据录入模块开发，完成组件抽象、接口联调和异常状态处理，支撑运营同学完成日常配置流程。",
+        },
+        metric: {
+          target: "previewExp",
+          append:
+            " 结果指标待补充：首屏加载时间从 X 降至 Y，或 LCP 改善 X%。",
+        },
+        skills: {
+          target: "previewSkills",
+          text:
+            "前端开发：React、TypeScript、Next.js；工程化：Webpack、Tailwind CSS；协作与后端基础：Git、Node.js。",
+        },
+      };
+
+      const original = {
+        previewExp: "负责业务系统前端开发，优化页面性能和用户体验。",
+        previewProj: "参与后台管理系统开发，实现多个页面和接口联调。",
+        previewSkills:
+          "React、TypeScript、Next.js、Node.js、Git、Tailwind、Webpack。",
+      };
+
+      const cards = Array.from(document.querySelectorAll(".change-card"));
+      const pendingBadge = document.getElementById("pendingBadge");
+      const appliedCount = document.getElementById("appliedCount");
+      const score = document.getElementById("score");
+      const previewState = document.getElementById("previewState");
+      const emptyState = document.getElementById("emptyState");
+
+      function render() {
+        for (const id of Object.keys(original)) {
+          const node = document.getElementById(id);
+          node.textContent = original[id];
+          node.classList.remove("applied-line");
+        }
+
+        for (const id of state.applied) {
+          const patch = replacements[id];
+          const node = document.getElementById(patch.target);
+          if (patch.text) node.textContent = patch.text;
+          if (patch.append && !node.textContent.includes("结果指标待补充")) {
+            node.textContent += patch.append;
+          }
+          node.classList.add("applied-line");
+        }
+
+        let visibleCount = 0;
+        for (const card of cards) {
+          const id = card.dataset.id;
+          const risk = card.dataset.risk;
+          const isApplied = state.applied.has(id);
+          const isIgnored = state.ignored.has(id);
+          const visible =
+            state.filter === "all" ||
+            (state.filter === "low" && risk === "low") ||
+            (state.filter === "medium" && risk === "medium");
+
+          card.style.display = visible ? "" : "none";
+          if (visible) visibleCount += 1;
+          card.classList.toggle("applied", isApplied);
+          card.classList.toggle("ignored", isIgnored);
+          card.querySelector(".apply-one").disabled = isApplied;
+          card.querySelector(".ignore-one").disabled = isIgnored;
+        }
+
+        const handled = state.applied.size + state.ignored.size;
+        const pending = cards.length - handled;
+        pendingBadge.textContent = `${pending} 待处理`;
+        pendingBadge.className =
+          pending === 0 ? "badge low" : pending <= 2 ? "badge medium" : "badge high";
+        appliedCount.textContent = String(state.applied.size);
+        score.textContent = String(72 + state.applied.size * 5);
+        previewState.textContent =
+          state.applied.size === 0 ? "未应用" : `已应用 ${state.applied.size}`;
+        emptyState.style.display = visibleCount === 0 ? "block" : "none";
+      }
+
+      function applyCard(card) {
+        const id = card.dataset.id;
+        state.applied.add(id);
+        state.ignored.delete(id);
+        card.querySelector(".check").checked = false;
+        render();
+      }
+
+      function ignoreCard(card) {
+        const id = card.dataset.id;
+        state.ignored.add(id);
+        state.applied.delete(id);
+        card.querySelector(".check").checked = false;
+        render();
+      }
+
+      for (const card of cards) {
+        card.querySelector(".apply-one").addEventListener("click", () => applyCard(card));
+        card.querySelector(".ignore-one").addEventListener("click", () => ignoreCard(card));
+      }
+
+      function applySelected() {
+        for (const card of cards) {
+          if (card.querySelector(".check").checked) applyCard(card);
+        }
+      }
+
+      document.getElementById("applySelected").addEventListener("click", applySelected);
+      document.getElementById("applySelectedTop").addEventListener("click", applySelected);
+
+      document.getElementById("selectLow").addEventListener("click", () => {
+        for (const card of cards) {
+          card.querySelector(".check").checked = card.dataset.risk === "low";
+        }
+      });
+
+      for (const tab of document.querySelectorAll(".tab")) {
+        tab.addEventListener("click", () => {
+          document.querySelector(".tab.active").classList.remove("active");
+          tab.classList.add("active");
+          state.filter = tab.dataset.filter;
+          render();
+        });
+      }
+
+      document.getElementById("resetBtn").addEventListener("click", () => {
+        state.applied.clear();
+        state.ignored.clear();
+        state.filter = "all";
+        for (const card of cards) {
+          card.querySelector(".check").checked = card.dataset.risk === "low";
+        }
+        document.querySelector(".tab.active").classList.remove("active");
+        document.querySelector('[data-filter="all"]').classList.add("active");
+        render();
+      });
+
+      render();
+    </script>
+  </body>
+</html>

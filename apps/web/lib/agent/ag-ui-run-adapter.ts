@@ -3,7 +3,9 @@ import type { Message, RunAgentInput } from "@ag-ui/core";
 import type {
   AgentChatMessage,
   AgentMessageRequest,
+  AgentModelConfig,
   AgentResumeContext,
+  AgentResumeSessionMode,
   AgentWorkflowId,
 } from "@intro-builder/shared/types";
 
@@ -16,6 +18,7 @@ const WORKFLOW_IDS = new Set<AgentWorkflowId>([
   "target-role-match",
   "experience-star",
   "pre-export-check",
+  "create-from-zero",
 ]);
 
 export function mapAgUiRunToAgentMessageRequest(
@@ -26,17 +29,43 @@ export function mapAgUiRunToAgentMessageRequest(
     return { ok: false, message: "forwardedProps.introBuilder is required" };
   }
 
-  if (!isNonEmptyString(introBuilder.resumeId)) {
-    return { ok: false, message: "resumeId is required" };
-  }
+  const mode = readAgentSessionMode(
+    introBuilder.mode ??
+      (introBuilder.resumeId === null ? "create_from_zero" : "optimize_existing"),
+  );
+  if (!mode) return { ok: false, message: "mode is not supported" };
+
   if (introBuilder.locale !== "zh-CN") {
     return { ok: false, message: "locale must be zh-CN" };
   }
-  if (!isSupportedWorkflowId(introBuilder.workflowId)) {
+
+  const workflowId =
+    introBuilder.workflowId ??
+    (mode === "create_from_zero" ? "create-from-zero" : null);
+  if (!isSupportedWorkflowId(workflowId)) {
     return { ok: false, message: "workflowId is not supported" };
   }
-  if (!isAgentResumeContext(introBuilder.context)) {
-    return { ok: false, message: "context is invalid" };
+
+  let resumeId: string | null;
+  let context: AgentResumeContext | null;
+  if (mode === "create_from_zero") {
+    if (introBuilder.resumeId !== null) {
+      return { ok: false, message: "resumeId must be null for create-from-zero" };
+    }
+    if (introBuilder.context !== null) {
+      return { ok: false, message: "context must be null for create-from-zero" };
+    }
+    resumeId = null;
+    context = null;
+  } else {
+    if (!isNonEmptyString(introBuilder.resumeId)) {
+      return { ok: false, message: "resumeId is required" };
+    }
+    if (!isAgentResumeContext(introBuilder.context)) {
+      return { ok: false, message: "context is invalid" };
+    }
+    resumeId = introBuilder.resumeId;
+    context = introBuilder.context;
   }
 
   const messages = input.messages
@@ -46,45 +75,80 @@ export function mapAgUiRunToAgentMessageRequest(
     return { ok: false, message: "messages must not be empty" };
   }
 
-  // Handle interrupt resume: inject approval feedback as system message
+  // Handle interrupt resume: inject human feedback as the next Agent context.
   if (input.resume && Array.isArray(input.resume) && input.resume.length > 0) {
-    const feedbackMessage = buildApprovalFeedbackMessage(input.resume);
+    const feedbackMessage = buildInterruptFeedbackMessage(input.resume);
     messages.push({
-      id: `system_approval_${Date.now()}`,
+      id: `system_interrupt_${Date.now()}`,
       role: "assistant",
       content: feedbackMessage,
     });
   }
 
+  const modelConfig = readAgentModelConfig(introBuilder.modelConfig);
+
   return {
     ok: true,
     request: {
-      resumeId: introBuilder.resumeId,
+      resumeId,
+      ...(mode === "create_from_zero" ? { mode } : {}),
       locale: "zh-CN",
-      workflowId: introBuilder.workflowId,
+      workflowId,
       messages,
-      context: introBuilder.context,
+      context,
+      ...(modelConfig ? { modelConfig } : {}),
     },
   };
 }
 
-function buildApprovalFeedbackMessage(
+function readAgentSessionMode(value: unknown): AgentResumeSessionMode | null {
+  if (value === "optimize_existing" || value === "create_from_zero") return value;
+  return null;
+}
+
+function readAgentModelConfig(value: unknown): AgentModelConfig | null {
+  if (!isRecord(value)) return null;
+  const baseUrl = readNonEmptyString(value.baseUrl);
+  const apiKey = readNonEmptyString(value.apiKey);
+  const modelName = readNonEmptyString(value.modelName);
+  if (!baseUrl || !apiKey || !modelName) return null;
+  return { baseUrl, apiKey, modelName };
+}
+
+function buildInterruptFeedbackMessage(
   resume: Array<{
     interruptId: string;
     status: "resolved" | "cancelled";
     payload?: unknown;
   }>,
 ): string {
-  const approved = resume.filter(
+  const answered = resume.filter(
+    (entry) => entry.status === "resolved" && isAnswerPayload(entry.payload),
+  );
+  const approvalEntries = resume.filter((entry) => !isAnswerPayload(entry.payload));
+  const approved = approvalEntries.filter(
     (entry) => entry.status === "resolved" && isApprovedPayload(entry.payload),
   );
-  const rejected = resume.filter(
+  const rejected = approvalEntries.filter(
     (entry) =>
       entry.status === "cancelled" ||
       (entry.status === "resolved" && !isApprovedPayload(entry.payload)),
   );
 
-  const parts: string[] = ["用户已审核你的修改建议："];
+  const parts: string[] = [];
+
+  if (answered.length > 0) {
+    parts.push("用户已补充 Agent 需要的信息：");
+    parts.push(
+      ...answered.map(
+        (entry) => `${entry.interruptId}：${readAnswerPayload(entry.payload)}`,
+      ),
+    );
+  }
+
+  if (approved.length > 0 || rejected.length > 0) {
+    parts.push("用户已审核你的修改建议：");
+  }
 
   if (approved.length > 0) {
     parts.push(
@@ -96,15 +160,28 @@ function buildApprovalFeedbackMessage(
     parts.push(`✗ 已拒绝：${rejected.map((e) => e.interruptId).join(", ")}`);
   }
 
-  parts.push(
-    "请基于用户的选择继续对话。被拒绝的建议不要重复提及，已应用的建议可以进一步优化。",
-  );
+  if (answered.length > 0 && approved.length === 0 && rejected.length === 0) {
+    parts.push("请基于用户补充的信息继续当前任务。");
+  } else {
+    parts.push(
+      "请基于用户的选择继续对话。被拒绝的建议不要重复提及，已应用的建议可以进一步优化。",
+    );
+  }
 
   return parts.join("\n");
 }
 
 function isApprovedPayload(payload: unknown): boolean {
   return isRecord(payload) && payload.approved === true;
+}
+
+function isAnswerPayload(payload: unknown): payload is { answer: string } {
+  return isRecord(payload) && typeof payload.answer === "string";
+}
+
+function readAnswerPayload(payload: unknown): string {
+  if (!isAnswerPayload(payload)) return "";
+  return payload.answer.trim();
 }
 
 function getIntroBuilderForwardedProps(value: unknown): Record<string, unknown> | null {
@@ -205,4 +282,8 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function isNonEmptyString(value: unknown): value is string {
   return typeof value === "string" && value.trim() !== "";
+}
+
+function readNonEmptyString(value: unknown): string | null {
+  return isNonEmptyString(value) ? value.trim() : null;
 }

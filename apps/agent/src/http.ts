@@ -11,18 +11,21 @@ import {
   type AuthenticatedAgentSession,
 } from "./auth.js";
 import {
+  appendAgUiContextStatusEvents,
   buildAgentMessagePrompt,
-  createAgUiRunFinishedEvent,
+  createOpenAICompatibleAgentMessageProvider,
   extractStreamingAgentMessageContent,
   parseAgentMessageProviderResponse,
   toAgUiAgentEvents,
-  toAgUiAgentToolEvents,
   validateAgentMessageRequest,
   type AgentMessageUsage,
   type AgentMessagePrompt,
   type AgentMessageProvider,
+  type AgentMessageParseResult,
   type AgentMessageRequest,
+  type AgentQuestionRequest,
 } from "./agent-messages.js";
+import { buildAgentContextStatus } from "./workflows/context-status.js";
 import {
   buildAiCacheKey,
   getAiCacheTtlSeconds,
@@ -86,6 +89,7 @@ type AgentMessageCacheValue = {
   message: { id: string; role: "assistant"; content: string };
   toolCalls: AgentToolCall[];
   proposedOperations: ResumeOperation[];
+  questions?: AgentQuestionRequest[];
   usage: AgentMessageUsage;
 };
 
@@ -377,14 +381,31 @@ async function routeRequest(
       });
     }
 
-    if (auth.session.resumeId !== validation.request.resumeId) {
+    if (!agentMessageRequestMatchesSession(auth.session, validation.request)) {
       return sendError(response, 403, context, {
         error: "forbidden",
         message: "Token resumeId does not match request resumeId",
       });
     }
 
-    if (!agentMessageProvider) {
+    const threadId = agentMessageThreadId(validation.request);
+    const cacheResumeId = agentMessageCacheResumeId(validation.request);
+
+    const requestModelName = validation.request.modelConfig?.modelName ?? config.modelName;
+    const activeAgentMessageProvider =
+      validation.request.modelConfig
+        ? createOpenAICompatibleAgentMessageProvider(
+            {
+              ...config,
+              modelBaseUrl: validation.request.modelConfig.baseUrl,
+              modelApiKey: validation.request.modelConfig.apiKey,
+              modelName: validation.request.modelConfig.modelName,
+            },
+            fetch,
+          )
+        : agentMessageProvider;
+
+    if (!activeAgentMessageProvider) {
       return sendError(response, 503, context, {
         error: "dependency_unavailable",
         message: "Agent message provider is not configured",
@@ -403,9 +424,10 @@ async function routeRequest(
         const cacheKey = buildScopedCacheKey({
           scope: "agent:chat",
           session: auth.session,
-          resumeId: validation.request.resumeId,
+          resumeId: cacheResumeId,
           config,
-          input: validation.request,
+          input: safeAgentCacheInput(validation.request),
+          modelName: validation.request.modelConfig?.modelName,
         });
         const cached = await readAiCache<AgentMessageCacheValue>(
           aiCacheStore,
@@ -421,11 +443,13 @@ async function routeRequest(
               response,
               toAgUiAgentEvents({
                 requestId: context.requestId,
-                threadId: validation.request.resumeId,
+                threadId,
+                request: validation.request,
                 result: {
                   message: cached.value.message,
                   toolCalls: cached.value.toolCalls,
                   proposedOperations: cached.value.proposedOperations,
+                  ...(cached.value.questions ? { questions: cached.value.questions } : {}),
                 },
               }),
               context,
@@ -491,10 +515,10 @@ async function routeRequest(
         });
 
         try {
-          if (acceptsAgUiSse(request) && agentMessageProvider.stream) {
+          if (acceptsAgUiSse(request) && activeAgentMessageProvider.stream) {
             return streamAgentMessageEvents({
               response,
-              provider: agentMessageProvider,
+              provider: activeAgentMessageProvider,
               request: validation.request,
               prompt,
               session: auth.session,
@@ -504,18 +528,18 @@ async function routeRequest(
               now,
               accept: headerValue(request.headers.accept),
               trace,
-              modelName: config.modelName,
+              modelName: requestModelName,
             });
           }
 
           const providerResult = await trace.traceGeneration(
             {
-              modelName: config.modelName,
+              modelName: requestModelName,
               provider: "openai-compatible",
               prompt,
             },
             () =>
-              agentMessageProvider.run({
+              activeAgentMessageProvider.run({
                 request: validation.request,
                 prompt,
                 session: auth.session,
@@ -532,7 +556,7 @@ async function routeRequest(
                 response,
                 toAgUiRunErrorEvents({
                   requestId: context.requestId,
-                  threadId: validation.request.resumeId,
+                  threadId,
                   message: parsed.message,
                   code: "dependency_unavailable",
                 }),
@@ -554,6 +578,7 @@ async function routeRequest(
             message: parsed.result.message,
             toolCalls: parsed.result.toolCalls,
             proposedOperations: parsed.result.proposedOperations,
+            ...(parsed.result.questions ? { questions: parsed.result.questions } : {}),
             usage: providerResult.usage,
           };
           await writeAiCache(aiCacheStore, cacheKey, cacheValue, "agent:chat", now);
@@ -563,7 +588,8 @@ async function routeRequest(
               response,
               toAgUiAgentEvents({
                 requestId: context.requestId,
-                threadId: validation.request.resumeId,
+                threadId,
+                request: validation.request,
                 result: parsed.result,
               }),
               context,
@@ -592,7 +618,7 @@ async function routeRequest(
                 response,
                 toAgUiRunErrorEvents({
                   requestId: context.requestId,
-                  threadId: validation.request.resumeId,
+                  threadId,
                   message: error.message,
                   code: error.code,
                 }),
@@ -621,7 +647,7 @@ async function routeRequest(
               response,
               toAgUiRunErrorEvents({
                 requestId: context.requestId,
-                threadId: validation.request.resumeId,
+                threadId,
                 message,
                 code: "dependency_unavailable",
               }),
@@ -812,20 +838,56 @@ function buildScopedCacheKey({
   resumeId,
   config,
   input,
+  modelName,
 }: {
   scope: AiCacheScope;
   session: AuthenticatedAgentSession;
   resumeId: string;
   config: AgentConfig;
   input: unknown;
+  modelName?: string;
 }): string {
   return buildAiCacheKey({
     scope,
     userId: session.userId,
     resumeId,
-    modelName: config.modelName,
+    modelName: modelName ?? config.modelName,
     input,
   });
+}
+
+const CREATE_FROM_ZERO_THREAD_ID = "agent_create_from_zero";
+
+function agentMessageRequestMatchesSession(
+  session: AuthenticatedAgentSession,
+  request: AgentMessageRequest,
+): boolean {
+  if (request.resumeId === null) {
+    return session.resumeId === undefined;
+  }
+  return session.resumeId === request.resumeId;
+}
+
+function agentMessageThreadId(request: AgentMessageRequest): string {
+  return request.resumeId ?? CREATE_FROM_ZERO_THREAD_ID;
+}
+
+function agentMessageCacheResumeId(request: AgentMessageRequest): string {
+  return request.resumeId ?? CREATE_FROM_ZERO_THREAD_ID;
+}
+
+function safeAgentCacheInput(request: AgentMessageRequest): unknown {
+  const { modelConfig: _modelConfig, ...safeRequest } = request;
+  void _modelConfig;
+  return {
+    ...safeRequest,
+    modelConfig: request.modelConfig
+      ? {
+          baseUrlHash: hashIdentity(request.modelConfig.baseUrl),
+          modelName: request.modelConfig.modelName,
+        }
+      : undefined,
+  };
 }
 
 async function readAiCache<T>(
@@ -1043,7 +1105,7 @@ async function streamAgentMessageEvents({
   modelName?: string;
 }): Promise<void> {
   const encoder = new EventEncoder({ accept });
-  const threadId = request.resumeId;
+  const threadId = agentMessageThreadId(request);
   const messageId = `msg_${requestId}`;
   let content = "";
   let emittedContent = "";
@@ -1066,6 +1128,27 @@ async function streamAgentMessageEvents({
   };
 
   writeEvent({ type: EventType.RUN_STARTED, threadId, runId: requestId });
+  writeEvent({
+    type: EventType.STATE_SNAPSHOT,
+    snapshot: {
+      contextStatus: request.sessionSnapshot?.contextStatus ?? null,
+      workspace: request.sessionSnapshot?.workspace ?? null,
+      workflow: request.sessionSnapshot?.workflow ?? {
+        workflowId: request.workflowId,
+        nodeId: "intake_goal",
+        loopCount: 0,
+        completedNodeIds: [],
+      },
+    },
+  });
+  const contextStatusEvents: BaseEvent[] = [];
+  appendAgUiContextStatusEvents(contextStatusEvents, {
+    messageId: `msg_context_${requestId}`,
+    status: buildAgentContextStatus(request),
+  });
+  for (const event of contextStatusEvents) {
+    writeEvent(event);
+  }
 
   try {
     await trace.traceGeneration(
@@ -1150,21 +1233,21 @@ async function streamAgentMessageEvents({
       message: parsed.result.message,
       toolCalls: parsed.result.toolCalls,
       proposedOperations: parsed.result.proposedOperations,
+      ...(parsed.result.questions ? { questions: parsed.result.questions } : {}),
       usage,
     };
     await writeAiCache(aiCacheStore, cacheKey, cacheValue, "agent:chat", now);
     trace.recordRunOutput(agentMessageResultRunOutput(parsed.result));
 
-    for (const event of toAgUiAgentToolEvents({
+    for (const event of toStreamingRuntimeTailEvents({
+      requestId,
+      threadId,
+      request,
       messageId,
       result: parsed.result,
     })) {
       writeEvent(event);
     }
-    writeEvent({ type: EventType.TEXT_MESSAGE_END, messageId });
-    writeEvent(
-      createAgUiRunFinishedEvent({ requestId, threadId, result: parsed.result }),
-    );
     response.end();
   } catch (error) {
     trace.recordRunOutput({
@@ -1183,6 +1266,60 @@ async function streamAgentMessageEvents({
     });
     response.end();
   }
+}
+
+function toStreamingRuntimeTailEvents({
+  requestId,
+  threadId,
+  request,
+  messageId,
+  result,
+}: {
+  requestId: string;
+  threadId: string;
+  request: AgentMessageRequest;
+  messageId: string;
+  result: Extract<AgentMessageParseResult, { ok: true }>["result"];
+}): BaseEvent[] {
+  return toAgUiAgentEvents({
+    requestId,
+    threadId,
+    request,
+    result: {
+      ...result,
+      message: {
+        ...result.message,
+        id: messageId,
+      },
+    },
+  }).filter((event) => {
+    if (
+      event.type === EventType.RUN_STARTED ||
+      event.type === EventType.STATE_SNAPSHOT ||
+      event.type === EventType.TEXT_MESSAGE_START ||
+      event.type === EventType.TEXT_MESSAGE_CONTENT
+    ) {
+      return false;
+    }
+
+    if (event.type === EventType.ACTIVITY_SNAPSHOT) {
+      return (event as { activityType?: unknown }).activityType !== "context_status";
+    }
+
+    if (event.type === EventType.STATE_DELTA) {
+      const delta = (event as { delta?: unknown }).delta;
+      if (!Array.isArray(delta)) return true;
+      return !delta.every(
+        (patch) => isRecord(patch) && patch.path === "/contextStatus",
+      );
+    }
+
+    return true;
+  });
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
 }
 
 function toAgUiRunErrorEvents({

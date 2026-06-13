@@ -11,6 +11,7 @@ import { createOpenAICompatibleRichTextPolishProvider } from "./rich-text-polish
 import { createOpenAICompatibleResumeHelperProvider } from "./resume-helpers.js";
 import { createOpenAICompatibleAgentMessageProvider } from "./agent-messages.js";
 import { createAgentObservability } from "./observability.js";
+import { createDevelopmentAgentMessageProvider } from "./workflows/dev-preview-provider.js";
 
 const config = loadConfig();
 const observability = createAgentObservability(config);
@@ -30,7 +31,9 @@ const server = createAgentServer({
   aiCacheStore: createRedisAiCacheStore(redis),
   richTextPolishProvider: createOpenAICompatibleRichTextPolishProvider(config),
   resumeHelperProvider: createOpenAICompatibleResumeHelperProvider(config),
-  agentMessageProvider: createOpenAICompatibleAgentMessageProvider(config),
+  agentMessageProvider:
+    createOpenAICompatibleAgentMessageProvider(config) ??
+    createDevelopmentAgentMessageProvider(config),
   observability,
 });
 

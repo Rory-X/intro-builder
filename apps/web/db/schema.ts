@@ -4,6 +4,11 @@ import {
 } from "drizzle-orm/pg-core";
 import type { AdapterAccountType } from "next-auth/adapters";
 import type { ResumeContent } from "@intro-builder/shared/schemas";
+import type {
+  AgentResumeSessionMode,
+  AgentSessionSnapshot,
+  AgentSessionStatus,
+} from "@intro-builder/shared/types";
 
 export const users = pgTable("user", {
   id: text("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
@@ -62,6 +67,43 @@ export const resumes = pgTable("resume", {
 }, (r) => ({
   userIdx: index("resume_user_idx").on(r.userId),
   slugIdx: uniqueIndex("resume_slug_idx").on(r.slug),
+}));
+
+// ─── Agent Sessions ─────────────────────────────────────────
+
+export const agentSessions = pgTable("agent_session", {
+  id: text("id").primaryKey(),
+  userId: text("userId").notNull().references(() => users.id, { onDelete: "cascade" }),
+  resumeId: text("resumeId").references(() => resumes.id, { onDelete: "cascade" }),
+  mode: text("mode").$type<AgentResumeSessionMode>().notNull().default("optimize_existing"),
+  status: text("status").$type<AgentSessionStatus>().notNull().default("active"),
+  title: text("title").notNull(),
+  stateJson: jsonb("stateJson").$type<AgentSessionSnapshot>().notNull(),
+  lastResumeContentHash: text("lastResumeContentHash"),
+  createdAt: timestamp("createdAt").notNull().defaultNow(),
+  updatedAt: timestamp("updatedAt").notNull().defaultNow(),
+}, (t) => ({
+  userIdx: index("agent_session_user_idx").on(t.userId),
+  resumeIdx: index("agent_session_resume_idx").on(t.resumeId),
+  statusIdx: index("agent_session_status_idx").on(t.status),
+}));
+
+export const agentSessionEvents = pgTable("agent_session_event", {
+  id: text("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  sessionId: text("sessionId").notNull().references(() => agentSessions.id, { onDelete: "cascade" }),
+  runId: text("runId").notNull(),
+  sequence: integer("sequence").notNull(),
+  type: text("type").notNull(),
+  payloadJson: jsonb("payloadJson").$type<Record<string, unknown>>().notNull(),
+  createdAt: timestamp("createdAt").notNull().defaultNow(),
+}, (t) => ({
+  sessionIdx: index("agent_session_event_session_idx").on(t.sessionId),
+  runIdx: index("agent_session_event_run_idx").on(t.runId),
+  uniqueRunSequenceIdx: uniqueIndex("agent_session_event_run_sequence_idx").on(
+    t.sessionId,
+    t.runId,
+    t.sequence,
+  ),
 }));
 
 // ─── Collaboration Sessions ──────────────────────────────────
