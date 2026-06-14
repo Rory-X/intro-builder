@@ -1,6 +1,7 @@
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import { randomUUID } from "node:crypto";
 import { createHash } from "node:crypto";
+import type { TelemetrySettings } from "ai";
 
 import { EventType, type BaseEvent } from "@ag-ui/core";
 import { EventEncoder } from "@ag-ui/encoder";
@@ -475,6 +476,15 @@ async function routeRequest(
         threadId,
         model: loopModel,
         accept: headerValue(request.headers.accept),
+        telemetry: {
+          isEnabled: config.langfuse.enabled,
+          functionId: "agent.loop",
+          metadata: {
+            requestId: context.requestId,
+            provider: "ai-sdk/openai-compatible",
+            mode: agentRequest.mode ?? "create_from_zero",
+          },
+        },
         recorder: createSessionRecorderForRequest({
           sessionStore,
           request: agentRequest,
@@ -1537,6 +1547,7 @@ async function streamAgentLoopEvents({
   threadId,
   model,
   accept,
+  telemetry,
   recorder,
 }: {
   response: ServerResponse;
@@ -1546,6 +1557,7 @@ async function streamAgentLoopEvents({
   threadId: string;
   model: ReturnType<typeof createLoopModel>;
   accept?: string;
+  telemetry?: TelemetrySettings;
   recorder?: AgentSessionRecorder | null;
 }): Promise<void> {
   const encoder = new EventEncoder({ accept });
@@ -1603,6 +1615,7 @@ async function streamAgentLoopEvents({
       model,
       request,
       draft,
+      telemetry,
       onTextDelta: (delta) => {
         ensureTextStarted();
         writeEvent({ type: EventType.TEXT_MESSAGE_CONTENT, messageId, delta });

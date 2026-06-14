@@ -3,6 +3,7 @@ import {
   streamText as defaultStreamText,
   type LanguageModel,
   type ModelMessage,
+  type TelemetrySettings,
 } from "ai";
 import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
 
@@ -77,6 +78,8 @@ export type RunResumeLoopOptions = {
   draft: DraftState;
   maxSteps?: number;
   onTextDelta?: (delta: string) => void;
+  /** Langfuse/OTel telemetry forwarded to streamText so the loop is traced. */
+  telemetry?: TelemetrySettings;
   /** Injectable for tests; defaults to the real AI SDK streamText. */
   streamTextImpl?: typeof defaultStreamText;
 };
@@ -94,6 +97,7 @@ export async function runResumeLoop(
     draft,
     maxSteps = LOOP_MAX_STEPS,
     onTextDelta,
+    telemetry,
     streamTextImpl = defaultStreamText,
   } = options;
 
@@ -104,6 +108,7 @@ export async function runResumeLoop(
     messages: toModelMessages(request),
     tools,
     stopWhen: stepCountIs(maxSteps),
+    ...(telemetry ? { experimental_telemetry: telemetry } : {}),
   });
 
   let text = "";

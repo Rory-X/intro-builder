@@ -108,6 +108,33 @@ describe("loop runtime", () => {
     expect(result.text).toContain("草稿");
   });
 
+  it("forwards telemetry to streamText so the loop is traced", async () => {
+    const request = createFromZeroRequest();
+    const draft = createInitialLoopDraft(request);
+    let captured: Record<string, unknown> | null = null;
+    const fakeStreamText = ((options: Record<string, unknown>) => {
+      captured = options;
+      return {
+        // eslint-disable-next-line require-yield
+        textStream: (async function* () {})(),
+      };
+    }) as unknown as typeof streamText;
+
+    await runResumeLoop({
+      model: {} as never,
+      request,
+      draft,
+      telemetry: { isEnabled: true, functionId: "agent.loop" },
+      streamTextImpl: fakeStreamText,
+    });
+
+    expect(captured).not.toBeNull();
+    expect(captured!.experimental_telemetry).toEqual({
+      isEnabled: true,
+      functionId: "agent.loop",
+    });
+  });
+
   it("system prompt frames a create-from-zero draft sandbox", () => {
     const prompt = buildLoopSystemPrompt(createFromZeroRequest());
     expect(prompt).toContain("从零创建");
