@@ -5,9 +5,11 @@ import {
   createDraft,
   draftSnapshot,
   draftToChangeSet,
+  rehydrateDraft,
   setGoal,
   upsertSection,
 } from "../src/workflows/draft";
+import type { AgentResumeWorkspaceSnapshot } from "../src/workflows/resume-workspace";
 
 describe("draft model", () => {
   it("starts empty with a default title", () => {
@@ -135,5 +137,60 @@ describe("draft model", () => {
       proposedOperations: draft.operations,
     });
     expect(validation.ok).toBe(true);
+  });
+
+  it("rehydrates a draft from a stored workspace so continue keeps prior work", () => {
+    const first = createDraft();
+    upsertSection(first, {
+      toolCallId: "call_1",
+      section: "summary",
+      fieldPath: "basics.summary",
+      label: "个人简介",
+      afterPlainText: "三年后端经验。",
+    });
+    const changeSet = draftToChangeSet(first, { requestId: "req_1" })!;
+    const workspace = {
+      resumeId: null,
+      mode: "create_from_zero",
+      goal: { workflowId: "create-from-zero", resumeTitle: "后端简历", targetRole: "后端工程师", locale: "zh-CN" },
+      facts: [],
+      draftResume: draftSnapshot(first),
+      changeSets: [changeSet],
+      decisions: [],
+      qualityReport: null,
+      updatedAt: "2026-06-15T00:00:00.000Z",
+    } as unknown as AgentResumeWorkspaceSnapshot;
+
+    const resumed = rehydrateDraft(workspace);
+    expect(resumed.operations).toHaveLength(1);
+    expect(resumed.targetRole).toBe("后端工程师");
+    expect(resumed.toolCalls).toHaveLength(1);
+
+    // A new write to the same field path stays last-write-wins (no duplicate op).
+    upsertSection(resumed, {
+      toolCallId: "call_2",
+      section: "summary",
+      fieldPath: "basics.summary",
+      label: "个人简介",
+      afterPlainText: "三年后端经验，擅长 Go 与云原生。",
+    });
+    expect(resumed.operations).toHaveLength(1);
+    expect(resumed.operations[0].afterPlainText).toContain("云原生");
+
+    // A genuinely new section is added on top of the rehydrated draft.
+    upsertSection(resumed, {
+      toolCallId: "call_3",
+      section: "skills",
+      fieldPath: "skills",
+      label: "技能",
+      afterPlainText: "Go、Kubernetes",
+    });
+    expect(resumed.operations).toHaveLength(2);
+    expect(
+      validateAgentToolOutput({
+        toolCalls: resumed.toolCalls,
+        proposedOperations: resumed.operations,
+      }).ok,
+    ).toBe(true);
   });
 });

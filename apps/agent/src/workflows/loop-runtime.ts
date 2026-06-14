@@ -13,6 +13,7 @@ import type {
 import {
   createDraft,
   draftSnapshot,
+  rehydrateDraft,
   type DraftState,
 } from "./draft.js";
 import { createLoopTools } from "./tools.js";
@@ -139,12 +140,15 @@ export function assembleLoopResult(input: {
 }
 
 export function createInitialLoopDraft(request: AgentMessageRequest): DraftState {
-  const snapshot = request.sessionSnapshot?.workspace.draftResume ?? null;
-  const draft = createDraft({
+  const workspace = request.sessionSnapshot?.workspace ?? null;
+  if (workspace && (workspace.draftResume || workspace.changeSets.length > 0)) {
+    return rehydrateDraft(workspace);
+  }
+  const snapshot = workspace?.draftResume ?? null;
+  return createDraft({
     title: snapshot?.title ?? request.context?.resumeTitle,
     targetRole: snapshot?.targetRole ?? null,
   });
-  return draft;
 }
 
 function toModelMessages(request: AgentMessageRequest): ModelMessage[] {

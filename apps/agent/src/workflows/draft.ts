@@ -226,3 +226,61 @@ function sectionLabel(section: ResumeOperation["section"]): string {
 function safeId(value: string): string {
   return value.replace(/[^a-zA-Z0-9_-]/g, "_");
 }
+
+const TOOL_NAME_BY_OPERATION: Record<
+  ResumeOperation["operation"],
+  AgentToolCall["name"]
+> = {
+  update_section: "resume_update_section",
+  delete_section: "resume_delete_section",
+  reorder_sections: "resume_reorder_sections",
+  insert_section: "resume_insert_section",
+};
+
+/**
+ * Rebuild a draft from a stored workspace snapshot so a follow-up loop turn
+ * continues editing the same draft (续上对话) instead of starting over.
+ */
+export function rehydrateDraft(
+  workspace: AgentResumeWorkspaceSnapshot,
+): DraftState {
+  const draft = createDraft({
+    title: workspace.draftResume?.title ?? workspace.goal.resumeTitle,
+    targetRole: workspace.draftResume?.targetRole ?? workspace.goal.targetRole,
+  });
+  draft.profileSummary = workspace.draftResume?.profileSummary ?? "";
+  if (workspace.draftResume) {
+    draft.sections = workspace.draftResume.sections.map((section) => ({
+      ...section,
+    }));
+  }
+
+  const latestChangeSet =
+    [...workspace.changeSets]
+      .reverse()
+      .find((changeSet) => changeSet.status === "staged") ??
+    workspace.changeSets.at(-1) ??
+    null;
+
+  if (latestChangeSet) {
+    for (const operation of latestChangeSet.operations) {
+      draft.operations.push(operation);
+      draft.byFieldPath.set(operation.fieldPath, operation.id);
+      draft.toolCalls.push({
+        id: operation.toolCallId,
+        name: TOOL_NAME_BY_OPERATION[operation.operation],
+        status: "completed",
+        title: operation.label,
+        summary: operation.changeSummary,
+        input: {
+          operation: operation.operation,
+          section: operation.section,
+          fieldPath: operation.fieldPath,
+        },
+        result: { operationIds: [operation.id] },
+      });
+    }
+  }
+
+  return draft;
+}
