@@ -126,17 +126,25 @@
 - 安全开关：`AGENT_LOOP_ENABLED`（默认 false）。关 = 旧单次路径（main 行为不变）；开 = 真 loop。
 - 续聊：`rehydrateDraft` 从 durable session 还原 draft（含 last-write-wins），下一回合接着改。
 
-**剩余（需在本机跑 Next 构建 + 手工冒烟验收）：**
+**剩余（只剩需要你本机环境的收尾，代码已全部落地）：**
 
-- Task 5 真正缺口：create-from-zero「同意应用」对**全新数组分区项**（如还不存在的 experience.0）
-  的创建——现已支持 `basics.summary`、`skills` 及已存在索引的 tiptap 字段（loop 产出的 op 现在
-  自带 `replacementTiptapJson`，`applyAgentOperation` 也已接受 `insert_section`）；新增数组项需接
-  编辑器的「加一项」流程。
-- Task 6 剩余：loop 路径接 Langfuse trace；`pnpm build` 全量 + 手工冒烟（开 flag、配真 provider 走一遍）。
-  已完成的护栏：`stepCountIs(16)` + 草稿写操作上限 `MAX_DRAFT_OPERATIONS=24`（新字段超限拒绝、更新不受限）。
+- `pnpm build` 全量构建 + 手工冒烟：`AGENT_LOOP_ENABLED=true` + 配 `AGENT_MODEL_*`，
+  走一遍 create-from-zero（loop 轨迹 → change-set 预览 → 同意应用生成简历 / 继续对话迭代）。
+  沙箱里没有 `pnpm` 与真 provider，无法跑;单测 / tsc / 改动文件 lint 均已在沙箱验证通过。
+- 可选增强：把 loop 也用 `observability.traceAgentMessageRun` 包一层记录 run 信封
+  （当前已通过 `experimental_telemetry` 接入 Langfuse 生成 span，足够看轨迹）。
 
-**已完成的 web 侧：** Task 4 工具卡升级（动作 chip + 目标字段 + 「已写入草稿」，`agent-tool-card.tsx`，
-面板测试 15/15 通过）；Task 5 续聊（`rehydrateDraft`）+ `insert_section` 应用（`editor-client.tsx`）。
+**已完成（全部 6 个 Task 的代码 + 单测）：**
+
+- Task 4 工具卡升级（动作 chip + 目标字段 + 「已写入草稿」，`agent-tool-card.tsx`，面板测试 15/15）。
+- Task 5 完整落地：续聊（`rehydrateDraft`）+ `insert_section` 应用 + **全新数组分区项创建**——
+  纯函数 `lib/agent/apply-operation.ts`（创建缺失的 experience/education/projects/research/custom 项
+  并补进 `sectionOrder`），8 个单测；`editor-client.tsx` 的 `applyAgentOperation` 已改为委托该函数。
+- Task 6：护栏 `stepCountIs(16)` + `MAX_DRAFT_OPERATIONS=24`；loop 经 `experimental_telemetry`
+  接入 Langfuse（`loop-runtime.ts` + `http.ts` 装配，1 个单测）。
+
+**验证记录（沙箱）：** agent `tsc` clean + 169 tests 全绿；web 改动文件 `tsc` 无报错、
+改动文件 `eslint` 0 error；web agent-* 测试组 57 passed / 1 skipped；新增 `apply-operation` 8 tests 全绿。
 
 **启用方式：** agent 服务设 `AGENT_LOOP_ENABLED=true` 并配好 `AGENT_MODEL_*`，create-from-zero
 即走真 loop。
