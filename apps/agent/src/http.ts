@@ -12,7 +12,6 @@ import {
 } from "./auth.js";
 import {
   appendAgUiContextStatusEvents,
-  buildAgentMessagePrompt,
   createOpenAICompatibleAgentMessageProvider,
   extractStreamingAgentMessageContent,
   parseAgentMessageProviderResponse,
@@ -25,6 +24,10 @@ import {
   type AgentMessageRequest,
   type AgentQuestionRequest,
 } from "./agent-messages.js";
+import {
+  createAgentMessagePromptResolver,
+  type AgentMessagePromptResolver,
+} from "./prompts/agent-message-prompt-resolver.js";
 import { buildAgentContextStatus } from "./workflows/context-status.js";
 import {
   buildAiCacheKey,
@@ -71,6 +74,7 @@ export type CreateAgentServerOptions = {
   richTextPolishProvider?: RichTextPolishProvider;
   resumeHelperProvider?: ResumeHelperProvider;
   agentMessageProvider?: AgentMessageProvider;
+  agentMessagePromptResolver?: AgentMessagePromptResolver;
   observability?: AgentObservability;
   createRequestId?: () => string;
 };
@@ -104,6 +108,7 @@ export function createAgentServer({
   richTextPolishProvider,
   resumeHelperProvider,
   agentMessageProvider,
+  agentMessagePromptResolver = createAgentMessagePromptResolver(config),
   observability = createAgentObservability(config),
   createRequestId = defaultCreateRequestId,
 }: CreateAgentServerOptions): Server {
@@ -121,6 +126,7 @@ export function createAgentServer({
       richTextPolishProvider,
       resumeHelperProvider,
       agentMessageProvider,
+      agentMessagePromptResolver,
       observability,
       createRequestId,
     ).catch((error: unknown) => {
@@ -153,6 +159,7 @@ async function routeRequest(
   richTextPolishProvider: RichTextPolishProvider | undefined,
   resumeHelperProvider: ResumeHelperProvider | undefined,
   agentMessageProvider: AgentMessageProvider | undefined,
+  agentMessagePromptResolver: AgentMessagePromptResolver,
   observability: AgentObservability,
   createRequestId: () => string,
 ): Promise<void> {
@@ -401,7 +408,6 @@ async function routeRequest(
               modelApiKey: validation.request.modelConfig.apiKey,
               modelName: validation.request.modelConfig.modelName,
             },
-            fetch,
           )
         : agentMessageProvider;
 
@@ -509,7 +515,7 @@ async function routeRequest(
           }
         }
 
-        const prompt = buildAgentMessagePrompt({
+        const prompt = await agentMessagePromptResolver.resolve({
           ...validation.request,
           requestId: context.requestId,
         });
@@ -535,7 +541,7 @@ async function routeRequest(
           const providerResult = await trace.traceGeneration(
             {
               modelName: requestModelName,
-              provider: "openai-compatible",
+              provider: "ai-sdk/openai-compatible",
               prompt,
             },
             () =>
@@ -1154,7 +1160,7 @@ async function streamAgentMessageEvents({
     await trace.traceGeneration(
       {
         modelName,
-        provider: "openai-compatible",
+        provider: "ai-sdk/openai-compatible",
         prompt,
       },
       async () => {

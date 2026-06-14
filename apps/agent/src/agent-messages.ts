@@ -1,6 +1,6 @@
 import { EventType, type BaseEvent } from "@ag-ui/core";
+import { createAiSdkAgentMessageProvider } from "./providers/ai-sdk-agent-message-provider.js";
 import type { AuthenticatedAgentSession } from "./auth.js";
-import type { AgentConfig } from "./config.js";
 import type { AgentErrorCode } from "./errors.js";
 import {
   validateAgentToolOutput,
@@ -8,7 +8,6 @@ import {
   type AgentToolCall,
   type ResumeOperation,
 } from "./agent-tools.js";
-import { RichTextPolishProviderError } from "./rich-text-polish.js";
 import type { AgentContextStatusSnapshot } from "./workflows/context-status.js";
 import type { AgentResumeWorkspaceSnapshot } from "./workflows/resume-workspace.js";
 import {
@@ -127,7 +126,24 @@ export type AgentMessagePrompt = {
   system: string;
   developer: string;
   user: string;
+  messages?: AgentMessagePromptMessage[];
+  metadata?: AgentMessagePromptMetadata;
 };
+
+export type AgentMessagePromptMessage = {
+  role: "system" | "user";
+  content: string;
+};
+
+export type AgentMessagePromptMetadata =
+  | { source: "local" }
+  | {
+      source: "langfuse";
+      name: string;
+      label: string;
+      version: number;
+      isFallback: boolean;
+    };
 
 export type AgentMessageUsage = {
   provider: string;
@@ -160,6 +176,9 @@ export type AgentMessageProvider = {
     options: AgentMessageProviderRunOptions,
   ) => AsyncIterable<AgentProviderStreamChunk>;
 };
+
+export const createOpenAICompatibleAgentMessageProvider =
+  createAiSdkAgentMessageProvider;
 
 export type AgentMessageParseResult =
   | {
@@ -846,142 +865,6 @@ export function extractStreamingAgentMessageContent(jsonText: string): string {
   return decodeJsonStringPrefix(jsonText.slice(valueStart + 1));
 }
 
-export function createOpenAICompatibleAgentMessageProvider(
-  config: AgentConfig,
-  fetchFn: typeof fetch = fetch,
-): AgentMessageProvider | undefined {
-  if (!config.modelBaseUrl || !config.modelApiKey || !config.modelName) {
-    return undefined;
-  }
-
-  return {
-    async run({ prompt }) {
-      const controller = new AbortController();
-      const timeout = setTimeout(
-        () => controller.abort(),
-        config.modelTimeoutMs,
-      );
-      try {
-        const response = await fetchFn(
-          joinUrl(config.modelBaseUrl!, "/chat/completions"),
-          {
-            method: "POST",
-            headers: {
-              authorization: `Bearer ${config.modelApiKey}`,
-              "content-type": "application/json",
-            },
-            body: JSON.stringify({
-              model: config.modelName,
-              response_format: { type: "json_object" },
-              thinking: { type: "disabled" },
-              messages: openAICompatibleMessages(prompt),
-            }),
-            signal: controller.signal,
-          },
-        );
-        if (!response.ok) {
-          throw new RichTextPolishProviderError(
-            `Provider request failed with ${response.status}`,
-            "dependency_unavailable",
-          );
-        }
-        const body = await response.json();
-        const providerContent = extractOpenAICompatibleContent(body);
-        if (!providerContent) {
-          throw new RichTextPolishProviderError(
-            "Provider response missing message content",
-            "dependency_unavailable",
-          );
-        }
-        const usage = isRecord(body) && isRecord(body.usage) ? body.usage : {};
-        return {
-          content: providerContent,
-          usage: openAICompatibleUsage(config.modelName!, usage),
-        };
-      } catch (error) {
-        if (error instanceof RichTextPolishProviderError) throw error;
-        if (error instanceof DOMException && error.name === "AbortError") {
-          throw new RichTextPolishProviderError(
-            "Provider request timed out",
-            "provider_timeout",
-          );
-        }
-        throw new RichTextPolishProviderError(
-          error instanceof Error ? error.message : "Provider request failed",
-          "dependency_unavailable",
-        );
-      } finally {
-        clearTimeout(timeout);
-      }
-    },
-    async *stream({ prompt }) {
-      const controller = new AbortController();
-      const timeout = setTimeout(
-        () => controller.abort(),
-        config.modelTimeoutMs,
-      );
-      try {
-        const response = await fetchFn(
-          joinUrl(config.modelBaseUrl!, "/chat/completions"),
-          {
-            method: "POST",
-            headers: {
-              authorization: `Bearer ${config.modelApiKey}`,
-              "content-type": "application/json",
-            },
-            body: JSON.stringify({
-              model: config.modelName,
-              response_format: { type: "json_object" },
-              thinking: { type: "disabled" },
-              stream: true,
-              messages: openAICompatibleMessages(prompt),
-            }),
-            signal: controller.signal,
-          },
-        );
-        if (!response.ok) {
-          throw new RichTextPolishProviderError(
-            `Provider request failed with ${response.status}`,
-            "dependency_unavailable",
-          );
-        }
-        if (!response.body) {
-          throw new RichTextPolishProviderError(
-            "Provider stream response body is empty",
-            "dependency_unavailable",
-          );
-        }
-
-        let usage = openAICompatibleUsage(config.modelName!, {});
-        for await (const part of readOpenAICompatibleStream(response.body)) {
-          if (part.delta) {
-            yield { type: "content_delta", delta: part.delta };
-          }
-          if (part.usage) {
-            usage = openAICompatibleUsage(config.modelName!, part.usage);
-          }
-        }
-
-        yield { type: "usage", usage };
-      } catch (error) {
-        if (error instanceof RichTextPolishProviderError) throw error;
-        if (error instanceof DOMException && error.name === "AbortError") {
-          throw new RichTextPolishProviderError(
-            "Provider request timed out",
-            "provider_timeout",
-          );
-        }
-        throw new RichTextPolishProviderError(
-          error instanceof Error ? error.message : "Provider request failed",
-          "dependency_unavailable",
-        );
-      } finally {
-        clearTimeout(timeout);
-      }
-    },
-  };
-}
-
 function decodeJsonStringPrefix(raw: string): string {
   let output = "";
 
@@ -1034,116 +917,6 @@ function decodeJsonStringPrefix(raw: string): string {
   }
 
   return output;
-}
-
-async function* readOpenAICompatibleStream(
-  body: ReadableStream<Uint8Array>,
-): AsyncIterable<{ delta?: string; usage?: Record<string, unknown> }> {
-  const reader = body.getReader();
-  const decoder = new TextDecoder();
-  let buffer = "";
-
-  try {
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      buffer += decoder.decode(value, { stream: true }).replace(/\r\n/g, "\n");
-
-      const parsed = shiftSseEvents(buffer);
-      buffer = parsed.rest;
-      for (const event of parsed.events) {
-        const part = parseOpenAICompatibleSseEvent(event);
-        if (part.done) return;
-        if (part.delta || part.usage) yield part;
-      }
-    }
-
-    buffer += decoder.decode().replace(/\r\n/g, "\n");
-    const parsed = shiftSseEvents(buffer);
-    for (const event of parsed.events) {
-      const part = parseOpenAICompatibleSseEvent(event);
-      if (part.done) return;
-      if (part.delta || part.usage) yield part;
-    }
-  } finally {
-    reader.releaseLock();
-  }
-}
-
-function shiftSseEvents(buffer: string): { events: string[]; rest: string } {
-  const events: string[] = [];
-  let rest = buffer;
-  let boundary = rest.indexOf("\n\n");
-
-  while (boundary !== -1) {
-    events.push(rest.slice(0, boundary));
-    rest = rest.slice(boundary + 2);
-    boundary = rest.indexOf("\n\n");
-  }
-
-  return { events, rest };
-}
-
-function parseOpenAICompatibleSseEvent(event: string): {
-  done: boolean;
-  delta?: string;
-  usage?: Record<string, unknown>;
-} {
-  const data = event
-    .split("\n")
-    .filter((line) => line.startsWith("data:"))
-    .map((line) => line.slice("data:".length).trimStart())
-    .join("\n")
-    .trim();
-  if (!data) return { done: false };
-  if (data === "[DONE]") return { done: true };
-
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(data);
-  } catch {
-    return { done: false };
-  }
-  if (!isRecord(parsed)) return { done: false };
-
-  const choice = Array.isArray(parsed.choices) ? parsed.choices[0] : undefined;
-  const delta =
-    isRecord(choice) &&
-    isRecord(choice.delta) &&
-    typeof choice.delta.content === "string"
-      ? choice.delta.content
-      : undefined;
-
-  return {
-    done: false,
-    ...(delta ? { delta } : {}),
-    ...(isRecord(parsed.usage) ? { usage: parsed.usage } : {}),
-  };
-}
-
-function openAICompatibleMessages(prompt: AgentMessagePrompt): Array<{
-  role: "system" | "user";
-  content: string;
-}> {
-  return [
-    {
-      role: "system",
-      content: `${prompt.system}\n\n开发者指令：\n${prompt.developer}`,
-    },
-    { role: "user", content: prompt.user },
-  ];
-}
-
-function openAICompatibleUsage(
-  model: string,
-  usage: Record<string, unknown>,
-): AgentMessageUsage {
-  return {
-    provider: "openai-compatible",
-    model,
-    inputTokens: numberOrZero(usage.prompt_tokens),
-    outputTokens: numberOrZero(usage.completion_tokens),
-  };
 }
 
 function validateWorkflowId(
@@ -1642,19 +1415,4 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function isFiniteNumber(value: unknown): value is number {
   return typeof value === "number" && Number.isFinite(value);
-}
-
-function extractOpenAICompatibleContent(body: unknown): string | null {
-  if (!isRecord(body) || !Array.isArray(body.choices)) return null;
-  const [choice] = body.choices;
-  if (!isRecord(choice) || !isRecord(choice.message)) return null;
-  return typeof choice.message.content === "string" ? choice.message.content : null;
-}
-
-function numberOrZero(value: unknown): number {
-  return typeof value === "number" && Number.isFinite(value) ? value : 0;
-}
-
-function joinUrl(baseUrl: string, path: string): string {
-  return `${baseUrl.replace(/\/+$/, "")}/${path.replace(/^\/+/, "")}`;
 }

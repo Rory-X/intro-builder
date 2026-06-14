@@ -4,6 +4,7 @@ import type { AuthenticatedAgentSession } from "../src/auth";
 import { loadConfig } from "../src/config";
 import type { AgentMessageRequest } from "../src/agent-messages";
 import {
+  buildAgentMessageGenerationTraceInput,
   buildAgentMessageTraceMetadata,
   createAgentObservability,
 } from "../src/observability";
@@ -82,6 +83,51 @@ describe("agent observability", () => {
         },
       ],
     });
+  });
+
+  it("builds safe generation trace input with Langfuse prompt metadata", () => {
+    const input = buildAgentMessageGenerationTraceInput({
+      modelName: "gpt-test",
+      provider: "ai-sdk/openai-compatible",
+      prompt: {
+        system: "系统提示",
+        developer: "开发者提示",
+        user: "用户提示",
+        metadata: {
+          source: "langfuse",
+          name: "intro-builder/agent-message",
+          label: "production",
+          version: 7,
+          isFallback: false,
+        },
+      },
+      captureRawPayloads: false,
+    });
+
+    expect(input).toEqual({
+      modelName: "gpt-test",
+      provider: "ai-sdk/openai-compatible",
+      prompt: {
+        name: "intro-builder/agent-message",
+        version: 7,
+        isFallback: false,
+      },
+      input: {
+        systemLength: 4,
+        developerLength: 5,
+        userLength: 4,
+      },
+      metadata: {
+        provider: "ai-sdk/openai-compatible",
+        captureRawPayloads: false,
+        promptSource: "langfuse",
+        promptName: "intro-builder/agent-message",
+        promptLabel: "production",
+        promptVersion: 7,
+        promptIsFallback: false,
+      },
+    });
+    expect(JSON.stringify(input)).not.toContain("用户提示");
   });
 });
 

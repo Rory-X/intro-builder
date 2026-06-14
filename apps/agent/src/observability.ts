@@ -11,6 +11,7 @@ import { NodeSDK } from "@opentelemetry/sdk-node";
 import type { AuthenticatedAgentSession } from "./auth.js";
 import type { AgentConfig } from "./config.js";
 import type {
+  AgentMessagePrompt,
   AgentMessageProviderRunResult,
   AgentMessageRequest,
   AgentMessageUsage,
@@ -52,11 +53,19 @@ export type AgentMessageTrace = {
 export type AgentMessageGenerationTraceInput = {
   modelName?: string;
   provider?: string;
-  prompt: {
-    system: string;
-    developer: string;
-    user: string;
+  prompt: AgentMessagePrompt;
+};
+
+export type SafeAgentMessageGenerationTraceInput = {
+  modelName?: string;
+  provider?: string;
+  prompt?: {
+    name: string;
+    version: number;
+    isFallback: boolean;
   };
+  input: Record<string, unknown> | AgentMessagePrompt;
+  metadata: Record<string, unknown>;
 };
 
 export type AgentObservability = {
@@ -313,16 +322,10 @@ class LangfuseAgentMessageTrace implements AgentMessageTrace {
   ): Promise<T> {
     const generation = this.observation.startObservation(
       "agent.message.provider",
-      {
-        input: this.config.langfuse.captureRawPayloads
-          ? input.prompt
-          : buildSafePromptInput(input.prompt),
-        model: input.modelName,
-        metadata: {
-          provider: input.provider ?? "openai-compatible",
-          captureRawPayloads: this.config.langfuse.captureRawPayloads,
-        },
-      },
+      buildAgentMessageGenerationTraceInput({
+        ...input,
+        captureRawPayloads: this.config.langfuse.captureRawPayloads,
+      }),
       { asType: "generation" },
     );
 
@@ -340,7 +343,9 @@ class LangfuseAgentMessageTrace implements AgentMessageTrace {
         model: providerResult?.usage.model ?? input.modelName,
         usageDetails: providerResult ? toLangfuseUsage(providerResult.usage) : undefined,
         metadata: {
+          ...buildPromptTraceMetadata(input.prompt),
           provider: providerResult?.usage.provider ?? input.provider,
+          captureRawPayloads: this.config.langfuse.captureRawPayloads,
         },
       });
       return result;
@@ -380,6 +385,53 @@ function buildSafePromptInput(
     systemLength: prompt.system.length,
     developerLength: prompt.developer.length,
     userLength: prompt.user.length,
+  };
+}
+
+export function buildAgentMessageGenerationTraceInput({
+  modelName,
+  provider,
+  prompt,
+  captureRawPayloads,
+}: AgentMessageGenerationTraceInput & {
+  captureRawPayloads: boolean;
+}): SafeAgentMessageGenerationTraceInput {
+  const promptMetadata = prompt.metadata;
+  return {
+    modelName,
+    provider,
+    ...(promptMetadata?.source === "langfuse"
+      ? {
+          prompt: {
+            name: promptMetadata.name,
+            version: promptMetadata.version,
+            isFallback: promptMetadata.isFallback,
+          },
+        }
+      : {}),
+    input: captureRawPayloads ? prompt : buildSafePromptInput(prompt),
+    metadata: {
+      ...buildPromptTraceMetadata(prompt),
+      provider: provider ?? "ai-sdk/openai-compatible",
+      captureRawPayloads,
+    },
+  };
+}
+
+function buildPromptTraceMetadata(
+  prompt: AgentMessagePrompt,
+): Record<string, unknown> {
+  const promptMetadata = prompt.metadata;
+  if (promptMetadata?.source !== "langfuse") {
+    return { promptSource: promptMetadata?.source ?? "local" };
+  }
+
+  return {
+    promptSource: "langfuse",
+    promptName: promptMetadata.name,
+    promptLabel: promptMetadata.label,
+    promptVersion: promptMetadata.version,
+    promptIsFallback: promptMetadata.isFallback,
   };
 }
 

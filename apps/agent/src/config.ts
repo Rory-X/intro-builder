@@ -27,6 +27,13 @@ export type AgentConfig = {
     timeoutSeconds: number;
     sampleRate: number;
     captureRawPayloads: boolean;
+    promptManagementEnabled: boolean;
+    agentMessagePromptName: string;
+    promptLabel: string;
+    promptCacheTtlSeconds: number;
+    promptFetchTimeoutMs: number;
+    agentMessageDatasetName?: string;
+    datasetFetchItemsPageSize: number;
   };
 };
 
@@ -41,6 +48,9 @@ export function loadConfig(env: Env = process.env): AgentConfig {
   const langfuseTracingRequested = parseBooleanEnv(
     env.LANGFUSE_TRACING_ENABLED,
     false,
+  );
+  const langfuseCredentialsConfigured = Boolean(
+    langfusePublicKey && langfuseSecretKey,
   );
 
   return {
@@ -96,7 +106,7 @@ export function loadConfig(env: Env = process.env): AgentConfig {
       { min: 1, max: 120_000 },
     ),
     langfuse: {
-      enabled: langfuseTracingRequested && Boolean(langfusePublicKey && langfuseSecretKey),
+      enabled: langfuseTracingRequested && langfuseCredentialsConfigured,
       publicKey: langfusePublicKey,
       secretKey: langfuseSecretKey,
       baseUrl: env.LANGFUSE_BASE_URL ?? "https://cloud.langfuse.com",
@@ -113,6 +123,34 @@ export function loadConfig(env: Env = process.env): AgentConfig {
         { min: 0, max: 1 },
       ),
       captureRawPayloads: parseBooleanEnv(env.LANGFUSE_CAPTURE_RAW_PAYLOADS, false),
+      promptManagementEnabled:
+        parseBooleanEnv(env.LANGFUSE_PROMPT_MANAGEMENT_ENABLED, false) &&
+        langfuseCredentialsConfigured,
+      agentMessagePromptName:
+        emptyToUndefined(env.LANGFUSE_AGENT_MESSAGE_PROMPT_NAME) ??
+        "intro-builder/agent-message",
+      promptLabel: emptyToUndefined(env.LANGFUSE_PROMPT_LABEL) ?? "production",
+      promptCacheTtlSeconds: parseIntegerEnv(
+        env.LANGFUSE_PROMPT_CACHE_TTL_SECONDS,
+        "LANGFUSE_PROMPT_CACHE_TTL_SECONDS",
+        300,
+        { min: 0, max: 86_400 },
+      ),
+      promptFetchTimeoutMs: parseIntegerEnv(
+        env.LANGFUSE_PROMPT_FETCH_TIMEOUT_MS,
+        "LANGFUSE_PROMPT_FETCH_TIMEOUT_MS",
+        5_000,
+        { min: 1, max: 120_000 },
+      ),
+      agentMessageDatasetName: emptyToUndefined(
+        env.LANGFUSE_AGENT_MESSAGE_DATASET_NAME,
+      ),
+      datasetFetchItemsPageSize: parseIntegerEnv(
+        env.LANGFUSE_DATASET_FETCH_ITEMS_PAGE_SIZE,
+        "LANGFUSE_DATASET_FETCH_ITEMS_PAGE_SIZE",
+        50,
+        { min: 1, max: 500 },
+      ),
     },
   };
 }

@@ -1912,7 +1912,7 @@ describe("agent HTTP service", () => {
         content: "我会使用你设置的模型继续。",
       },
       usage: {
-        provider: "openai-compatible",
+        provider: "ai-sdk/openai-compatible",
         model: "gpt-5-mini",
         inputTokens: 321,
         outputTokens: 45,

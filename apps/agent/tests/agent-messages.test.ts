@@ -3,7 +3,6 @@ import { describe, expect, it } from "vitest";
 
 import {
   buildAgentMessagePrompt,
-  createOpenAICompatibleAgentMessageProvider,
   extractStreamingAgentMessageContent,
   parseAgentMessageProviderResponse,
   toAgUiAgentEvents,
@@ -689,63 +688,6 @@ describe("agent messages", () => {
     );
     expect(extractStreamingAgentMessageContent('{"message":{"content":"')).toBe("");
     expect(extractStreamingAgentMessageContent('{"toolCalls":[{"input":{"content":"不要吐工具参数"}}]}')).toBe("");
-  });
-
-  it("streams raw provider JSON deltas from OpenAI-compatible chat completions", async () => {
-    const providerJson = JSON.stringify({
-      message: {
-        id: "msg_assistant_1",
-        role: "assistant",
-        content: "像 ChatGPT 一样逐字输出。",
-      },
-      toolCalls: [],
-      proposedOperations: [],
-    });
-    const fetchMock = async (_url: string | URL | Request, init?: RequestInit) => {
-      const requestBody = JSON.parse(String(init?.body));
-      expect(requestBody.stream).toBe(true);
-      return new Response(
-        [
-          `data: ${JSON.stringify({ choices: [{ delta: { content: providerJson.slice(0, 24) } }] })}\n\n`,
-          `data: ${JSON.stringify({ choices: [{ delta: { content: providerJson.slice(24) } }] })}\n\n`,
-          "data: [DONE]\n\n",
-        ].join(""),
-        {
-          status: 200,
-          headers: { "content-type": "text/event-stream" },
-        },
-      );
-    };
-    const provider = createOpenAICompatibleAgentMessageProvider(
-      agentConfig(),
-      fetchMock as unknown as typeof fetch,
-    );
-    if (!provider?.stream) throw new Error("expected streaming provider");
-
-    const chunks = [];
-    for await (const chunk of provider.stream({
-      request: validBody(),
-      prompt: buildAgentMessagePrompt(validBody()),
-      session: {
-        userId: "user_123",
-        resumeId: "resume_abc",
-        scope: "agent:chat",
-        jti: "jti_stream",
-        expiresAt: new Date("2026-06-08T08:02:00.000Z"),
-      },
-      requestId: "req_stream",
-    })) {
-      chunks.push(chunk);
-    }
-
-    expect(chunks.filter((chunk) => chunk.type === "content_delta").map((chunk) => chunk.delta).join("")).toBe(providerJson);
-    expect(chunks.at(-1)).toMatchObject({
-      type: "usage",
-      usage: {
-        provider: "openai-compatible",
-        model: "deepseek-chat",
-      },
-    });
   });
 
   it("outputs RUN_FINISHED with interrupt when proposedOperations are present", () => {

@@ -1,8 +1,7 @@
 import { LangfuseClient } from "@langfuse/client";
 
 import { loadConfig } from "../config.js";
-import { loadAgentMessageEvalCases } from "./agent-message-contract-eval.js";
-import { runLangfuseAgentMessageExperiment } from "./langfuse-agent-message-experiment.js";
+import { runLangfuseAgentMessageDatasetExperiment } from "./langfuse-agent-message-experiment.js";
 
 const config = loadConfig();
 const publicKey = config.langfuse.publicKey;
@@ -15,16 +14,23 @@ if (!publicKey || !secretKey) {
   process.exit(0);
 }
 
+if (!config.langfuse.agentMessageDatasetName) {
+  console.error(
+    "LANGFUSE_AGENT_MESSAGE_DATASET_NAME is required for dataset-backed Agent evals.",
+  );
+  process.exit(1);
+}
+
 const client = new LangfuseClient({
   publicKey,
   secretKey,
   baseUrl: config.langfuse.baseUrl,
   timeout: config.langfuse.timeoutSeconds,
 });
-const cases = await loadAgentMessageEvalCases();
-const result = await runLangfuseAgentMessageExperiment({
+const result = await runLangfuseAgentMessageDatasetExperiment({
   client,
-  cases,
+  datasetName: config.langfuse.agentMessageDatasetName,
+  fetchItemsPageSize: config.langfuse.datasetFetchItemsPageSize,
   runName:
     process.env.LANGFUSE_EXPERIMENT_RUN_NAME ??
     `agent-message-contract-${new Date().toISOString()}`,

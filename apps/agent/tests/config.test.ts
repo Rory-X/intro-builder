@@ -35,6 +35,13 @@ describe("agent config", () => {
         timeoutSeconds: 5,
         sampleRate: 1,
         captureRawPayloads: false,
+        promptManagementEnabled: false,
+        agentMessagePromptName: "intro-builder/agent-message",
+        promptLabel: "production",
+        promptCacheTtlSeconds: 300,
+        promptFetchTimeoutMs: 5000,
+        agentMessageDatasetName: undefined,
+        datasetFetchItemsPageSize: 50,
       },
     });
   });
@@ -68,6 +75,13 @@ describe("agent config", () => {
       LANGFUSE_TIMEOUT: "8",
       LANGFUSE_SAMPLE_RATE: "0.25",
       LANGFUSE_CAPTURE_RAW_PAYLOADS: "true",
+      LANGFUSE_PROMPT_MANAGEMENT_ENABLED: "true",
+      LANGFUSE_AGENT_MESSAGE_PROMPT_NAME: "intro-builder/agent-message-preview",
+      LANGFUSE_PROMPT_LABEL: "staging",
+      LANGFUSE_PROMPT_CACHE_TTL_SECONDS: "120",
+      LANGFUSE_PROMPT_FETCH_TIMEOUT_MS: "3000",
+      LANGFUSE_AGENT_MESSAGE_DATASET_NAME: "intro-builder/agent-message-contract",
+      LANGFUSE_DATASET_FETCH_ITEMS_PAGE_SIZE: "25",
     });
 
     expect(config).toMatchObject({
@@ -99,6 +113,13 @@ describe("agent config", () => {
         timeoutSeconds: 8,
         sampleRate: 0.25,
         captureRawPayloads: true,
+        promptManagementEnabled: true,
+        agentMessagePromptName: "intro-builder/agent-message-preview",
+        promptLabel: "staging",
+        promptCacheTtlSeconds: 120,
+        promptFetchTimeoutMs: 3000,
+        agentMessageDatasetName: "intro-builder/agent-message-contract",
+        datasetFetchItemsPageSize: 25,
       },
     });
   });
@@ -157,6 +178,18 @@ describe("agent config", () => {
 
     expect(() => loadConfig({ LANGFUSE_SAMPLE_RATE: "1.1" })).toThrow(
       /LANGFUSE_SAMPLE_RATE must be a number between 0 and 1/,
+    );
+
+    expect(() => loadConfig({ LANGFUSE_PROMPT_CACHE_TTL_SECONDS: "-1" })).toThrow(
+      /LANGFUSE_PROMPT_CACHE_TTL_SECONDS must be an integer between 0 and 86400/,
+    );
+
+    expect(() => loadConfig({ LANGFUSE_PROMPT_FETCH_TIMEOUT_MS: "0" })).toThrow(
+      /LANGFUSE_PROMPT_FETCH_TIMEOUT_MS must be an integer between 1 and 120000/,
+    );
+
+    expect(() => loadConfig({ LANGFUSE_DATASET_FETCH_ITEMS_PAGE_SIZE: "0" })).toThrow(
+      /LANGFUSE_DATASET_FETCH_ITEMS_PAGE_SIZE must be an integer between 1 and 500/,
     );
   });
 });
