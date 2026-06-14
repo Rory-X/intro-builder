@@ -30,6 +30,12 @@ import {
 } from "./prompts/agent-message-prompt-resolver.js";
 import { buildAgentContextStatus } from "./workflows/context-status.js";
 import {
+  assembleLoopResult,
+  createInitialLoopDraft,
+  createLoopModel,
+  runResumeLoop,
+} from "./workflows/loop-runtime.js";
+import {
   buildAiCacheKey,
   getAiCacheTtlSeconds,
   type AiCacheEntry,
@@ -445,6 +451,39 @@ async function routeRequest(
         error: "dependency_unavailable",
         message: "Agent message provider is not configured",
         dependency: "provider",
+      });
+    }
+
+    if (
+      config.loopEnabled &&
+      acceptsAgUiSse(request) &&
+      agentRequest.mode === "create_from_zero"
+    ) {
+      const loopModel = resolveLoopModel(agentRequest, config);
+      if (!loopModel) {
+        return sendError(response, 503, context, {
+          error: "dependency_unavailable",
+          message: "Agent message provider is not configured",
+          dependency: "provider",
+        });
+      }
+      return streamAgentLoopEvents({
+        response,
+        context,
+        request: agentRequest,
+        requestId: context.requestId,
+        threadId,
+        model: loopModel,
+        accept: headerValue(request.headers.accept),
+        recorder: createSessionRecorderForRequest({
+          sessionStore,
+          request: agentRequest,
+          session: auth.session,
+          requestId: context.requestId,
+          now,
+          initialSnapshot: storedSnapshot,
+          context,
+        }),
       });
     }
 
@@ -1464,6 +1503,132 @@ async function streamAgentMessageEvents({
         error instanceof RichTextPolishProviderError
           ? error.code
           : "dependency_unavailable",
+    });
+    await recorder?.close();
+    response.end();
+  }
+}
+
+function resolveLoopModel(
+  request: AgentMessageRequest,
+  config: AgentConfig,
+): ReturnType<typeof createLoopModel> | null {
+  const settings = request.modelConfig
+    ? {
+        baseUrl: request.modelConfig.baseUrl,
+        apiKey: request.modelConfig.apiKey,
+        modelName: request.modelConfig.modelName,
+      }
+    : config.modelBaseUrl && config.modelApiKey && config.modelName
+      ? {
+          baseUrl: config.modelBaseUrl,
+          apiKey: config.modelApiKey,
+          modelName: config.modelName,
+        }
+      : null;
+  return settings ? createLoopModel(settings) : null;
+}
+
+async function streamAgentLoopEvents({
+  response,
+  context,
+  request,
+  requestId,
+  threadId,
+  model,
+  accept,
+  recorder,
+}: {
+  response: ServerResponse;
+  context: RequestContext;
+  request: AgentMessageRequest;
+  requestId: string;
+  threadId: string;
+  model: ReturnType<typeof createLoopModel>;
+  accept?: string;
+  recorder?: AgentSessionRecorder | null;
+}): Promise<void> {
+  const encoder = new EventEncoder({ accept });
+  const messageId = `msg_${requestId}`;
+  let textStarted = false;
+
+  response.statusCode = 200;
+  response.setHeader("X-Request-Id", requestId);
+  applyCorsHeaders(response, context);
+  response.setHeader("Content-Type", encoder.getContentType());
+  response.setHeader("Cache-Control", "no-cache, no-transform");
+  response.flushHeaders();
+
+  const writeEvent = (event: BaseEvent) => {
+    recorder?.record(event);
+    response.write(encoder.encodeBinary(event));
+  };
+
+  writeEvent({ type: EventType.RUN_STARTED, threadId, runId: requestId });
+  writeEvent({
+    type: EventType.STATE_SNAPSHOT,
+    snapshot: {
+      contextStatus: request.sessionSnapshot?.contextStatus ?? null,
+      workspace: request.sessionSnapshot?.workspace ?? null,
+      workflow: request.sessionSnapshot?.workflow ?? {
+        workflowId: request.workflowId,
+        nodeId: "intake_goal",
+        loopCount: 0,
+        completedNodeIds: [],
+      },
+    },
+  });
+  const contextStatusEvents: BaseEvent[] = [];
+  appendAgUiContextStatusEvents(contextStatusEvents, {
+    messageId: `msg_context_${requestId}`,
+    status: buildAgentContextStatus(request),
+  });
+  for (const event of contextStatusEvents) {
+    writeEvent(event);
+  }
+
+  const ensureTextStarted = () => {
+    if (textStarted) return;
+    writeEvent({
+      type: EventType.TEXT_MESSAGE_START,
+      messageId,
+      role: "assistant",
+    });
+    textStarted = true;
+  };
+
+  const draft = createInitialLoopDraft(request);
+  try {
+    const { text } = await runResumeLoop({
+      model,
+      request,
+      draft,
+      onTextDelta: (delta) => {
+        ensureTextStarted();
+        writeEvent({ type: EventType.TEXT_MESSAGE_CONTENT, messageId, delta });
+      },
+    });
+    ensureTextStarted();
+
+    const result = assembleLoopResult({ draft, finalText: text, requestId });
+    for (const event of toStreamingRuntimeTailEvents({
+      requestId,
+      threadId,
+      request,
+      messageId,
+      result,
+    })) {
+      writeEvent(event);
+    }
+    await recorder?.close();
+    response.end();
+  } catch (error) {
+    writeEvent({
+      type: EventType.RUN_ERROR,
+      threadId,
+      runId: requestId,
+      message: error instanceof Error ? error.message : "Agent loop failed",
+      code: "dependency_unavailable",
     });
     await recorder?.close();
     response.end();
