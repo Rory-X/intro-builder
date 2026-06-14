@@ -24,6 +24,7 @@ env:
   AGENT_DEPLOY_PATH: ${{ vars.AGENT_DEPLOY_PATH || '/opt/intro-agent' }}
   AGENT_DOMAIN: ${{ vars.AGENT_DOMAIN || 'api.rory-x.me' }}
   AGENT_PUBLIC_BASE_PATH: ${{ vars.AGENT_PUBLIC_BASE_PATH || '/intro-builder/agent' }}
+  AGENT_CORS_ORIGINS: ${{ vars.AGENT_CORS_ORIGINS || 'https://intro-builder.vercel.app' }}
   AGENT_SSH_HOST: ${{ secrets.AGENT_SSH_HOST }}
   AGENT_SSH_PORT: ${{ secrets.AGENT_SSH_PORT || '22' }}
   AGENT_SSH_USER: ${{ secrets.AGENT_SSH_USER }}
@@ -172,7 +173,7 @@ jobs:
           agent_version="github-${GITHUB_SHA::12}"
 
           $ssh_cmd "$remote" \
-            "AGENT_DEPLOY_PATH='${AGENT_DEPLOY_PATH}' AGENT_DOMAIN='${AGENT_DOMAIN}' AGENT_PUBLIC_BASE_PATH='${AGENT_PUBLIC_BASE_PATH}' AGENT_VERSION='${agent_version}' AGENT_MODEL_TIMEOUT_MS='${AGENT_MODEL_TIMEOUT_MS}' AGENT_IMAGE='${AGENT_IMAGE}' bash -s" <<'REMOTE'
+            "AGENT_DEPLOY_PATH='${AGENT_DEPLOY_PATH}' AGENT_DOMAIN='${AGENT_DOMAIN}' AGENT_PUBLIC_BASE_PATH='${AGENT_PUBLIC_BASE_PATH}' AGENT_CORS_ORIGINS='${AGENT_CORS_ORIGINS}' AGENT_VERSION='${agent_version}' AGENT_MODEL_TIMEOUT_MS='${AGENT_MODEL_TIMEOUT_MS}' AGENT_IMAGE='${AGENT_IMAGE}' bash -s" <<'REMOTE'
           set -euo pipefail
 
           cd "$AGENT_DEPLOY_PATH/apps/agent"
@@ -203,6 +204,7 @@ jobs:
           upsert_env AGENT_SHUTDOWN_TIMEOUT_MS 10000
           upsert_env AGENT_SITE_ADDRESS "$AGENT_DOMAIN"
           upsert_env AGENT_PUBLIC_BASE_PATH "$AGENT_PUBLIC_BASE_PATH"
+          upsert_env AGENT_CORS_ORIGINS "$AGENT_CORS_ORIGINS"
           upsert_env REDIS_URL redis://redis:6379
           upsert_env AGENT_JWT_ISSUER intro-builder-web
           upsert_env AGENT_JWT_AUDIENCE intro-builder-agent

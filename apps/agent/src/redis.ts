@@ -15,6 +15,7 @@ export type RedisConnection = RedisReadyConnection & {
   get: (key: string) => Promise<string | null>;
   incr: (key: string) => Promise<number>;
   expire: (key: string, seconds: number) => Promise<unknown>;
+  rPush: (key: string, value: string | string[]) => Promise<number>;
   set: (
     key: string,
     value: string,

@@ -35,6 +35,15 @@ export type AgentModelConfig = {
   modelName: string;
 };
 
+export type AgentRunSessionContext = {
+  sessionId: string;
+  threadId: string;
+  resumeId: string | null;
+  mode: "optimize_existing" | "create_from_zero";
+  workflowId: AgentWorkflowId | null;
+  resumeTitle: string;
+};
+
 export type AgentMessageRequest = {
   resumeId: string | null;
   mode?: "optimize_existing" | "create_from_zero";
@@ -43,6 +52,7 @@ export type AgentMessageRequest = {
   messages: AgentChatMessage[];
   context: AgentResumeContext | null;
   modelConfig?: AgentModelConfig;
+  sessionContext?: AgentRunSessionContext;
   sessionSnapshot?: AgentSessionSnapshot;
 };
 

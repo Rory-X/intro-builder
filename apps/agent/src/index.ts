@@ -7,6 +7,7 @@ import {
   createRedisConnection,
   createRedisReplayStore,
 } from "./redis.js";
+import { createRedisAgentSessionStore } from "./session-store.js";
 import { createOpenAICompatibleRichTextPolishProvider } from "./rich-text-polish.js";
 import { createOpenAICompatibleResumeHelperProvider } from "./resume-helpers.js";
 import { createOpenAICompatibleAgentMessageProvider } from "./agent-messages.js";
@@ -29,6 +30,7 @@ const server = createAgentServer({
   }),
   rateLimitStore: redis,
   aiCacheStore: createRedisAiCacheStore(redis),
+  sessionStore: createRedisAgentSessionStore(redis),
   richTextPolishProvider: createOpenAICompatibleRichTextPolishProvider(config),
   resumeHelperProvider: createOpenAICompatibleResumeHelperProvider(config),
   agentMessageProvider:

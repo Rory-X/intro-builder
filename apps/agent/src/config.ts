@@ -13,6 +13,7 @@ export type AgentConfig = {
   jwtAudience: string;
   jwtSecret?: string;
   jwtReplayTtlSeconds: number;
+  corsOrigins: string[];
   modelBaseUrl?: string;
   modelApiKey?: string;
   modelName?: string;
@@ -96,6 +97,7 @@ export function loadConfig(env: Env = process.env): AgentConfig {
       180,
       { min: 1, max: 86_400 },
     ),
+    corsOrigins: parseListEnv(env.AGENT_CORS_ORIGINS),
     modelBaseUrl: env.AGENT_MODEL_BASE_URL,
     modelApiKey: env.AGENT_MODEL_API_KEY,
     modelName: env.AGENT_MODEL_NAME,
@@ -196,6 +198,14 @@ function parseNumberEnv(
 function parseBooleanEnv(value: string | undefined, fallback: boolean): boolean {
   if (value === undefined || value === "") return fallback;
   return ["1", "true", "yes", "on"].includes(value.toLowerCase());
+}
+
+function parseListEnv(value: string | undefined): string[] {
+  if (value === undefined || value.trim() === "") return [];
+  return value
+    .split(",")
+    .map((item) => item.trim())
+    .filter((item) => item !== "");
 }
 
 function emptyToUndefined(value: string | undefined): string | undefined {

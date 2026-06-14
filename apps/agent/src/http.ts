@@ -62,6 +62,13 @@ import {
   type ResumeHelperResult,
   type ResumeHelperUsage,
 } from "./resume-helpers.js";
+import {
+  agentRequestWithStoreSnapshot,
+  createAgentSessionRecorder,
+  deriveAgentSessionId,
+  type AgentSessionRecorder,
+  type AgentSessionStore,
+} from "./session-store.js";
 
 export type CreateAgentServerOptions = {
   config: AgentConfig;
@@ -76,12 +83,14 @@ export type CreateAgentServerOptions = {
   agentMessageProvider?: AgentMessageProvider;
   agentMessagePromptResolver?: AgentMessagePromptResolver;
   observability?: AgentObservability;
+  sessionStore?: AgentSessionStore;
   createRequestId?: () => string;
 };
 
 type HealthStatus = "ok" | "ready";
 type RequestContext = {
   requestId: string;
+  corsHeaders?: Record<string, string>;
 };
 type RichTextPolishCacheValue = RichTextPolishRunResult;
 type ResumeHelperCacheValue = {
@@ -110,6 +119,7 @@ export function createAgentServer({
   agentMessageProvider,
   agentMessagePromptResolver = createAgentMessagePromptResolver(config),
   observability = createAgentObservability(config),
+  sessionStore,
   createRequestId = defaultCreateRequestId,
 }: CreateAgentServerOptions): Server {
   return createServer((request, response) => {
@@ -128,6 +138,7 @@ export function createAgentServer({
       agentMessageProvider,
       agentMessagePromptResolver,
       observability,
+      sessionStore,
       createRequestId,
     ).catch((error: unknown) => {
       if (response.headersSent) {
@@ -161,13 +172,20 @@ async function routeRequest(
   agentMessageProvider: AgentMessageProvider | undefined,
   agentMessagePromptResolver: AgentMessagePromptResolver,
   observability: AgentObservability,
+  sessionStore: AgentSessionStore | undefined,
   createRequestId: () => string,
 ): Promise<void> {
-  const context = {
-    requestId: resolveRequestId(request, createRequestId),
-  };
   const method = request.method ?? "GET";
   const url = new URL(request.url ?? "/", "http://agent.local");
+  const corsHeaders = resolveCorsHeaders(request, config);
+  const context = {
+    requestId: resolveRequestId(request, createRequestId),
+    ...(corsHeaders ? { corsHeaders } : {}),
+  };
+
+  if (method === "OPTIONS" && url.pathname === "/v1/agent/messages") {
+    return sendCorsPreflight(response, context);
+  }
 
   if (url.pathname === "/health") {
     if (method !== "GET") return methodNotAllowed(response, context);
@@ -395,18 +413,29 @@ async function routeRequest(
       });
     }
 
-    const threadId = agentMessageThreadId(validation.request);
-    const cacheResumeId = agentMessageCacheResumeId(validation.request);
+    const storedSnapshot = await loadAgentSessionSnapshotForRequest({
+      sessionStore,
+      request: validation.request,
+      session: auth.session,
+      context,
+    });
+    const agentRequest = agentRequestWithStoreSnapshot(
+      validation.request,
+      storedSnapshot,
+    );
 
-    const requestModelName = validation.request.modelConfig?.modelName ?? config.modelName;
+    const threadId = agentMessageThreadId(agentRequest);
+    const cacheResumeId = agentMessageCacheResumeId(agentRequest);
+
+    const requestModelName = agentRequest.modelConfig?.modelName ?? config.modelName;
     const activeAgentMessageProvider =
-      validation.request.modelConfig
+      agentRequest.modelConfig
         ? createOpenAICompatibleAgentMessageProvider(
             {
               ...config,
-              modelBaseUrl: validation.request.modelConfig.baseUrl,
-              modelApiKey: validation.request.modelConfig.apiKey,
-              modelName: validation.request.modelConfig.modelName,
+              modelBaseUrl: agentRequest.modelConfig.baseUrl,
+              modelApiKey: agentRequest.modelConfig.apiKey,
+              modelName: agentRequest.modelConfig.modelName,
             },
           )
         : agentMessageProvider;
@@ -421,7 +450,7 @@ async function routeRequest(
 
     return observability.traceAgentMessageRun(
       {
-        request: validation.request,
+        request: agentRequest,
         session: auth.session,
         requestId: context.requestId,
         cacheStatus: "miss",
@@ -432,8 +461,8 @@ async function routeRequest(
           session: auth.session,
           resumeId: cacheResumeId,
           config,
-          input: safeAgentCacheInput(validation.request),
-          modelName: validation.request.modelConfig?.modelName,
+          input: safeAgentCacheInput(agentRequest),
+          modelName: agentRequest.modelConfig?.modelName,
         });
         const cached = await readAiCache<AgentMessageCacheValue>(
           aiCacheStore,
@@ -450,7 +479,7 @@ async function routeRequest(
               toAgUiAgentEvents({
                 requestId: context.requestId,
                 threadId,
-                request: validation.request,
+                request: agentRequest,
                 result: {
                   message: cached.value.message,
                   toolCalls: cached.value.toolCalls,
@@ -460,6 +489,15 @@ async function routeRequest(
               }),
               context,
               headerValue(request.headers.accept),
+              createSessionRecorderForRequest({
+                sessionStore,
+                request: agentRequest,
+                session: auth.session,
+                requestId: context.requestId,
+                now,
+                initialSnapshot: storedSnapshot,
+                context,
+              }),
             );
           }
 
@@ -516,7 +554,7 @@ async function routeRequest(
         }
 
         const prompt = await agentMessagePromptResolver.resolve({
-          ...validation.request,
+          ...agentRequest,
           requestId: context.requestId,
         });
 
@@ -524,8 +562,9 @@ async function routeRequest(
           if (acceptsAgUiSse(request) && activeAgentMessageProvider.stream) {
             return streamAgentMessageEvents({
               response,
+              context,
               provider: activeAgentMessageProvider,
-              request: validation.request,
+              request: agentRequest,
               prompt,
               session: auth.session,
               requestId: context.requestId,
@@ -535,6 +574,15 @@ async function routeRequest(
               accept: headerValue(request.headers.accept),
               trace,
               modelName: requestModelName,
+              recorder: createSessionRecorderForRequest({
+                sessionStore,
+                request: agentRequest,
+                session: auth.session,
+                requestId: context.requestId,
+                now,
+                initialSnapshot: storedSnapshot,
+                context,
+              }),
             });
           }
 
@@ -546,7 +594,7 @@ async function routeRequest(
             },
             () =>
               activeAgentMessageProvider.run({
-                request: validation.request,
+                request: agentRequest,
                 prompt,
                 session: auth.session,
                 requestId: context.requestId,
@@ -595,11 +643,20 @@ async function routeRequest(
               toAgUiAgentEvents({
                 requestId: context.requestId,
                 threadId,
-                request: validation.request,
+                request: agentRequest,
                 result: parsed.result,
               }),
               context,
               headerValue(request.headers.accept),
+              createSessionRecorderForRequest({
+                sessionStore,
+                request: agentRequest,
+                session: auth.session,
+                requestId: context.requestId,
+                now,
+                initialSnapshot: storedSnapshot,
+                context,
+              }),
             );
           }
 
@@ -869,17 +926,103 @@ function agentMessageRequestMatchesSession(
   request: AgentMessageRequest,
 ): boolean {
   if (request.resumeId === null) {
-    return session.resumeId === undefined;
+    if (session.resumeId !== undefined) return false;
+  } else if (session.resumeId !== request.resumeId) {
+    return false;
   }
-  return session.resumeId === request.resumeId;
+
+  const sessionContext = request.sessionContext;
+  if (!sessionContext) return true;
+  if (sessionContext.resumeId !== request.resumeId) return false;
+  if (sessionContext.mode !== (request.mode ?? "optimize_existing")) return false;
+  if (sessionContext.workflowId !== request.workflowId) return false;
+
+  return (
+    sessionContext.sessionId ===
+    deriveAgentSessionId({
+      resumeId: request.resumeId,
+      userId: session.userId,
+      threadId: sessionContext.threadId,
+    })
+  );
 }
 
 function agentMessageThreadId(request: AgentMessageRequest): string {
-  return request.resumeId ?? CREATE_FROM_ZERO_THREAD_ID;
+  return request.sessionContext?.threadId ?? request.resumeId ?? CREATE_FROM_ZERO_THREAD_ID;
 }
 
 function agentMessageCacheResumeId(request: AgentMessageRequest): string {
-  return request.resumeId ?? CREATE_FROM_ZERO_THREAD_ID;
+  return request.sessionContext?.sessionId ?? request.resumeId ?? CREATE_FROM_ZERO_THREAD_ID;
+}
+
+async function loadAgentSessionSnapshotForRequest({
+  sessionStore,
+  request,
+  session,
+  context,
+}: {
+  sessionStore: AgentSessionStore | undefined;
+  request: AgentMessageRequest;
+  session: AuthenticatedAgentSession;
+  context: RequestContext;
+}) {
+  if (!sessionStore || !request.sessionContext) return null;
+  try {
+    return await sessionStore.loadSnapshot({
+      session,
+      context: request.sessionContext,
+    });
+  } catch (error) {
+    console.warn(
+      JSON.stringify({
+        level: "warn",
+        event: "agent_session_snapshot_load_failed",
+        requestId: context.requestId,
+        sessionId: request.sessionContext.sessionId,
+        message: error instanceof Error ? error.message : "Unknown error",
+      }),
+    );
+    return null;
+  }
+}
+
+function createSessionRecorderForRequest({
+  sessionStore,
+  request,
+  session,
+  requestId,
+  now,
+  initialSnapshot,
+  context,
+}: {
+  sessionStore: AgentSessionStore | undefined;
+  request: AgentMessageRequest;
+  session: AuthenticatedAgentSession;
+  requestId: string;
+  now: () => Date;
+  initialSnapshot: Awaited<ReturnType<typeof loadAgentSessionSnapshotForRequest>>;
+  context: RequestContext;
+}): AgentSessionRecorder | null {
+  if (!sessionStore || !request.sessionContext) return null;
+  return createAgentSessionRecorder({
+    store: sessionStore,
+    session,
+    context: request.sessionContext,
+    runId: requestId,
+    now,
+    initialSnapshot,
+    onError: (error) => {
+      console.warn(
+        JSON.stringify({
+          level: "warn",
+          event: "agent_session_persist_failed",
+          requestId: context.requestId,
+          sessionId: request.sessionContext?.sessionId,
+          message: error instanceof Error ? error.message : "Unknown error",
+        }),
+      );
+    },
+  });
 }
 
 function safeAgentCacheInput(request: AgentMessageRequest): unknown {
@@ -1015,6 +1158,43 @@ function sendError(
   );
 }
 
+function sendCorsPreflight(
+  response: ServerResponse,
+  context: RequestContext,
+): void {
+  response.statusCode = context.corsHeaders ? 204 : 403;
+  response.setHeader("X-Request-Id", context.requestId);
+  applyCorsHeaders(response, context);
+  response.setHeader("Content-Length", "0");
+  response.end();
+}
+
+function resolveCorsHeaders(
+  request: IncomingMessage,
+  config: AgentConfig,
+): Record<string, string> | null {
+  const origin = headerValue(request.headers.origin);
+  if (!origin || !config.corsOrigins.includes(origin)) return null;
+  return {
+    "Access-Control-Allow-Origin": origin,
+    "Access-Control-Allow-Methods": "POST, OPTIONS",
+    "Access-Control-Allow-Headers":
+      "authorization,content-type,accept,x-request-id",
+    "Access-Control-Max-Age": "600",
+    Vary: "Origin",
+  };
+}
+
+function applyCorsHeaders(
+  response: ServerResponse,
+  context: RequestContext,
+): void {
+  if (!context.corsHeaders) return;
+  for (const [key, value] of Object.entries(context.corsHeaders)) {
+    response.setHeader(key, value);
+  }
+}
+
 function logAuthFailure(
   auth: {
     statusCode: number;
@@ -1055,6 +1235,7 @@ function sendJson(
 
   response.statusCode = statusCode;
   response.setHeader("X-Request-Id", context.requestId);
+  applyCorsHeaders(response, context);
   response.setHeader("Content-Type", "application/json; charset=utf-8");
   response.setHeader("Content-Length", Buffer.byteLength(payload));
   response.end(payload);
@@ -1065,26 +1246,31 @@ async function sendAgUiEvents(
   events: BaseEvent[],
   context: RequestContext,
   accept?: string,
+  recorder?: AgentSessionRecorder | null,
 ): Promise<void> {
   const encoder = new EventEncoder({ accept });
 
   response.statusCode = 200;
   response.setHeader("X-Request-Id", context.requestId);
+  applyCorsHeaders(response, context);
   response.setHeader("Content-Type", encoder.getContentType());
   response.setHeader("Cache-Control", "no-cache, no-transform");
   response.flushHeaders();
 
   for (const event of events) {
+    recorder?.record(event);
     response.write(encoder.encodeBinary(event));
     if (event.type === EventType.TEXT_MESSAGE_CONTENT) {
       await delay(12);
     }
   }
+  await recorder?.close();
   response.end();
 }
 
 async function streamAgentMessageEvents({
   response,
+  context,
   provider,
   request,
   prompt,
@@ -1096,8 +1282,10 @@ async function streamAgentMessageEvents({
   accept,
   trace,
   modelName,
+  recorder,
 }: {
   response: ServerResponse;
+  context: RequestContext;
   provider: AgentMessageProvider;
   request: AgentMessageRequest;
   prompt: AgentMessagePrompt;
@@ -1109,6 +1297,7 @@ async function streamAgentMessageEvents({
   accept?: string;
   trace: AgentMessageTrace;
   modelName?: string;
+  recorder?: AgentSessionRecorder | null;
 }): Promise<void> {
   const encoder = new EventEncoder({ accept });
   const threadId = agentMessageThreadId(request);
@@ -1125,11 +1314,13 @@ async function streamAgentMessageEvents({
 
   response.statusCode = 200;
   response.setHeader("X-Request-Id", requestId);
+  applyCorsHeaders(response, context);
   response.setHeader("Content-Type", encoder.getContentType());
   response.setHeader("Cache-Control", "no-cache, no-transform");
   response.flushHeaders();
 
   const writeEvent = (event: BaseEvent) => {
+    recorder?.record(event);
     response.write(encoder.encodeBinary(event));
   };
 
@@ -1211,6 +1402,7 @@ async function streamAgentMessageEvents({
         message: parsed.message,
         code: "dependency_unavailable",
       });
+      await recorder?.close();
       response.end();
       return;
     }
@@ -1254,6 +1446,7 @@ async function streamAgentMessageEvents({
     })) {
       writeEvent(event);
     }
+    await recorder?.close();
     response.end();
   } catch (error) {
     trace.recordRunOutput({
@@ -1270,6 +1463,7 @@ async function streamAgentMessageEvents({
           ? error.code
           : "dependency_unavailable",
     });
+    await recorder?.close();
     response.end();
   }
 }

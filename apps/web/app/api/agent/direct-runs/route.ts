@@ -3,18 +3,15 @@ import { RunAgentInputSchema } from "@ag-ui/core";
 
 import { db } from "@/db";
 import { resumes } from "@/db/schema";
-import {
-  AgentClientError,
-  createAgentClient,
-} from "@/lib/agent/client";
 import { mapAgUiRunToAgentMessageRequest } from "@/lib/agent/ag-ui-run-adapter";
 import { createAgentRunSessionContext } from "@/lib/agent/run-session";
 import { signAgentToken } from "@/lib/agent/token";
 import { currentUserId } from "@/lib/auth-helpers";
 
+const DEFAULT_AGENT_PUBLIC_BASE_URL = "http://127.0.0.1:8787";
+
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
-export const maxDuration = 120;
 
 export async function POST(req: Request) {
   const userId = await currentUserId();
@@ -48,53 +45,43 @@ export async function POST(req: Request) {
     resumeTitle = "从 0 创建简历";
   }
 
-  try {
-    const sessionContext = createAgentRunSessionContext({
-      resumeId: mapped.request.resumeId,
-      userId,
-      threadId: parsed.input.threadId,
-      mode: mapped.request.mode ?? "optimize_existing",
-      workflowId: mapped.request.workflowId,
-      resumeTitle,
-    });
-    const signed = await signAgentToken({
-      userId,
-      ...(mapped.request.resumeId ? { resumeId: mapped.request.resumeId } : {}),
-      scope: "agent:chat",
-    });
-    const result = await createAgentClient().streamAgentMessage({
-      token: signed.token,
-      request: {
-        ...mapped.request,
-        sessionContext,
-      },
-    });
+  const sessionContext = createAgentRunSessionContext({
+    resumeId: mapped.request.resumeId,
+    userId,
+    threadId: parsed.input.threadId,
+    mode: mapped.request.mode ?? "optimize_existing",
+    workflowId: mapped.request.workflowId,
+    resumeTitle,
+  });
+  const signed = await signAgentToken({
+    userId,
+    ...(mapped.request.resumeId ? { resumeId: mapped.request.resumeId } : {}),
+    scope: "agent:chat",
+  });
 
-    return new Response(result.data.body, {
-      status: 200,
-      headers: {
-        "content-type": result.data.contentType,
-        "cache-control": "no-cache, no-transform",
-        "x-request-id": result.requestId,
-        "x-agent-token-expires-at": signed.expiresAt.toISOString(),
-      },
-    });
-  } catch (error) {
-    if (error instanceof AgentClientError) {
-      return Response.json(
-        {
-          error: "Agent 服务暂不可用",
-          code: error.error,
-          requestId: error.requestId,
-          retryAfterSeconds: error.retryAfterSeconds,
-        },
-        { status: error.statusCode },
-      );
-    }
+  return Response.json({
+    status: "ok",
+    streamUrl: joinUrl(resolveAgentPublicBaseUrl(), "/v1/agent/messages"),
+    token: signed.token,
+    tokenExpiresAt: signed.expiresAt.toISOString(),
+    request: {
+      ...mapped.request,
+      sessionContext,
+    },
+  });
+}
 
-    console.error("[agent-runs] route failed:", error);
-    return Response.json({ error: "Agent 服务暂不可用" }, { status: 503 });
-  }
+function resolveAgentPublicBaseUrl(): string {
+  return (
+    process.env.AGENT_PUBLIC_BASE_URL ??
+    process.env.NEXT_PUBLIC_AGENT_BASE_URL ??
+    process.env.AGENT_BASE_URL ??
+    DEFAULT_AGENT_PUBLIC_BASE_URL
+  );
+}
+
+function joinUrl(baseUrl: string, path: string): string {
+  return `${baseUrl.replace(/\/+$/, "")}/${path.replace(/^\/+/, "")}`;
 }
 
 async function readAgUiRun(

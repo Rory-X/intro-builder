@@ -80,6 +80,7 @@ AGENT_VERSION=<set by deploy>
 AGENT_SHUTDOWN_TIMEOUT_MS=10000
 AGENT_SITE_ADDRESS=api.rory-x.me
 AGENT_PUBLIC_BASE_PATH=/intro-builder/agent
+AGENT_CORS_ORIGINS=https://intro-builder.vercel.app
 REDIS_URL=redis://redis:6379
 AGENT_JWT_ISSUER=intro-builder-web
 AGENT_JWT_AUDIENCE=intro-builder-agent
@@ -209,8 +210,8 @@ docker compose exec -T agent node -e 'fetch("http://127.0.0.1:8787/health").then
 
 After the 2026-06-06 domain change, verified:
 
-- GitHub Variables: `AGENT_DOMAIN=api.rory-x.me`, `AGENT_PUBLIC_BASE_PATH=/intro-builder/agent`.
-- Server `.env`: `AGENT_SITE_ADDRESS=api.rory-x.me`, `AGENT_PUBLIC_BASE_PATH=/intro-builder/agent`.
+- GitHub Variables: `AGENT_DOMAIN=api.rory-x.me`, `AGENT_PUBLIC_BASE_PATH=/intro-builder/agent`, `AGENT_CORS_ORIGINS=https://intro-builder.vercel.app`.
+- Server `.env`: `AGENT_SITE_ADDRESS=api.rory-x.me`, `AGENT_PUBLIC_BASE_PATH=/intro-builder/agent`, `AGENT_CORS_ORIGINS=https://intro-builder.vercel.app`.
 - `pnpm verify` passes locally after the domain/path change.
 - `docker compose ps`: `agent`, `caddy`, and `redis` are running.
 - Direct Agent `/health` and `/ready` inside the server return `200`.

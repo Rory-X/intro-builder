@@ -28,6 +28,7 @@ import {
   type AgUiResumeWorkspace,
   type AgUiResumeToolResult,
 } from "@/lib/agent/ag-ui-stream";
+import { fetchDirectAgentRunStream } from "@/lib/agent/direct-run-client";
 import type {
   AgentResumeContext,
   AgentResumeSessionMode,
@@ -196,7 +197,10 @@ class IntroBuilderHttpAgent extends HttpAgent {
     onInterrupts: (interrupts: AgentAgUiInterrupt[]) => void;
   }) {
     const observeFetch: HttpAgentFetchFn = async (requestUrl, requestInit) => {
-      const response = await fetch(requestUrl, requestInit).catch((error) => {
+      const response = await fetchDirectAgentRunStream({
+        requestUrl,
+        requestInit,
+      }).catch((error) => {
         if (isAbortError(error)) {
           return buildCancelledRunResponse(requestInit.body);
         }

@@ -96,6 +96,15 @@ export type AgentSessionSnapshot = {
   updatedAt: string;
 };
 
+export type AgentRunSessionContext = {
+  sessionId: string;
+  threadId: string;
+  resumeId: string | null;
+  mode: AgentResumeSessionMode;
+  workflowId: AgentWorkflowId | null;
+  resumeTitle: string;
+};
+
 export type AgentMessageRequest = {
   requestId?: string;
   resumeId: string | null;
@@ -104,6 +113,7 @@ export type AgentMessageRequest = {
   workflowId: AgentWorkflowId | null;
   messages: AgentChatMessage[];
   modelConfig?: AgentModelConfig;
+  sessionContext?: AgentRunSessionContext;
   sessionSnapshot?: AgentSessionSnapshot;
   context: {
     resumeTitle: string;
@@ -282,6 +292,12 @@ export function validateAgentMessageRequest(
 
   const sessionSnapshot = validateSessionSnapshot(body.sessionSnapshot, resumeId);
   if (!sessionSnapshot.ok) return sessionSnapshot;
+  const sessionContext = validateSessionContext(body.sessionContext, {
+    resumeId,
+    mode: mode.value,
+    workflowId: workflowId.value,
+  });
+  if (!sessionContext.ok) return sessionContext;
 
   return {
     ok: true,
@@ -292,6 +308,9 @@ export function validateAgentMessageRequest(
       workflowId: workflowId.value,
       messages: messages.value,
       ...(modelConfig.value ? { modelConfig: modelConfig.value } : {}),
+      ...(sessionContext.value
+        ? { sessionContext: sessionContext.value }
+        : {}),
       ...(sessionSnapshot.value
         ? { sessionSnapshot: sessionSnapshot.value }
         : {}),
@@ -1133,6 +1152,61 @@ function validateSessionSnapshot(
     return badRequest("sessionSnapshot is invalid");
   }
   return { ok: true, value };
+}
+
+function validateSessionContext(
+  value: unknown,
+  expected: {
+    resumeId: string | null;
+    mode: AgentResumeSessionMode;
+    workflowId: AgentWorkflowId | null;
+  },
+):
+  | { ok: true; value: AgentRunSessionContext | undefined }
+  | AgentMessageValidationFailure {
+  if (value === undefined || value === null) {
+    return { ok: true, value: undefined };
+  }
+  if (!isRecord(value)) return badRequest("sessionContext is invalid");
+
+  const sessionId = requiredString(value.sessionId, "sessionContext.sessionId");
+  if (!sessionId.ok) return sessionId;
+  const threadId = requiredString(value.threadId, "sessionContext.threadId");
+  if (!threadId.ok) return threadId;
+  const resumeTitle = requiredString(
+    value.resumeTitle,
+    "sessionContext.resumeTitle",
+  );
+  if (!resumeTitle.ok) return resumeTitle;
+  const mode = validateSessionMode(value.mode);
+  if (!mode.ok) return mode;
+  const workflowId = validateWorkflowId(value.workflowId);
+  if (!workflowId.ok) return workflowId;
+
+  const resumeId =
+    value.resumeId === null
+      ? null
+      : typeof value.resumeId === "string" && value.resumeId.trim() !== ""
+        ? value.resumeId.trim()
+        : undefined;
+  if (resumeId === undefined) return badRequest("sessionContext.resumeId is invalid");
+  if (resumeId !== expected.resumeId) return badRequest("sessionContext is invalid");
+  if (mode.value !== expected.mode) return badRequest("sessionContext is invalid");
+  if (workflowId.value !== expected.workflowId) {
+    return badRequest("sessionContext is invalid");
+  }
+
+  return {
+    ok: true,
+    value: {
+      sessionId: sessionId.value,
+      threadId: threadId.value,
+      resumeId,
+      mode: mode.value,
+      workflowId: workflowId.value,
+      resumeTitle: resumeTitle.value,
+    },
+  };
 }
 
 function validateContext(

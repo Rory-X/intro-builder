@@ -19,6 +19,11 @@ import type {
 } from "../src/observability";
 import type { RichTextPolishProvider } from "../src/rich-text-polish";
 import type { ResumeHelperProvider } from "../src/resume-helpers";
+import type {
+  AgentSessionStore,
+  AppendAgentSessionEventsInput,
+  LoadAgentSessionSnapshotInput,
+} from "../src/session-store";
 
 type TestAgentServer = Server & {
   url: (path: string) => string;
@@ -1807,6 +1812,154 @@ describe("agent HTTP service", () => {
     });
   });
 
+  it("allows configured browser origins to preflight direct Agent message streams", async () => {
+    const server = await listenOnRandomPort({
+      corsOrigins: ["http://localhost:3000"],
+    });
+
+    const response = await fetch(server.url("/v1/agent/messages"), {
+      method: "OPTIONS",
+      headers: {
+        origin: "http://localhost:3000",
+        "access-control-request-method": "POST",
+        "access-control-request-headers": "authorization,content-type,accept",
+      },
+    });
+
+    expect(response.status).toBe(204);
+    expect(response.headers.get("access-control-allow-origin")).toBe(
+      "http://localhost:3000",
+    );
+    expect(response.headers.get("access-control-allow-methods")).toContain(
+      "POST",
+    );
+    expect(response.headers.get("access-control-allow-headers")).toContain(
+      "authorization",
+    );
+    expect(response.headers.get("vary")).toContain("Origin");
+  });
+
+  it("persists direct Agent stream events and snapshots in the Agent session store", async () => {
+    const assistantContent = "我会先生成一条可预览的修改建议。";
+    const sessionStore = new FakeAgentSessionStore();
+    const provider = new FakeAgentMessageProvider(
+      JSON.stringify({
+        message: {
+          id: "msg_assistant_direct",
+          role: "assistant",
+          content: assistantContent,
+        },
+        toolCalls: [],
+        proposedOperations: [],
+      }),
+    );
+    const server = await listenOnRandomPort({
+      replayStore: new FakeReplayStore(),
+      agentMessageProvider: provider,
+      sessionStore,
+      corsOrigins: ["http://localhost:3000"],
+    });
+    const token = await signAgentToken({
+      sub: "user_123",
+      resumeId: "resume_abc",
+      scope: "agent:chat",
+      jti: "jti_agent_message_direct_persist",
+    });
+
+    const response = await fetch(server.url("/v1/agent/messages"), {
+      method: "POST",
+      headers: {
+        accept: "text/event-stream",
+        authorization: `Bearer ${token}`,
+        "content-type": "application/json",
+        origin: "http://localhost:3000",
+        "x-request-id": "req-client-agent-message-direct-persist",
+      },
+      body: JSON.stringify({
+        ...validAgentMessageBody(),
+        sessionContext: {
+          sessionId: "agent_session_resume_abc",
+          threadId: "resume_abc",
+          resumeId: "resume_abc",
+          mode: "optimize_existing",
+          workflowId: "resume-diagnose",
+          resumeTitle: "前端工程师",
+        },
+      }),
+    });
+    const events = parseSseEvents(await response.text());
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get("access-control-allow-origin")).toBe(
+      "http://localhost:3000",
+    );
+    expect(sessionStore.loadCalls).toEqual([
+      expect.objectContaining({
+        context: expect.objectContaining({
+          sessionId: "agent_session_resume_abc",
+          threadId: "resume_abc",
+        }),
+      }),
+    ]);
+    expect(sessionStore.appendedEvents.map((event) => event.type)).toEqual(
+      events.map((event) => event.type),
+    );
+    expect(sessionStore.snapshots.at(-1)).toEqual(
+      expect.objectContaining({
+        sessionId: "agent_session_resume_abc",
+        threadId: "resume_abc",
+        resumeId: "resume_abc",
+        status: "active",
+      }),
+    );
+  });
+
+  it("rejects direct Agent message requests with forged session ids", async () => {
+    const server = await listenOnRandomPort({
+      replayStore: new FakeReplayStore(),
+      agentMessageProvider: new FakeAgentMessageProvider("{}"),
+      sessionStore: new FakeAgentSessionStore(),
+      corsOrigins: ["http://localhost:3000"],
+    });
+    const token = await signAgentToken({
+      sub: "user_123",
+      resumeId: "resume_abc",
+      scope: "agent:chat",
+      jti: "jti_agent_message_forged_session",
+    });
+
+    const response = await fetch(server.url("/v1/agent/messages"), {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${token}`,
+        "content-type": "application/json",
+        origin: "http://localhost:3000",
+        "x-request-id": "req-client-agent-message-forged-session",
+      },
+      body: JSON.stringify({
+        ...validAgentMessageBody(),
+        sessionContext: {
+          sessionId: "agent_session_resume_other",
+          threadId: "resume_abc",
+          resumeId: "resume_abc",
+          mode: "optimize_existing",
+          workflowId: "resume-diagnose",
+          resumeTitle: "前端工程师",
+        },
+      }),
+    });
+
+    expect(response.status).toBe(403);
+    expect(response.headers.get("access-control-allow-origin")).toBe(
+      "http://localhost:3000",
+    );
+    await expect(response.json()).resolves.toEqual({
+      error: "forbidden",
+      message: "Token resumeId does not match request resumeId",
+      requestId: "req-client-agent-message-forged-session",
+    });
+  });
+
   it("returns dependency_unavailable when no Agent message provider is configured", async () => {
     const server = await listenOnRandomPort({
       replayStore: new FakeReplayStore(),
@@ -1990,10 +2143,12 @@ async function listenOnRandomPort(
   options: {
     redisReady?: () => Promise<{ ok: true } | { ok: false; message: string }>;
     replayStore?: AgentReplayStore;
+    corsOrigins?: string[];
     richTextPolishProvider?: RichTextPolishProvider;
     resumeHelperProvider?: ResumeHelperProvider;
     agentMessageProvider?: AgentMessageProvider;
     aiCacheStore?: AiCacheStore;
+    sessionStore?: AgentSessionStore;
     observability?: AgentObservability;
   } = {},
 ): Promise<TestAgentServer> {
@@ -2013,6 +2168,7 @@ async function listenOnRandomPort(
       jwtAudience: "intro-builder-agent",
       jwtSecret: "test-agent-secret",
       jwtReplayTtlSeconds: 180,
+      corsOrigins: options.corsOrigins ?? [],
       modelBaseUrl: undefined,
       modelApiKey: undefined,
       modelName: undefined,
@@ -2037,6 +2193,7 @@ async function listenOnRandomPort(
     resumeHelperProvider: options.resumeHelperProvider,
     agentMessageProvider: options.agentMessageProvider,
     aiCacheStore: options.aiCacheStore,
+    sessionStore: options.sessionStore,
     observability: options.observability,
     createRequestId: () => "req_test_1",
   });
@@ -2193,6 +2350,26 @@ class FakeAiCacheStore implements AiCacheStore {
     entry: AiCacheEntry<T>,
   ): Promise<void> {
     this.entries.set(key, entry as AiCacheEntry);
+  }
+}
+
+class FakeAgentSessionStore implements AgentSessionStore {
+  readonly loadCalls: LoadAgentSessionSnapshotInput[] = [];
+  readonly appendCalls: AppendAgentSessionEventsInput[] = [];
+  readonly appendedEvents: BaseEvent[] = [];
+  readonly snapshots: Array<AppendAgentSessionEventsInput["snapshot"]> = [];
+
+  async loadSnapshot(
+    input: LoadAgentSessionSnapshotInput,
+  ): Promise<null> {
+    this.loadCalls.push(input);
+    return null;
+  }
+
+  async appendEvents(input: AppendAgentSessionEventsInput): Promise<void> {
+    this.appendCalls.push(input);
+    this.appendedEvents.push(...input.events.map((event) => event.payload));
+    this.snapshots.push(input.snapshot);
   }
 }
 

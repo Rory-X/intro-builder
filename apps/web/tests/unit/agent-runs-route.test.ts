@@ -1,17 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { Mock } from "vitest";
 
-vi.mock("next/server", () => ({
-  after: vi.fn((callback: () => unknown) => {
-    void callback();
-  }),
-}));
 vi.mock("@/lib/auth-helpers", () => ({ currentUserId: vi.fn() }));
 vi.mock("@/lib/agent/token", () => ({ signAgentToken: vi.fn() }));
-vi.mock("@/lib/agent/session-store", () => ({
-  loadAgentSessionSnapshot: vi.fn(),
-  persistAgentRunStream: vi.fn(),
-}));
 vi.mock("@/lib/agent/client", () => ({
   AgentClientError: class AgentClientError extends Error {
     statusCode: number;
@@ -49,20 +40,14 @@ vi.mock("@/db", () => ({
 }));
 
 import { db } from "@/db";
-import { after } from "next/server";
 import { currentUserId } from "@/lib/auth-helpers";
 import { AgentClientError, createAgentClient } from "@/lib/agent/client";
-import {
-  loadAgentSessionSnapshot,
-  persistAgentRunStream,
-} from "@/lib/agent/session-store";
 import { signAgentToken } from "@/lib/agent/token";
 import { maxDuration, POST, runtime } from "@/app/api/agent/runs/route";
 
 describe("POST /api/agent/runs", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    (loadAgentSessionSnapshot as unknown as Mock).mockResolvedValue(null);
   });
 
   it("uses the Node runtime with an explicit long streaming duration", () => {
@@ -111,6 +96,14 @@ describe("POST /api/agent/runs", () => {
       request: expect.objectContaining({
         resumeId: "resume_abc",
         workflowId: "resume-diagnose",
+        sessionContext: {
+          sessionId: "agent_session_resume_abc",
+          threadId: "resume_abc",
+          resumeId: "resume_abc",
+          mode: "optimize_existing",
+          workflowId: "resume-diagnose",
+          resumeTitle: "前端工程师",
+        },
       }),
     });
     expect(response.headers.get("content-type")).toContain("text/event-stream");
@@ -119,7 +112,7 @@ describe("POST /api/agent/runs", () => {
     await expect(response.text()).resolves.toContain("RUN_STARTED");
   });
 
-  it("tees successful Agent streams into the durable session log without blocking the browser stream", async () => {
+  it("streams through the fallback BFF route without Web-side tee persistence", async () => {
     (currentUserId as unknown as Mock).mockResolvedValue("user_123");
     (db.query.resumes.findFirst as unknown as Mock).mockResolvedValue({
       id: "resume_abc",
@@ -129,9 +122,6 @@ describe("POST /api/agent/runs", () => {
       token: "signed-chat-token",
       expiresAt: new Date("2026-06-08T08:02:00.000Z"),
     });
-    (persistAgentRunStream as unknown as Mock).mockRejectedValue(
-      new Error("db unavailable"),
-    );
     const stream = new ReadableStream<Uint8Array>({
       start(controller) {
         controller.enqueue(
@@ -158,70 +148,13 @@ describe("POST /api/agent/runs", () => {
 
     expect(response.status).toBe(200);
     await expect(response.text()).resolves.toContain("RUN_FINISHED");
-    expect(persistAgentRunStream).toHaveBeenCalledWith({
-      body: expect.any(ReadableStream),
-      contentType: "text/event-stream",
-      runId: "req_agent_stream",
-      session: {
-        sessionId: "agent_session_resume_abc",
-        threadId: "resume_abc",
-        userId: "user_123",
-        resumeId: "resume_abc",
-        mode: "optimize_existing",
-        workflowId: "resume-diagnose",
-        resumeTitle: "前端工程师",
-      },
-    });
-    expect(after).toHaveBeenCalledWith(expect.any(Function));
-  });
-
-  it("forwards the durable Agent session snapshot into the next Agent run", async () => {
-    (currentUserId as unknown as Mock).mockResolvedValue("user_123");
-    (db.query.resumes.findFirst as unknown as Mock).mockResolvedValue({
-      id: "resume_abc",
-      title: "前端工程师",
-    });
-    (loadAgentSessionSnapshot as unknown as Mock).mockResolvedValue(
-      agentSessionSnapshot(),
-    );
-    (signAgentToken as unknown as Mock).mockResolvedValue({
-      token: "signed-chat-token",
-      expiresAt: new Date("2026-06-08T08:02:00.000Z"),
-    });
-    const stream = new ReadableStream<Uint8Array>({
-      start(controller) {
-        controller.enqueue(
-          new TextEncoder().encode('data: {"type":"RUN_STARTED"}\n\n'),
-        );
-        controller.close();
-      },
-    });
-    const streamAgentMessage = vi.fn().mockResolvedValue({
-      requestId: "req_agent_stream",
-      data: {
-        body: stream,
-        contentType: "text/event-stream",
-      },
-    });
-    (createAgentClient as unknown as Mock).mockReturnValue({
-      streamAgentMessage,
-    });
-
-    const response = await POST(runRequest(validRunInput()));
-
-    expect(response.status).toBe(200);
-    expect(loadAgentSessionSnapshot).toHaveBeenCalledWith({
-      sessionId: "agent_session_resume_abc",
-      userId: "user_123",
-      resumeId: "resume_abc",
-    });
     expect(streamAgentMessage).toHaveBeenCalledWith({
       token: "signed-chat-token",
       request: expect.objectContaining({
         resumeId: "resume_abc",
-        sessionSnapshot: expect.objectContaining({
+        sessionContext: expect.objectContaining({
           sessionId: "agent_session_resume_abc",
-          status: "waiting_user",
+          resumeTitle: "前端工程师",
         }),
       }),
     });
@@ -260,11 +193,6 @@ describe("POST /api/agent/runs", () => {
       userId: "user_123",
       scope: "agent:chat",
     });
-    expect(loadAgentSessionSnapshot).toHaveBeenCalledWith({
-      sessionId: expect.stringMatching(/^agent_session_create_from_zero_/),
-      userId: "user_123",
-      resumeId: null,
-    });
     expect(streamAgentMessage).toHaveBeenCalledWith({
       token: "signed-create-zero-token",
       request: expect.objectContaining({
@@ -272,23 +200,17 @@ describe("POST /api/agent/runs", () => {
         mode: "create_from_zero",
         workflowId: "create-from-zero",
         context: null,
+        sessionContext: expect.objectContaining({
+          sessionId: expect.stringMatching(/^agent_session_create_from_zero_/),
+          threadId: "agent_create_from_zero",
+          resumeId: null,
+          mode: "create_from_zero",
+          workflowId: "create-from-zero",
+          resumeTitle: "从 0 创建简历",
+        }),
       }),
     });
     await expect(response.text()).resolves.toContain("RUN_STARTED");
-    expect(persistAgentRunStream).toHaveBeenCalledWith({
-      body: expect.any(ReadableStream),
-      contentType: "text/event-stream",
-      runId: "req_agent_create_zero",
-      session: {
-        sessionId: expect.stringMatching(/^agent_session_create_from_zero_/),
-        threadId: "agent_create_from_zero",
-        userId: "user_123",
-        resumeId: null,
-        mode: "create_from_zero",
-        workflowId: "create-from-zero",
-        resumeTitle: "从 0 创建简历",
-      },
-    });
   });
 
   it("uses separate create-from-zero sessions for each user and AG-UI thread", async () => {
@@ -480,65 +402,10 @@ async function postCreateFromZeroRun({
 
   expect(response.status).toBe(200);
   await expect(response.text()).resolves.toContain("RUN_STARTED");
-  const call = (persistAgentRunStream as unknown as Mock).mock.calls.at(-1);
-  const session = call?.[0]?.session as { sessionId: string; threadId: string };
-  return session;
-}
-
-function agentSessionSnapshot() {
-  return {
-    sessionId: "agent_session_resume_abc",
-    threadId: "resume_abc",
-    resumeId: "resume_abc",
-    userIdHash: "sha256:user",
-    mode: "optimize_existing",
-    status: "waiting_user",
-    workflow: {
-      workflowId: "resume-diagnose",
-      nodeId: "intake_goal",
-      loopCount: 1,
-      completedNodeIds: [],
-    },
-    workspace: {
-      resumeId: "resume_abc",
-      mode: "optimize_existing",
-      goal: {
-        workflowId: "resume-diagnose",
-        resumeTitle: "前端工程师",
-        targetRole: "增长型前端工程师",
-        locale: "zh-CN",
-      },
-      facts: [],
-      draftResume: null,
-      changeSets: [],
-      decisions: [],
-      qualityReport: null,
-      updatedAt: "2026-06-12T08:45:00.000Z",
-    },
-    contextStatus: {
-      effectiveInputBudgetTokens: 200_000,
-      modelInputLimitTokens: 214_000,
-      reservedOutputTokens: 8_000,
-      reservedSystemTokens: 6_000,
-      usedInputTokens: 48_000,
-      utilization: 0.24,
-      status: "healthy",
-      policy: "full_context",
-      sources: [],
-      lastCompactionAt: null,
-      warnings: [],
-    },
-    pendingInterrupts: [
-      {
-        id: "question_target_role",
-        reason: "input_required",
-        message: "你这次主要投递哪个岗位？",
-        toolCallId: null,
-        metadata: { kind: "question" },
-      },
-    ],
-    lastResumeContentHash: null,
-    createdAt: "2026-06-12T08:30:00.000Z",
-    updatedAt: "2026-06-12T08:45:00.000Z",
+  const latestStreamAgentMessage = (createAgentClient as unknown as Mock).mock.results.at(-1)
+    ?.value.streamAgentMessage as Mock;
+  return latestStreamAgentMessage.mock.calls.at(-1)?.[0]?.request.sessionContext as {
+    sessionId: string;
+    threadId: string;
   };
 }
