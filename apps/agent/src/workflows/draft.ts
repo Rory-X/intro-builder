@@ -36,6 +36,59 @@ export type DraftState = {
 
 const PROFILE_FIELD_PATH = "basics.summary";
 
+/** Hard cap on distinct drafted fields per session (loop guardrail). */
+export const MAX_DRAFT_OPERATIONS = 24;
+
+/** Field paths whose resume value is TipTap JSON (everything except basics.summary). */
+function isTipTapContentField(fieldPath: string): boolean {
+  return (
+    fieldPath === "skills" ||
+    /^experience\.\d+\.content$/.test(fieldPath) ||
+    /^projects\.\d+\.content$/.test(fieldPath) ||
+    /^education\.\d+\.highlights$/.test(fieldPath) ||
+    /^research\.\d+\.content$/.test(fieldPath) ||
+    /^custom\.\d+\.content$/.test(fieldPath)
+  );
+}
+
+/** Convert plain text (with simple "- " bullets) into a TipTap doc so the
+ *  produced operation is directly applicable via the editor's TipTap path. */
+export function plainTextToTipTapDoc(text: string): {
+  type: "doc";
+  content: unknown[];
+} {
+  const lines = text.split(/\r?\n/).map((line) => line.trimEnd());
+  const bulletLines = lines.filter((line) => /^[-*]\s+/.test(line));
+  if (bulletLines.length > 0 && bulletLines.length === lines.filter(Boolean).length) {
+    return {
+      type: "doc",
+      content: [
+        {
+          type: "bulletList",
+          content: bulletLines.map((line) => ({
+            type: "listItem",
+            content: [
+              {
+                type: "paragraph",
+                content: [{ type: "text", text: line.replace(/^[-*]\s+/, "") }],
+              },
+            ],
+          })),
+        },
+      ],
+    };
+  }
+  return {
+    type: "doc",
+    content: lines
+      .filter((line) => line.length > 0)
+      .map((line) => ({
+        type: "paragraph",
+        content: [{ type: "text", text: line }],
+      })),
+  };
+}
+
 export function createDraft(input?: {
   title?: string;
   targetRole?: string | null;
@@ -92,6 +145,13 @@ export function upsertSection(
   if (!afterPlainText) {
     return { ok: false, message: "afterPlainText is required" };
   }
+  const isNewField = !draft.byFieldPath.has(fieldPath);
+  if (isNewField && draft.operations.length >= MAX_DRAFT_OPERATIONS) {
+    return {
+      ok: false,
+      message: `draft operation limit reached (${MAX_DRAFT_OPERATIONS})`,
+    };
+  }
   const label = input.label.trim() || sectionLabel(input.section);
   const toolCallId = input.toolCallId.trim() || `tool_${randomUUID()}`;
 
@@ -100,6 +160,13 @@ export function upsertSection(
     ? draft.operations.find((operation) => operation.id === previousOpId) ?? null
     : null;
   const isUpdate = previous !== null;
+
+  const replacementTiptapJson =
+    input.replacementTiptapJson !== undefined
+      ? input.replacementTiptapJson
+      : isTipTapContentField(fieldPath)
+        ? plainTextToTipTapDoc(afterPlainText)
+        : undefined;
 
   const operation: ResumeOperation = {
     id: `op_${randomUUID()}`,
@@ -111,9 +178,9 @@ export function upsertSection(
     // parseOperation requires non-empty strings; inserts have no prior text.
     beforePlainText: previous?.afterPlainText ?? "（空）",
     afterPlainText,
-    ...(input.replacementTiptapJson === undefined
+    ...(replacementTiptapJson === undefined
       ? {}
-      : { replacementTiptapJson: input.replacementTiptapJson }),
+      : { replacementTiptapJson }),
     changeSummary: input.changeSummary?.trim() || `${isUpdate ? "更新" : "新增"}${label}`,
     riskFlags: input.riskFlags ?? [],
   };

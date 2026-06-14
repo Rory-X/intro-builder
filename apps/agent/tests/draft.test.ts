@@ -2,9 +2,11 @@ import { describe, expect, it } from "vitest";
 
 import { validateAgentToolOutput } from "../src/agent-tools";
 import {
+  MAX_DRAFT_OPERATIONS,
   createDraft,
   draftSnapshot,
   draftToChangeSet,
+  plainTextToTipTapDoc,
   rehydrateDraft,
   setGoal,
   upsertSection,
@@ -192,5 +194,76 @@ describe("draft model", () => {
         proposedOperations: resumed.operations,
       }).ok,
     ).toBe(true);
+  });
+
+  it("attaches TipTap content for tiptap fields but not for basics.summary", () => {
+    const draft = createDraft();
+    upsertSection(draft, {
+      toolCallId: "call_1",
+      section: "summary",
+      fieldPath: "basics.summary",
+      label: "个人简介",
+      afterPlainText: "三年后端经验。",
+    });
+    upsertSection(draft, {
+      toolCallId: "call_2",
+      section: "experience",
+      fieldPath: "experience.0.content",
+      label: "工作经历",
+      afterPlainText: "- 主导订单系统 Go 重构\n- 把回滚从 15min 降到 90s",
+    });
+
+    const summaryOp = draft.operations.find((op) => op.fieldPath === "basics.summary")!;
+    const expOp = draft.operations.find((op) => op.fieldPath === "experience.0.content")!;
+    expect(summaryOp.replacementTiptapJson).toBeUndefined();
+    expect(expOp.replacementTiptapJson).toMatchObject({ type: "doc" });
+    // bullet lines become a bulletList
+    expect(JSON.stringify(expOp.replacementTiptapJson)).toContain("bulletList");
+  });
+
+  it("plainTextToTipTapDoc makes paragraphs and bullet lists", () => {
+    expect(plainTextToTipTapDoc("一行文本")).toMatchObject({
+      type: "doc",
+      content: [{ type: "paragraph" }],
+    });
+    const bullets = plainTextToTipTapDoc("- a\n- b");
+    expect(JSON.stringify(bullets)).toContain("bulletList");
+  });
+
+  it("enforces the draft operation cap on new fields but allows updates", () => {
+    const draft = createDraft();
+    // Fill up to the cap with distinct custom field paths.
+    for (let i = 0; i < MAX_DRAFT_OPERATIONS; i++) {
+      const result = upsertSection(draft, {
+        toolCallId: `call_${i}`,
+        section: "custom",
+        fieldPath: `custom.${i}.content`,
+        label: `自定义 ${i}`,
+        afterPlainText: `内容 ${i}`,
+      });
+      expect(result.ok).toBe(true);
+    }
+    expect(draft.operations).toHaveLength(MAX_DRAFT_OPERATIONS);
+
+    // A brand-new field is rejected past the cap...
+    const overflow = upsertSection(draft, {
+      toolCallId: "call_overflow",
+      section: "summary",
+      fieldPath: "basics.summary",
+      label: "个人简介",
+      afterPlainText: "溢出",
+    });
+    expect(overflow.ok).toBe(false);
+
+    // ...but updating an existing field still works.
+    const update = upsertSection(draft, {
+      toolCallId: "call_update",
+      section: "custom",
+      fieldPath: "custom.0.content",
+      label: "自定义 0",
+      afterPlainText: "更新后的内容",
+    });
+    expect(update.ok).toBe(true);
+    expect(draft.operations).toHaveLength(MAX_DRAFT_OPERATIONS);
   });
 });

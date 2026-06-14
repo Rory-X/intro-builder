@@ -442,7 +442,13 @@ export default function EditorClient({ id, initialTitle, initialTemplate, initia
   }
 
   function applyAgentOperation(operation: ResumeOperation) {
-    if (operation.operation === "update_section" && operation.fieldPath === "basics.summary") {
+    // The loop stages both inserts (new sections) and updates; both write the
+    // same resume fields, so treat them the same when applying to the form.
+    const isSectionWrite =
+      operation.operation === "update_section" ||
+      operation.operation === "insert_section";
+
+    if (isSectionWrite && operation.fieldPath === "basics.summary") {
       form.setValue("basics.summary", operation.afterPlainText, {
         shouldDirty: true,
         shouldValidate: true,
@@ -452,7 +458,7 @@ export default function EditorClient({ id, initialTitle, initialTemplate, initia
     }
 
     if (
-      operation.operation === "update_section" &&
+      isSectionWrite &&
       operation.replacementTiptapJson !== undefined &&
       isAllowedAgentTipTapFieldPath(operation.fieldPath)
     ) {
