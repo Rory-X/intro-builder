@@ -4,6 +4,7 @@ import { describe, expect, it, vi } from "vitest";
 import { loadConfig } from "../src/config";
 import {
   createAiSdkAgentMessageProvider,
+  toAiSdkTimeout,
   type AiSdkAgentMessageRuntime,
 } from "../src/providers/ai-sdk-agent-message-provider";
 import type { AgentMessagePrompt, AgentMessageRequest } from "../src/agent-messages";
@@ -110,6 +111,10 @@ describe("AI SDK agent message provider", () => {
 
   it("is undefined until model config is complete", () => {
     expect(createAiSdkAgentMessageProvider(loadConfig({}))).toBeUndefined();
+  });
+
+  it("uses an explicit total timeout configuration for AI SDK calls", () => {
+    expect(toAiSdkTimeout(30_000)).toEqual({ totalMs: 30_000 });
   });
 });
 

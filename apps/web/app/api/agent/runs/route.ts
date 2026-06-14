@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 
 import { and, eq } from "drizzle-orm";
 import { RunAgentInputSchema } from "@ag-ui/core";
+import { after } from "next/server";
 
 import { db } from "@/db";
 import { resumes } from "@/db/schema";
@@ -18,6 +19,8 @@ import { signAgentToken } from "@/lib/agent/token";
 import { currentUserId } from "@/lib/auth-helpers";
 
 export const dynamic = "force-dynamic";
+export const runtime = "nodejs";
+export const maxDuration = 120;
 
 export async function POST(req: Request) {
   const userId = await currentUserId();
@@ -52,10 +55,7 @@ export async function POST(req: Request) {
   }
 
   try {
-    const threadId = agentRunThreadId(
-      mapped.request.resumeId,
-      parsed.input.threadId,
-    );
+    const threadId = agentRunThreadId(parsed.input.threadId);
     const sessionId = agentRunSessionId({
       resumeId: mapped.request.resumeId,
       userId,
@@ -137,8 +137,8 @@ function agentRunSessionId({
   ].join("_");
 }
 
-function agentRunThreadId(resumeId: string | null, inputThreadId: string): string {
-  return resumeId ? inputThreadId : inputThreadId;
+function agentRunThreadId(inputThreadId: string): string {
+  return inputThreadId;
 }
 
 function hashIdPart(value: string): string {
@@ -165,9 +165,10 @@ function persistAgentRunStreamInBackground(
   input: Parameters<typeof persistAgentRunStream>[0],
 ) {
   try {
-    void Promise.resolve(persistAgentRunStream(input)).catch((error) => {
+    const persistence = Promise.resolve(persistAgentRunStream(input)).catch((error) => {
       console.error("[agent-runs] session persistence failed:", error);
     });
+    after(() => persistence);
   } catch (error) {
     console.error("[agent-runs] session persistence failed:", error);
   }

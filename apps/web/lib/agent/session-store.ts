@@ -43,6 +43,10 @@ export type LoadAgentSessionSnapshotInput = {
   resumeId: string | null;
 };
 
+type AgentSessionEventInsert = typeof agentSessionEvents.$inferInsert;
+
+const EVENT_INSERT_BATCH_SIZE = 25;
+
 export function createInitialAgentSessionSnapshot({
   sessionId,
   threadId,
@@ -184,9 +188,10 @@ export async function persistAgentRunStream({
   });
 
   let sequence = 0;
+  const eventBatch: AgentSessionEventInsert[] = [];
   for await (const event of readAgUiSseStream(response)) {
     sequence += 1;
-    await db.insert(agentSessionEvents).values({
+    eventBatch.push({
       id: randomUUID(),
       sessionId: snapshot.sessionId,
       runId,
@@ -194,10 +199,22 @@ export async function persistAgentRunStream({
       type: event.type,
       payloadJson: event as unknown as Record<string, unknown>,
     });
+    if (eventBatch.length >= EVENT_INSERT_BATCH_SIZE) {
+      await flushAgentSessionEventBatch(eventBatch);
+    }
     snapshot = reduceAgentSessionSnapshot(snapshot, event);
   }
 
+  await flushAgentSessionEventBatch(eventBatch);
   await upsertAgentSessionSnapshot({ snapshot, userId: session.userId });
+}
+
+async function flushAgentSessionEventBatch(
+  eventBatch: AgentSessionEventInsert[],
+): Promise<void> {
+  if (eventBatch.length === 0) return;
+  const values = eventBatch.splice(0, eventBatch.length);
+  await db.insert(agentSessionEvents).values(values);
 }
 
 async function ensureAgentSessionRow({

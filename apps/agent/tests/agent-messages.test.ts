@@ -104,6 +104,12 @@ describe("agent messages", () => {
     for (const baseUrl of [
       "http://127.0.0.1:11434/v1",
       "http://169.254.169.254/latest",
+      "https://169.254.169.254/latest",
+      "https://[::ffff:169.254.169.254]/latest",
+      "https://[::ffff:7f00:1]/v1",
+      "https://2130706433/v1",
+      "https://0x7f000001/v1",
+      "https://017700000001/v1",
       "file:///tmp/model",
       "not a url",
     ]) {

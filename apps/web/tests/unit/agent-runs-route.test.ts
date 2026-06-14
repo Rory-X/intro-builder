@@ -1,6 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { Mock } from "vitest";
 
+vi.mock("next/server", () => ({
+  after: vi.fn((callback: () => unknown) => {
+    void callback();
+  }),
+}));
 vi.mock("@/lib/auth-helpers", () => ({ currentUserId: vi.fn() }));
 vi.mock("@/lib/agent/token", () => ({ signAgentToken: vi.fn() }));
 vi.mock("@/lib/agent/session-store", () => ({
@@ -44,6 +49,7 @@ vi.mock("@/db", () => ({
 }));
 
 import { db } from "@/db";
+import { after } from "next/server";
 import { currentUserId } from "@/lib/auth-helpers";
 import { AgentClientError, createAgentClient } from "@/lib/agent/client";
 import {
@@ -51,12 +57,17 @@ import {
   persistAgentRunStream,
 } from "@/lib/agent/session-store";
 import { signAgentToken } from "@/lib/agent/token";
-import { POST } from "@/app/api/agent/runs/route";
+import { maxDuration, POST, runtime } from "@/app/api/agent/runs/route";
 
 describe("POST /api/agent/runs", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     (loadAgentSessionSnapshot as unknown as Mock).mockResolvedValue(null);
+  });
+
+  it("uses the Node runtime with an explicit long streaming duration", () => {
+    expect(runtime).toBe("nodejs");
+    expect(maxDuration).toBe(120);
   });
 
   it("maps AG-UI runs to Agent message streams through the Web BFF", async () => {
@@ -161,6 +172,7 @@ describe("POST /api/agent/runs", () => {
         resumeTitle: "前端工程师",
       },
     });
+    expect(after).toHaveBeenCalledWith(expect.any(Function));
   });
 
   it("forwards the durable Agent session snapshot into the next Agent run", async () => {

@@ -5,6 +5,7 @@ import {
   type LanguageModel,
   type LanguageModelUsage,
   type TelemetrySettings,
+  type TimeoutConfiguration,
 } from "ai";
 import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
 
@@ -161,7 +162,7 @@ function createDefaultAiSdkAgentMessageRuntime(
         system: options.system,
         messages: options.messages,
         allowSystemInMessages: false,
-        timeout: options.timeoutMs,
+        timeout: toAiSdkTimeout(options.timeoutMs),
         output: Output.json({ name: "agent_message_response" }),
         experimental_telemetry: options.telemetry,
       });
@@ -177,7 +178,7 @@ function createDefaultAiSdkAgentMessageRuntime(
         system: options.system,
         messages: options.messages,
         allowSystemInMessages: false,
-        timeout: options.timeoutMs,
+        timeout: toAiSdkTimeout(options.timeoutMs),
         output: Output.json({ name: "agent_message_response" }),
         experimental_telemetry: options.telemetry,
       });
@@ -188,6 +189,10 @@ function createDefaultAiSdkAgentMessageRuntime(
       };
     },
   };
+}
+
+export function toAiSdkTimeout(timeoutMs: number): TimeoutConfiguration {
+  return { totalMs: timeoutMs };
 }
 
 function buildAiSdkTelemetry(

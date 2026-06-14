@@ -1021,7 +1021,7 @@ function isSafeModelBaseUrl(value: string): boolean {
   if (!hostname) return false;
   if (isBlockedModelHostname(hostname)) return false;
 
-  const ipv4 = parseIpv4(hostname);
+  const ipv4 = parseIpv4(hostname) ?? parseIpv4MappedIpv6(hostname);
   if (ipv4 && isBlockedIpv4(ipv4)) return false;
   if (isBlockedIpv6(hostname)) return false;
 
@@ -1057,6 +1057,31 @@ function parseIpv4(hostname: string): number[] | null {
   });
 
   return octets.every(Number.isFinite) ? octets : null;
+}
+
+function parseIpv4MappedIpv6(hostname: string): number[] | null {
+  const normalized = hostname.toLowerCase();
+  const marker = "::ffff:";
+  const markerIndex = normalized.indexOf(marker);
+  if (markerIndex === -1) return null;
+
+  const mapped = normalized.slice(markerIndex + marker.length);
+  if (mapped.includes(".")) return parseIpv4(mapped);
+
+  const words = mapped.split(":");
+  if (words.length !== 2) return null;
+  const [high, low] = words.map(parseIpv6Word);
+  if (high === null || low === null) return null;
+
+  return [high >> 8, high & 255, low >> 8, low & 255];
+}
+
+function parseIpv6Word(value: string): number | null {
+  if (!/^[0-9a-f]{1,4}$/.test(value)) return null;
+  const parsed = Number.parseInt(value, 16);
+  return Number.isInteger(parsed) && parsed >= 0 && parsed <= 0xffff
+    ? parsed
+    : null;
 }
 
 function isBlockedIpv4([a, b]: number[]): boolean {

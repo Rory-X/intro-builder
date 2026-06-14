@@ -16,6 +16,8 @@ import type {
 import { currentUserId } from "@/lib/auth-helpers";
 
 export const dynamic = "force-dynamic";
+export const runtime = "nodejs";
+export const maxDuration = 120;
 
 export async function POST(req: Request) {
   const userId = await currentUserId();
