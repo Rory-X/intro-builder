@@ -112,3 +112,28 @@
 3. 上下文压缩引擎（context-status 从指示器升级为真摘要/裁剪，修硬编码 200k）。
 4. 离线评测 harness（金标准集 + 轨迹级指标 + 回放，扩展 langfuse-agent-message-experiment）——「调优 loop」的落点。
 5. 浏览器直连自托管 agent 的流式迁移（绕开 Vercel 时长限制）。
+
+## 落地进度（2026-06-15，分支 codex/agent-loop-execution）
+
+**已落地 + 已测（agent 侧，165 tests 全绿 + tsc clean）：**
+
+- Task 1/2/3：`apps/agent/src/workflows/{draft,tools,loop-runtime}.ts` —— draft 模型 +
+  change-set diff、create-from-zero 工具集（read/get_completeness/set_goal/upsert_section）、
+  AI SDK v6 多步 loop（`streamText`+`tools`+`stopWhen(stepCountIs(16))`）。新增 17 个单测，
+  其中关键一条把 loop 产物喂给既有 `validateAgentToolOutput` 锁兼容。
+- 接线：`http.ts` 新增 `streamAgentLoopEvents`，create-from-zero 经真 loop，复用既有
+  head 发射 + `toStreamingRuntimeTailEvents`（工具事件 / workspace / change-set 走既有管线）。
+- 安全开关：`AGENT_LOOP_ENABLED`（默认 false）。关 = 旧单次路径（main 行为不变）；开 = 真 loop。
+- 续聊：`rehydrateDraft` 从 durable session 还原 draft（含 last-write-wins），下一回合接着改。
+
+**剩余（需在 web 上做，且需跑 Next 构建/手工冒烟，未在本环境完成）：**
+
+- Task 4 增强：tool 卡升级为 assistant-ui tool content-part 的 running/args/result 三态
+  （当前已能用既有 `agent-tool-card.tsx` 渲染 loop 工具调用，属基础可用）。
+- Task 5 缺口：create-from-zero「同意应用」需**新建一份简历**（现有 `applyAgentOperation`
+  只作用于已存在简历的编辑器）。续聊/预览的事件链路已通（复用既有 workspace/change-set UI）。
+- Task 6 剩余：no-progress 检测（当前靠 stepCountIs + last-write-wins 兜底）、loop 路径接
+  Langfuse trace、以及 `pnpm build` 全量构建 + 手工冒烟（开 flag、配真 provider 走一遍）。
+
+**启用方式：** agent 服务设 `AGENT_LOOP_ENABLED=true` 并配好 `AGENT_MODEL_*`，create-from-zero
+即走真 loop。
