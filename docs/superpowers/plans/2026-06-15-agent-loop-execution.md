@@ -126,14 +126,17 @@
 - 安全开关：`AGENT_LOOP_ENABLED`（默认 false）。关 = 旧单次路径（main 行为不变）；开 = 真 loop。
 - 续聊：`rehydrateDraft` 从 durable session 还原 draft（含 last-write-wins），下一回合接着改。
 
-**剩余（需在 web 上做，且需跑 Next 构建/手工冒烟，未在本环境完成）：**
+**剩余（需在本机跑 Next 构建 + 手工冒烟验收）：**
 
-- Task 4 增强：tool 卡升级为 assistant-ui tool content-part 的 running/args/result 三态
-  （当前已能用既有 `agent-tool-card.tsx` 渲染 loop 工具调用，属基础可用）。
-- Task 5 缺口：create-from-zero「同意应用」需**新建一份简历**（现有 `applyAgentOperation`
-  只作用于已存在简历的编辑器）。续聊/预览的事件链路已通（复用既有 workspace/change-set UI）。
-- Task 6 剩余：no-progress 检测（当前靠 stepCountIs + last-write-wins 兜底）、loop 路径接
-  Langfuse trace、以及 `pnpm build` 全量构建 + 手工冒烟（开 flag、配真 provider 走一遍）。
+- Task 5 真正缺口：create-from-zero「同意应用」对**全新数组分区项**（如还不存在的 experience.0）
+  的创建——现已支持 `basics.summary`、`skills` 及已存在索引的 tiptap 字段（loop 产出的 op 现在
+  自带 `replacementTiptapJson`，`applyAgentOperation` 也已接受 `insert_section`）；新增数组项需接
+  编辑器的「加一项」流程。
+- Task 6 剩余：loop 路径接 Langfuse trace；`pnpm build` 全量 + 手工冒烟（开 flag、配真 provider 走一遍）。
+  已完成的护栏：`stepCountIs(16)` + 草稿写操作上限 `MAX_DRAFT_OPERATIONS=24`（新字段超限拒绝、更新不受限）。
+
+**已完成的 web 侧：** Task 4 工具卡升级（动作 chip + 目标字段 + 「已写入草稿」，`agent-tool-card.tsx`，
+面板测试 15/15 通过）；Task 5 续聊（`rehydrateDraft`）+ `insert_section` 应用（`editor-client.tsx`）。
 
 **启用方式：** agent 服务设 `AGENT_LOOP_ENABLED=true` 并配好 `AGENT_MODEL_*`，create-from-zero
 即走真 loop。
