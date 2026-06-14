@@ -8,10 +8,13 @@ import {
   createAgentClient,
 } from "@/lib/agent/client";
 import { mapAgUiRunToAgentMessageRequest } from "@/lib/agent/ag-ui-run-adapter";
+import { createAgentRunSessionContext } from "@/lib/agent/run-session";
 import { signAgentToken } from "@/lib/agent/token";
 import { currentUserId } from "@/lib/auth-helpers";
 
 export const dynamic = "force-dynamic";
+export const runtime = "nodejs";
+export const maxDuration = 120;
 
 export async function POST(req: Request) {
   const userId = await currentUserId();
@@ -29,22 +32,42 @@ export async function POST(req: Request) {
     return Response.json({ error: mapped.message }, { status: 400 });
   }
 
-  const resume = await db.query.resumes.findFirst({
-    where: and(eq(resumes.id, mapped.request.resumeId), eq(resumes.userId, userId)),
-  });
-  if (!resume) {
-    return Response.json({ error: "简历不存在" }, { status: 404 });
+  let resumeTitle = "Agent 会话";
+  if (mapped.request.resumeId !== null) {
+    const resume = await db.query.resumes.findFirst({
+      where: and(
+        eq(resumes.id, mapped.request.resumeId),
+        eq(resumes.userId, userId),
+      ),
+    });
+    if (!resume) {
+      return Response.json({ error: "简历不存在" }, { status: 404 });
+    }
+    resumeTitle = resume.title || mapped.request.context?.resumeTitle || resumeTitle;
+  } else {
+    resumeTitle = "从 0 创建简历";
   }
 
   try {
+    const sessionContext = createAgentRunSessionContext({
+      resumeId: mapped.request.resumeId,
+      userId,
+      threadId: parsed.input.threadId,
+      mode: mapped.request.mode ?? "optimize_existing",
+      workflowId: mapped.request.workflowId,
+      resumeTitle,
+    });
     const signed = await signAgentToken({
       userId,
-      resumeId: mapped.request.resumeId,
+      ...(mapped.request.resumeId ? { resumeId: mapped.request.resumeId } : {}),
       scope: "agent:chat",
     });
     const result = await createAgentClient().streamAgentMessage({
       token: signed.token,
-      request: mapped.request,
+      request: {
+        ...mapped.request,
+        sessionContext,
+      },
     });
 
     return new Response(result.data.body, {

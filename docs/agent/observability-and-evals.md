@@ -5,8 +5,9 @@
 ## 目标
 
 - 让 `/v1/agent/messages` 的一次运行可以按 request id 追踪到 cache、provider、parse、tool card、proposal count 和错误状态。
+- 让 Agent Mode prompt 可选地从 Langfuse Prompt Management 获取，并在 generation trace 中记录 prompt name/version。
 - 让 Agent 结构化输出 contract 可以在 CI 本地离线评测，不依赖 Langfuse 凭据或 live model。
-- 当配置 Langfuse 凭据时，把同一套 deterministic eval cases 作为 Langfuse experiment 跑起来，便于后续比较 prompt、模型和 parser 改动。
+- 当配置 Langfuse 凭据与 dataset 名时，把 deterministic eval dataset 作为 Langfuse dataset experiment 跑起来，便于后续比较 prompt、模型和 parser 改动。
 
 ## Langfuse Tracing
 
@@ -68,6 +69,30 @@ LANGFUSE_CAPTURE_RAW_PAYLOADS=true
 
 生产环境保持 `false`。
 
+## Prompt Management
+
+Agent Mode 可以通过 Langfuse Prompt Management 覆盖本地 prompt。该能力独立于 tracing flag，只要求 Langfuse 凭据与 prompt 开关：
+
+```bash
+LANGFUSE_PUBLIC_KEY=...
+LANGFUSE_SECRET_KEY=...
+LANGFUSE_PROMPT_MANAGEMENT_ENABLED=true
+LANGFUSE_AGENT_MESSAGE_PROMPT_NAME=intro-builder/agent-message
+LANGFUSE_PROMPT_LABEL=production
+LANGFUSE_PROMPT_CACHE_TTL_SECONDS=300
+LANGFUSE_PROMPT_FETCH_TIMEOUT_MS=5000
+```
+
+远端 prompt 使用 chat prompt，支持这些简单变量：
+
+```text
+{{system}}
+{{developer}}
+{{user}}
+```
+
+Langfuse 不可用时使用本地 fallback。Generation trace 会记录 prompt source、name、label、version 和 fallback 状态；默认仍不记录 raw prompt。
+
 ## Offline Evals
 
 离线评测数据位于：
@@ -101,9 +126,10 @@ pnpm --filter @intro-builder/agent eval:agent:offline
 
 ## Langfuse Experiment
 
-配置 `LANGFUSE_PUBLIC_KEY` 和 `LANGFUSE_SECRET_KEY` 后可运行：
+配置 `LANGFUSE_PUBLIC_KEY`、`LANGFUSE_SECRET_KEY` 和 dataset 名后可运行：
 
 ```bash
+LANGFUSE_AGENT_MESSAGE_DATASET_NAME=intro-builder/agent-message-contract
 pnpm --filter @intro-builder/agent eval:agent:langfuse
 ```
 
@@ -115,7 +141,7 @@ pnpm --filter @intro-builder/agent eval:agent:langfuse
 LANGFUSE_EXPERIMENT_RUN_NAME=agent-message-contract-pr-123 pnpm --filter @intro-builder/agent eval:agent:langfuse
 ```
 
-没有凭据时命令会打印 skip message 并以 0 退出，避免阻塞本地开发和 CI。
+没有凭据时命令会打印 skip message 并以 0 退出，避免阻塞本地开发和 CI。存在凭据但没有配置 `LANGFUSE_AGENT_MESSAGE_DATASET_NAME` 时，命令会非零退出，避免把 local-only experiment 误认为 dataset eval。
 
 ## 排查卡住状态
 

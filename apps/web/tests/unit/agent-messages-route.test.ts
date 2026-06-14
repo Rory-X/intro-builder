@@ -43,11 +43,16 @@ import { db } from "@/db";
 import { currentUserId } from "@/lib/auth-helpers";
 import { AgentClientError, createAgentClient } from "@/lib/agent/client";
 import { signAgentToken } from "@/lib/agent/token";
-import { POST } from "@/app/api/agent/messages/route";
+import { maxDuration, POST, runtime } from "@/app/api/agent/messages/route";
 
 describe("POST /api/agent/messages", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+  });
+
+  it("uses the Node runtime with an explicit long streaming duration", () => {
+    expect(runtime).toBe("nodejs");
+    expect(maxDuration).toBe(120);
   });
 
   it("requires a Web user session", async () => {

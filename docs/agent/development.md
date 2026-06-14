@@ -128,6 +128,7 @@ Current:
 | `AGENT_JWT_AUDIENCE` | `intro-builder-agent` | Expected JWT audience |
 | `AGENT_JWT_SECRET` | unset | Shared signing secret; required for protected `/v1/*` routes |
 | `AGENT_JWT_REPLAY_TTL_SECONDS` | `180` | Redis `jti` replay guard TTL |
+| `AGENT_CORS_ORIGINS` | unset | Comma-separated Web origins allowed to direct-connect to `/v1/agent/messages` |
 
 ## Phase 0C Auth Smoke
 

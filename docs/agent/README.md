@@ -6,11 +6,11 @@
 
 - 当前落地状态：Phase 3B 已通过 PR #43 合入 `main`，并已部署到 Web 与 Agent 生产链路。
 - 微服务目录：`apps/agent`
-- 当前能力：基础 Node/TypeScript HTTP 服务，包含 `/health`、Redis-backed `/ready`、protected `/v1/session`、`POST /v1/rich-text/polish`、`POST /v1/resume/helpers/:helperId`、`POST /v1/agent/messages`、JSON 404/405、统一错误 envelope、request id、Redis readiness、rate limit primitive、短期 Agent JWT 校验、Redis `jti` replay guard、STAR-aware prompt、OpenAI-compatible provider 配置、配置解析、启动日志、Docker/Caddy/compose。
+- 当前能力：基础 Node/TypeScript HTTP 服务，包含 `/health`、Redis-backed `/ready`、protected `/v1/session`、`POST /v1/rich-text/polish`、`POST /v1/resume/helpers/:helperId`、`POST /v1/agent/messages`、JSON 404/405、统一错误 envelope、request id、Redis readiness、rate limit primitive、短期 Agent JWT 校验、Redis `jti` replay guard、STAR-aware prompt、Agent Mode AI SDK provider、Langfuse Prompt Management fallback、配置解析、启动日志、Docker/Caddy/compose。
 - Phase 2A 能力：`resume-diagnose` 提供整份简历诊断，`section-next-steps` 提供单个模块下一步建议。Web BFF 为 `POST /api/agent/resume/helpers/[helperId]`，会校验 Auth.js session 与 resume ownership 后签发 `resume:helper` JWT。
 - Phase 2A UI：编辑器顶部有 `AI 诊断` 入口，工作经历、项目经历、教育经历、研究经历、技能、自定义模块 header 有 `AI 建议` 入口。按钮使用文字与图标渐变，不使用渐变背景。
 - Phase 3B 能力：在 Phase 3A 左侧 Agent Mode 基础上，Agent `/v1/agent/messages` 与 Web BFF `/api/agent/messages` 已升级为 AG-UI `text/event-stream`。assistant-ui 继续使用 `LocalRuntime` + custom adapter，但 adapter 返回 async generator，逐步消费 AG-UI `TEXT_MESSAGE_CONTENT`，并从 `TOOL_CALL_RESULT` 渲染 tool card 与确认卡。
-- Phase 3C 能力：Agent SSE cache hit 不再返回 JSON；SSE provider/parse failure 会返回 AG-UI `RUN_ERROR`；Web stream 不再被 10 秒 JSON timeout 误杀；OpenAI-compatible provider 支持 `stream: true` 并从 provider JSON 的 `message.content` 安全提取可见增量；Web 新增 SDK-compatible `/api/agent/runs`，接收 AG-UI `RunAgentInput` 并通过 `forwardedProps.introBuilder` 映射到现有 Agent request。
+- Phase 3C 能力：Agent SSE cache hit 不再返回 JSON；SSE provider/parse failure 会返回 AG-UI `RUN_ERROR`；Web stream 不再被 10 秒 JSON timeout 误杀；Agent Mode 通过 AI SDK openai-compatible adapter 支持 streaming，并从 provider JSON 的 `message.content` 安全提取可见增量；Web 新增 SDK-compatible `/api/agent/runs`，接收 AG-UI `RunAgentInput` 并通过 `forwardedProps.introBuilder` 映射到现有 Agent request。
 - Phase 3B follow-up：Agent 对话输出允许 provider 在纯追问/澄清轮次省略空 `toolCalls` 和 `proposedOperations`，服务端会归一化为 `[]`；AG-UI 文本事件会拆成多段 delta，并在 assistant-ui 首段到达前显示 `AI 正在思考` 等待态。Web 错误卡会展示 `code` 与 `requestId`，方便排查线上 provider、JWT 或依赖问题。
 - 本地 Redis：已安装并启动 Homebrew `redis 8.8.0`，连接串为 `redis://127.0.0.1:6379`。
 - 服务器部署：`101.36.117.253` 已安装 Docker/Compose，`/opt/intro-agent` 已运行 `agent + redis + caddy`。公网入口 `https://api.rory-x.me/intro-builder/agent` 已通过 Cloudflare -> Caddy -> Agent 的 `/health` 与 `/ready` 冒烟，当前 Agent 生产版本为 `github-c36362c33239`。
@@ -69,7 +69,7 @@ Agent 微服务逐步负责：
 - [decision-log.md](./decision-log.md): 微服务、assistant-ui、Redis、写回权等关键决策记录。
 - [service-contracts.md](./service-contracts.md): HTTP API、JWT claims、错误格式、AG-UI message stream 和 resume operation 约束。
 - [security-and-stability.md](./security-and-stability.md): auth、rate limit、timeout、observability、部署稳定性检查清单。
-- [observability-and-evals.md](./observability-and-evals.md): Langfuse tracing、隐私边界、offline eval 与 Langfuse experiment 命令。
+- [observability-and-evals.md](./observability-and-evals.md): Langfuse tracing、Prompt Management、隐私边界、offline eval 与 dataset experiment 命令。
 - [deployment.md](./deployment.md): 香港服务器、Docker Compose、GitHub Actions、DNS/Cloudflare 状态与运维命令。
 - [code-map.md](./code-map.md): Agent 服务、Web client、编辑器、富文本、测试入口地图。
 - [development.md](./development.md): 本地开发、Redis、命令、验证闸门。

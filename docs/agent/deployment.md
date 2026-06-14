@@ -80,6 +80,7 @@ AGENT_VERSION=<set by deploy>
 AGENT_SHUTDOWN_TIMEOUT_MS=10000
 AGENT_SITE_ADDRESS=api.rory-x.me
 AGENT_PUBLIC_BASE_PATH=/intro-builder/agent
+AGENT_CORS_ORIGINS=https://intro-builder.vercel.app
 REDIS_URL=redis://redis:6379
 AGENT_JWT_ISSUER=intro-builder-web
 AGENT_JWT_AUDIENCE=intro-builder-agent
@@ -94,7 +95,7 @@ AGENT_JWT_SECRET=<same value as Web production env>
 
 The Agent process still starts without `AGENT_JWT_SECRET` so `/health` and `/ready` stay deployable, but protected routes fail closed until the secret is present.
 
-Model-backed Agent endpoints need an OpenAI-compatible chat-completions provider before they can return real AI output. This includes `/v1/rich-text/polish`, `/v1/resume/helpers/:helperId`, and Phase 3B `/v1/agent/messages`:
+Model-backed Agent endpoints need an OpenAI-compatible provider before they can return real AI output. Rich text polish and resume helpers still use direct chat-completions fetches; Agent Mode uses the AI SDK openai-compatible runtime adapter:
 
 ```bash
 AGENT_MODEL_BASE_URL=<provider-or-relay /v1 base URL>
@@ -112,7 +113,7 @@ AGENT_MODEL_NAME=deepseek-v4-flash
 AGENT_MODEL_TIMEOUT_MS=20000
 ```
 
-The Agent provider sends OpenAI-compatible chat completion requests with only `system` and `user` message roles. Provider-specific developer instructions are folded into the `system` message, and `thinking` is disabled for deterministic JSON polish output.
+Agent Mode sends provider calls through AI SDK `generateText` / `streamText`, with developer instructions folded into the `system` parameter and JSON output requested. Rich text polish and resume helpers still send direct OpenAI-compatible chat completion requests and keep `thinking` disabled for deterministic JSON output.
 
 If these model vars are absent, the Agent keeps `/health` and `/ready` green and returns a structured `dependency_unavailable` error for model-backed business requests.
 
@@ -209,8 +210,8 @@ docker compose exec -T agent node -e 'fetch("http://127.0.0.1:8787/health").then
 
 After the 2026-06-06 domain change, verified:
 
-- GitHub Variables: `AGENT_DOMAIN=api.rory-x.me`, `AGENT_PUBLIC_BASE_PATH=/intro-builder/agent`.
-- Server `.env`: `AGENT_SITE_ADDRESS=api.rory-x.me`, `AGENT_PUBLIC_BASE_PATH=/intro-builder/agent`.
+- GitHub Variables: `AGENT_DOMAIN=api.rory-x.me`, `AGENT_PUBLIC_BASE_PATH=/intro-builder/agent`, `AGENT_CORS_ORIGINS=https://intro-builder.vercel.app`.
+- Server `.env`: `AGENT_SITE_ADDRESS=api.rory-x.me`, `AGENT_PUBLIC_BASE_PATH=/intro-builder/agent`, `AGENT_CORS_ORIGINS=https://intro-builder.vercel.app`.
 - `pnpm verify` passes locally after the domain/path change.
 - `docker compose ps`: `agent`, `caddy`, and `redis` are running.
 - Direct Agent `/health` and `/ready` inside the server return `200`.

@@ -22,17 +22,19 @@ import {
   Clock3,
   Copy,
   Edit3,
+  FilePlus2,
   Loader2,
   MessageCircleQuestion,
   RefreshCw,
   RotateCcw,
   Send,
-  Sparkles,
+  Settings,
   Square,
   X,
 } from "lucide-react";
 
 import { AgentConfirmationCard } from "@/components/agent/agent-confirmation-card";
+import { AgentContextIndicator } from "@/components/agent/agent-context-indicator";
 import {
   AgentAgUiRuntimeProvider,
   useAgentAgUiInterruptSubmit,
@@ -40,9 +42,21 @@ import {
 } from "@/components/agent/agent-ag-ui-runtime-provider";
 import { AgentToolCard } from "@/components/agent/agent-tool-card";
 import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
 import { buildAgentResumeContext } from "@/lib/agent/chat-context";
 import type {
   AgentMessageResponse,
+  AgentContextStatusSnapshot,
+  AgentModelConfig,
+  AgentResumeWorkspaceSnapshot,
   AgentResumeContext,
   AgentWorkflowId,
   ResumeOperation,
@@ -52,6 +66,12 @@ import type { ResumeContent } from "@intro-builder/shared/schemas";
 type AgentRetryRequest = {
   content: string;
   workflowId: AgentWorkflowId | null;
+};
+
+type AgentModelSettingsForm = {
+  baseUrl: string;
+  apiKey: string;
+  modelName: string;
 };
 
 type AgentTurnStatus =
@@ -87,6 +107,10 @@ const AGENT_WELCOME_SUGGESTIONS = [
   },
 ] as const;
 
+const AGENT_MODEL_SETTINGS_STORAGE_KEY = "intro-builder.agent.model-settings.v1";
+const AGENT_MODEL_API_KEY_SESSION_STORAGE_KEY =
+  "intro-builder.agent.model-api-key.v1";
+
 export function AgentPanel({
   resumeId,
   title,
@@ -108,6 +132,13 @@ export function AgentPanel({
 }) {
   const [turnArtifacts, setTurnArtifacts] = useState<AgentTurnArtifacts[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const [contextStatus, setContextStatus] =
+    useState<AgentContextStatusSnapshot | null>(null);
+  const [resumeWorkspace, setResumeWorkspace] =
+    useState<AgentResumeWorkspaceSnapshot | null>(null);
+  const [modelSettings, setModelSettings] = useState<AgentModelSettingsForm>(
+    () => readStoredModelSettings(),
+  );
   const [isLoading, setIsLoading] = useState(false);
   const [lastRetryRequest, setLastRetryRequest] = useState<AgentRetryRequest | null>(
     null,
@@ -230,20 +261,36 @@ export function AgentPanel({
   return (
     <section
       data-agent-runtime-mode="ag-ui"
+      aria-label={`简历对话：${title || "未命名简历"}`}
       className="flex h-full min-h-[480px] flex-col bg-background"
     >
       <AgentAgUiRuntimeProvider
-        getIntroBuilderForwardedProps={(workflowId) => ({
-          resumeId,
-          locale: "zh-CN",
-          workflowId,
-          context: buildAgentResumeContext({
-            content: getResumeContent(),
-            templateId,
-            activeSection: null,
-            completeness,
-          }),
-        })}
+        getIntroBuilderForwardedProps={(intent) => {
+          const modelConfig = toAgentModelConfig(modelSettings);
+          if (intent.mode === "create_from_zero") {
+            return {
+              resumeId: null,
+              mode: "create_from_zero",
+              locale: "zh-CN",
+              workflowId: "create-from-zero",
+              context: null,
+              ...(modelConfig ? { modelConfig } : {}),
+            };
+          }
+
+          return {
+            resumeId,
+            locale: "zh-CN",
+            workflowId: intent.workflowId,
+            context: buildAgentResumeContext({
+              content: getResumeContent(),
+              templateId,
+              activeSection: null,
+              completeness,
+            }),
+            ...(modelConfig ? { modelConfig } : {}),
+          };
+        }}
         onRunStart={(messages) => {
           setError(null);
           beginAgentTurn(messages);
@@ -274,29 +321,34 @@ export function AgentPanel({
         onError={(message) => {
           setError(message);
         }}
+        onContextStatus={setContextStatus}
+        onResumeWorkspace={setResumeWorkspace}
         onToolResult={appendToolResult}
         onInterrupts={setAgentTurnInterrupts}
       >
-        <div className="border-b p-4">
-          <div className="flex items-start justify-between gap-3">
-            <div>
-              <p className="text-xs text-muted-foreground">Agent 模式</p>
-              <h2 className="mt-1 font-semibold">简历 Agent</h2>
-              <p className="mt-1 text-sm text-muted-foreground">
-                AI 会读取当前表单快照，修改需你确认。
-              </p>
-              <p className="mt-2 text-xs text-muted-foreground">当前目标：{title}</p>
-            </div>
-            <Button type="button" variant="ghost" size="sm" onClick={onBackToEdit}>
-              <ArrowLeft className="mr-1 h-4 w-4" />
-              切回编辑
+        <div className="flex h-12 shrink-0 items-center justify-between border-b px-3">
+          <div className="flex min-w-0 items-center gap-2">
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon-sm"
+              aria-label="返回编辑"
+              onClick={onBackToEdit}
+            >
+              <ArrowLeft className="h-4 w-4" />
             </Button>
+            <h2 className="truncate text-sm font-medium text-foreground">新对话</h2>
           </div>
+          <AgentModelSettingsDialog
+            settings={modelSettings}
+            onSave={setModelSettings}
+          />
         </div>
 
         <AgentThreadArea
           turnArtifacts={turnArtifacts}
           error={error}
+          resumeWorkspace={resumeWorkspace}
           lastRetryRequest={lastRetryRequest}
           isLoading={isLoading}
           onDismissError={() => {
@@ -310,15 +362,130 @@ export function AgentPanel({
           applyOperation={applyOperation}
           flushAutosave={flushAutosave}
         />
-        <AgentComposer title={title} isLoading={isLoading} />
+        <AgentComposer contextStatus={contextStatus} isLoading={isLoading} />
       </AgentAgUiRuntimeProvider>
     </section>
+  );
+}
+
+function AgentModelSettingsDialog({
+  settings,
+  onSave,
+}: {
+  settings: AgentModelSettingsForm;
+  onSave: (settings: AgentModelSettingsForm) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [draft, setDraft] = useState<AgentModelSettingsForm>(settings);
+
+  function openDialog(nextOpen: boolean) {
+    setOpen(nextOpen);
+    if (nextOpen) {
+      setDraft(settings);
+    }
+  }
+
+  function saveSettings() {
+    const next = normalizeModelSettings(draft);
+    storeModelSettings(next);
+    onSave(next);
+    setOpen(false);
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={openDialog}>
+      <DialogTrigger
+        render={
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon-sm"
+            aria-label="模型设置"
+          />
+        }
+      >
+        <Settings className="h-4 w-4" />
+      </DialogTrigger>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle>模型设置</DialogTitle>
+          <DialogDescription>
+            为当前浏览器设置本地模型偏好。访问密钥只会随本次对话请求发送。
+          </DialogDescription>
+        </DialogHeader>
+        <div className="space-y-3">
+          <AgentModelSettingsField
+            id="agent-model-base-url"
+            label="模型服务地址"
+            value={draft.baseUrl}
+            placeholder="https://api.example.com/v1"
+            onChange={(value) => setDraft((current) => ({ ...current, baseUrl: value }))}
+          />
+          <AgentModelSettingsField
+            id="agent-model-api-key"
+            label="访问密钥"
+            value={draft.apiKey}
+            type="password"
+            placeholder="只保存在当前浏览器"
+            onChange={(value) => setDraft((current) => ({ ...current, apiKey: value }))}
+          />
+          <AgentModelSettingsField
+            id="agent-model-name"
+            label="模型名称"
+            value={draft.modelName}
+            placeholder="gpt-5-mini"
+            onChange={(value) => setDraft((current) => ({ ...current, modelName: value }))}
+          />
+        </div>
+        <DialogFooter className="gap-2">
+          <Button type="button" variant="ghost" onClick={() => setOpen(false)}>
+            取消
+          </Button>
+          <Button type="button" onClick={saveSettings}>
+            保存
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function AgentModelSettingsField({
+  id,
+  label,
+  value,
+  type = "text",
+  placeholder,
+  onChange,
+}: {
+  id: string;
+  label: string;
+  value: string;
+  type?: "text" | "password";
+  placeholder: string;
+  onChange: (value: string) => void;
+}) {
+  return (
+    <div className="space-y-1.5">
+      <label htmlFor={id} className="text-xs font-medium text-muted-foreground">
+        {label}
+      </label>
+      <input
+        id={id}
+        type={type}
+        value={value}
+        placeholder={placeholder}
+        onChange={(event) => onChange(event.target.value)}
+        className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+      />
+    </div>
   );
 }
 
 function AgentThreadArea({
   turnArtifacts,
   error,
+  resumeWorkspace,
   lastRetryRequest,
   isLoading,
   onDismissError,
@@ -330,6 +497,7 @@ function AgentThreadArea({
 }: {
   turnArtifacts: AgentTurnArtifacts[];
   error: string | null;
+  resumeWorkspace: AgentResumeWorkspaceSnapshot | null;
   lastRetryRequest: AgentRetryRequest | null;
   isLoading: boolean;
   onDismissError: () => void;
@@ -349,12 +517,13 @@ function AgentThreadArea({
     <ThreadPrimitive.Root className="min-h-0 flex-1">
       <ThreadPrimitive.Viewport
         data-testid="agent-assistant-ui-thread"
-        className="h-full space-y-3 overflow-y-auto p-4"
+        className="h-full space-y-4 overflow-y-auto px-4 py-3"
         autoScroll
       >
         {isEmpty ? (
           <AgentWelcomeSuggestions />
         ) : null}
+        <AgentResumeWorkspaceStatus workspace={resumeWorkspace} />
         <ThreadPrimitive.Messages>
           {({ message }) => (
             <AgentThreadMessage
@@ -405,30 +574,96 @@ function AgentThreadArea({
   );
 }
 
-function AgentWelcomeSuggestions() {
-  return (
-    <div className="rounded-2xl border border-dashed border-sky-200/80 bg-gradient-to-br from-sky-50/80 to-background p-4 text-sm shadow-sm dark:border-sky-400/20 dark:from-sky-950/30">
-      <div className="flex gap-3">
-        <span className="mt-0.5 inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-sky-100 text-sky-700 dark:bg-sky-950/60 dark:text-sky-200">
-          <Sparkles className="h-4 w-4" />
+function AgentResumeWorkspaceStatus({
+  workspace,
+}: {
+  workspace: AgentResumeWorkspaceSnapshot | null;
+}) {
+  if (workspace?.mode === "create_from_zero" && workspace.draftResume) {
+    return (
+      <div
+        role="status"
+        aria-live="polite"
+        className="ml-1 inline-flex max-w-[85%] items-center gap-2 rounded-full border border-emerald-200/80 bg-emerald-50 px-3 py-1.5 text-xs text-emerald-900 shadow-sm dark:border-emerald-400/20 dark:bg-emerald-950/30 dark:text-emerald-200"
+      >
+        <FilePlus2 className="h-3.5 w-3.5 shrink-0" />
+        <span className="font-medium">已生成简历草稿</span>
+        <span className="text-emerald-800/80 dark:text-emerald-200/80">
+          待确认后再写入
         </span>
-        <div className="min-w-0 flex-1">
-          <p className="font-medium text-foreground">从这些问题开始</p>
-          <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
-            Agent 会先解释它读取了什么、准备做什么；所有简历修改都要你确认后才写入。
-          </p>
-          <div className="mt-3 flex flex-wrap gap-2">
-            {AGENT_WELCOME_SUGGESTIONS.map((suggestion) => (
-              <ThreadPrimitive.Suggestion
-                key={suggestion.label}
-                prompt={suggestion.prompt}
-                send
-                className="rounded-full border border-sky-200/80 bg-background px-3 py-1.5 text-xs font-medium text-sky-800 shadow-sm transition hover:bg-sky-50 disabled:pointer-events-none disabled:opacity-50 dark:border-sky-400/20 dark:bg-background/60 dark:text-sky-200 dark:hover:bg-sky-950/40"
-              >
-                {suggestion.label}
-              </ThreadPrimitive.Suggestion>
-            ))}
-          </div>
+      </div>
+    );
+  }
+
+  const pendingChangeSets = workspace?.changeSets.filter((changeSet) =>
+    changeSet.status === "staged" || changeSet.status === "partially_applied",
+  ) ?? [];
+  const operationCount = pendingChangeSets.reduce(
+    (total, changeSet) => total + changeSet.operationIds.length,
+    0,
+  );
+
+  if (pendingChangeSets.length === 0 || operationCount === 0) return null;
+
+  return (
+    <div
+      role="status"
+      aria-live="polite"
+      className="ml-1 inline-flex max-w-[85%] items-center gap-2 rounded-full border border-amber-200/80 bg-amber-50 px-3 py-1.5 text-xs text-amber-900 shadow-sm dark:border-amber-400/20 dark:bg-amber-950/30 dark:text-amber-200"
+    >
+      <Clock3 className="h-3.5 w-3.5 shrink-0" />
+      <span className="font-medium">
+        待确认 {pendingChangeSets.length} 组修改
+      </span>
+      <span className="text-amber-800/80 dark:text-amber-200/80">
+        包含 {operationCount} 条建议
+      </span>
+    </div>
+  );
+}
+
+function AgentWelcomeSuggestions() {
+  const threadRuntime = useThreadRuntime();
+
+  function startCreateFromZero() {
+    threadRuntime.append({
+      role: "user",
+      content: [{ type: "text", text: "从 0 帮我做一份简历" }],
+      runConfig: {
+        custom: {
+          mode: "create_from_zero",
+          workflowId: "create-from-zero",
+        },
+      },
+    });
+  }
+
+  return (
+    <div className="flex min-h-[360px] flex-col justify-end px-3 pb-10 pt-24">
+      <div className="max-w-md">
+        <p className="text-3xl font-semibold leading-tight text-foreground">你好。</p>
+        <p className="mt-2 text-2xl leading-tight text-muted-foreground">
+          想怎么优化这份简历？
+        </p>
+        <div className="mt-6 flex flex-wrap gap-2">
+          <button
+            type="button"
+            onClick={startCreateFromZero}
+            className="inline-flex items-center gap-1.5 rounded-full border border-border bg-background px-3 py-1.5 text-xs font-medium text-muted-foreground shadow-sm transition hover:border-sky-300 hover:text-foreground disabled:pointer-events-none disabled:opacity-50 dark:border-input dark:bg-input/20 dark:hover:border-sky-400/40"
+          >
+            <FilePlus2 className="h-3.5 w-3.5" />
+            从 0 创建简历
+          </button>
+          {AGENT_WELCOME_SUGGESTIONS.map((suggestion) => (
+            <ThreadPrimitive.Suggestion
+              key={suggestion.label}
+              prompt={suggestion.prompt}
+              send
+              className="rounded-full border border-border bg-background px-3 py-1.5 text-xs font-medium text-muted-foreground shadow-sm transition hover:border-sky-300 hover:text-foreground disabled:pointer-events-none disabled:opacity-50 dark:border-input dark:bg-input/20 dark:hover:border-sky-400/40"
+            >
+              {suggestion.label}
+            </ThreadPrimitive.Suggestion>
+          ))}
         </div>
       </div>
     </div>
@@ -610,7 +845,7 @@ function AgentTurnArtifactsPanel({
       {turnArtifact.toolCalls.length > 0 ? (
         <div className="space-y-2 animate-in fade-in-0 slide-in-from-bottom-1 duration-200">
           <div className="text-xs font-medium text-muted-foreground">
-            已完成 {turnArtifact.toolCalls.length} 个工具调用
+            已完成 {turnArtifact.toolCalls.length} 个动作
           </div>
           {turnArtifact.toolCalls.map((toolCall) => (
             <AgentToolCard key={toolCall.id} toolCall={toolCall} />
@@ -709,15 +944,21 @@ function AgentQuestionCard({
 }) {
   const submitInterrupts = useAgentAgUiInterruptSubmit();
   const threadRuntime = useThreadRuntime();
-  const [answer, setAnswer] = useState("");
+  const [answers, setAnswers] = useState<Record<string, string>>({});
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const primaryInterrupt = interrupts[0];
-  if (!primaryInterrupt) return null;
+  if (interrupts.length === 0) return null;
+
+  const allAnswered = interrupts.every(
+    (interrupt) => (answers[interrupt.id] ?? "").trim() !== "",
+  );
+
+  function updateAnswer(interruptId: string, value: string) {
+    setAnswers((current) => ({ ...current, [interruptId]: value }));
+  }
 
   async function submitAnswer() {
-    const trimmedAnswer = answer.trim();
-    if (!trimmedAnswer || isSubmitting) return;
+    if (!allAnswered || isSubmitting) return;
 
     setSubmitError(null);
     setIsSubmitting(true);
@@ -727,17 +968,28 @@ function AgentQuestionCard({
           interrupts.map((interrupt) => ({
             interruptId: interrupt.id,
             status: "resolved",
-            payload: { answer: trimmedAnswer },
+            payload: { answer: (answers[interrupt.id] ?? "").trim() },
           })),
         );
       } else {
         await threadRuntime.append({
           role: "user",
-          content: [{ type: "text", text: `补充信息：${trimmedAnswer}` }],
+          content: [
+            {
+              type: "text",
+              text: [
+                "补充信息：",
+                ...interrupts.map(
+                  (interrupt) =>
+                    `${interrupt.message ?? interrupt.id}：${(answers[interrupt.id] ?? "").trim()}`,
+                ),
+              ].join("\n"),
+            },
+          ],
         });
       }
       onResolved();
-      setAnswer("");
+      setAnswers({});
     } catch (error) {
       setSubmitError(error instanceof Error ? error.message : "提交补充信息失败");
     } finally {
@@ -751,24 +1003,41 @@ function AgentQuestionCard({
         <MessageCircleQuestion className="mt-0.5 h-4 w-4 shrink-0 text-sky-600 dark:text-sky-300" />
         <div className="min-w-0 flex-1">
           <p className="font-medium text-foreground">Agent 需要补充信息</p>
-          <p className="mt-1 text-muted-foreground">
-            {primaryInterrupt.message ?? "请补充一个关键信息，Agent 会继续当前任务。"}
-          </p>
           <div className="mt-3 space-y-2">
-            <label
-              htmlFor="agent-question-answer"
-              className="block text-xs font-medium text-muted-foreground"
-            >
-              补充信息
-            </label>
-            <textarea
-              id="agent-question-answer"
-              value={answer}
-              onChange={(event) => setAnswer(event.target.value)}
-              rows={3}
-              className="w-full resize-none rounded-md border border-input bg-background px-3 py-2 text-sm shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-              placeholder="例如：增长型前端工程师，偏数据看板和投放平台"
-            />
+            {interrupts.map((interrupt, index) => {
+              const question =
+                interrupt.message ??
+                (interrupts.length > 1
+                  ? `请补充第 ${index + 1} 个关键信息。`
+                  : "请补充一个关键信息，Agent 会继续当前任务。");
+              const inputId = `agent-question-answer-${interrupt.id}`;
+
+              return (
+                <div key={interrupt.id} className="space-y-1.5">
+                  <label
+                    htmlFor={inputId}
+                    className="block text-xs font-medium text-muted-foreground"
+                  >
+                    {question}
+                  </label>
+                  <textarea
+                    id={inputId}
+                    aria-label={question}
+                    value={answers[interrupt.id] ?? ""}
+                    onChange={(event) =>
+                      updateAnswer(interrupt.id, event.target.value)
+                    }
+                    rows={interrupts.length > 1 ? 2 : 3}
+                    className="w-full resize-none rounded-md border border-input bg-background px-3 py-2 text-sm shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                    placeholder={
+                      index === 0
+                        ? "例如：增长型前端工程师，偏数据看板和投放平台"
+                        : "补充真实信息，避免编造"
+                    }
+                  />
+                </div>
+              );
+            })}
             <div className="flex items-center justify-between gap-3">
               <p className="text-xs text-muted-foreground">
                 只会作为本轮 Agent 上下文，不会直接写入简历。
@@ -776,7 +1045,7 @@ function AgentQuestionCard({
               <Button
                 type="button"
                 size="sm"
-                disabled={answer.trim() === "" || isSubmitting}
+                disabled={!allAnswered || isSubmitting}
                 onClick={submitAnswer}
               >
                 {isSubmitting ? (
@@ -820,7 +1089,7 @@ function AgentThreadMessage({
     return (
       <>
         {text || hasRunningToolCall ? (
-          <MessagePrimitive.Root className="group/message text-left">
+          <MessagePrimitive.Root className="group/message relative z-0 pb-8 text-left hover:z-20 focus-within:z-20">
             <div className="inline-block max-w-[85%] rounded-xl bg-muted px-3 py-2 text-sm text-foreground">
               <MessagePrimitive.Content
                 components={{
@@ -913,18 +1182,18 @@ function AgentAssistantMessageActions() {
       hideWhenRunning
       autohide="not-last"
       autohideFloat="single-branch"
-      className="mt-1 flex max-w-[85%] gap-1 text-muted-foreground"
+      className="pointer-events-none absolute bottom-0 left-0 z-30 flex max-w-[85%] gap-1 opacity-0 transition-opacity group-hover/message:opacity-100 group-focus-within/message:opacity-100"
     >
       <ActionBarPrimitive.Copy
         aria-label="复制回答"
         copiedDuration={1600}
-        className="inline-flex h-7 w-7 items-center justify-center rounded-md border border-border bg-background text-muted-foreground shadow-sm hover:bg-muted hover:text-foreground disabled:pointer-events-none disabled:opacity-40 data-[copied=true]:border-emerald-200 data-[copied=true]:text-emerald-700 dark:border-input dark:bg-input/30 dark:hover:bg-input/50 dark:data-[copied=true]:text-emerald-300"
+        className="pointer-events-auto inline-flex h-7 w-7 items-center justify-center rounded-md bg-background/95 text-muted-foreground shadow-sm transition hover:bg-muted hover:text-foreground disabled:pointer-events-none disabled:opacity-40 data-[copied=true]:bg-emerald-50 data-[copied=true]:text-emerald-700 dark:bg-background/90 dark:hover:bg-muted/50 dark:data-[copied=true]:bg-emerald-950/30 dark:data-[copied=true]:text-emerald-300"
       >
         <Copy className="h-3.5 w-3.5" />
       </ActionBarPrimitive.Copy>
       <ActionBarPrimitive.Reload
         aria-label="重新生成回答"
-        className="inline-flex h-7 w-7 items-center justify-center rounded-md border border-border bg-background text-muted-foreground shadow-sm hover:bg-muted hover:text-foreground disabled:pointer-events-none disabled:opacity-40 dark:border-input dark:bg-input/30 dark:hover:bg-input/50"
+        className="pointer-events-auto inline-flex h-7 w-7 items-center justify-center rounded-md bg-background/95 text-muted-foreground shadow-sm transition hover:bg-muted hover:text-foreground disabled:pointer-events-none disabled:opacity-40 dark:bg-background/90 dark:hover:bg-muted/50"
       >
         <RotateCcw className="h-3.5 w-3.5" />
       </ActionBarPrimitive.Reload>
@@ -965,7 +1234,7 @@ function AgentAssistantUiToolGroup({ children }: { children?: ReactNode }) {
     <div className="my-2 rounded-xl border border-sky-200/80 bg-sky-50/80 p-2 shadow-sm dark:border-sky-400/20 dark:bg-sky-950/30">
       <p className="mb-1 flex items-center gap-1.5 text-xs font-medium text-sky-800 dark:text-sky-200">
         <Loader2 className="h-3.5 w-3.5 animate-spin" />
-        Agent 正在使用工具
+        Agent 正在处理
       </p>
       <div className="space-y-1">{children}</div>
     </div>
@@ -984,6 +1253,7 @@ function AgentAssistantUiToolPart({
   if (result !== undefined) return null;
 
   const isWaitingForAction = status.type === "requires-action";
+  const actionLabel = agentActionLabel(toolName);
 
   return (
     <div
@@ -998,16 +1268,23 @@ function AgentAssistantUiToolPart({
           <Loader2 className="h-3.5 w-3.5 animate-spin" />
         )}
         <span className="font-medium">
-          {isWaitingForAction
-            ? `等待工具继续 ${toolName}`
-            : `正在执行工具 ${toolName}`}
+          {isWaitingForAction ? "等待你确认" : actionLabel}
         </span>
       </div>
       <p className="mt-1 text-sky-700/80 dark:text-sky-200/80">
-        工具结果会先展示给你；涉及简历修改时，确认前不会写入表单。
+        处理结果会先展示给你；涉及简历修改时，确认前不会写入表单。
       </p>
     </div>
   );
+}
+
+function agentActionLabel(toolName: string): string {
+  if (toolName === "resume_read") return "正在读取简历";
+  if (toolName === "resume_update_section") return "正在生成修改建议";
+  if (toolName === "resume_delete_section") return "正在准备修改建议";
+  if (toolName === "resume_reorder_sections") return "正在整理模块顺序";
+  if (toolName === "resume_insert_section") return "正在准备新增内容";
+  return "正在整理上下文";
 }
 
 function AgentMarkdownText() {
@@ -1019,34 +1296,49 @@ function AgentMarkdownText() {
   );
 }
 
-function AgentComposer({ title, isLoading }: { title: string; isLoading: boolean }) {
+function AgentComposer({
+  contextStatus,
+  isLoading,
+}: {
+  contextStatus: AgentContextStatusSnapshot | null;
+  isLoading: boolean;
+}) {
   return (
-    <ComposerPrimitive.Root className="border-t p-4">
-      <div className="flex gap-2">
+    <ComposerPrimitive.Root
+      data-testid="agent-assistant-ui-composer"
+      className="shrink-0 border-t bg-muted/40 p-3 dark:bg-muted/20"
+    >
+      <div
+        data-testid="agent-assistant-ui-composer-shell"
+        className="rounded-2xl border border-border bg-muted/40 px-3 py-2 shadow-sm transition focus-within:border-sky-500 focus-within:bg-muted/40 focus-within:ring-2 focus-within:ring-sky-500/15 dark:border-input dark:bg-muted/20 dark:focus-within:bg-muted/20"
+      >
         <ComposerPrimitive.Input
           data-testid="agent-assistant-ui-composer-input"
-          rows={1}
+          rows={2}
           submitMode="enter"
-          placeholder={`问问 ${title || "这份简历"} 可以怎么优化`}
-          className="min-h-9 flex-1 resize-none rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
+          placeholder="输入消息，Enter 发送"
+          className="max-h-32 min-h-14 w-full resize-none border-0 !bg-transparent px-1 py-1 text-sm placeholder:text-muted-foreground focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-50"
         />
-        {isLoading ? (
-          <ComposerPrimitive.Cancel
-            aria-label="停止生成"
-            className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-md border border-sky-200/80 bg-sky-50 text-sky-800 shadow hover:bg-sky-100 disabled:pointer-events-none disabled:opacity-50 dark:border-sky-400/20 dark:bg-sky-950/30 dark:text-sky-200 dark:hover:bg-sky-900/40"
-          >
-            <Square className="h-3.5 w-3.5 fill-current" />
-            <span className="sr-only">停止生成</span>
-          </ComposerPrimitive.Cancel>
-        ) : (
-          <ComposerPrimitive.Send
-            aria-label="发送"
-            className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-primary text-primary-foreground shadow hover:bg-primary/90 disabled:pointer-events-none disabled:opacity-50"
-          >
-            <Send className="h-4 w-4" />
-            <span className="sr-only">发送</span>
-          </ComposerPrimitive.Send>
-        )}
+        <div className="mt-2 flex items-center justify-between gap-3">
+          <AgentContextIndicator status={contextStatus} className="min-w-0" />
+          {isLoading ? (
+            <ComposerPrimitive.Cancel
+              aria-label="停止生成"
+              className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-sky-200/80 bg-sky-50 text-sky-800 shadow hover:bg-sky-100 disabled:pointer-events-none disabled:opacity-50 dark:border-sky-400/20 dark:bg-sky-950/30 dark:text-sky-200 dark:hover:bg-sky-900/40"
+            >
+              <Square className="h-3.5 w-3.5 fill-current" />
+              <span className="sr-only">停止生成</span>
+            </ComposerPrimitive.Cancel>
+          ) : (
+            <ComposerPrimitive.Send
+              aria-label="发送"
+              className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-sky-600 text-white shadow hover:bg-sky-700 disabled:pointer-events-none disabled:opacity-50 dark:bg-sky-500 dark:hover:bg-sky-400"
+            >
+              <Send className="h-4 w-4" />
+              <span className="sr-only">发送</span>
+            </ComposerPrimitive.Send>
+          )}
+        </div>
       </div>
     </ComposerPrimitive.Root>
   );
@@ -1091,10 +1383,10 @@ function getAgentTurnStatusText(turnArtifact: AgentTurnArtifacts) {
   }
   if (countPendingOperations(turnArtifact) > 0) return "等待确认修改";
   if (turnArtifact.status === "reading") {
-    return "AI 正在思考：正在读取简历上下文";
+    return "正在读取简历上下文";
   }
   if (turnArtifact.status === "generating") return "正在生成修改建议";
-  if (turnArtifact.toolCalls.length > 0) return "已完成工具调用";
+  if (turnArtifact.toolCalls.length > 0) return "已完成动作";
   return "已完成";
 }
 
@@ -1146,4 +1438,89 @@ function getApprovalInterruptDecisionId(
       ?.id ??
     operation.id
   );
+}
+
+function readStoredModelSettings(): AgentModelSettingsForm {
+  if (typeof window === "undefined") return emptyModelSettings();
+  try {
+    const raw = window.localStorage.getItem(AGENT_MODEL_SETTINGS_STORAGE_KEY);
+    const parsed = raw ? JSON.parse(raw) : null;
+    const storedApiKey = readSessionModelApiKey();
+    if (!isRecord(parsed)) {
+      return { ...emptyModelSettings(), apiKey: storedApiKey };
+    }
+    const legacyApiKey = typeof parsed.apiKey === "string" ? parsed.apiKey : "";
+    const apiKey = storedApiKey || legacyApiKey;
+    if (legacyApiKey) {
+      storeModelSettings({
+        baseUrl: typeof parsed.baseUrl === "string" ? parsed.baseUrl : "",
+        modelName: typeof parsed.modelName === "string" ? parsed.modelName : "",
+        apiKey,
+      });
+    }
+    return normalizeModelSettings({
+      baseUrl: typeof parsed.baseUrl === "string" ? parsed.baseUrl : "",
+      apiKey,
+      modelName: typeof parsed.modelName === "string" ? parsed.modelName : "",
+    });
+  } catch {
+    return emptyModelSettings();
+  }
+}
+
+function storeModelSettings(settings: AgentModelSettingsForm) {
+  if (typeof window === "undefined") return;
+  const normalized = normalizeModelSettings(settings);
+  window.localStorage.setItem(
+    AGENT_MODEL_SETTINGS_STORAGE_KEY,
+    JSON.stringify({
+      baseUrl: normalized.baseUrl,
+      modelName: normalized.modelName,
+    }),
+  );
+  if (normalized.apiKey) {
+    window.sessionStorage.setItem(
+      AGENT_MODEL_API_KEY_SESSION_STORAGE_KEY,
+      normalized.apiKey,
+    );
+  } else {
+    window.sessionStorage.removeItem(AGENT_MODEL_API_KEY_SESSION_STORAGE_KEY);
+  }
+}
+
+function readSessionModelApiKey(): string {
+  if (typeof window === "undefined") return "";
+  return window.sessionStorage.getItem(AGENT_MODEL_API_KEY_SESSION_STORAGE_KEY) ?? "";
+}
+
+function emptyModelSettings(): AgentModelSettingsForm {
+  return {
+    baseUrl: "",
+    apiKey: "",
+    modelName: "",
+  };
+}
+
+function normalizeModelSettings(
+  settings: AgentModelSettingsForm,
+): AgentModelSettingsForm {
+  return {
+    baseUrl: settings.baseUrl.trim(),
+    apiKey: settings.apiKey.trim(),
+    modelName: settings.modelName.trim(),
+  };
+}
+
+function toAgentModelConfig(
+  settings: AgentModelSettingsForm,
+): AgentModelConfig | null {
+  const normalized = normalizeModelSettings(settings);
+  if (!normalized.baseUrl || !normalized.apiKey || !normalized.modelName) {
+    return null;
+  }
+  return normalized;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
 }

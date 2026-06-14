@@ -21,12 +21,15 @@
   "dependencies": {
     "@ag-ui/core": "0.0.56",
     "@ag-ui/encoder": "0.0.56",
+    "@ai-sdk/openai-compatible": "2.0.50",
     "@langfuse/client": "5.4.1",
     "@langfuse/otel": "5.4.1",
     "@langfuse/tracing": "5.4.1",
     "@opentelemetry/api": "1.9.1",
     "@opentelemetry/sdk-node": "0.218.0",
+    "ai": "6.0.204",
     "jose": "^6.2.3",
-    "redis": "^6.0.0"
+    "redis": "^6.0.0",
+    "zod": "^4.4.3"
   }
 }

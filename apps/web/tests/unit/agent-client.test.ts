@@ -472,6 +472,68 @@ describe("Web Agent client", () => {
     }
   });
 
+  it("keeps healthy Agent streams alive past the stream timeout while chunks keep arriving", async () => {
+    vi.useFakeTimers();
+    try {
+      const encoder = new TextEncoder();
+      let upstreamSignal: AbortSignal | undefined;
+      const chunks = [
+        'data: {"type":"RUN_STARTED","threadId":"thread_1","runId":"run_1"}\n\n',
+        'data: {"type":"TEXT_MESSAGE_CONTENT","messageId":"msg_1","delta":"长"}\n\n',
+        'data: {"type":"TEXT_MESSAGE_CONTENT","messageId":"msg_1","delta":"流"}\n\n',
+        'data: {"type":"RUN_FINISHED","threadId":"thread_1","runId":"run_1"}\n\n',
+      ];
+      const fetchMock = vi.fn(async (...args): Promise<Response> => {
+        upstreamSignal = args[1]?.signal ?? undefined;
+        let nextChunk = 0;
+        return new Response(
+          new ReadableStream<Uint8Array>({
+            async pull(controller) {
+              await new Promise((resolve) => setTimeout(resolve, 6));
+              if (upstreamSignal?.aborted) {
+                controller.error(new DOMException("Aborted", "AbortError"));
+                return;
+              }
+              const chunk = chunks[nextChunk];
+              nextChunk += 1;
+              if (!chunk) {
+                controller.close();
+                return;
+              }
+              controller.enqueue(encoder.encode(chunk));
+            },
+          }),
+          {
+            status: 200,
+            headers: {
+              "content-type": "text/event-stream",
+              "x-request-id": "req_agent_idle_stream",
+            },
+          },
+        );
+      });
+      const client = createAgentClient({
+        baseUrl: "https://agent.test/intro-builder/agent",
+        streamTimeoutMs: 10,
+        fetchFn: fetchMock as unknown as typeof fetch,
+        createRequestId: () => "req_web_idle_stream",
+      });
+
+      const result = await client.streamAgentMessage({
+        token: "jwt-token",
+        request: validAgentMessageRequest(),
+      });
+      const textPromise = new Response(result.data.body).text();
+
+      await vi.advanceTimersByTimeAsync(36);
+
+      await expect(textPromise).resolves.toContain("RUN_FINISHED");
+      expect(upstreamSignal?.aborted).toBe(false);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("maps Agent SSE error envelopes into typed client errors", async () => {
     const client = createAgentClient({
       baseUrl: "https://agent.test",

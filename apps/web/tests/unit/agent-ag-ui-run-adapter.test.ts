@@ -28,6 +28,100 @@ describe("AG-UI run adapter", () => {
     });
   });
 
+  it("maps user-provided model preferences without exposing transport setting names", () => {
+    const result = mapAgUiRunToAgentMessageRequest({
+      ...validRunInput(),
+      forwardedProps: {
+        introBuilder: {
+          ...validRunInput().forwardedProps.introBuilder,
+          modelConfig: {
+            baseUrl: "https://models.example.test/v1",
+            apiKey: "sk-test-local",
+            modelName: "gpt-5-mini",
+          },
+        },
+      },
+    });
+
+    expect(result).toEqual({
+      ok: true,
+      request: expect.objectContaining({
+        modelConfig: {
+          baseUrl: "https://models.example.test/v1",
+          apiKey: "sk-test-local",
+          modelName: "gpt-5-mini",
+        },
+      }),
+    });
+    expect(JSON.stringify(result)).not.toContain("AGENT_MODEL");
+  });
+
+  it("maps question interrupt answers into follow-up context", () => {
+    const result = mapAgUiRunToAgentMessageRequest({
+      ...validRunInput(),
+      resume: [
+        {
+          interruptId: "question_target_role",
+          status: "resolved",
+          payload: { answer: "增长型前端工程师" },
+        },
+      ],
+    });
+
+    expect(result).toEqual({
+      ok: true,
+      request: expect.objectContaining({
+        messages: expect.arrayContaining([
+          expect.objectContaining({
+            role: "assistant",
+            content: expect.stringContaining(
+              "用户已补充 Agent 需要的信息",
+            ),
+          }),
+        ]),
+      }),
+    });
+    if (!result.ok) throw new Error("expected adapter success");
+    expect(result.request.messages.at(-1)?.content).toContain(
+      "question_target_role：增长型前端工程师",
+    );
+    expect(result.request.messages.at(-1)?.content).not.toContain("已拒绝");
+  });
+
+  it("maps create-from-zero forwarded props without requiring an existing resume snapshot", () => {
+    const result = mapAgUiRunToAgentMessageRequest({
+      ...validRunInput(),
+      threadId: "agent_create_from_zero",
+      forwardedProps: {
+        introBuilder: {
+          resumeId: null,
+          mode: "create_from_zero",
+          locale: "zh-CN",
+          workflowId: "create-from-zero",
+          context: null,
+        },
+      },
+    });
+
+    expect(result).toEqual({
+      ok: true,
+      request: {
+        resumeId: null,
+        mode: "create_from_zero",
+        locale: "zh-CN",
+        workflowId: "create-from-zero",
+        messages: [
+          {
+            id: "msg_user_1",
+            role: "user",
+            content: "帮我优化第一段经历",
+          },
+        ],
+        context: null,
+      },
+    });
+  });
+
   it("rejects RunAgentInput without intro-builder metadata", () => {
     const result = mapAgUiRunToAgentMessageRequest({
       ...validRunInput(),

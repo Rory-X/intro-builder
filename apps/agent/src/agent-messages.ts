@@ -1,6 +1,6 @@
 import { EventType, type BaseEvent } from "@ag-ui/core";
+import { createAiSdkAgentMessageProvider } from "./providers/ai-sdk-agent-message-provider.js";
 import type { AuthenticatedAgentSession } from "./auth.js";
-import type { AgentConfig } from "./config.js";
 import type { AgentErrorCode } from "./errors.js";
 import {
   validateAgentToolOutput,
@@ -8,13 +8,19 @@ import {
   type AgentToolCall,
   type ResumeOperation,
 } from "./agent-tools.js";
-import { RichTextPolishProviderError } from "./rich-text-polish.js";
+import type { AgentContextStatusSnapshot } from "./workflows/context-status.js";
+import type { AgentResumeWorkspaceSnapshot } from "./workflows/resume-workspace.js";
+import {
+  buildWorkflowRuntimeEvents,
+  type AgentWorkflowRuntimeEvent,
+} from "./workflows/workflow-runtime.js";
 
 export type AgentWorkflowId =
   | "resume-diagnose"
   | "target-role-match"
   | "experience-star"
-  | "pre-export-check";
+  | "pre-export-check"
+  | "create-from-zero";
 
 export type AgentChatMessage = {
   id: string;
@@ -22,12 +28,93 @@ export type AgentChatMessage = {
   content: string;
 };
 
+export type AgentModelConfig = {
+  baseUrl: string;
+  apiKey: string;
+  modelName: string;
+};
+
+export type AgentQuestionRequest = {
+  id: string;
+  message: string;
+  field?: string;
+  responseSchema?: Record<string, unknown>;
+};
+
+export type AgentDraftResumeSection = {
+  key: string;
+  label: string;
+  summary: string;
+  status: "drafted" | "needs_user_fact";
+};
+
+export type AgentDraftResumeSnapshot = {
+  title: string;
+  targetRole: string | null;
+  profileSummary: string;
+  sections: AgentDraftResumeSection[];
+  missingFacts: string[];
+};
+
+export type AgentResumeSessionMode = "optimize_existing" | "create_from_zero";
+
+export type AgentSessionStatus =
+  | "active"
+  | "waiting_user"
+  | "completed"
+  | "cancelled"
+  | "failed";
+
+export type AgentWorkflowCursor = {
+  workflowId: AgentWorkflowId | null;
+  nodeId: string;
+  loopCount: number;
+  completedNodeIds: string[];
+};
+
+export type AgentSessionInterrupt = {
+  id: string;
+  reason: string;
+  message: string | null;
+  toolCallId: string | null;
+  metadata: Record<string, unknown> | null;
+};
+
+export type AgentSessionSnapshot = {
+  sessionId: string;
+  threadId: string;
+  resumeId: string | null;
+  userIdHash: string;
+  mode: AgentResumeSessionMode;
+  status: AgentSessionStatus;
+  workflow: AgentWorkflowCursor;
+  workspace: AgentResumeWorkspaceSnapshot;
+  contextStatus: AgentContextStatusSnapshot | null;
+  pendingInterrupts: AgentSessionInterrupt[];
+  lastResumeContentHash: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type AgentRunSessionContext = {
+  sessionId: string;
+  threadId: string;
+  resumeId: string | null;
+  mode: AgentResumeSessionMode;
+  workflowId: AgentWorkflowId | null;
+  resumeTitle: string;
+};
+
 export type AgentMessageRequest = {
   requestId?: string;
-  resumeId: string;
+  resumeId: string | null;
+  mode?: AgentResumeSessionMode;
   locale: "zh-CN";
   workflowId: AgentWorkflowId | null;
   messages: AgentChatMessage[];
+  modelConfig?: AgentModelConfig;
+  sessionContext?: AgentRunSessionContext;
+  sessionSnapshot?: AgentSessionSnapshot;
   context: {
     resumeTitle: string;
     templateId: string;
@@ -42,14 +129,31 @@ export type AgentMessageRequest = {
       fieldPath: string;
       plainText: string;
     }>;
-  };
+  } | null;
 };
 
 export type AgentMessagePrompt = {
   system: string;
   developer: string;
   user: string;
+  messages?: AgentMessagePromptMessage[];
+  metadata?: AgentMessagePromptMetadata;
 };
+
+export type AgentMessagePromptMessage = {
+  role: "system" | "user";
+  content: string;
+};
+
+export type AgentMessagePromptMetadata =
+  | { source: "local" }
+  | {
+      source: "langfuse";
+      name: string;
+      label: string;
+      version: number;
+      isFallback: boolean;
+    };
 
 export type AgentMessageUsage = {
   provider: string;
@@ -83,6 +187,9 @@ export type AgentMessageProvider = {
   ) => AsyncIterable<AgentProviderStreamChunk>;
 };
 
+export const createOpenAICompatibleAgentMessageProvider =
+  createAiSdkAgentMessageProvider;
+
 export type AgentMessageParseResult =
   | {
       ok: true;
@@ -90,6 +197,8 @@ export type AgentMessageParseResult =
         message: { id: string; role: "assistant"; content: string };
         toolCalls: AgentToolCall[];
         proposedOperations: ResumeOperation[];
+        questions?: AgentQuestionRequest[];
+        draftResume?: AgentDraftResumeSnapshot;
       };
     }
   | { ok: false; message: string };
@@ -97,6 +206,7 @@ export type AgentMessageParseResult =
 export type ToAgUiAgentEventsInput = {
   requestId: string;
   threadId: string;
+  request?: AgentMessageRequest;
   result: Extract<AgentMessageParseResult, { ok: true }>["result"];
 };
 
@@ -123,6 +233,7 @@ const WORKFLOW_IDS = new Set<AgentWorkflowId>([
   "target-role-match",
   "experience-star",
   "pre-export-check",
+  "create-from-zero",
 ]);
 
 const MESSAGE_ROLES = new Set<AgentChatMessage["role"]>(["user", "assistant"]);
@@ -136,30 +247,74 @@ export function validateAgentMessageRequest(
 ): AgentMessageValidationResult {
   if (!isRecord(body)) return badRequest("Request body must be a JSON object");
 
-  const resumeId = requiredString(body.resumeId, "resumeId");
-  if (!resumeId.ok) return resumeId;
+  const mode = validateSessionMode(
+    body.mode ?? (body.resumeId === null ? "create_from_zero" : "optimize_existing"),
+  );
+  if (!mode.ok) return mode;
+
+  let resumeId: string | null;
+  if (mode.value === "create_from_zero") {
+    if (body.resumeId !== null) {
+      return badRequest("resumeId must be null for create-from-zero");
+    }
+    resumeId = null;
+  } else {
+    const parsedResumeId = requiredString(body.resumeId, "resumeId");
+    if (!parsedResumeId.ok) return parsedResumeId;
+    resumeId = parsedResumeId.value;
+  }
 
   const locale = body.locale ?? "zh-CN";
   if (locale !== "zh-CN") return badRequest("locale must be zh-CN");
 
-  const workflowId = validateWorkflowId(body.workflowId ?? null);
+  const workflowId = validateWorkflowId(
+    body.workflowId ?? (mode.value === "create_from_zero" ? "create-from-zero" : null),
+  );
   if (!workflowId.ok) return workflowId;
 
   const messages = validateMessages(body.messages);
   if (!messages.ok) return messages;
+  const modelConfig = validateModelConfig(body.modelConfig);
+  if (!modelConfig.ok) return modelConfig;
 
-  if (!isRecord(body.context)) return badRequest("context is required");
-  const context = validateContext(body.context);
-  if (!context.ok) return context;
+  let context: AgentMessageRequest["context"];
+  if (mode.value === "create_from_zero") {
+    if (body.context !== null) {
+      return badRequest("context must be null for create-from-zero");
+    }
+    context = null;
+  } else {
+    if (!isRecord(body.context)) return badRequest("context is required");
+    const parsedContext = validateContext(body.context);
+    if (!parsedContext.ok) return parsedContext;
+    context = parsedContext.value;
+  }
+
+  const sessionSnapshot = validateSessionSnapshot(body.sessionSnapshot, resumeId);
+  if (!sessionSnapshot.ok) return sessionSnapshot;
+  const sessionContext = validateSessionContext(body.sessionContext, {
+    resumeId,
+    mode: mode.value,
+    workflowId: workflowId.value,
+  });
+  if (!sessionContext.ok) return sessionContext;
 
   return {
     ok: true,
     request: {
-      resumeId: resumeId.value,
+      resumeId,
+      ...(mode.value === "create_from_zero" ? { mode: mode.value } : {}),
       locale,
       workflowId: workflowId.value,
       messages: messages.value,
-      context: context.value,
+      ...(modelConfig.value ? { modelConfig: modelConfig.value } : {}),
+      ...(sessionContext.value
+        ? { sessionContext: sessionContext.value }
+        : {}),
+      ...(sessionSnapshot.value
+        ? { sessionSnapshot: sessionSnapshot.value }
+        : {}),
+      context,
     },
   };
 }
@@ -177,9 +332,11 @@ export function buildAgentMessagePrompt(
     developer: [
       "输出必须是合法 JSON，不要用 Markdown 代码块包裹 JSON，不要解释推理过程。",
       "JSON schema:",
-      '{"message":{"id":"string","role":"assistant","content":"string"},"toolCalls":[{"id":"string","name":"resume_read|resume_update_section|resume_delete_section|resume_reorder_sections|resume_insert_section","status":"completed","title":"string","summary":"string","input":{},"result":{}}],"proposedOperations":[{"id":"string","toolCallId":"必须等于某个 toolCalls[].id","label":"string","section":"summary|experience|projects|education|skills|research|custom","fieldPath":"string","operation":"update_section|delete_section|reorder_sections|insert_section","beforePlainText":"string","afterPlainText":"string","replacementTiptapJson":{},"sectionOrder":["string"],"changeSummary":"string","riskFlags":[{"type":"needs_user_fact|possible_fabrication|formatting_risk|unsafe_claim","message":"string"}]}]}',
+      '{"message":{"id":"string","role":"assistant","content":"string"},"toolCalls":[{"id":"string","name":"resume_read|resume_update_section|resume_delete_section|resume_reorder_sections|resume_insert_section","status":"completed","title":"string","summary":"string","input":{},"result":{}}],"proposedOperations":[{"id":"string","toolCallId":"必须等于某个 toolCalls[].id","label":"string","section":"summary|experience|projects|education|skills|research|custom","fieldPath":"string","operation":"update_section|delete_section|reorder_sections|insert_section","beforePlainText":"string","afterPlainText":"string","replacementTiptapJson":{},"sectionOrder":["string"],"changeSummary":"string","riskFlags":[{"type":"needs_user_fact|possible_fabrication|formatting_risk|unsafe_claim","message":"string"}]}],"questions":[{"id":"string","message":"string","field":"可选，例如 goal.targetRole","responseSchema":{}}],"draftResume":{"title":"string","targetRole":"string|null","profileSummary":"string","sections":[{"key":"string","label":"string","summary":"string","status":"drafted|needs_user_fact"}],"missingFacts":["string"]}}',
       "可用 tools: resume_read, resume_update_section, resume_delete_section, resume_reorder_sections, resume_insert_section",
       "即使只是追问用户、澄清选择或闲聊，也必须返回 toolCalls: [] 和 proposedOperations: []，不要省略字段。",
+      "当需要用户补充事实、目标岗位或偏好时，把问题放入 questions；不要把需要回答的问题只写成普通文本。",
+      "当 mode=create_from_zero 且信息足够形成初稿时，把待确认草稿放入 draftResume；草稿只能使用用户提供的信息，缺失经历必须放入 missingFacts。",
       "所有简历修改必须作为 proposedOperations 返回，不能声称已经保存。",
       "当 proposedOperations 非空时，必须同时返回对应 toolCalls；每条 proposedOperations[].toolCallId 必须引用对应 toolCalls[].id。",
       "使用 STAR 原则时，不得编造 Result 指标。",
@@ -187,35 +344,61 @@ export function buildAgentMessagePrompt(
       "如果缺少真实结果、指标或范围，用 riskFlags 标记 needs_user_fact。",
       `当前 workflowId=${request.workflowId ?? "none"}。`,
     ].join("\n"),
-    user: [
-      "请基于以下 Agent Mode 请求继续对话。",
-      "请求信息：",
-      `- requestId: ${request.requestId ?? ""}`,
-      `- workflowId: ${request.workflowId ?? ""}`,
-      `- locale: ${request.locale}`,
-      `- resumeTitle: ${request.context.resumeTitle}`,
-      `- templateId: ${request.context.templateId}`,
-      `- activeSection: ${request.context.activeSection ?? ""}`,
+    user: buildAgentPromptUserSection(request),
+  };
+}
+
+function buildAgentPromptUserSection(request: AgentMessageRequest): string {
+  const lines = [
+    "请基于以下 Agent Mode 请求继续对话。",
+    "请求信息：",
+    `- requestId: ${request.requestId ?? ""}`,
+    `- workflowId: ${request.workflowId ?? ""}`,
+    `- mode: ${request.mode ?? "optimize_existing"}`,
+    `- locale: ${request.locale}`,
+  ];
+
+  if (!request.context) {
+    lines.push(
+      "- resumeTitle: 未创建",
+      "- templateId: 未选择",
+      "- activeSection: ",
       "",
       "最近消息：",
       ...request.messages.map(
         (message) => `- ${message.role}(${message.id}): ${message.content}`,
       ),
       "",
-      "完成度：",
-      `- overall: ${request.context.completeness.overall}`,
-      ...request.context.completeness.sections.map(
-        (section) =>
-          `- ${section.key} (${section.label}): ${section.score}/${section.max}`,
-      ),
-      "",
-      "简历文本片段：",
-      ...request.context.sections.map(
-        (section) =>
-          `## ${section.key} (${section.label}) fieldPath=${section.fieldPath}\n${section.plainText}`,
-      ),
-    ].join("\n"),
-  };
+      "当前还没有可读取的简历快照。请先通过 questions 收集目标岗位、基础资料、经历事实和偏好，再提出可确认的简历草稿。",
+    );
+    return lines.join("\n");
+  }
+
+  lines.push(
+    `- resumeTitle: ${request.context.resumeTitle}`,
+    `- templateId: ${request.context.templateId}`,
+    `- activeSection: ${request.context.activeSection ?? ""}`,
+    "",
+    "最近消息：",
+    ...request.messages.map(
+      (message) => `- ${message.role}(${message.id}): ${message.content}`,
+    ),
+    "",
+    "完成度：",
+    `- overall: ${request.context.completeness.overall}`,
+    ...request.context.completeness.sections.map(
+      (section) =>
+        `- ${section.key} (${section.label}): ${section.score}/${section.max}`,
+    ),
+    "",
+    "简历文本片段：",
+    ...request.context.sections.map(
+      (section) =>
+        `## ${section.key} (${section.label}) fieldPath=${section.fieldPath}\n${section.plainText}`,
+    ),
+  );
+
+  return lines.join("\n");
 }
 
 export function parseAgentMessageProviderResponse(
@@ -244,6 +427,12 @@ export function parseAgentMessageProviderResponse(
     "proposedOperations",
   );
   if (!proposedOperations.ok) return proposedOperations;
+  const questions = normalizeOptionalArray(parsed.questions, "questions");
+  if (!questions.ok) return questions;
+  const parsedQuestions = parseAgentQuestions(questions.value);
+  if (!parsedQuestions.ok) return parsedQuestions;
+  const draftResume = parseOptionalDraftResume(parsed.draftResume);
+  if (!draftResume.ok) return draftResume;
 
   const output = validateAgentToolOutput({
     toolCalls: toolCalls.value,
@@ -257,6 +446,10 @@ export function parseAgentMessageProviderResponse(
       message: message.message,
       toolCalls: output.output.toolCalls,
       proposedOperations: output.output.proposedOperations,
+      ...(parsedQuestions.value.length > 0
+        ? { questions: parsedQuestions.value }
+        : {}),
+      ...(draftResume.value ? { draftResume: draftResume.value } : {}),
     },
   };
 }
@@ -264,37 +457,198 @@ export function parseAgentMessageProviderResponse(
 export function toAgUiAgentEvents({
   requestId,
   threadId,
+  request,
   result,
 }: ToAgUiAgentEventsInput): BaseEvent[] {
-  const runId = requestId;
-  const messageId = result.message.id;
-  const events: BaseEvent[] = [
-    { type: EventType.RUN_STARTED, threadId, runId },
-    {
-      type: EventType.TEXT_MESSAGE_START,
-      messageId,
-      role: "assistant",
-    },
-  ];
+  return workflowRuntimeEventsToAgUiEvents(
+    buildWorkflowRuntimeEvents({
+      requestId,
+      threadId,
+      ...(request ? { request } : {}),
+      result,
+    }),
+  );
+}
 
-  for (const delta of splitAgUiTextDeltas(result.message.content)) {
-    events.push({
-      type: EventType.TEXT_MESSAGE_CONTENT,
-      messageId,
-      delta,
-    });
+export function workflowRuntimeEventsToAgUiEvents(
+  runtimeEvents: AgentWorkflowRuntimeEvent[],
+): BaseEvent[] {
+  const events: BaseEvent[] = [];
+  const startedTextMessageIds = new Set<string>();
+
+  for (const runtimeEvent of runtimeEvents) {
+    switch (runtimeEvent.type) {
+      case "run_started":
+        events.push({
+          type: EventType.RUN_STARTED,
+          threadId: runtimeEvent.threadId,
+          runId: runtimeEvent.requestId,
+        });
+        break;
+      case "state_snapshot":
+        events.push({
+          type: EventType.STATE_SNAPSHOT,
+          snapshot: runtimeEvent.snapshot,
+        });
+        break;
+      case "context_status":
+        appendAgUiContextStatusEvents(events, {
+          messageId: runtimeEvent.messageId,
+          status: runtimeEvent.status,
+        });
+        break;
+      case "assistant_text_delta":
+        if (!startedTextMessageIds.has(runtimeEvent.messageId)) {
+          events.push({
+            type: EventType.TEXT_MESSAGE_START,
+            messageId: runtimeEvent.messageId,
+            role: "assistant",
+          });
+          startedTextMessageIds.add(runtimeEvent.messageId);
+        }
+        events.push({
+          type: EventType.TEXT_MESSAGE_CONTENT,
+          messageId: runtimeEvent.messageId,
+          delta: runtimeEvent.delta,
+        });
+        break;
+      case "tool_started":
+        events.push(
+          {
+            type: EventType.TOOL_CALL_START,
+            toolCallId: runtimeEvent.toolCall.id,
+            toolCallName: runtimeEvent.toolCall.name,
+            parentMessageId: runtimeEvent.messageId,
+          },
+          {
+            type: EventType.TOOL_CALL_ARGS,
+            toolCallId: runtimeEvent.toolCall.id,
+            delta: JSON.stringify(runtimeEvent.toolCall.input),
+          },
+          {
+            type: EventType.TOOL_CALL_END,
+            toolCallId: runtimeEvent.toolCall.id,
+          },
+        );
+        break;
+      case "tool_result":
+        events.push({
+          type: EventType.TOOL_CALL_RESULT,
+          messageId: runtimeEvent.messageId,
+          toolCallId: runtimeEvent.toolCall.id,
+          role: "tool",
+          content: JSON.stringify({
+            toolCall: runtimeEvent.toolCall,
+            proposedOperations: runtimeEvent.proposedOperations,
+          }),
+        });
+        break;
+      case "workspace_snapshot":
+        appendAgUiResumeWorkspaceEvents(events, {
+          messageId: runtimeEvent.messageId,
+          workspace: runtimeEvent.workspace,
+        });
+        break;
+      case "workflow_cursor":
+        events.push({
+          type: EventType.STATE_DELTA,
+          delta: [
+            {
+              op: "replace",
+              path: "/workflow",
+              value: runtimeEvent.cursor,
+            },
+          ],
+        });
+        break;
+      case "message_end":
+        if (!startedTextMessageIds.has(runtimeEvent.messageId)) {
+          events.push({
+            type: EventType.TEXT_MESSAGE_START,
+            messageId: runtimeEvent.messageId,
+            role: "assistant",
+          });
+          startedTextMessageIds.add(runtimeEvent.messageId);
+        }
+        events.push({
+          type: EventType.TEXT_MESSAGE_END,
+          messageId: runtimeEvent.messageId,
+        });
+        break;
+      case "run_finished":
+        events.push({
+          type: EventType.RUN_FINISHED,
+          threadId: runtimeEvent.threadId,
+          runId: runtimeEvent.requestId,
+          outcome: runtimeEvent.outcome,
+        });
+        break;
+    }
   }
 
-  appendAgUiToolEvents(events, result, messageId);
-
-  events.push({
-    type: EventType.TEXT_MESSAGE_END,
-    messageId,
-  });
-
-  events.push(createAgUiRunFinishedEvent({ requestId, threadId, result }));
-
   return events;
+}
+
+export function appendAgUiContextStatusEvents(
+  events: BaseEvent[],
+  {
+    messageId,
+    status,
+  }: {
+    messageId: string;
+    status: AgentContextStatusSnapshot;
+  },
+): void {
+  events.push(
+    {
+      type: EventType.STATE_DELTA,
+      delta: [
+        {
+          op: "replace",
+          path: "/contextStatus",
+          value: status,
+        },
+      ],
+    },
+    {
+      type: EventType.ACTIVITY_SNAPSHOT,
+      messageId,
+      activityType: "context_status",
+      content: status,
+      replace: true,
+    },
+  );
+}
+
+export function appendAgUiResumeWorkspaceEvents(
+  events: BaseEvent[],
+  {
+    messageId,
+    workspace,
+  }: {
+    messageId: string;
+    workspace: AgentResumeWorkspaceSnapshot;
+  },
+): void {
+  events.push(
+    {
+      type: EventType.STATE_DELTA,
+      delta: [
+        {
+          op: "replace",
+          path: "/workspace",
+          value: workspace,
+        },
+      ],
+    },
+    {
+      type: EventType.ACTIVITY_SNAPSHOT,
+      messageId,
+      activityType: "resume_workspace",
+      content: workspace,
+      replace: true,
+    },
+  );
 }
 
 export function createAgUiRunFinishedEvent({
@@ -384,11 +738,120 @@ function appendAgUiToolEvents(
 
 function normalizeOptionalArray(
   value: unknown,
-  field: "toolCalls" | "proposedOperations",
+  field: "toolCalls" | "proposedOperations" | "questions",
 ): { ok: true; value: unknown[] } | { ok: false; message: string } {
   if (value === undefined || value === null) return { ok: true, value: [] };
   if (!Array.isArray(value)) return { ok: false, message: `${field} must be an array` };
   return { ok: true, value };
+}
+
+function parseAgentQuestions(
+  value: unknown[],
+): { ok: true; value: AgentQuestionRequest[] } | { ok: false; message: string } {
+  const questions: AgentQuestionRequest[] = [];
+
+  for (const item of value) {
+    if (!isRecord(item)) {
+      return { ok: false, message: "questions must contain objects" };
+    }
+    const id = requiredString(item.id, "questions.id");
+    if (!id.ok) return id;
+    const message = requiredString(item.message, "questions.message");
+    if (!message.ok) return message;
+    const field =
+      typeof item.field === "string" && item.field.trim() !== ""
+        ? item.field.trim()
+        : undefined;
+    const responseSchema =
+      item.responseSchema === undefined || item.responseSchema === null
+        ? undefined
+        : isRecord(item.responseSchema)
+          ? item.responseSchema
+          : null;
+    if (responseSchema === null) {
+      return { ok: false, message: "questions.responseSchema must be an object" };
+    }
+
+    questions.push({
+      id: id.value,
+      message: message.value,
+      ...(field ? { field } : {}),
+      ...(responseSchema ? { responseSchema } : {}),
+    });
+  }
+
+  return { ok: true, value: questions };
+}
+
+function parseOptionalDraftResume(
+  value: unknown,
+): { ok: true; value: AgentDraftResumeSnapshot | null } | { ok: false; message: string } {
+  if (value === undefined || value === null) return { ok: true, value: null };
+  if (!isRecord(value)) return { ok: false, message: "draftResume must be an object" };
+
+  const title = requiredString(value.title, "draftResume.title");
+  if (!title.ok) return title;
+  const profileSummary = requiredString(
+    value.profileSummary,
+    "draftResume.profileSummary",
+  );
+  if (!profileSummary.ok) return profileSummary;
+  if (!(typeof value.targetRole === "string" || value.targetRole === null)) {
+    return { ok: false, message: "draftResume.targetRole must be a string or null" };
+  }
+  if (!Array.isArray(value.sections)) {
+    return { ok: false, message: "draftResume.sections must be an array" };
+  }
+  if (!Array.isArray(value.missingFacts)) {
+    return { ok: false, message: "draftResume.missingFacts must be an array" };
+  }
+
+  const sections: AgentDraftResumeSection[] = [];
+  for (const section of value.sections) {
+    if (!isRecord(section)) {
+      return { ok: false, message: "draftResume.sections must contain objects" };
+    }
+    const key = requiredString(section.key, "draftResume.sections.key");
+    if (!key.ok) return key;
+    const label = requiredString(section.label, "draftResume.sections.label");
+    if (!label.ok) return label;
+    const summary = requiredString(section.summary, "draftResume.sections.summary");
+    if (!summary.ok) return summary;
+    if (section.status !== "drafted" && section.status !== "needs_user_fact") {
+      return {
+        ok: false,
+        message: "draftResume.sections.status must be drafted or needs_user_fact",
+      };
+    }
+    sections.push({
+      key: key.value,
+      label: label.value,
+      summary: summary.value,
+      status: section.status,
+    });
+  }
+
+  const missingFacts: string[] = [];
+  for (const fact of value.missingFacts) {
+    if (typeof fact !== "string") {
+      return {
+        ok: false,
+        message: "draftResume.missingFacts must contain strings",
+      };
+    }
+    if (fact.trim()) missingFacts.push(fact.trim());
+  }
+
+  return {
+    ok: true,
+    value: {
+      title: title.value,
+      targetRole: value.targetRole,
+      profileSummary: profileSummary.value,
+      sections,
+      missingFacts,
+    },
+  };
 }
 
 function splitAgUiTextDeltas(content: string): string[] {
@@ -419,142 +882,6 @@ export function extractStreamingAgentMessageContent(jsonText: string): string {
   if (jsonText[valueStart] !== '"') return "";
 
   return decodeJsonStringPrefix(jsonText.slice(valueStart + 1));
-}
-
-export function createOpenAICompatibleAgentMessageProvider(
-  config: AgentConfig,
-  fetchFn: typeof fetch = fetch,
-): AgentMessageProvider | undefined {
-  if (!config.modelBaseUrl || !config.modelApiKey || !config.modelName) {
-    return undefined;
-  }
-
-  return {
-    async run({ prompt }) {
-      const controller = new AbortController();
-      const timeout = setTimeout(
-        () => controller.abort(),
-        config.modelTimeoutMs,
-      );
-      try {
-        const response = await fetchFn(
-          joinUrl(config.modelBaseUrl!, "/chat/completions"),
-          {
-            method: "POST",
-            headers: {
-              authorization: `Bearer ${config.modelApiKey}`,
-              "content-type": "application/json",
-            },
-            body: JSON.stringify({
-              model: config.modelName,
-              response_format: { type: "json_object" },
-              thinking: { type: "disabled" },
-              messages: openAICompatibleMessages(prompt),
-            }),
-            signal: controller.signal,
-          },
-        );
-        if (!response.ok) {
-          throw new RichTextPolishProviderError(
-            `Provider request failed with ${response.status}`,
-            "dependency_unavailable",
-          );
-        }
-        const body = await response.json();
-        const providerContent = extractOpenAICompatibleContent(body);
-        if (!providerContent) {
-          throw new RichTextPolishProviderError(
-            "Provider response missing message content",
-            "dependency_unavailable",
-          );
-        }
-        const usage = isRecord(body) && isRecord(body.usage) ? body.usage : {};
-        return {
-          content: providerContent,
-          usage: openAICompatibleUsage(config.modelName!, usage),
-        };
-      } catch (error) {
-        if (error instanceof RichTextPolishProviderError) throw error;
-        if (error instanceof DOMException && error.name === "AbortError") {
-          throw new RichTextPolishProviderError(
-            "Provider request timed out",
-            "provider_timeout",
-          );
-        }
-        throw new RichTextPolishProviderError(
-          error instanceof Error ? error.message : "Provider request failed",
-          "dependency_unavailable",
-        );
-      } finally {
-        clearTimeout(timeout);
-      }
-    },
-    async *stream({ prompt }) {
-      const controller = new AbortController();
-      const timeout = setTimeout(
-        () => controller.abort(),
-        config.modelTimeoutMs,
-      );
-      try {
-        const response = await fetchFn(
-          joinUrl(config.modelBaseUrl!, "/chat/completions"),
-          {
-            method: "POST",
-            headers: {
-              authorization: `Bearer ${config.modelApiKey}`,
-              "content-type": "application/json",
-            },
-            body: JSON.stringify({
-              model: config.modelName,
-              response_format: { type: "json_object" },
-              thinking: { type: "disabled" },
-              stream: true,
-              messages: openAICompatibleMessages(prompt),
-            }),
-            signal: controller.signal,
-          },
-        );
-        if (!response.ok) {
-          throw new RichTextPolishProviderError(
-            `Provider request failed with ${response.status}`,
-            "dependency_unavailable",
-          );
-        }
-        if (!response.body) {
-          throw new RichTextPolishProviderError(
-            "Provider stream response body is empty",
-            "dependency_unavailable",
-          );
-        }
-
-        let usage = openAICompatibleUsage(config.modelName!, {});
-        for await (const part of readOpenAICompatibleStream(response.body)) {
-          if (part.delta) {
-            yield { type: "content_delta", delta: part.delta };
-          }
-          if (part.usage) {
-            usage = openAICompatibleUsage(config.modelName!, part.usage);
-          }
-        }
-
-        yield { type: "usage", usage };
-      } catch (error) {
-        if (error instanceof RichTextPolishProviderError) throw error;
-        if (error instanceof DOMException && error.name === "AbortError") {
-          throw new RichTextPolishProviderError(
-            "Provider request timed out",
-            "provider_timeout",
-          );
-        }
-        throw new RichTextPolishProviderError(
-          error instanceof Error ? error.message : "Provider request failed",
-          "dependency_unavailable",
-        );
-      } finally {
-        clearTimeout(timeout);
-      }
-    },
-  };
 }
 
 function decodeJsonStringPrefix(raw: string): string {
@@ -611,116 +938,6 @@ function decodeJsonStringPrefix(raw: string): string {
   return output;
 }
 
-async function* readOpenAICompatibleStream(
-  body: ReadableStream<Uint8Array>,
-): AsyncIterable<{ delta?: string; usage?: Record<string, unknown> }> {
-  const reader = body.getReader();
-  const decoder = new TextDecoder();
-  let buffer = "";
-
-  try {
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      buffer += decoder.decode(value, { stream: true }).replace(/\r\n/g, "\n");
-
-      const parsed = shiftSseEvents(buffer);
-      buffer = parsed.rest;
-      for (const event of parsed.events) {
-        const part = parseOpenAICompatibleSseEvent(event);
-        if (part.done) return;
-        if (part.delta || part.usage) yield part;
-      }
-    }
-
-    buffer += decoder.decode().replace(/\r\n/g, "\n");
-    const parsed = shiftSseEvents(buffer);
-    for (const event of parsed.events) {
-      const part = parseOpenAICompatibleSseEvent(event);
-      if (part.done) return;
-      if (part.delta || part.usage) yield part;
-    }
-  } finally {
-    reader.releaseLock();
-  }
-}
-
-function shiftSseEvents(buffer: string): { events: string[]; rest: string } {
-  const events: string[] = [];
-  let rest = buffer;
-  let boundary = rest.indexOf("\n\n");
-
-  while (boundary !== -1) {
-    events.push(rest.slice(0, boundary));
-    rest = rest.slice(boundary + 2);
-    boundary = rest.indexOf("\n\n");
-  }
-
-  return { events, rest };
-}
-
-function parseOpenAICompatibleSseEvent(event: string): {
-  done: boolean;
-  delta?: string;
-  usage?: Record<string, unknown>;
-} {
-  const data = event
-    .split("\n")
-    .filter((line) => line.startsWith("data:"))
-    .map((line) => line.slice("data:".length).trimStart())
-    .join("\n")
-    .trim();
-  if (!data) return { done: false };
-  if (data === "[DONE]") return { done: true };
-
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(data);
-  } catch {
-    return { done: false };
-  }
-  if (!isRecord(parsed)) return { done: false };
-
-  const choice = Array.isArray(parsed.choices) ? parsed.choices[0] : undefined;
-  const delta =
-    isRecord(choice) &&
-    isRecord(choice.delta) &&
-    typeof choice.delta.content === "string"
-      ? choice.delta.content
-      : undefined;
-
-  return {
-    done: false,
-    ...(delta ? { delta } : {}),
-    ...(isRecord(parsed.usage) ? { usage: parsed.usage } : {}),
-  };
-}
-
-function openAICompatibleMessages(prompt: AgentMessagePrompt): Array<{
-  role: "system" | "user";
-  content: string;
-}> {
-  return [
-    {
-      role: "system",
-      content: `${prompt.system}\n\n开发者指令：\n${prompt.developer}`,
-    },
-    { role: "user", content: prompt.user },
-  ];
-}
-
-function openAICompatibleUsage(
-  model: string,
-  usage: Record<string, unknown>,
-): AgentMessageUsage {
-  return {
-    provider: "openai-compatible",
-    model,
-    inputTokens: numberOrZero(usage.prompt_tokens),
-    outputTokens: numberOrZero(usage.completion_tokens),
-  };
-}
-
 function validateWorkflowId(
   value: unknown,
 ):
@@ -731,6 +948,17 @@ function validateWorkflowId(
     return badRequest("workflowId is not supported");
   }
   return { ok: true, value: value as AgentWorkflowId };
+}
+
+function validateSessionMode(
+  value: unknown,
+):
+  | { ok: true; value: AgentResumeSessionMode }
+  | AgentMessageValidationFailure {
+  if (value === "optimize_existing" || value === "create_from_zero") {
+    return { ok: true, value };
+  }
+  return badRequest("mode is not supported");
 }
 
 function validateMessages(
@@ -768,6 +996,219 @@ function validateMessages(
   return { ok: true, value: messages };
 }
 
+function validateModelConfig(
+  value: unknown,
+):
+  | { ok: true; value: AgentModelConfig | undefined }
+  | AgentMessageValidationFailure {
+  if (value === undefined || value === null) {
+    return { ok: true, value: undefined };
+  }
+  if (!isRecord(value)) return badRequest("modelConfig must be an object");
+
+  const baseUrl = requiredString(value.baseUrl, "modelConfig.baseUrl");
+  if (!baseUrl.ok) return baseUrl;
+  if (!isSafeModelBaseUrl(baseUrl.value)) {
+    return badRequest("modelConfig.baseUrl is not allowed");
+  }
+  const apiKey = requiredString(value.apiKey, "modelConfig.apiKey");
+  if (!apiKey.ok) return apiKey;
+  const modelName = requiredString(value.modelName, "modelConfig.modelName");
+  if (!modelName.ok) return modelName;
+
+  return {
+    ok: true,
+    value: {
+      baseUrl: baseUrl.value,
+      apiKey: apiKey.value,
+      modelName: modelName.value,
+    },
+  };
+}
+
+function isSafeModelBaseUrl(value: string): boolean {
+  let url: URL;
+  try {
+    url = new URL(value);
+  } catch {
+    return false;
+  }
+
+  if (url.protocol !== "https:") return false;
+
+  const hostname = normalizeHostname(url.hostname);
+  if (!hostname) return false;
+  if (isBlockedModelHostname(hostname)) return false;
+
+  const ipv4 = parseIpv4(hostname) ?? parseIpv4MappedIpv6(hostname);
+  if (ipv4 && isBlockedIpv4(ipv4)) return false;
+  if (isBlockedIpv6(hostname)) return false;
+
+  return true;
+}
+
+function normalizeHostname(hostname: string): string {
+  return hostname.toLowerCase().replace(/^\[|\]$/g, "").replace(/\.$/, "");
+}
+
+function isBlockedModelHostname(hostname: string): boolean {
+  return (
+    hostname === "localhost" ||
+    hostname.endsWith(".localhost") ||
+    hostname === "metadata" ||
+    hostname === "metadata.google.internal" ||
+    hostname === "metadata.internal" ||
+    hostname === "instance-data" ||
+    hostname.endsWith(".internal")
+  );
+}
+
+function parseIpv4(hostname: string): number[] | null {
+  const parts = hostname.split(".");
+  if (parts.length !== 4) return null;
+
+  const octets = parts.map((part) => {
+    if (!/^\d{1,3}$/.test(part)) return Number.NaN;
+    const value = Number(part);
+    return Number.isInteger(value) && value >= 0 && value <= 255
+      ? value
+      : Number.NaN;
+  });
+
+  return octets.every(Number.isFinite) ? octets : null;
+}
+
+function parseIpv4MappedIpv6(hostname: string): number[] | null {
+  const normalized = hostname.toLowerCase();
+  const marker = "::ffff:";
+  const markerIndex = normalized.indexOf(marker);
+  if (markerIndex === -1) return null;
+
+  const mapped = normalized.slice(markerIndex + marker.length);
+  if (mapped.includes(".")) return parseIpv4(mapped);
+
+  const words = mapped.split(":");
+  if (words.length !== 2) return null;
+  const [high, low] = words.map(parseIpv6Word);
+  if (high === null || low === null) return null;
+
+  return [high >> 8, high & 255, low >> 8, low & 255];
+}
+
+function parseIpv6Word(value: string): number | null {
+  if (!/^[0-9a-f]{1,4}$/.test(value)) return null;
+  const parsed = Number.parseInt(value, 16);
+  return Number.isInteger(parsed) && parsed >= 0 && parsed <= 0xffff
+    ? parsed
+    : null;
+}
+
+function isBlockedIpv4([a, b]: number[]): boolean {
+  return (
+    a === 0 ||
+    a === 10 ||
+    a === 127 ||
+    (a === 100 && b >= 64 && b <= 127) ||
+    (a === 169 && b === 254) ||
+    (a === 172 && b >= 16 && b <= 31) ||
+    (a === 192 && b === 168) ||
+    (a === 198 && (b === 18 || b === 19)) ||
+    a >= 224
+  );
+}
+
+function isBlockedIpv6(hostname: string): boolean {
+  if (!hostname.includes(":")) return false;
+  const normalized = hostname.toLowerCase();
+  return (
+    normalized === "::" ||
+    normalized === "::1" ||
+    normalized.startsWith("fc") ||
+    normalized.startsWith("fd") ||
+    normalized.startsWith("fe8") ||
+    normalized.startsWith("fe9") ||
+    normalized.startsWith("fea") ||
+    normalized.startsWith("feb") ||
+    normalized === "fd00:ec2::254"
+  );
+}
+
+function validateSessionSnapshot(
+  value: unknown,
+  requestResumeId: string | null,
+):
+  | { ok: true; value: AgentSessionSnapshot | undefined }
+  | AgentMessageValidationFailure {
+  if (value === undefined || value === null) {
+    return { ok: true, value: undefined };
+  }
+  if (!isAgentSessionSnapshot(value)) {
+    return badRequest("sessionSnapshot is invalid");
+  }
+  if (value.resumeId !== requestResumeId) {
+    return badRequest("sessionSnapshot is invalid");
+  }
+  if (value.workspace.resumeId !== requestResumeId) {
+    return badRequest("sessionSnapshot is invalid");
+  }
+  return { ok: true, value };
+}
+
+function validateSessionContext(
+  value: unknown,
+  expected: {
+    resumeId: string | null;
+    mode: AgentResumeSessionMode;
+    workflowId: AgentWorkflowId | null;
+  },
+):
+  | { ok: true; value: AgentRunSessionContext | undefined }
+  | AgentMessageValidationFailure {
+  if (value === undefined || value === null) {
+    return { ok: true, value: undefined };
+  }
+  if (!isRecord(value)) return badRequest("sessionContext is invalid");
+
+  const sessionId = requiredString(value.sessionId, "sessionContext.sessionId");
+  if (!sessionId.ok) return sessionId;
+  const threadId = requiredString(value.threadId, "sessionContext.threadId");
+  if (!threadId.ok) return threadId;
+  const resumeTitle = requiredString(
+    value.resumeTitle,
+    "sessionContext.resumeTitle",
+  );
+  if (!resumeTitle.ok) return resumeTitle;
+  const mode = validateSessionMode(value.mode);
+  if (!mode.ok) return mode;
+  const workflowId = validateWorkflowId(value.workflowId);
+  if (!workflowId.ok) return workflowId;
+
+  const resumeId =
+    value.resumeId === null
+      ? null
+      : typeof value.resumeId === "string" && value.resumeId.trim() !== ""
+        ? value.resumeId.trim()
+        : undefined;
+  if (resumeId === undefined) return badRequest("sessionContext.resumeId is invalid");
+  if (resumeId !== expected.resumeId) return badRequest("sessionContext is invalid");
+  if (mode.value !== expected.mode) return badRequest("sessionContext is invalid");
+  if (workflowId.value !== expected.workflowId) {
+    return badRequest("sessionContext is invalid");
+  }
+
+  return {
+    ok: true,
+    value: {
+      sessionId: sessionId.value,
+      threadId: threadId.value,
+      resumeId,
+      mode: mode.value,
+      workflowId: workflowId.value,
+      resumeTitle: resumeTitle.value,
+    },
+  };
+}
+
 function validateContext(
   context: Record<string, unknown>,
 ):
@@ -794,7 +1235,7 @@ function validateContext(
     return badRequest("context.sections must not be empty");
   }
 
-  const sections: AgentMessageRequest["context"]["sections"] = [];
+  const sections: NonNullable<AgentMessageRequest["context"]>["sections"] = [];
   let totalPlainTextLength = 0;
   for (const section of context.sections) {
     if (!isRecord(section)) return badRequest("context.sections must be valid");
@@ -855,7 +1296,10 @@ function validateContext(
 function parseCompleteness(
   completeness: Record<string, unknown>,
 ):
-  | { ok: true; value: AgentMessageRequest["context"]["completeness"] }
+  | {
+      ok: true;
+      value: NonNullable<AgentMessageRequest["context"]>["completeness"];
+    }
   | AgentMessageValidationFailure {
   if (!isFiniteNumber(completeness.overall)) {
     return badRequest("context.completeness.overall is required");
@@ -864,8 +1308,9 @@ function parseCompleteness(
     return badRequest("context.completeness.sections is required");
   }
 
-  const sections: AgentMessageRequest["context"]["completeness"]["sections"] =
-    [];
+  const sections: NonNullable<
+    AgentMessageRequest["context"]
+  >["completeness"]["sections"] = [];
   for (const section of completeness.sections) {
     if (!isRecord(section)) {
       return badRequest("context.completeness.sections must be valid");
@@ -943,6 +1388,117 @@ function parseRequiredString(
   return { ok: true, value: value.trim() };
 }
 
+function isAgentSessionSnapshot(value: unknown): value is AgentSessionSnapshot {
+  return (
+    isRecord(value) &&
+    typeof value.sessionId === "string" &&
+    typeof value.threadId === "string" &&
+    (value.resumeId === null || typeof value.resumeId === "string") &&
+    typeof value.userIdHash === "string" &&
+    isAgentResumeSessionMode(value.mode) &&
+    isAgentSessionStatus(value.status) &&
+    isWorkflowCursor(value.workflow) &&
+    isResumeWorkspaceSnapshot(value.workspace) &&
+    (value.contextStatus === null || isContextStatusSnapshot(value.contextStatus)) &&
+    Array.isArray(value.pendingInterrupts) &&
+    value.pendingInterrupts.every(isSessionInterruptSnapshot) &&
+    (value.lastResumeContentHash === null ||
+      typeof value.lastResumeContentHash === "string") &&
+    typeof value.createdAt === "string" &&
+    typeof value.updatedAt === "string"
+  );
+}
+
+function isWorkflowCursor(value: unknown): value is AgentWorkflowCursor {
+  return (
+    isRecord(value) &&
+    (value.workflowId === null ||
+      value.workflowId === "create-from-zero" ||
+      WORKFLOW_IDS.has(value.workflowId as AgentWorkflowId)) &&
+    typeof value.nodeId === "string" &&
+    isFiniteNumber(value.loopCount) &&
+    Array.isArray(value.completedNodeIds) &&
+    value.completedNodeIds.every((nodeId) => typeof nodeId === "string")
+  );
+}
+
+function isResumeWorkspaceSnapshot(
+  value: unknown,
+): value is AgentResumeWorkspaceSnapshot {
+  return (
+    isRecord(value) &&
+    (value.resumeId === null || typeof value.resumeId === "string") &&
+    isAgentResumeSessionMode(value.mode) &&
+    isRecord(value.goal) &&
+    (value.goal.workflowId === null ||
+      typeof value.goal.workflowId === "string") &&
+    typeof value.goal.resumeTitle === "string" &&
+    (value.goal.targetRole === null ||
+      typeof value.goal.targetRole === "string") &&
+    value.goal.locale === "zh-CN" &&
+    Array.isArray(value.facts) &&
+    Array.isArray(value.changeSets) &&
+    Array.isArray(value.decisions) &&
+    (value.qualityReport === null || isRecord(value.qualityReport)) &&
+    typeof value.updatedAt === "string"
+  );
+}
+
+function isContextStatusSnapshot(
+  value: unknown,
+): value is AgentContextStatusSnapshot {
+  return (
+    isRecord(value) &&
+    isFiniteNumber(value.effectiveInputBudgetTokens) &&
+    value.effectiveInputBudgetTokens >= 200_000 &&
+    isFiniteNumber(value.modelInputLimitTokens) &&
+    isFiniteNumber(value.reservedOutputTokens) &&
+    isFiniteNumber(value.reservedSystemTokens) &&
+    isFiniteNumber(value.usedInputTokens) &&
+    isFiniteNumber(value.utilization) &&
+    (value.status === "healthy" ||
+      value.status === "near_limit" ||
+      value.status === "compacting" ||
+      value.status === "blocked") &&
+    (value.policy === "full_context" ||
+      value.policy === "pinned_plus_recent" ||
+      value.policy === "compacted_history") &&
+    Array.isArray(value.sources) &&
+    Array.isArray(value.warnings) &&
+    (value.lastCompactionAt === null ||
+      typeof value.lastCompactionAt === "string")
+  );
+}
+
+function isSessionInterruptSnapshot(
+  value: unknown,
+): value is AgentSessionInterrupt {
+  return (
+    isRecord(value) &&
+    typeof value.id === "string" &&
+    typeof value.reason === "string" &&
+    (value.message === null || typeof value.message === "string") &&
+    (value.toolCallId === null || typeof value.toolCallId === "string") &&
+    (value.metadata === null || isRecord(value.metadata))
+  );
+}
+
+function isAgentResumeSessionMode(
+  value: unknown,
+): value is AgentResumeSessionMode {
+  return value === "optimize_existing" || value === "create_from_zero";
+}
+
+function isAgentSessionStatus(value: unknown): value is AgentSessionStatus {
+  return (
+    value === "active" ||
+    value === "waiting_user" ||
+    value === "completed" ||
+    value === "cancelled" ||
+    value === "failed"
+  );
+}
+
 function badRequest(message: string): AgentMessageValidationFailure {
   return {
     ok: false,
@@ -958,19 +1514,4 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function isFiniteNumber(value: unknown): value is number {
   return typeof value === "number" && Number.isFinite(value);
-}
-
-function extractOpenAICompatibleContent(body: unknown): string | null {
-  if (!isRecord(body) || !Array.isArray(body.choices)) return null;
-  const [choice] = body.choices;
-  if (!isRecord(choice) || !isRecord(choice.message)) return null;
-  return typeof choice.message.content === "string" ? choice.message.content : null;
-}
-
-function numberOrZero(value: unknown): number {
-  return typeof value === "number" && Number.isFinite(value) ? value : 0;
-}
-
-function joinUrl(baseUrl: string, path: string): string {
-  return `${baseUrl.replace(/\/+$/, "")}/${path.replace(/^\/+/, "")}`;
 }

@@ -10,13 +10,23 @@
 http://127.0.0.1:8787
 ```
 
-部署后由 Caddy 暴露域名和路径前缀。Web 端通过 `AGENT_BASE_URL` 指向该地址：
+部署后由 Caddy 暴露域名和路径前缀。Web 服务端通过 `AGENT_BASE_URL`
+指向该地址；Agent Mode 直连流通过 `/api/agent/direct-runs` 返回的
+`AGENT_PUBLIC_BASE_URL` 让浏览器直接连接同一地址：
 
 ```bash
 https://api.rory-x.me/intro-builder/agent
 ```
 
-根 `.env.example` 已预留 `AGENT_BASE_URL`。本地开发可以指向 `http://127.0.0.1:8787`，生产环境统一指向上面的公网路径。
+根 `.env.example` 已预留 `AGENT_BASE_URL` 和 `AGENT_PUBLIC_BASE_URL`。
+本地开发可以都指向 `http://127.0.0.1:8787`，生产环境统一指向上面的公网路径。
+
+直连浏览器请求会带 `Authorization: Bearer <short Agent JWT>`，所以 Agent
+服务必须配置允许来源：
+
+```bash
+AGENT_CORS_ORIGINS=https://intro-builder.vercel.app,http://localhost:3000
+```
 
 Caddy 会剥掉 `/intro-builder/agent` 前缀后再转发给 Agent，所以 Agent 内部仍只需要实现 `/health`、`/ready` 和后续 `/v1/*`。
 

@@ -1,4 +1,8 @@
-import type { Evaluation, ExperimentParams } from "@langfuse/client";
+import type {
+  Evaluation,
+  ExperimentParams,
+  RunExperimentOnDataset,
+} from "@langfuse/client";
 
 import {
   evaluateAgentMessageContractCase,
@@ -27,6 +31,23 @@ export type LangfuseAgentMessageExperimentClient = {
   flush: () => Promise<void>;
 };
 
+export type LangfuseAgentMessageDatasetExperimentClient = {
+  dataset: {
+    get: (
+      name: string,
+      options: { fetchItemsPageSize: number },
+    ) => Promise<{
+      runExperiment: RunExperimentOnDataset;
+    }>;
+  };
+  flush: () => Promise<void>;
+};
+
+export type LangfuseAgentMessageDatasetExperimentParams = Omit<
+  ExperimentParams<Record<string, unknown>, unknown, Record<string, unknown>>,
+  "data"
+>;
+
 export function buildLangfuseAgentMessageExperimentParams({
   cases,
   runName,
@@ -34,11 +55,12 @@ export function buildLangfuseAgentMessageExperimentParams({
   cases: AgentMessageEvalCase[];
   runName?: string;
 }): ExperimentParams<ExperimentInput, ExperimentExpectedOutput, ExperimentMetadata> {
-  return {
-    name: "agent-message-contract",
+  const sharedParams = buildLangfuseAgentMessageDatasetExperimentParams({
     runName,
-    description:
-      "Deterministic evaluation of Intro Builder Agent Mode structured outputs.",
+  });
+
+  return {
+    ...sharedParams,
     metadata: {
       suite: "agent-message-contract",
       source: "apps/agent/evals/agent-message-contract-cases.json",
@@ -52,39 +74,74 @@ export function buildLangfuseAgentMessageExperimentParams({
       expectedOutput: testCase.expectations,
       metadata: { caseId: testCase.id },
     })),
-    task: async ({ input }) => toExperimentInput(input).modelOutput,
-    evaluators: [
-      async ({ input, output, expectedOutput }): Promise<Evaluation[]> => {
-        const evalInput = toExperimentInput(input);
-        const result = evaluateAgentMessageContractCase({
-          id: evalInput.caseId,
-          description: evalInput.description,
-          modelOutput: String(output),
-          expectations: expectedOutput ?? {},
-        });
+  };
+}
 
-        return result.scores.map((score) => ({
-          name: score.name,
-          value: score.value,
-          comment: score.comment,
-          metadata: { passed: score.passed },
-        }));
-      },
-    ],
-    runEvaluators: [
-      async ({ itemResults }) => {
-        const totalScores = itemResults.flatMap((item) => item.evaluations);
-        const passedScores = totalScores.filter(
-          (score) => readPassedMetadata(score.metadata) === true,
-        );
-        return {
-          name: "score_pass_rate",
-          value: totalScores.length === 0 ? 0 : passedScores.length / totalScores.length,
-          comment: `${passedScores.length}/${totalScores.length} individual scores passed.`,
-        };
-      },
-    ],
+export function buildLangfuseAgentMessageDatasetExperimentParams({
+  runName,
+}: {
+  runName?: string;
+}): LangfuseAgentMessageDatasetExperimentParams {
+  return {
+    name: "agent-message-contract",
+    runName,
+    description:
+      "Deterministic evaluation of Intro Builder Agent Mode structured outputs.",
+    metadata: {
+      suite: "agent-message-contract",
+      source: "langfuse-dataset",
+    },
+    task: async ({ input }) => toExperimentInput(input).modelOutput,
+    evaluators: [evaluateExperimentItem],
+    runEvaluators: [evaluateExperimentRun],
     maxConcurrency: 1,
+  };
+}
+
+async function evaluateExperimentItem({
+  input,
+  output,
+  expectedOutput,
+}: {
+  input: unknown;
+  output: unknown;
+  expectedOutput?: unknown;
+}): Promise<Evaluation[]> {
+  const evalInput = toExperimentInput(input);
+  const result = evaluateAgentMessageContractCase({
+    id: evalInput.caseId,
+    description: evalInput.description,
+    modelOutput: String(output),
+    expectations: toExperimentExpectedOutput(expectedOutput),
+  });
+
+  return result.scores.map((score) => ({
+    name: score.name,
+    value: score.value,
+    comment: score.comment,
+    metadata: { passed: score.passed },
+  }));
+}
+
+function toExperimentExpectedOutput(value: unknown): ExperimentExpectedOutput {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? (value as ExperimentExpectedOutput)
+    : {};
+}
+
+async function evaluateExperimentRun({
+  itemResults,
+}: {
+  itemResults: Array<{ evaluations: Evaluation[] }>;
+}): Promise<Evaluation> {
+  const totalScores = itemResults.flatMap((item) => item.evaluations);
+  const passedScores = totalScores.filter(
+    (score) => readPassedMetadata(score.metadata) === true,
+  );
+  return {
+    name: "score_pass_rate",
+    value: totalScores.length === 0 ? 0 : passedScores.length / totalScores.length,
+    comment: `${passedScores.length}/${totalScores.length} individual scores passed.`,
   };
 }
 
@@ -120,6 +177,25 @@ export async function runLangfuseAgentMessageExperiment({
 }): Promise<unknown> {
   const result = await client.experiment.run(
     buildLangfuseAgentMessageExperimentParams({ cases, runName }),
+  );
+  await client.flush();
+  return result;
+}
+
+export async function runLangfuseAgentMessageDatasetExperiment({
+  client,
+  datasetName,
+  runName,
+  fetchItemsPageSize,
+}: {
+  client: LangfuseAgentMessageDatasetExperimentClient;
+  datasetName: string;
+  runName?: string;
+  fetchItemsPageSize: number;
+}): Promise<unknown> {
+  const dataset = await client.dataset.get(datasetName, { fetchItemsPageSize });
+  const result = await dataset.runExperiment(
+    buildLangfuseAgentMessageDatasetExperimentParams({ runName }),
   );
   await client.flush();
   return result;
