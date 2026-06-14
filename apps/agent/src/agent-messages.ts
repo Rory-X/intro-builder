@@ -432,7 +432,8 @@ export function parseAgentMessageProviderResponse(
   const parsedQuestions = parseAgentQuestions(questions.value);
   if (!parsedQuestions.ok) return parsedQuestions;
   const draftResume = parseOptionalDraftResume(parsed.draftResume);
-  if (!draftResume.ok) return draftResume;
+  if (!draftResume.ok && parsedQuestions.value.length === 0) return draftResume;
+  const draftResumeValue = draftResume.ok ? draftResume.value : null;
 
   const output = validateAgentToolOutput({
     toolCalls: toolCalls.value,
@@ -449,7 +450,7 @@ export function parseAgentMessageProviderResponse(
       ...(parsedQuestions.value.length > 0
         ? { questions: parsedQuestions.value }
         : {}),
-      ...(draftResume.value ? { draftResume: draftResume.value } : {}),
+      ...(draftResumeValue ? { draftResume: draftResumeValue } : {}),
     },
   };
 }
