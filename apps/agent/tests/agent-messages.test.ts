@@ -340,6 +340,59 @@ describe("agent messages", () => {
     });
   });
 
+  it("ignores incomplete draft resumes when the provider is still asking intake questions", () => {
+    const parsed = parseAgentMessageProviderResponse(
+      JSON.stringify({
+        message: {
+          id: "msg_create_zero_intake",
+          role: "assistant",
+          content: "好的，我来帮你从零创建一份简历。请先告诉我你的目标岗位。",
+        },
+        toolCalls: [],
+        proposedOperations: [],
+        questions: [
+          {
+            id: "question_target_role",
+            message: "你想应聘什么职位？",
+            field: "goal.targetRole",
+            responseSchema: {
+              type: "object",
+              properties: {
+                answer: { type: "string", minLength: 1 },
+              },
+              required: ["answer"],
+            },
+          },
+        ],
+        draftResume: {
+          title: "新简历草稿",
+          targetRole: null,
+          sections: [],
+          missingFacts: ["目标岗位", "基础资料"],
+        },
+      }),
+    );
+
+    expect(parsed).toEqual({
+      ok: true,
+      result: {
+        message: {
+          id: "msg_create_zero_intake",
+          role: "assistant",
+          content: "好的，我来帮你从零创建一份简历。请先告诉我你的目标岗位。",
+        },
+        toolCalls: [],
+        proposedOperations: [],
+        questions: [
+          expect.objectContaining({
+            id: "question_target_role",
+            field: "goal.targetRole",
+          }),
+        ],
+      },
+    });
+  });
+
   it("normalizes provider operations that omit transport toolCallId linkage", () => {
     const parsed = parseAgentMessageProviderResponse(
       JSON.stringify({
