@@ -2,61 +2,62 @@
 
 import { ScrollReveal } from "@/components/marketing/scroll-reveal";
 import {
-  LayoutGrid,
+  BookOpen,
+  Brain,
   Eye,
-  Upload,
   FileText,
-  Users,
+  LayoutGrid,
   Link2,
   ArrowRight,
+  Upload,
 } from "lucide-react";
 
 const FEATURES = [
   {
-    id: "structured",
-    title: "结构化编辑",
-    desc: "用模块思维写简历，告别格式焦虑。分区编辑、拖拽排序，内容与样式完全解耦。",
+    id: "editor",
+    title: "流畅编辑体验",
+    desc: "结构化表单、富文本模块、拖拽排序和自动保存，让内容修改比调格式更顺手。",
     icon: LayoutGrid,
     span: "md:col-span-4",
     color: "bg-blue-500/10 text-blue-600 dark:text-blue-400",
   },
   {
     id: "preview",
-    title: "实时 A4 预览",
-    desc: "键入即所见，按 A4 真实尺寸排版。所有改动同步反映在预览区。",
+    title: "实时预览与排版",
+    desc: "键入即所见，A4 预览、密度调节和模板切换同步更新，导出前不用靠想象。",
     icon: Eye,
     span: "md:col-span-2",
     color: "bg-violet-500/10 text-violet-600 dark:text-violet-400",
   },
   {
-    id: "import",
-    title: "智能解析导入",
-    desc: "支持 PDF / Word / 图片导入，OCR + AI 自动解析为结构化字段，5 秒完成迁移。",
-    icon: Upload,
+    id: "ai",
+    title: "AI 诊断与 Agent 辅助",
+    desc: "整份简历诊断、STAR 改写和局部润色都以建议卡呈现，确认后才写回内容。",
+    icon: Brain,
     span: "md:col-span-2",
-    color: "bg-pink-500/10 text-pink-600 dark:text-pink-400",
+    color: "bg-cyan-500/10 text-cyan-600 dark:text-cyan-400",
   },
   {
-    id: "pdf",
-    title: "像素级 PDF 导出",
-    desc: "内置思源黑体，告别字体丢失与格式错乱。A4 规范 PDF 一键下载，导出与预览完全一致。",
-    icon: FileText,
+    id: "docs",
+    title: "求职文档建设",
+    desc: "文档站沉淀简历、投递、面试与职业规划内容，编辑工具之外也能补齐求职判断。",
+    icon: BookOpen,
     span: "md:col-span-4",
     color: "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400",
   },
   {
-    id: "collab",
-    title: "多人协同批注",
-    desc: "链接邀请导师或同伴，高亮批注、实时沟通，简历越改越好。",
-    icon: Users,
+    id: "import",
+    title: "智能解析导入",
+    desc: "PDF / Word 简历导入后解析为结构化字段，旧简历可以直接进入编辑与优化流程。",
+    icon: Upload,
     span: "md:col-span-3",
     color: "bg-orange-500/10 text-orange-600 dark:text-orange-400",
   },
   {
-    id: "share",
-    title: "一键公开分享",
-    desc: "生成只读链接，投递时直接发 HR，随时可关闭。",
-    icon: Link2,
+    id: "delivery",
+    title: "模板、PDF 与分享",
+    desc: "模板库、像素级 PDF 和公开只读链接一起覆盖投递交付，随时更新、随时关闭。",
+    icon: FileText,
     span: "md:col-span-3",
     color: "bg-cyan-500/10 text-cyan-600 dark:text-cyan-400",
   },
@@ -74,7 +75,7 @@ export function BentoFeatures() {
           不只是简历模板
           <br />
           <span className="font-[var(--font-serif-display)] italic text-foreground/80">
-            是一个完整的工作台
+            是从编辑到投递的工作台
           </span>
         </h2>
       </ScrollReveal>
@@ -88,9 +89,9 @@ export function BentoFeatures() {
               delay={i * 0.08}
               className={`${feature.span} col-span-1`}
             >
-              <div className="group relative flex h-full min-h-[220px] flex-col overflow-hidden rounded-2xl border border-border/60 bg-card p-6 transition-all duration-300 hover:-translate-y-1 hover:shadow-xl hover:shadow-primary/5">
+              <div className="group relative flex h-full min-h-[220px] flex-col overflow-hidden rounded-lg border border-border/60 bg-card p-6 transition-all duration-300 hover:-translate-y-1 hover:shadow-xl hover:shadow-cyan-500/5">
                 <div
-                  className={`mb-4 inline-flex h-11 w-11 items-center justify-center rounded-xl ${feature.color}`}
+                  className={`mb-4 inline-flex h-11 w-11 items-center justify-center rounded-lg ${feature.color}`}
                 >
                   <Icon className="h-5 w-5" />
                 </div>
@@ -105,6 +106,9 @@ export function BentoFeatures() {
                   了解更多
                   <ArrowRight className="h-3.5 w-3.5" />
                 </div>
+                {feature.id === "delivery" ? (
+                  <Link2 className="pointer-events-none absolute bottom-5 right-5 h-12 w-12 text-muted-foreground/10" />
+                ) : null}
               </div>
             </ScrollReveal>
           );

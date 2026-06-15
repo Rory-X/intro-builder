@@ -1,10 +1,11 @@
 import Link from "next/link";
 import type { Metadata } from "next";
 import { Button } from "@/components/ui/button";
-import { ArrowRight } from "lucide-react";
+import { ArrowRight, BookOpen } from "lucide-react";
 import { HeroSection } from "@/components/marketing/hero-section";
 import { EditorMockup } from "@/components/marketing/editor-mockup";
 import { BentoFeatures } from "@/components/marketing/bento-features";
+import { CollaborationMockup } from "@/components/marketing/collaboration-mockup";
 import { TemplatesSection } from "@/components/marketing/templates-section";
 import { MarketingFooter } from "@/components/marketing/marketing-footer";
 import { ScrollReveal } from "@/components/marketing/scroll-reveal";
@@ -72,44 +73,40 @@ export default async function Landing() {
       </section>
 
       <BentoFeatures />
+      <CollaborationMockup />
       <TemplatesSection allTemplates={allTemplates} resolvedTemplates={resolvedList} demoContent={demoResume} />
 
       {/* CTA Section */}
-      <section className="relative overflow-hidden py-24 md:py-32">
-        {/* Background */}
-        <div className="pointer-events-none absolute inset-0 -z-10" aria-hidden>
-          <div className="absolute left-1/4 top-1/4 h-[400px] w-[400px] rounded-full bg-gradient-to-br from-primary/15 to-violet-500/10 blur-[80px]" />
-          <div className="absolute bottom-1/4 right-1/4 h-[350px] w-[350px] rounded-full bg-gradient-to-tl from-pink-500/10 to-primary/5 blur-[60px]" />
-        </div>
-
+      <section className="border-y border-border/50 bg-muted/25 py-20 md:py-28">
         <ScrollReveal className="mx-auto max-w-4xl px-4 text-center">
           <h2 className="text-3xl font-extrabold leading-[1.2] tracking-tight md:text-6xl lg:text-7xl">
             下一份 Offer
             <br />
-            <span className="font-[var(--font-serif-display)] italic bg-gradient-to-r from-primary via-violet-500 to-primary bg-clip-text text-transparent animate-gradient-shift">
+            <span className="bg-gradient-to-r from-cyan-500 via-blue-500 to-emerald-500 bg-clip-text font-[var(--font-serif-display)] italic text-transparent">
               从一份精致简历开始
             </span>
           </h2>
           <p className="mx-auto mt-5 max-w-lg text-base text-muted-foreground md:text-lg">
-            注册只需一封邮件 · 30 秒进入编辑器 · 永久免费使用核心功能
+            顺滑编辑、AI 辅助、求职文档与 PDF 交付都在这里。注册只需一封邮件，30 秒进入工作台。
           </p>
           <div className="mt-10 flex flex-col items-center justify-center gap-3 sm:flex-row">
             <Link href="/login">
               <Button
                 size="lg"
-                className="group gap-2 rounded-full px-8 text-base font-semibold shadow-lg shadow-primary/25"
+                className="group gap-2 rounded-full px-8 text-base font-semibold shadow-lg shadow-cyan-500/20"
               >
                 免费创建简历
                 <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-0.5" />
               </Button>
             </Link>
-            <Link href="#templates">
+            <Link href="/docs">
               <Button
                 size="lg"
                 variant="outline"
-                className="rounded-full px-8 text-base"
+                className="gap-2 rounded-full px-8 text-base"
               >
-                查看公开样例
+                <BookOpen className="h-4 w-4" />
+                查看求职文档
               </Button>
             </Link>
           </div>
