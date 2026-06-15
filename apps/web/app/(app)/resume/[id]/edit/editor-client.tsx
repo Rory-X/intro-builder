@@ -66,7 +66,7 @@ import { AnnotationHighlights, flashAnnotation } from "@/components/collab/annot
 import { AnnotationList } from "@/components/collab/annotation-list";
 import { ResumeDiagnoseButton } from "@/components/agent/resume-diagnose-button";
 import { AgentModeToggle } from "@/components/agent/agent-mode-toggle";
-import { AgentPanel } from "@/components/agent/agent-panel";
+import { AgentAiSdkPanel } from "@/components/agent/agent-aisdk-panel";
 import type { ResumeOperation } from "@intro-builder/shared/types";
 
 type Props = {
@@ -825,7 +825,7 @@ export default function EditorClient({ id, initialTitle, initialTemplate, initia
               )}
             >
               {isAgentMode ? (
-                <AgentPanel
+                <AgentAiSdkPanel
                   resumeId={id}
                   title={title}
                   templateId={template}
@@ -941,7 +941,7 @@ export default function EditorClient({ id, initialTitle, initialTemplate, initia
                   移动端 Agent 面板，修改简历前仍需确认。
                 </SheetDescription>
               </SheetHeader>
-              <AgentPanel
+              <AgentAiSdkPanel
                 resumeId={id}
                 title={title}
                 templateId={template}
