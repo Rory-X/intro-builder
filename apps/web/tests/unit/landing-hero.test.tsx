@@ -48,6 +48,17 @@ describe("Landing hero", () => {
     expect(screen.getByText(/是从编辑到投递的工作台/)).toBeInTheDocument();
   });
 
+  it("shows the hero mockup in agent mode with a live resume preview", async () => {
+    const Landing = (await import("@/app/(marketing)/page")).default;
+    const element = await Landing();
+    render(element);
+
+    expect(screen.getAllByText("Agent 模式").length).toBeGreaterThanOrEqual(1);
+    expect(screen.getByText("实时 A4 预览")).toBeInTheDocument();
+    expect(screen.getByText("Agent 改写已应用")).toBeInTheDocument();
+    expect(screen.getByText(/右侧预览会同步展示改写后的版本/)).toBeInTheDocument();
+  });
+
   it("shows collaboration mockups for review and comment modes", async () => {
     const Landing = (await import("@/app/(marketing)/page")).default;
     const element = await Landing();
