@@ -13,10 +13,19 @@ import type { AgentSessionSnapshot } from "../agent-messages.js";
 
 /**
  * Agent-local Drizzle schema. Only the tables the agent service actually
- * touches are declared here (session persistence + read access lands later).
- * Physical table names/columns mirror the web app's schema (migration 0011)
- * so both apps point at the same Postgres tables.
+ * touches are declared here. Physical table names/columns mirror the web app's
+ * schema (migrations 0000 + 0011) so both apps point at the same Postgres tables.
+ *
+ * `resume` is declared read-only here: agent tools SELECT resume content but
+ * never write it — the real resume only changes on apply (web side).
  */
+
+export const resumes = pgTable("resume", {
+  id: text("id").primaryKey(),
+  userId: text("userId").notNull(),
+  title: text("title").notNull(),
+  content: jsonb("content").$type<unknown>().notNull(),
+});
 
 export const agentSessions = pgTable(
   "agent_session",

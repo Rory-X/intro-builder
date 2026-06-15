@@ -77,4 +77,26 @@ describe("createAgentApp", () => {
     expect(res.status).toBe(401);
     expect(((await res.json()) as Record<string, unknown>).error).toBe("unauthorized");
   });
+
+  it("POST /v1/agent/session without a bearer token returns 401", async () => {
+    const app = createAgentApp({ config });
+    const res = await app.request("/v1/agent/session", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ resumeId: "r1", mode: "optimize_existing" }),
+    });
+    expect(res.status).toBe(401);
+    expect(((await res.json()) as Record<string, unknown>).error).toBe("unauthorized");
+  });
+
+  it("POST /v1/agent/chat without a bearer token returns 401", async () => {
+    const app = createAgentApp({ config });
+    const res = await app.request("/v1/agent/chat", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ messages: [] }),
+    });
+    expect(res.status).toBe(401);
+    expect(((await res.json()) as Record<string, unknown>).error).toBe("unauthorized");
+  });
 });
