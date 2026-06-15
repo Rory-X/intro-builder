@@ -24,7 +24,7 @@ import {
   previewSnapshot,
   type PreviewState,
 } from "../agent/preview.js";
-import { createChatModel, streamAgentChat } from "../agent/chat-runtime.js";
+import { createChatModel, streamAgentChat, type StreamAgentChatOptions } from "../agent/chat-runtime.js";
 import { createDrizzleResumeReader } from "../agent/resume-reader.js";
 import type { ResumeReader } from "../agent/tools.js";
 import type { AgentConfig } from "../config.js";
@@ -94,6 +94,8 @@ export type CreateAgentAppOptions = {
     resumeId: string | null;
   }) => ResumeReader;
   resolveChatModel?: (modelConfig?: ChatModelConfig) => LanguageModel | null;
+  /** Injectable for tests; forwarded to the chat runtime's streamText. */
+  streamTextImpl?: StreamAgentChatOptions["streamTextImpl"];
 };
 
 export function createAgentApp(options: CreateAgentAppOptions): AgentApp {
@@ -112,6 +114,7 @@ export function createAgentApp(options: CreateAgentAppOptions): AgentApp {
     createResumeReader = (args) => createDrizzleResumeReader(args),
     resolveChatModel = (modelConfig) =>
       defaultResolveChatModel(config, modelConfig),
+    streamTextImpl,
   } = options;
 
   const app = new Hono<{ Variables: Variables }>();
@@ -553,6 +556,7 @@ export function createAgentApp(options: CreateAgentAppOptions): AgentApp {
       telemetry: config.langfuse.enabled
         ? { isEnabled: true, functionId: "agent.chat", metadata: { requestId, mode } }
         : undefined,
+      ...(streamTextImpl ? { streamTextImpl } : {}),
       onFinish: async () => {
         if (!sessionStore || !sessionId) return;
         try {
