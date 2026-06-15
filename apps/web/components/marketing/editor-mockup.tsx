@@ -1,5 +1,12 @@
 import { ScrollReveal } from "@/components/marketing/scroll-reveal";
-import { Bolt, MessageSquare, FileText } from "lucide-react";
+import {
+  Bot,
+  CheckCircle2,
+  FileText,
+  MessageSquare,
+  Sparkles,
+  WandSparkles,
+} from "lucide-react";
 
 export function EditorMockup() {
   return (
@@ -8,13 +15,13 @@ export function EditorMockup() {
         <div className="relative">
           {/* Floating tags */}
           <FloatingTag
-            icon={<Bolt className="h-3.5 w-3.5 text-primary" />}
-            label="实时同步预览"
+            icon={<Bot className="h-3.5 w-3.5 text-primary" />}
+            label="Agent 模式 · 正在诊断"
             className="absolute -right-2 top-16 z-10 hidden lg:flex animate-float-bob"
           />
           <FloatingTag
-            icon={<MessageSquare className="h-3.5 w-3.5 text-pink-500" />}
-            label="导师批注 · 2 条新评论"
+            icon={<Sparkles className="h-3.5 w-3.5 text-pink-500" />}
+            label="右侧预览实时更新"
             className="absolute -left-2 bottom-24 z-10 hidden lg:flex animate-float-bob-alt"
           />
           <FloatingTag
@@ -35,14 +42,14 @@ export function EditorMockup() {
                   <span className="h-2.5 w-2.5 sm:h-3 sm:w-3 rounded-full bg-green-400" />
                 </div>
                 <div className="flex gap-1.5 sm:gap-2">
-                  <span className="rounded-md border border-border bg-background px-2 sm:px-2.5 py-0.5 text-[10px] sm:text-[11px] font-medium text-foreground">
+                  <span className="rounded-md px-2 sm:px-2.5 py-0.5 text-[10px] sm:text-[11px] font-medium text-muted-foreground">
                     编辑
                   </span>
-                  <span className="rounded-md px-2 sm:px-2.5 py-0.5 text-[10px] sm:text-[11px] font-medium text-muted-foreground">
-                    模板
+                  <span className="rounded-md border border-border bg-background px-2 sm:px-2.5 py-0.5 text-[10px] sm:text-[11px] font-medium text-foreground">
+                    Agent 模式
                   </span>
                   <span className="hidden sm:inline-block rounded-md px-2.5 py-0.5 text-[11px] font-medium text-muted-foreground">
-                    协作
+                    模板
                   </span>
                 </div>
                 <div className="ml-auto flex gap-1.5 sm:gap-2">
@@ -56,82 +63,114 @@ export function EditorMockup() {
               </div>
 
               {/* Content body */}
-              <div className="flex h-[380px] sm:h-[420px] md:h-[520px]">
-                {/* Left: Editor panel — hidden on mobile */}
-                <div className="hidden md:block w-[42%] overflow-hidden border-r border-border/40 bg-muted/20 p-5">
-                  {/* Section: Basics */}
-                  <div className="mb-4 flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider text-foreground">
-                    <span className="h-1.5 w-1.5 rounded-full bg-primary" />
-                    基础信息
-                  </div>
-                  <div className="mb-3 grid grid-cols-2 gap-2">
-                    <MockField label="姓名" value="林小明" />
-                    <MockField label="求职方向" value="全栈工程师" focused />
-                  </div>
-                  <div className="mb-5 grid grid-cols-2 gap-2">
-                    <MockField label="电话" value="139 ···· 8826" />
-                    <MockField label="邮箱" value="xiaoming@example.com" />
+              <div className="grid min-h-[620px] md:h-[540px] md:min-h-0 md:grid-cols-[0.46fr_0.54fr]">
+                {/* Left: Agent mode panel */}
+                <div className="overflow-hidden border-b border-border/40 bg-muted/20 p-4 sm:p-5 md:border-b-0 md:border-r">
+                  <div className="mb-4 flex items-center justify-between gap-3">
+                    <div>
+                      <div className="flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider text-foreground">
+                        <span className="h-1.5 w-1.5 rounded-full bg-primary" />
+                        Agent 模式
+                      </div>
+                      <p className="mt-1 text-[11px] leading-relaxed text-muted-foreground">
+                        正在围绕「产品运营实习生」优化这份简历
+                      </p>
+                    </div>
+                    <span className="inline-flex items-center gap-1 rounded-md border border-emerald-500/30 bg-emerald-500/10 px-2 py-1 text-[10px] font-semibold text-emerald-600 dark:text-emerald-300">
+                      <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
+                      在线
+                    </span>
                   </div>
 
-                  {/* Section: Experience */}
-                  <div className="mb-3 flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider text-foreground">
-                    <span className="h-1.5 w-1.5 rounded-full bg-primary" />
-                    工作经历
+                  <div className="mb-3 rounded-lg border border-border/60 bg-background p-3">
+                    <div className="mb-2 flex items-center gap-2 text-[11px] font-semibold text-muted-foreground">
+                      <MessageSquare className="h-3.5 w-3.5 text-cyan-500" />
+                      我想投递内容运营岗位，帮我看看项目经历哪里弱。
+                    </div>
+                    <div className="rounded-md bg-cyan-500/10 p-2.5 text-[11px] leading-relaxed text-foreground">
+                      建议把「参与活动运营」改成带目标、动作和结果的表达。右侧预览会同步展示改写后的版本。
+                    </div>
                   </div>
-                  <ExperienceCard
-                    company="星辰科技有限公司"
-                    role="全栈开发工程师 · 深圳"
-                    date="2023.03 → 2024.06"
-                  />
-                  <ExperienceCard
-                    company="云帆信息技术"
-                    role="后端开发实习生 · 杭州"
-                    date="2022.06 → 2022.12"
-                  />
+
+                  <div className="mb-3 grid gap-2">
+                    <AgentSuggestion
+                      title="诊断结果"
+                      description="项目经历有动作，但缺少可量化业务结果。"
+                      meta="影响：匹配度 +18%"
+                    />
+                    <AgentSuggestion
+                      title="建议改写"
+                      description="把活动执行改成「围绕拉新目标设计内容节奏」。"
+                      meta="可直接应用到预览"
+                      highlighted
+                    />
+                    <AgentSuggestion
+                      title="求职文档引用"
+                      description="内容运营 JD 常看内容策划、数据复盘与跨团队协作。"
+                      meta="来自岗位准备清单"
+                    />
+                  </div>
+
+                  <div className="rounded-lg border border-primary/30 bg-primary/10 p-3">
+                    <div className="mb-2 flex items-center gap-2 text-[12px] font-bold text-foreground">
+                      <WandSparkles className="h-3.5 w-3.5 text-primary" />
+                      一键应用到右侧预览
+                    </div>
+                    <p className="text-[11px] leading-relaxed text-muted-foreground">
+                      Agent 先给出诊断，再把可接受的改写写回简历内容，保留你的最终确认权。
+                    </p>
+                  </div>
                 </div>
 
-                {/* Right: A4 Preview — full width on mobile */}
+                {/* Right: A4 Preview */}
                 <div className="flex flex-1 items-start justify-center overflow-hidden bg-muted/40 p-4 sm:p-6 dark:bg-muted/20">
                   <div className="w-full max-w-[420px] rounded bg-white p-4 sm:p-6 shadow-md dark:shadow-black/20">
+                    <div className="mb-3 flex items-center justify-between border-b border-cyan-100 pb-2 text-[9px] font-semibold text-cyan-600">
+                      <span>实时 A4 预览</span>
+                      <span className="inline-flex items-center gap-1">
+                        <CheckCircle2 className="h-3 w-3" />
+                        Agent 改写已应用
+                      </span>
+                    </div>
                     {/* Name */}
                     <div className="text-center text-lg font-extrabold tracking-wide text-gray-900">
-                      林小明
+                      陈晓晨
                     </div>
                     <div className="mt-1 border-b border-gray-900 pb-3 text-center text-[10px] text-gray-500">
-                      13988668826 · xiaoming@example.com · 深圳
+                      13600009127 · chen@example.com · 上海
                     </div>
 
                     {/* Summary */}
                     <A4Section title="个人总结" />
                     <p className="text-[10px] leading-relaxed text-gray-600">
-                      3 年全栈开发经验，熟悉 React / Node.js / Go 技术栈，主导过多个 B 端 SaaS 产品从 0 到 1 落地，擅长系统设计与性能优化。
+                      面向互联网内容运营岗位，具备校园增长、内容策划与数据复盘经验，能将用户洞察转化为可执行的活动方案。
                     </p>
 
                     {/* Experience */}
-                    <A4Section title="工作经历" />
-                    <div className="flex items-baseline justify-between text-[11px]">
-                      <span className="font-bold text-gray-900">星辰科技有限公司</span>
-                      <span className="text-[9px] text-gray-400">2023.03 – 2024.06</span>
-                    </div>
-                    <div className="mb-1 text-[9px] text-gray-400">全栈开发工程师 · 深圳</div>
-                    <A4Bullet>负责内部 CRM 系统架构设计与开发，服务 200+ 销售人员日常使用。</A4Bullet>
-                    <A4Bullet>设计并实现实时消息推送服务，QPS 峰值 5000+，99.9% 可用性。</A4Bullet>
-
-                    <div className="mt-2 flex items-baseline justify-between text-[11px]">
-                      <span className="font-bold text-gray-900">云帆信息技术</span>
-                      <span className="text-[9px] text-gray-400">2022.06 – 2022.12</span>
-                    </div>
-                    <div className="mb-1 text-[9px] text-gray-400">后端开发实习生 · 杭州</div>
-                    <A4Bullet>参与电商订单系统微服务拆分，接口响应时间降低 40%。</A4Bullet>
-
-                    {/* Projects */}
                     <A4Section title="项目经历" />
                     <div className="flex items-baseline justify-between text-[11px]">
-                      <span className="font-bold text-gray-900">TaskFlow 协作平台</span>
-                      <span className="text-[9px] text-gray-400">2024.01 – 2024.05</span>
+                      <span className="font-bold text-gray-900">校园内容增长项目</span>
+                      <span className="text-[9px] text-gray-400">2025.03 – 2025.06</span>
                     </div>
-                    <div className="mb-1 text-[9px] text-gray-400">核心开发 · React · Go · PostgreSQL</div>
-                    <A4Bullet>面向中小团队的项目管理工具，支持看板、甘特图与自动化工作流。</A4Bullet>
+                    <div className="mb-1 text-[9px] text-gray-400">项目负责人 · 内容策划 / 数据复盘</div>
+                    <A4Bullet highlighted>围绕新用户拉新目标设计 4 周内容节奏，拆分选题、渠道与发布时间。</A4Bullet>
+                    <A4Bullet>协同设计同学产出 12 组海报与短文案，活动页访问量提升 46%。</A4Bullet>
+
+                    <div className="mt-2 flex items-baseline justify-between text-[11px]">
+                      <span className="font-bold text-gray-900">社区用户访谈复盘</span>
+                      <span className="text-[9px] text-gray-400">2024.11 – 2025.01</span>
+                    </div>
+                    <div className="mb-1 text-[9px] text-gray-400">调研执行 · 访谈提纲 / 结论沉淀</div>
+                    <A4Bullet>完成 18 位目标用户访谈，归纳 5 类高频求职内容需求。</A4Bullet>
+
+                    {/* Projects */}
+                    <A4Section title="实习经历" />
+                    <div className="flex items-baseline justify-between text-[11px]">
+                      <span className="font-bold text-gray-900">青木科技</span>
+                      <span className="text-[9px] text-gray-400">2024.07 – 2024.10</span>
+                    </div>
+                    <div className="mb-1 text-[9px] text-gray-400">产品运营实习生</div>
+                    <A4Bullet>维护社群内容日历，跟踪报名、转化与留存数据，输出周报建议。</A4Bullet>
                   </div>
                 </div>
               </div>
@@ -162,47 +201,30 @@ function FloatingTag({
   );
 }
 
-function MockField({
-  label,
-  value,
-  focused,
+function AgentSuggestion({
+  title,
+  description,
+  meta,
+  highlighted,
 }: {
-  label: string;
-  value: string;
-  focused?: boolean;
+  title: string;
+  description: string;
+  meta: string;
+  highlighted?: boolean;
 }) {
   return (
-    <div>
-      <div className="mb-0.5 text-[10px] font-medium text-muted-foreground">{label}</div>
-      <div
-        className={`rounded-md border px-2 py-1.5 text-[11px] text-foreground ${
-          focused
-            ? "border-primary bg-background shadow-[0_0_0_2px_rgba(99,102,241,0.12)]"
-            : "border-border/60 bg-background"
-        }`}
-      >
-        {value}
+    <div
+      className={`rounded-lg border p-2.5 ${
+        highlighted
+          ? "border-cyan-500/30 bg-cyan-500/10"
+          : "border-border/60 bg-background"
+      }`}
+    >
+      <div className="flex items-center justify-between gap-2">
+        <span className="text-[11px] font-bold text-foreground">{title}</span>
+        <span className="shrink-0 text-[9px] font-medium text-muted-foreground">{meta}</span>
       </div>
-    </div>
-  );
-}
-
-function ExperienceCard({
-  company,
-  role,
-  date,
-}: {
-  company: string;
-  role: string;
-  date: string;
-}) {
-  return (
-    <div className="mb-2 rounded-lg border border-border/60 bg-background p-2.5">
-      <div className="flex items-center justify-between">
-        <span className="text-[11px] font-semibold text-foreground">{company}</span>
-        <span className="text-[9px] text-muted-foreground">{date}</span>
-      </div>
-      <div className="mt-0.5 text-[10px] text-muted-foreground">{role}</div>
+      <p className="mt-1 text-[11px] leading-relaxed text-muted-foreground">{description}</p>
     </div>
   );
 }
@@ -216,10 +238,20 @@ function A4Section({ title }: { title: string }) {
   );
 }
 
-function A4Bullet({ children }: { children: React.ReactNode }) {
+function A4Bullet({
+  children,
+  highlighted,
+}: {
+  children: React.ReactNode;
+  highlighted?: boolean;
+}) {
   return (
-    <div className="relative mb-0.5 pl-2.5 text-[10px] leading-relaxed text-gray-600">
-      <span className="absolute left-0.5 top-[6px] h-[3px] w-[3px] rounded-full bg-gray-500" />
+    <div
+      className={`relative mb-0.5 pl-2.5 text-[10px] leading-relaxed ${
+        highlighted ? "rounded-sm bg-cyan-50 py-0.5 pr-1 text-gray-800" : "text-gray-600"
+      }`}
+    >
+      <span className="absolute left-0.5 top-[7px] h-[3px] w-[3px] rounded-full bg-gray-500" />
       {children}
     </div>
   );
