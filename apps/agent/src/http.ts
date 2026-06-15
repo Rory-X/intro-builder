@@ -600,7 +600,9 @@ async function routeRequest(
                 requestId: context.requestId,
               }),
           );
-          const parsed = parseAgentMessageProviderResponse(providerResult.content);
+          const parsed = parseAgentMessageProviderResponse(providerResult.content, {
+            requestId: context.requestId,
+          });
           if (!parsed.ok) {
             trace.recordParseResult({ ok: false, message: parsed.message });
             trace.recordRunOutput({ status: "error", error: parsed.message });
@@ -1391,7 +1393,7 @@ async function streamAgentMessageEvents({
       },
     );
 
-    const parsed = parseAgentMessageProviderResponse(content);
+    const parsed = parseAgentMessageProviderResponse(content, { requestId });
     if (!parsed.ok) {
       trace.recordParseResult({ ok: false, message: parsed.message });
       trace.recordRunOutput({ status: "error", error: parsed.message });

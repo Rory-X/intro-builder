@@ -1372,6 +1372,71 @@ describe("agent HTTP service", () => {
     }));
   });
 
+  it("streams AG-UI events without RUN_ERROR when provider messages omit id", async () => {
+    const providerContent = JSON.stringify({
+      message: {
+        role: "assistant",
+        content: "好的，我会先了解一些基本信息。",
+      },
+      toolCalls: [],
+      proposedOperations: [],
+      questions: [
+        {
+          id: "question_target_role",
+          message: "你想应聘什么职位？",
+          field: "goal.targetRole",
+        },
+      ],
+    });
+    const provider = new StreamingAgentMessageProvider([
+      providerContent.slice(0, 80),
+      providerContent.slice(80),
+    ]);
+    const server = await listenOnRandomPort({
+      replayStore: new FakeReplayStore(),
+      agentMessageProvider: provider,
+    });
+    const token = await signAgentToken({
+      sub: "user_123",
+      resumeId: "resume_abc",
+      scope: "agent:chat",
+      jti: "jti_agent_message_missing_message_id",
+    });
+
+    const response = await fetch(server.url("/v1/agent/messages"), {
+      method: "POST",
+      headers: {
+        accept: "text/event-stream",
+        authorization: `Bearer ${token}`,
+        "content-type": "application/json",
+        "x-request-id": "req-client-agent-message-missing-message-id",
+      },
+      body: JSON.stringify(validAgentMessageBody()),
+    });
+    provider.release();
+    const events = parseSseEvents(await response.text());
+
+    expect(response.status).toBe(200);
+    expect(events.find((event) => event.type === EventType.RUN_ERROR)).toBeUndefined();
+    expect(events).toContainEqual(expect.objectContaining({
+      type: EventType.TEXT_MESSAGE_START,
+      messageId: "msg_req-client-agent-message-missing-message-id",
+    }));
+    expect(events.at(-1)).toMatchObject({
+      type: EventType.RUN_FINISHED,
+      outcome: {
+        type: "interrupt",
+        interrupts: [
+          {
+            id: "question_target_role",
+            reason: "input_required",
+            metadata: { kind: "question", field: "goal.targetRole" },
+          },
+        ],
+      },
+    });
+  });
+
   it("streams cached Agent message requests as AG-UI events when requested", async () => {
     const provider = new FakeAgentMessageProvider(
       JSON.stringify({
