@@ -68,6 +68,7 @@ import { ResumeDiagnoseButton } from "@/components/agent/resume-diagnose-button"
 import { AgentModeToggle } from "@/components/agent/agent-mode-toggle";
 import { AgentPanel } from "@/components/agent/agent-panel";
 import type { ResumeOperation } from "@intro-builder/shared/types";
+import { applyResumeOperation } from "@/lib/agent/apply-operation";
 
 type Props = {
   id: string;
@@ -122,17 +123,6 @@ function getDesktopSnapshot() {
 
 function getServerDesktopSnapshot() {
   return true; // Assume desktop for SSR (this page is desktop-only)
-}
-
-function isAllowedAgentTipTapFieldPath(fieldPath: string): boolean {
-  return (
-    fieldPath === "skills" ||
-    /^experience\.\d+\.content$/.test(fieldPath) ||
-    /^projects\.\d+\.content$/.test(fieldPath) ||
-    /^education\.\d+\.highlights$/.test(fieldPath) ||
-    /^research\.\d+\.content$/.test(fieldPath) ||
-    /^custom\.\d+\.content$/.test(fieldPath)
-  );
 }
 
 function formatRelativeSaveTime(savedAt: Date, now: Date): string {
@@ -442,41 +432,27 @@ export default function EditorClient({ id, initialTitle, initialTemplate, initia
   }
 
   function applyAgentOperation(operation: ResumeOperation) {
-    if (operation.operation === "update_section" && operation.fieldPath === "basics.summary") {
-      form.setValue("basics.summary", operation.afterPlainText, {
-        shouldDirty: true,
-        shouldValidate: true,
-      });
-      toast.success("已应用 Agent 建议");
+    // Delegate to the pure mapping so create-from-zero inserts (which may need
+    // brand-new array items) and updates both apply consistently.
+    const current = form.getValues() as unknown as ResumeContent;
+    const result = applyResumeOperation(current, operation);
+    if (!result) {
+      toast.error("这条 Agent 建议暂不支持自动应用");
       return;
     }
 
-    if (
-      operation.operation === "update_section" &&
-      operation.replacementTiptapJson !== undefined &&
-      isAllowedAgentTipTapFieldPath(operation.fieldPath)
-    ) {
-      type SetValueArgs = Parameters<typeof form.setValue>;
+    type SetValueArgs = Parameters<typeof form.setValue>;
+    for (const key of result.changedKeys) {
       form.setValue(
-        operation.fieldPath as SetValueArgs[0],
-        operation.replacementTiptapJson as SetValueArgs[1],
+        key as SetValueArgs[0],
+        (result.content as Record<string, unknown>)[key] as SetValueArgs[1],
         { shouldDirty: true, shouldValidate: true },
       );
-      toast.success("已应用 Agent 建议");
-      return;
     }
-
-    if (operation.operation === "reorder_sections" && operation.sectionOrder) {
-      setSectionOrder(operation.sectionOrder);
-      form.setValue("sectionOrder", operation.sectionOrder, {
-        shouldDirty: true,
-        shouldValidate: true,
-      });
-      toast.success("已应用 Agent 建议");
-      return;
+    if (result.changedKeys.includes("sectionOrder")) {
+      setSectionOrder(result.content.sectionOrder);
     }
-
-    toast.error("这条 Agent 建议暂不支持自动应用");
+    toast.success("已应用 Agent 建议");
   }
 
   function flushAgentAutosave() {

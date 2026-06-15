@@ -1,0 +1,314 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Agent Loop Trajectory PoC · create-from-zero</title>
+<style>
+  :root { color-scheme: light; }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: #f6f7f9; color: #1c2024;
+    font: 14px/1.6 -apple-system, "Segoe UI", "PingFang SC", "Microsoft YaHei", Roboto, sans-serif;
+  }
+  header {
+    padding: 20px 24px; background: #fff; border-bottom: 1px solid #e6e8eb;
+  }
+  header h1 { margin: 0 0 4px; font-size: 18px; }
+  header p { margin: 0; color: #60646c; font-size: 13px; }
+  .rule {
+    margin-top: 12px; display: flex; gap: 8px; flex-wrap: wrap;
+  }
+  .rule span {
+    background: #eef2ff; color: #3a4ed6; border: 1px solid #d7defb;
+    border-radius: 999px; padding: 2px 10px; font-size: 12px;
+  }
+  .wrap { display: grid; grid-template-columns: 1fr 360px; gap: 16px; padding: 16px 24px; align-items: start; }
+  @media (max-width: 900px) { .wrap { grid-template-columns: 1fr; } }
+  .controls { display: flex; gap: 8px; margin-bottom: 12px; flex-wrap: wrap; }
+  button {
+    font: inherit; cursor: pointer; border: 1px solid #d0d4d9; background: #fff;
+    border-radius: 8px; padding: 7px 14px; color: #1c2024;
+  }
+  button.primary { background: #3a4ed6; border-color: #3a4ed6; color: #fff; }
+  button:disabled { opacity: .45; cursor: not-allowed; }
+  .stream > div { margin-bottom: 10px; }
+  .card { background: #fff; border: 1px solid #e6e8eb; border-radius: 10px; padding: 12px 14px; }
+  .turn {
+    background: #1c2024; color: #fff; border-radius: 10px; padding: 10px 14px;
+    font-weight: 600; font-size: 13px;
+  }
+  .turn .u { display: block; font-weight: 400; color: #c7ccd1; margin-top: 3px; font-size: 12px; }
+  .reason { border-left: 3px solid #b6bcc4; }
+  .reason .lbl { color: #60646c; font-size: 11px; text-transform: uppercase; letter-spacing: .04em; }
+  .tool { border-left: 3px solid #3a4ed6; }
+  .tool.write { border-left-color: #d6822a; }
+  .tool .head { display: flex; align-items: center; gap: 8px; font-weight: 600; }
+  .tag { font-size: 11px; border-radius: 5px; padding: 1px 7px; }
+  .tag.read { background: #e7f0ff; color: #2a5fd6; }
+  .tag.write { background: #fbeede; color: #b06a1c; }
+  .tag.ctrl { background: #ede7fb; color: #6a3ad6; }
+  code, pre { font-family: "SF Mono", Menlo, Consolas, monospace; font-size: 12px; }
+  .args { background: #f1f3f5; border-radius: 6px; padding: 6px 8px; margin-top: 6px; white-space: pre-wrap; word-break: break-word; color: #353a40; }
+  .obs { margin-top: 8px; padding: 7px 9px; background: #f0faf3; border: 1px solid #cdeed8; border-radius: 6px; color: #1f6b3b; }
+  .obs.changed { background: #fff6e9; border-color: #f3dcb4; color: #9a5a12; }
+  .obs .lbl { font-size: 11px; text-transform: uppercase; letter-spacing: .04em; opacity: .8; }
+  .exit { border: 1px dashed #3a4ed6; background: #f7f8ff; }
+  .exit.facts { border-color: #6a3ad6; background: #f9f6ff; }
+  .exit.draft { border-color: #d6822a; background: #fff9f0; }
+  .exit .why { font-weight: 600; margin-bottom: 6px; }
+  .q { background: #fff; border: 1px solid #e0d7fb; border-radius: 8px; padding: 8px 10px; margin-top: 6px; }
+  .op { display: flex; gap: 8px; align-items: baseline; padding: 6px 0; border-top: 1px dashed #eee; }
+  .op:first-child { border-top: 0; }
+  .op .k { font-size: 11px; color: #b06a1c; min-width: 96px; }
+  aside { position: sticky; top: 16px; display: flex; flex-direction: column; gap: 12px; }
+  .panel h3 { margin: 0 0 8px; font-size: 12px; text-transform: uppercase; letter-spacing: .05em; color: #60646c; }
+  .meters { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .meter { background: #f1f3f5; border-radius: 8px; padding: 8px 10px; }
+  .meter .n { font-size: 20px; font-weight: 700; }
+  .meter .l { font-size: 11px; color: #60646c; }
+  .bar { height: 6px; background: #e6e8eb; border-radius: 4px; overflow: hidden; margin-top: 6px; }
+  .bar > i { display: block; height: 100%; background: #3a4ed6; }
+  .ws .row { display: flex; justify-content: space-between; padding: 4px 0; border-top: 1px solid #f0f1f3; }
+  .ws .row:first-child { border-top: 0; }
+  .ws .empty { color: #9aa0a6; font-style: italic; }
+  .st { font-size: 11px; border-radius: 5px; padding: 1px 7px; }
+  .st.drafted { background: #e7f7ec; color: #1f7a3d; }
+  .st.needs { background: #fdeaea; color: #b3261e; }
+  .miss { color: #b3261e; font-size: 12px; margin-top: 6px; }
+  .done { color: #1f7a3d; font-weight: 600; }
+  footer { padding: 8px 24px 28px; color: #9aa0a6; font-size: 12px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Agent Loop Trajectory PoC — create-from-zero</h1>
+  <p>验证「回合内自主多步 → 回合末中断 → 回合粒度续跑」的 loop 行为。点「下一步」逐步推进。这是静态轨迹演示，用于在开 plan 前看清 loop 的控制流与 UX。</p>
+  <div class="rule">
+    <span>决策：只读自主 + 末尾审批</span>
+    <span>引擎：AI SDK 多步工具循环</span>
+    <span>写操作只进 staging</span>
+    <span>改真简历必须人审</span>
+  </div>
+</header>
+
+<div class="wrap">
+  <main>
+    <div class="controls">
+      <button id="next" class="primary">下一步 ▶</button>
+      <button id="auto">自动播放</button>
+      <button id="prev">◀ 上一步</button>
+      <button id="reset">重置</button>
+      <span id="pos" style="align-self:center;color:#60646c"></span>
+    </div>
+    <div id="stream" class="stream"></div>
+  </main>
+
+  <aside>
+    <div class="card panel">
+      <h3>护栏计数器（你之后要调的旋钮）</h3>
+      <div class="meters">
+        <div class="meter"><div class="n" id="m-step">0</div><div class="l">本回合步数 / 上限 8</div></div>
+        <div class="meter"><div class="n" id="m-tools">0</div><div class="l">工具调用总数</div></div>
+      </div>
+      <div style="margin-top:10px">
+        <div class="l" style="font-size:11px;color:#60646c">上下文预算（按真实模型窗口算，非硬编码 200k）</div>
+        <div class="bar"><i id="m-ctxbar" style="width:0%"></i></div>
+        <div class="l" id="m-ctx" style="font-size:11px;color:#60646c;margin-top:3px">0 / 64k tok</div>
+      </div>
+    </div>
+
+    <div class="card panel ws">
+      <h3>Staging 工作区（draftResume，未落真简历）</h3>
+      <div id="ws"></div>
+    </div>
+
+    <div class="card panel">
+      <h3>回合末中断</h3>
+      <div id="interrupt"><span class="ws empty" style="font-style:italic;color:#9aa0a6">回合进行中…</span></div>
+    </div>
+  </aside>
+</div>
+
+<footer>PoC · 2026-06-15 · docs/superpowers/pocs/ — 通过判据：你认可这就是想要的 loop 行为与回合切分；否则改 spec，不开 plan。</footer>
+
+<script>
+// ---- 轨迹数据：一个真实的 create-from-zero 两回合轨迹 ----
+const TRACE = [
+  { kind:"turn", n:1, user:"帮我从零做一份「后端工程师」简历" },
+  { kind:"reason", text:"用户要从零创建。先确认有没有可读的已有内容或上传材料。" },
+  { kind:"tool", cls:"read", name:"resume_read", args:{}, obs:"draft 为空，无已有简历、无上传材料。", changed:false, ctx:3 },
+  { kind:"reason", text:"没有现成内容。先把已知的目标岗位写进 staging 的 profile 骨架，再判断还缺什么。" },
+  { kind:"tool", cls:"write", name:"stage_set_profile",
+    args:{ targetRole:"后端工程师", profileSummary:"面向后端工程师岗位的简历（待补充事实）" },
+    obs:"staged：profileSummary 已写入；targetRole=后端工程师。", changed:false, ctx:5,
+    ws:{ targetRole:"后端工程师", profileSummary:"面向后端工程师岗位…（待补充）", sections:[], missing:["工作经历","学历","核心技术栈"] } },
+  { kind:"reason", text:"经历/学历/技术栈都缺，无法编造。本回合到此为止，回合末向用户要事实。" },
+  { kind:"tool", cls:"ctrl", name:"ask_user",
+    args:{ questions:["最近一段工作经历（公司/角色/时间）？","最高学历与院校？","最熟悉的 3 个技术栈？"] },
+    obs:"退出原因 = needs_facts。", changed:false, ctx:6 },
+  { kind:"exit", reason:"needs_facts", interrupt:{ type:"input_required",
+    questions:["最近一段工作经历（公司/角色/时间）？","最高学历与院校？","最熟悉的 3 个技术栈？"] } },
+
+  { kind:"turn", n:2, user:"3 年后端@蜂鸟科技(2021-2024) / 本科·华东师大 / Go、Kubernetes、PostgreSQL" },
+  { kind:"reason", text:"拿到事实，续跑。先读回 staging 看当前 draft 状态。" },
+  { kind:"tool", cls:"read", name:"resume_read", args:{}, obs:"当前 draft：仅有 profile 骨架，sections 为空。", changed:false, ctx:8 },
+  { kind:"tool", cls:"write", name:"stage_upsert_section",
+    args:{ key:"experience", title:"后端工程师 · 蜂鸟科技", period:"2021–2024",
+           bullets:["主导订单系统 Go 重构，P99 延迟下降 42%","用 Kubernetes 把发布回滚从 15min 降到 90s"] },
+    obs:"staged：experience 段已写入（2 条 bullet）。", changed:false, ctx:11,
+    ws:{ targetRole:"后端工程师", profileSummary:"3 年经验的后端工程师，擅长 Go 与云原生…",
+         sections:[{key:"experience",status:"drafted"}], missing:["学历起止年份","技术栈分级"] } },
+  { kind:"tool", cls:"write", name:"stage_upsert_section",
+    args:{ key:"skills", groups:{ "语言":["Go"], "云原生":["Kubernetes"], "存储":["PostgreSQL"] } },
+    obs:"staged：skills 段已写入。", changed:false, ctx:13,
+    ws:{ targetRole:"后端工程师", profileSummary:"3 年经验的后端工程师，擅长 Go 与云原生…",
+         sections:[{key:"experience",status:"drafted"},{key:"skills",status:"drafted"}], missing:["学历起止年份"] } },
+  { kind:"reason", text:"补一个 education 段，然后自检完整度，决定能不能交审。" },
+  { kind:"tool", cls:"write", name:"stage_upsert_section",
+    args:{ key:"education", school:"华东师范大学", degree:"本科", period:"（缺起止年份）" },
+    obs:"staged：education 段已写入，但缺起止年份。", changed:false, ctx:15,
+    ws:{ targetRole:"后端工程师", profileSummary:"3 年经验的后端工程师，擅长 Go 与云原生…",
+         sections:[{key:"experience",status:"drafted"},{key:"skills",status:"drafted"},{key:"education",status:"needs"}], missing:["学历起止年份"] } },
+  { kind:"tool", cls:"read", name:"get_completeness", args:{},
+    obs:"完整度 78%。检测到：education 缺起止年份（needs_user_fact）。", changed:true, ctx:16 },
+  { kind:"reason", text:"观察到完整度卡在学历年份上——但其余三段已可审阅。按「末尾审批」，把已成形的 change-set 交用户，年份作为审阅时的待补项，不阻塞。" },
+  { kind:"tool", cls:"ctrl", name:"submit_draft", args:{ changeSetId:"cs_1", sections:["experience","skills","education"] },
+    obs:"退出原因 = has_draft，提交 change-set 待审批。", changed:false, ctx:17 },
+  { kind:"exit", reason:"has_draft", interrupt:{ type:"approval_required", changeSet:{
+      id:"cs_1", title:"从零草稿 · 后端工程师",
+      ops:[
+        { k:"insert experience", v:"后端工程师 · 蜂鸟科技（2021–2024）+ 2 条量化 bullet" },
+        { k:"insert skills", v:"Go / Kubernetes / PostgreSQL" },
+        { k:"insert education", v:"华东师范大学 · 本科（待补起止年份）" }
+      ] } } }
+];
+
+const MAX_STEPS = 8, CTX_LIMIT = 64; // k tokens
+let cursor = -1;          // index into TRACE that is currently the LAST shown
+let ws = null;            // latest staging snapshot
+let timer = null;
+
+const $ = (id) => document.getElementById(id);
+const stream = $("stream");
+
+function recomputeState(uptoIndex) {
+  // derive counters + workspace from TRACE[0..uptoIndex]
+  let stepInTurn = 0, tools = 0, ctx = 0;
+  ws = null;
+  for (let i = 0; i <= uptoIndex; i++) {
+    const e = TRACE[i];
+    if (e.kind === "turn") stepInTurn = 0;
+    if (e.kind === "reason") stepInTurn++;
+    if (e.kind === "tool") { tools++; if (typeof e.ctx === "number") ctx = e.ctx; if (e.ws) ws = e.ws; }
+  }
+  return { stepInTurn, tools, ctx };
+}
+
+function renderMeters() {
+  const { stepInTurn, tools, ctx } = recomputeState(cursor);
+  $("m-step").textContent = Math.min(stepInTurn, MAX_STEPS);
+  $("m-tools").textContent = tools;
+  const pct = Math.min(100, Math.round(ctx / CTX_LIMIT * 100));
+  $("m-ctxbar").style.width = pct + "%";
+  $("m-ctx").textContent = ctx + "k / " + CTX_LIMIT + "k tok";
+  $("m-ctxbar").style.background = pct > 80 ? "#d6822a" : "#3a4ed6";
+}
+
+function renderWorkspace() {
+  const el = $("ws");
+  if (!ws) { el.innerHTML = '<span class="empty">（空 — 尚未 stage 任何内容）</span>'; return; }
+  let h = "";
+  h += `<div class="row"><span>目标岗位</span><b>${ws.targetRole || "—"}</b></div>`;
+  h += `<div class="row"><span>个人简述</span><span style="max-width:200px;text-align:right">${ws.profileSummary || "—"}</span></div>`;
+  if (ws.sections && ws.sections.length) {
+    ws.sections.forEach(s => {
+      h += `<div class="row"><span>${s.key}</span><span class="st ${s.status==="drafted"?"drafted":"needs"}">${s.status==="drafted"?"已起草":"需补事实"}</span></div>`;
+    });
+  } else {
+    h += `<div class="row"><span>sections</span><span class="empty">空</span></div>`;
+  }
+  if (ws.missing && ws.missing.length) h += `<div class="miss">缺失事实：${ws.missing.join("、")}</div>`;
+  el.innerHTML = h;
+}
+
+function renderInterrupt() {
+  const el = $("interrupt");
+  const e = cursor >= 0 ? TRACE[cursor] : null;
+  if (!e || e.kind !== "exit") { el.innerHTML = '<span class="empty" style="color:#9aa0a6;font-style:italic">回合进行中…</span>'; return; }
+  if (e.interrupt.type === "input_required") {
+    el.innerHTML = `<div style="color:#6a3ad6;font-weight:600;margin-bottom:6px">input_required · 向用户追问</div>` +
+      e.interrupt.questions.map(q => `<div class="q">${q}</div>`).join("");
+  } else {
+    el.innerHTML = `<div style="color:#d6822a;font-weight:600;margin-bottom:6px">approval_required · 等待人审落盘</div>` +
+      `<div style="font-weight:600;margin:4px 0">${e.interrupt.changeSet.title}</div>` +
+      e.interrupt.changeSet.ops.map(o => `<div class="op"><span class="k">${o.k}</span><span>${o.v}</span></div>`).join("");
+  }
+}
+
+function cardFor(e) {
+  const d = document.createElement("div");
+  if (e.kind === "turn") {
+    d.className = "turn";
+    d.innerHTML = `回合 ${e.n}<span class="u">用户：${e.user}</span>`;
+  } else if (e.kind === "reason") {
+    d.className = "card reason";
+    d.innerHTML = `<div class="lbl">模型推理</div>${e.text}`;
+  } else if (e.kind === "tool") {
+    d.className = "card tool" + (e.cls === "write" ? " write" : "");
+    const tag = e.cls === "read" ? '<span class="tag read">read · 自动执行</span>'
+              : e.cls === "write" ? '<span class="tag write">stage-write · 改暂存</span>'
+              : '<span class="tag ctrl">control · 决定回合结束</span>';
+    d.innerHTML = `<div class="head">${tag}<code>${e.name}()</code></div>` +
+      `<div class="args">${escapeHtml(JSON.stringify(e.args, null, 2))}</div>` +
+      `<div class="obs ${e.changed ? "changed" : ""}"><span class="lbl">观察${e.changed ? "（改变了决策）" : ""}</span><br>${e.obs}</div>`;
+  } else if (e.kind === "exit") {
+    const cls = e.reason === "needs_facts" ? "facts" : "draft";
+    d.className = "card exit " + cls;
+    d.innerHTML = `<div class="why">⏹ 回合结束 · 退出原因：<code>${e.reason}</code></div>` +
+      (e.reason === "needs_facts"
+        ? `本回合自主跑完，缺事实 → 抛 input_required（见右侧），等用户回答后回合粒度续跑。`
+        : `本回合产出可审阅草稿 → 抛 approval_required（见右侧）。改真简历由 Web 在用户确认后执行。`);
+  }
+  return d;
+}
+
+function escapeHtml(s){return s.replace(/[&<>]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;"}[c]));}
+
+function step() {
+  if (cursor >= TRACE.length - 1) return;
+  cursor++;
+  stream.appendChild(cardFor(TRACE[cursor]));
+  afterChange();
+  window.scrollTo({ top: document.body.scrollHeight, behavior: "smooth" });
+}
+function back() {
+  if (cursor < 0) return;
+  stream.removeChild(stream.lastChild);
+  cursor--;
+  afterChange();
+}
+function reset() {
+  cursor = -1; stream.innerHTML = ""; stopAuto(); afterChange();
+}
+function afterChange() {
+  renderMeters(); renderWorkspace(); renderInterrupt();
+  $("pos").textContent = `${cursor + 1} / ${TRACE.length}`;
+  $("next").disabled = cursor >= TRACE.length - 1;
+  $("prev").disabled = cursor < 0;
+}
+function stopAuto(){ if(timer){clearInterval(timer);timer=null;$("auto").textContent="自动播放";} }
+
+$("next").onclick = step;
+$("prev").onclick = back;
+$("reset").onclick = reset;
+$("auto").onclick = () => {
+  if (timer) { stopAuto(); return; }
+  $("auto").textContent = "暂停";
+  timer = setInterval(() => { if (cursor >= TRACE.length - 1) stopAuto(); else step(); }, 1100);
+};
+
+afterChange();
+</script>
+</body>
+</html>
