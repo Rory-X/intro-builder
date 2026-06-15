@@ -33,7 +33,7 @@ type AgentAiSdkPanelProps = {
   templateId?: string;
   getResumeContent?: () => ResumeContent;
   completeness?: unknown;
-  applyOperation: (operation: ResumeOperation) => void;
+  applyOperation: (operation: ResumeOperation) => boolean | void;
   flushAutosave?: () => void;
   onBackToEdit: () => void;
 };
@@ -340,7 +340,7 @@ function ApplyPreviewButton({
   flushAutosave,
 }: {
   sessionId: string;
-  applyOperation: (operation: ResumeOperation) => void;
+  applyOperation: (operation: ResumeOperation) => boolean | void;
   flushAutosave?: () => void;
 }) {
   const [applying, setApplying] = useState(false);
@@ -363,9 +363,16 @@ function ApplyPreviewButton({
         toast.info("预览暂无可应用的修改");
         return;
       }
-      for (const operation of operations) applyOperation(operation);
+      let applied = 0;
+      for (const operation of operations) {
+        if (applyOperation(operation)) applied += 1;
+      }
       flushAutosave?.();
-      toast.success(`已应用 ${operations.length} 处修改`);
+      if (applied === 0) {
+        toast.error("这些修改暂不支持自动应用");
+      } else {
+        toast.success(`已应用 ${applied} 处修改`);
+      }
     } catch {
       toast.error("应用失败，请稍后重试");
     } finally {
