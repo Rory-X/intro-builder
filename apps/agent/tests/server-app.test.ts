@@ -55,4 +55,26 @@ describe("createAgentApp", () => {
     const res = await app.request("/health", { headers: { "x-request-id": "req_fixed" } });
     expect(res.headers.get("x-request-id")).toBe("req_fixed");
   });
+
+  it("POST /v1/rich-text/polish without a bearer token returns 401", async () => {
+    const app = createAgentApp({ config });
+    const res = await app.request("/v1/rich-text/polish", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ resumeId: "r1" }),
+    });
+    expect(res.status).toBe(401);
+    expect(((await res.json()) as Record<string, unknown>).error).toBe("unauthorized");
+  });
+
+  it("POST /v1/resume/helpers/:id without a bearer token returns 401", async () => {
+    const app = createAgentApp({ config });
+    const res = await app.request("/v1/resume/helpers/summary", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ resumeId: "r1" }),
+    });
+    expect(res.status).toBe(401);
+    expect(((await res.json()) as Record<string, unknown>).error).toBe("unauthorized");
+  });
 });
