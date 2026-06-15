@@ -403,6 +403,7 @@ function buildAgentPromptUserSection(request: AgentMessageRequest): string {
 
 export function parseAgentMessageProviderResponse(
   content: string,
+  options: { requestId?: string } = {},
 ): AgentMessageParseResult {
   let parsed: unknown;
   try {
@@ -417,7 +418,9 @@ export function parseAgentMessageProviderResponse(
   if (!isRecord(parsed.message)) {
     return { ok: false, message: "Provider response missing message" };
   }
-  const message = parseAssistantMessage(parsed.message);
+  const message = parseAssistantMessage(parsed.message, {
+    fallbackId: options.requestId ? `msg_${options.requestId}` : undefined,
+  });
   if (!message.ok) return message;
 
   const toolCalls = normalizeOptionalArray(parsed.toolCalls, "toolCalls");
@@ -1345,11 +1348,15 @@ function parseCompleteness(
 
 function parseAssistantMessage(
   value: Record<string, unknown>,
+  options: { fallbackId?: string } = {},
 ):
   | { ok: true; message: { id: string; role: "assistant"; content: string } }
   | { ok: false; message: string } {
-  const id = parseRequiredString(value.id, "Provider message missing id");
-  if (!id.ok) return id;
+  const id =
+    typeof value.id === "string" && value.id.trim() !== ""
+      ? value.id.trim()
+      : options.fallbackId;
+  if (!id) return { ok: false, message: "Provider message missing id" };
   if (value.role !== "assistant") {
     return { ok: false, message: "Provider message role must be assistant" };
   }
@@ -1362,7 +1369,7 @@ function parseAssistantMessage(
   return {
     ok: true,
     message: {
-      id: id.value,
+      id,
       role: "assistant",
       content: content.value,
     },

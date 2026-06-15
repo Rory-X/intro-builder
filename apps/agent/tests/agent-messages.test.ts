@@ -296,6 +296,38 @@ describe("agent messages", () => {
     });
   });
 
+  it("generates a stable assistant message id when the provider omits one", () => {
+    const parsed = parseAgentMessageProviderResponse(
+      JSON.stringify({
+        message: {
+          role: "assistant",
+          content: "好的，我会先了解一些基本信息。",
+        },
+        toolCalls: [],
+        proposedOperations: [],
+        questions: [
+          {
+            id: "question_target_role",
+            message: "你想应聘什么职位？",
+            field: "goal.targetRole",
+          },
+        ],
+      }),
+      { requestId: "req_152849a1-f4ea-40a9-a337-79eba9f186d6" },
+    );
+
+    expect(parsed).toEqual({
+      ok: true,
+      result: expect.objectContaining({
+        message: {
+          id: "msg_req_152849a1-f4ea-40a9-a337-79eba9f186d6",
+          role: "assistant",
+          content: "好的，我会先了解一些基本信息。",
+        },
+      }),
+    });
+  });
+
   it("parses provider questions for human-in-the-loop follow-up", () => {
     const parsed = parseAgentMessageProviderResponse(
       JSON.stringify({
