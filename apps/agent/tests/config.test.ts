@@ -26,7 +26,6 @@ describe("agent config", () => {
       modelApiKey: undefined,
       modelName: undefined,
       modelTimeoutMs: 90_000,
-      loopEnabled: false,
       langfuse: {
         enabled: false,
         publicKey: undefined,
@@ -127,13 +126,6 @@ describe("agent config", () => {
         datasetFetchItemsPageSize: 25,
       },
     });
-  });
-
-  it("enables the real agent loop only when AGENT_LOOP_ENABLED is truthy", () => {
-    expect(loadConfig({}).loopEnabled).toBe(false);
-    expect(loadConfig({ AGENT_LOOP_ENABLED: "true" }).loopEnabled).toBe(true);
-    expect(loadConfig({ AGENT_LOOP_ENABLED: "1" }).loopEnabled).toBe(true);
-    expect(loadConfig({ AGENT_LOOP_ENABLED: "false" }).loopEnabled).toBe(false);
   });
 
   it("keeps Langfuse disabled when credentials are missing", () => {

@@ -123,7 +123,7 @@ describe("AgentPanel", () => {
 
     await waitFor(() => {
       expect(fetchMock).toHaveBeenCalledWith(
-        "/api/agent/runs",
+        "/api/agent/direct-runs",
         expect.objectContaining({
           method: "POST",
           headers: expect.objectContaining({ Accept: "text/event-stream" }),

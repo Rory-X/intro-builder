@@ -60,7 +60,7 @@ describe("POST /api/agent/direct-runs", () => {
     expect(body).toEqual({
       status: "ok",
       streamUrl:
-        "https://api.rory-x.me/intro-builder/agent/v1/agent/messages",
+        "https://api.rory-x.me/intro-builder/agent/v1/agent/chat",
       token: "signed-chat-token",
       tokenExpiresAt: "2026-06-08T08:02:00.000Z",
       request: expect.objectContaining({

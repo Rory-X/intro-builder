@@ -61,7 +61,7 @@ export async function POST(req: Request) {
 
   return Response.json({
     status: "ok",
-    streamUrl: joinUrl(resolveAgentPublicBaseUrl(), "/v1/agent/messages"),
+    streamUrl: joinUrl(resolveAgentPublicBaseUrl(), "/v1/agent/chat"),
     token: signed.token,
     tokenExpiresAt: signed.expiresAt.toISOString(),
     request: {

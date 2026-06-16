@@ -307,7 +307,7 @@ export function createAgentClient({
     sendAgentMessage({ token, request, requestId = createRequestId() }) {
       return requestJson<AgentMessageResponse>({
         baseUrl,
-        path: "/v1/agent/messages",
+        path: "/v1/agent/chat",
         method: "POST",
         token,
         requestId,
@@ -319,7 +319,7 @@ export function createAgentClient({
     streamAgentMessage({ token, request, requestId = createRequestId() }) {
       return requestStream({
         baseUrl,
-        path: "/v1/agent/messages",
+        path: "/v1/agent/chat",
         token,
         requestId,
         body: request,

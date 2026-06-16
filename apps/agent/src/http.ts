@@ -59,7 +59,6 @@ import {
   type AgentMessageParseTrace,
   type AgentMessageTrace,
   type AgentObservability,
-} from "./observability.js";
 import { checkRateLimit, type RateLimitRedis } from "./rate-limit.js";
 import type { RedisReadyResult } from "./redis.js";
 import {
@@ -198,7 +197,7 @@ async function routeRequest(
     ...(corsHeaders ? { corsHeaders } : {}),
   };
 
-  if (method === "OPTIONS" && url.pathname === "/v1/agent/messages") {
+  if (method === "OPTIONS" && url.pathname === "/v1/agent/chat") {
     return sendCorsPreflight(response, context);
   }
 
@@ -385,7 +384,7 @@ async function routeRequest(
     }
   }
 
-  if (url.pathname === "/v1/agent/messages") {
+  if (url.pathname === "/v1/agent/chat") {
     if (method !== "POST") return methodNotAllowed(response, context, "POST");
 
     const auth = await authenticateAgentRequest({
@@ -464,7 +463,6 @@ async function routeRequest(
     }
 
     if (
-      config.loopEnabled &&
       acceptsAgUiSse(request)
     ) {
       const loopModel = resolveLoopModel(agentRequest, config);
@@ -503,310 +501,11 @@ async function routeRequest(
         }),
       });
     }
-
-    return observability.traceAgentMessageRun(
-      {
-        request: agentRequest,
-        session: auth.session,
-        requestId: context.requestId,
-        cacheStatus: "miss",
-      },
-      async (trace) => {
-        const cacheKey = buildScopedCacheKey({
-          scope: "agent:chat",
-          session: auth.session,
-          resumeId: cacheResumeId,
-          config,
-          input: safeAgentCacheInput(agentRequest),
-          modelName: agentRequest.modelConfig?.modelName,
-        });
-        const cached = await readAiCache<AgentMessageCacheValue>(
-          aiCacheStore,
-          cacheKey,
-        );
-        if (cached) {
-          trace.recordCache("hit");
-          trace.recordParseResult(agentMessageCacheParseTrace(cached.value));
-          trace.recordRunOutput(agentMessageCacheRunOutput(cached.value));
-
-          return sendAgUiEvents(
-            response,
-            toAgUiAgentEvents({
-              requestId: context.requestId,
-              threadId,
-              request: agentRequest,
-              result: {
-                message: cached.value.message,
-                toolCalls: cached.value.toolCalls,
-                proposedOperations: cached.value.proposedOperations,
-                ...(cached.value.questions ? { questions: cached.value.questions } : {}),
-              },
-            }),
-            context,
-            headerValue(request.headers.accept),
-            createSessionRecorderForRequest({
-              sessionStore,
-              request: agentRequest,
-              session: auth.session,
-              requestId: context.requestId,
-              now,
-              initialSnapshot: storedSnapshot,
-              context,
-            }),
-          );
-        }
-        trace.recordCache("miss");
-
-        if (rateLimitStore) {
-          try {
-            const rateLimit = await checkRateLimit({
-              redis: rateLimitStore,
-              scope: "agent:chat",
-              identityHash: hashIdentity(auth.session.userId),
-              limit: config.rateLimitMaxRequests,
-              windowSeconds: config.rateLimitWindowSeconds,
-              now: now(),
-            });
-            if (!rateLimit.allowed) {
-              trace.recordRunOutput({
-                status: "error",
-                error: "Too many Agent chat requests",
-              });
-              return sendError(response, 429, context, {
-                error: "rate_limited",
-                message: "Too many Agent chat requests",
-                retryAfterSeconds: rateLimit.retryAfterSeconds,
-              });
-            }
-          } catch {
-            trace.recordRunOutput({
-              status: "error",
-              error: "Rate limit store is unavailable",
-            });
-            return sendError(response, 503, context, {
-              error: "dependency_unavailable",
-              message: "Rate limit store is unavailable",
-              dependency: "redis",
-            });
-          }
-        }
-
-        const prompt = await agentMessagePromptResolver.resolve({
-          ...agentRequest,
-          requestId: context.requestId,
-        });
-
-        try {
-          if (acceptsAgUiSse(request)) {
-            // === True Agent Loop Path ===
-            // AI SDK streamText + tools loop over DraftState sandbox.
-            const draft = createInitialLoopDraft(agentRequest);
-            const modelSettings = agentRequest.modelConfig
-              ? {
-                  baseUrl: agentRequest.modelConfig.baseUrl,
-                  apiKey: agentRequest.modelConfig.apiKey,
-                  modelName: agentRequest.modelConfig.modelName,
-                }
-              : {
-                  baseUrl: config.modelBaseUrl,
-                  apiKey: config.modelApiKey,
-                  modelName: config.modelName,
-                } as { baseUrl: string; apiKey: string; modelName: string };
-
-            const sessionRecorder = createSessionRecorderForRequest({
-              sessionStore,
-              request: agentRequest,
-              session: auth.session,
-              requestId: context.requestId,
-              now,
-              initialSnapshot: storedSnapshot,
-              context,
-            });
-            const loopModel = createLoopModel(modelSettings);
-
-            try {
-              const loopResult = await runResumeLoop({
-              model: loopModel,
-              request: agentRequest,
-              draft,
-              maxSteps: LOOP_MAX_STEPS,
-              onStepFinish: (stepEvent) => {
-                for (const { toolCall, proposedOperations } of stepEvent.toolCalls) {
-                  if (sessionRecorder) {
-                    sessionRecorder.record({
-                      type: EventType.TOOL_CALL_START,
-                      toolCallId: toolCall.id,
-                      toolCallName: toolCall.name,
-                      parentMessageId: `msg_${context.requestId}`,
-                    });
-                    sessionRecorder.record({
-                      type: EventType.TOOL_CALL_ARGS,
-                      toolCallId: toolCall.id,
-                      delta: JSON.stringify(toolCall.input),
-                    });
-                    sessionRecorder.record({
-                      type: EventType.TOOL_CALL_END,
-                      toolCallId: toolCall.id,
-                    });
-                    sessionRecorder.record({
-                      type: EventType.TOOL_CALL_RESULT,
-                      messageId: `${toolCall.id}_result`,
-                      toolCallId: toolCall.id,
-                      role: "tool",
-                      content: JSON.stringify({ toolCall, proposedOperations }),
-                    });
-                    }
-                }
-              },
-              telemetry: config.langfuse.enabled
-                ? {
-                    isEnabled: true,
-                    functionId: "agent.loop",
-                    metadata: {
-                      requestId: context.requestId,
-                      provider: "ai-sdk/openai-compatible",
-                      mode: agentRequest.mode ?? "optimize_existing",
-                    },
-                  }
-                : undefined,
-            });
-
-            // Write AI cache
-            const assembleId = randomUUID();
-            const parsedResult = assembleLoopResult({
-              draft,
-              finalText: loopResult.text,
-              requestId: assembleId,
-            });
-
-            const cacheValue: AgentMessageCacheValue = {
-              message: parsedResult.message,
-              toolCalls: parsedResult.toolCalls,
-              proposedOperations: parsedResult.proposedOperations,
-              usage: { provider: "ai-sdk/openai-compatible", model: modelSettings.modelName, inputTokens: 0, outputTokens: 0 },
-            };
-            await writeAiCache(aiCacheStore, cacheKey, cacheValue, "agent:chat", now);
-
-            // Handle resume_ask interrupt
-            if (loopResult.isAskPending) {
-              const askTc = draft.toolCalls.find((tc) => tc.name === "resume_ask");
-              const question = askTc?.input?.question
-                ? String(askTc.input.question)
-                : "请补充更多信息";
-              const field = askTc?.input?.field
-                ? String(askTc.input.field)
-                : undefined;
-
-              const workspace = buildAgentResumeWorkspace({
-                request: agentRequest,
-                requestId: context.requestId,
-                result: parsedResult,
-              });
-
-              return sendAgUiEvents(
-                response,
-                buildAgUiAskInterruptEvents({
-                  requestId: context.requestId,
-                  threadId,
-                  question,
-                  field,
-                  workspace,
-                }),
-                context,
-                headerValue(request.headers.accept),
-                sessionRecorder,
-              );
-            }
-
-            const tailEvents = buildWorkflowRuntimeEvents({
-              requestId: context.requestId,
-              threadId,
-              request: agentRequest,
-              result: parsedResult,
-            });
-            const filtered = workflowRuntimeEventsToAgUiEvents(
-              tailEvents.filter(
-                (event) =>
-                  event.type !== "run_started" &&
-                  event.type !== "state_snapshot" &&
-                  event.type !== "assistant_text_delta",
-              ),
-            );
-            return sendAgUiEvents(
-              response,
-              filtered,
-            context,
-            headerValue(request.headers.accept),
-            sessionRecorder,
-          );
-            } catch (loopErr) {
-              const msg = loopErr instanceof Error ? loopErr.message : "Agent loop failed";
-              return sendAgUiEvents(
-                response,
-                toAgUiRunErrorEvents({
-                  requestId: context.requestId,
-                  threadId,
-                  message: msg,
-                  code: "dependency_unavailable",
-                }),
-                context,
-                headerValue(request.headers.accept),
-              );
-            }
-          }
-        } catch (error) {
-          if (error instanceof RichTextPolishProviderError) {
-            trace.recordRunOutput({ status: "error", error: error.message });
-            if (acceptsAgUiSse(request)) {
-              return sendAgUiEvents(
-                response,
-                toAgUiRunErrorEvents({
-                  requestId: context.requestId,
-                  threadId,
-                  message: error.message,
-                  code: error.code,
-                }),
-                context,
-                headerValue(request.headers.accept),
-              );
-            }
-
-            return sendError(
-              response,
-              error.code === "provider_timeout" ? 504 : 503,
-              context,
-              {
-                error: error.code,
-                message: error.message,
-                dependency:
-                  error.code === "dependency_unavailable" ? "provider" : undefined,
-              },
-            );
-          }
-          const message =
-            error instanceof Error ? error.message : "Provider request failed";
-          trace.recordRunOutput({ status: "error", error: message });
-          if (acceptsAgUiSse(request)) {
-            return sendAgUiEvents(
-              response,
-              toAgUiRunErrorEvents({
-                requestId: context.requestId,
-                threadId,
-                message,
-                code: "dependency_unavailable",
-              }),
-              context,
-              headerValue(request.headers.accept),
-            );
-          }
-
-          return sendError(response, 500, context, {
-            error: "internal_error",
-            message: error instanceof Error ? error.message : "Internal error",
-          });
-        }
-      },
-    );
+    // Non-SSE requests are no longer supported — use SSE (Accept: text/event-stream)
+    return sendError(response, 400, context, {
+      error: "sse_required",
+      message: "Agent chat requires SSE (Accept: text/event-stream). Use /v1/agent/chat with SSE.",
+    });
   }
 
   const resumeHelperMatch = url.pathname.match(/^\/v1\/resume\/helpers\/([^/]+)$/);

@@ -94,7 +94,7 @@ describe("AgentPanel assistant-ui runtime", () => {
 
     await waitFor(() => {
       expect(fetchMock).toHaveBeenCalledWith(
-        "/api/agent/runs",
+        "/api/agent/direct-runs",
         expect.objectContaining({
           method: "POST",
           headers: expect.objectContaining({ Accept: "text/event-stream" }),
@@ -193,7 +193,7 @@ describe("AgentPanel assistant-ui runtime", () => {
 
     await waitFor(() => {
       expect(fetchMock).toHaveBeenCalledWith(
-        "/api/agent/runs",
+        "/api/agent/direct-runs",
         expect.objectContaining({
           method: "POST",
           headers: expect.objectContaining({ Accept: "text/event-stream" }),
@@ -253,7 +253,7 @@ describe("AgentPanel assistant-ui runtime", () => {
 
     await waitFor(() => {
       expect(fetchMock).toHaveBeenCalledWith(
-        "/api/agent/runs",
+        "/api/agent/direct-runs",
         expect.objectContaining({
           method: "POST",
           headers: expect.objectContaining({ Accept: "text/event-stream" }),

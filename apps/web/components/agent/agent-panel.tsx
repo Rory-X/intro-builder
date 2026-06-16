@@ -35,6 +35,8 @@ import {
 
 import { AgentConfirmationCard } from "@/components/agent/agent-confirmation-card";
 import { AgentContextIndicator } from "@/components/agent/agent-context-indicator";
+import { AgentSessionSelector } from "@/components/agent/agent-session-selector";
+import type { AgentSessionListItem } from "@/lib/agent/session-store";
 import {
   AgentAgUiRuntimeProvider,
   useAgentAgUiInterruptSubmit,
@@ -143,7 +145,27 @@ export function AgentPanel({
   const [lastRetryRequest, setLastRetryRequest] = useState<AgentRetryRequest | null>(
     null,
   );
+  const [autoAccept, setAutoAccept] = useState(false);
+  const [sessions, setSessions] = useState<AgentSessionListItem[]>([]);
+  const [activeSessionId, setActiveSessionId] = useState<string>("");
   const activeTurnIdRef = useRef<string | null>(null);
+
+  const handleSessionSelect = (sessionId: string) => {
+    setActiveSessionId(sessionId);
+  };
+
+  const handleSessionCreate = () => {
+    // Notify parent to create a new session via callback
+    // For now, just reset local state
+    setActiveSessionId("");
+  };
+
+  const handleSessionDelete = (sessionId: string) => {
+    setSessions((prev) => prev.filter((s) => s.sessionId !== sessionId));
+    if (activeSessionId === sessionId) {
+      setActiveSessionId("");
+    }
+  };
 
   function beginAgentTurn(messages: readonly { role?: unknown }[]) {
     const turnId = createTurnId();
@@ -258,6 +280,14 @@ export function AgentPanel({
     });
   }
 
+  function handleAutoAcceptOperation(operation: ResumeOperation) {
+    const turnId = activeTurnIdRef.current;
+    applyOperation(operation);
+    if (turnId) {
+      markOperationApplied(turnId, operation.id);
+    }
+  }
+
   return (
     <section
       data-agent-runtime-mode="ag-ui"
@@ -325,6 +355,8 @@ export function AgentPanel({
         onResumeWorkspace={setResumeWorkspace}
         onToolResult={appendToolResult}
         onInterrupts={setAgentTurnInterrupts}
+        autoAccept={autoAccept}
+        onOperationApplied={autoAccept ? handleAutoAcceptOperation : undefined}
       >
         <div className="flex h-12 shrink-0 items-center justify-between border-b px-3">
           <div className="flex min-w-0 items-center gap-2">
@@ -339,10 +371,42 @@ export function AgentPanel({
             </Button>
             <h2 className="truncate text-sm font-medium text-foreground">新对话</h2>
           </div>
-          <AgentModelSettingsDialog
+          <div className="flex items-center gap-2">
+            <div className="flex items-center gap-1.5">
+              <span className="text-[10px] text-muted-foreground">
+                {autoAccept ? "自动" : "确认"}
+              </span>
+              <button
+                type="button"
+                role="switch"
+                aria-checked={autoAccept}
+                aria-label={autoAccept ? "切换为确认模式" : "切换为自动应用模式"}
+                onClick={() => setAutoAccept((prev) => !prev)}
+                className={`relative inline-flex h-4 w-7 shrink-0 cursor-pointer items-center rounded-full transition-colors ${
+                  autoAccept
+                    ? "bg-primary"
+                    : "bg-muted-foreground/30"
+                }`}
+              >
+                <span
+                  className={`block h-3 w-3 rounded-full bg-background shadow-sm transition-transform ${
+                    autoAccept ? "translate-x-3.5" : "translate-x-0.5"
+                  }`}
+                />
+              </button>
+            </div>
+            <AgentSessionSelector
+              sessions={sessions}
+              activeSessionId={activeSessionId}
+              onSelect={handleSessionSelect}
+              onCreate={handleSessionCreate}
+              onDelete={handleSessionDelete}
+            />
+            <AgentModelSettingsDialog
             settings={modelSettings}
             onSave={setModelSettings}
           />
+          </div>
         </div>
 
         <AgentThreadArea

@@ -13,7 +13,7 @@ describe("fetchDirectAgentRunStream", () => {
       .mockResolvedValueOnce(
         Response.json({
           status: "ok",
-          streamUrl: "https://api.rory-x.me/intro-builder/agent/v1/agent/messages",
+          streamUrl: "https://api.rory-x.me/intro-builder/agent/v1/agent/chat",
           token: "signed-chat-token",
           tokenExpiresAt: "2026-06-08T08:02:00.000Z",
           request: {
@@ -34,7 +34,7 @@ describe("fetchDirectAgentRunStream", () => {
       .mockResolvedValueOnce(directStream);
 
     const response = await fetchDirectAgentRunStream({
-      requestUrl: "/api/agent/runs",
+      requestUrl: "/api/agent/direct-runs",
       requestInit: {
         method: "POST",
         body: JSON.stringify({ threadId: "resume_abc" }),
@@ -55,7 +55,7 @@ describe("fetchDirectAgentRunStream", () => {
     );
     expect(fetchFn).toHaveBeenNthCalledWith(
       2,
-      "https://api.rory-x.me/intro-builder/agent/v1/agent/messages",
+      "https://api.rory-x.me/intro-builder/agent/v1/agent/chat",
       expect.objectContaining({
         method: "POST",
         body: expect.stringContaining('"resumeId":"resume_abc"'),
@@ -68,30 +68,4 @@ describe("fetchDirectAgentRunStream", () => {
     );
   });
 
-  it("falls back to the BFF stream when direct bootstrap fails before streaming", async () => {
-    const fallbackStream = new Response("data: {}\n\n", {
-      status: 200,
-      headers: { "content-type": "text/event-stream" },
-    });
-    const fetchFn = vi
-      .fn<typeof fetch>()
-      .mockResolvedValueOnce(Response.json({ error: "disabled" }, { status: 503 }))
-      .mockResolvedValueOnce(fallbackStream);
-
-    const requestInit = {
-      method: "POST",
-      body: JSON.stringify({ threadId: "resume_abc" }),
-      headers: { "content-type": "application/json" },
-    };
-
-    const response = await fetchDirectAgentRunStream({
-      requestUrl: "/api/agent/runs",
-      requestInit,
-      fetchFn,
-      directEnabled: true,
-    });
-
-    expect(response).toBe(fallbackStream);
-    expect(fetchFn).toHaveBeenNthCalledWith(2, "/api/agent/runs", requestInit);
-  });
 });
