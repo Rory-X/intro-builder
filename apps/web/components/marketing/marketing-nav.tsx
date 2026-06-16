@@ -4,7 +4,7 @@ import { useState, useEffect } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import { Button } from "@/components/ui/button";
-import { ArrowRight, LogOut, Settings } from "lucide-react";
+import { ArrowRight, LogOut, Menu, Settings } from "lucide-react";
 import {
   Popover,
   PopoverContent,
@@ -16,7 +16,7 @@ import { ThemeToggle } from "@/components/theme-toggle";
 const NAV_LINKS = [
   { label: "产品功能", href: "#features" },
   { label: "模板", href: "#templates" },
-  { label: "求职指南", href: "/docs" },
+  { label: "求职文档", href: "/docs" },
   { label: "博客", href: "/blog" },
 ];
 
@@ -33,6 +33,7 @@ interface MarketingNavProps {
 export function MarketingNav({ email, name, signOutAction, hideNavLinks, fullWidth }: MarketingNavProps) {
   const [scrolled, setScrolled] = useState(false);
   const [popoverOpen, setPopoverOpen] = useState(false);
+  const [mobileNavOpen, setMobileNavOpen] = useState(false);
 
   const isLoggedIn = !!email;
 
@@ -178,7 +179,58 @@ export function MarketingNav({ email, name, signOutAction, hideNavLinks, fullWid
             </Link>
           </>
         )}
+        {!hideNavLinks && (
+          <MobileNavMenu open={mobileNavOpen} onOpenChange={setMobileNavOpen} />
+        )}
       </div>
     </nav>
+  );
+}
+
+function MobileNavMenu({
+  open,
+  onOpenChange,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+}) {
+  return (
+    <Popover open={open} onOpenChange={onOpenChange}>
+      <PopoverTrigger
+        className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-border/60 bg-background/70 text-muted-foreground shadow-sm outline-none transition-colors hover:bg-accent hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring md:hidden"
+        aria-label="打开导航菜单"
+      >
+        <Menu className="h-4 w-4" />
+      </PopoverTrigger>
+      <PopoverContent align="end" sideOffset={10} className="w-48 p-1.5 md:hidden">
+        {NAV_LINKS.map((link) => {
+          const className =
+            "flex min-h-10 items-center rounded-md px-3 text-sm font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-foreground focus-visible:bg-accent focus-visible:text-foreground focus-visible:outline-none";
+          const isHash = link.href.startsWith("#");
+          if (isHash) {
+            return (
+              <a
+                key={link.href}
+                href={link.href}
+                onClick={() => onOpenChange(false)}
+                className={className}
+              >
+                {link.label}
+              </a>
+            );
+          }
+          return (
+            <Link
+              key={link.href}
+              href={link.href}
+              onClick={() => onOpenChange(false)}
+              className={className}
+            >
+              {link.label}
+            </Link>
+          );
+        })}
+      </PopoverContent>
+    </Popover>
   );
 }
