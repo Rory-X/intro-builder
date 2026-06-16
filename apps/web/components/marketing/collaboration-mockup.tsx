@@ -62,8 +62,8 @@ function ReviewModeMockup() {
       <div className="border-b border-blue-500/40 bg-blue-500/10 px-4 py-2 text-xs text-blue-300">
         协作动态 [16:28] 对方修改了「基本信息」
       </div>
-      <div className="grid min-h-[560px] grid-cols-1 md:grid-cols-[1.05fr_0.95fr]">
-        <div className="space-y-3 border-b border-white/10 bg-slate-900/70 p-4 md:border-b-0 md:border-r">
+      <div className="grid grid-cols-1 md:h-[560px] md:grid-cols-[1.05fr_0.95fr]">
+        <div className="overflow-hidden border-b border-white/10 bg-slate-900/70 p-4 md:border-b-0 md:border-r">
           <EditorSection title="基础信息" count="1" accent="cyan">
             <div className="flex items-start gap-3">
               <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-lg bg-white text-2xl font-bold text-slate-900">
@@ -87,31 +87,21 @@ function ReviewModeMockup() {
               label="自我介绍"
               value="熟悉校园社群运营、活动复盘和基础数据分析，能把用户反馈整理成可执行的改版建议。"
             />
-          </EditorSection>
-
-          <EditorSection title="项目经历" count="2" accent="violet">
-            <div className="rounded-lg border border-white/10 bg-slate-950/50">
-              <div className="border-b border-white/10 px-3 py-2 text-xs font-semibold">
-                增长活动配置台
-                <span className="ml-2 font-normal text-slate-500">· 产品运营实习生</span>
+            <div className="mt-3 rounded-lg border border-emerald-400/30 bg-emerald-400/10 p-3">
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-xs font-semibold text-emerald-200">正在同步到右侧预览</span>
+                <span className="rounded-full bg-emerald-400/15 px-2 py-0.5 text-[10px] text-emerald-200">
+                  已保存
+                </span>
               </div>
-              <div className="grid grid-cols-2 gap-2 p-3">
-                <EditableField label="项目名" value="增长活动配置台" />
-                <EditableField label="城市" value="上海" />
-                <EditableField label="开始" value="2025-03" />
-                <EditableField label="结束" value="2025-06" />
-              </div>
-              <div className="px-3 pb-3">
-                <EditableArea
-                  label="项目亮点"
-                  value="搭建增长活动配置台与数据看板，支持 12 场活动复盘，配置耗时下降 35%。"
-                />
-              </div>
+              <p className="mt-2 text-xs leading-relaxed text-slate-300">
+                对方把「活动复盘」改成带指标的项目亮点，预览中的绿色高亮会显示本次帮改结果。
+              </p>
             </div>
           </EditorSection>
         </div>
 
-        <div className="bg-slate-800 p-5">
+        <div className="flex items-start justify-center bg-slate-800 p-5">
           <MiniResume>
             <ResumeHeader />
             <MiniSection title="自我介绍" />
