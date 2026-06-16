@@ -588,14 +588,42 @@ export function createAgentApp(options: CreateAgentAppOptions): AgentApp {
     sendError(c, 404, { error: "not_found", message: "Route not found" }),
   );
 
-  app.onError((error, c) =>
-    sendError(c, 500, {
+  app.onError((error, c) => {
+    // Drizzle wraps the real driver error ("relation ... does not exist",
+    // "permission denied", connection failures) in `error.cause`; surface the
+    // whole chain so a 500 is actually diagnosable instead of just "Failed query".
+    const described = describeError(error);
+    console.error(
+      JSON.stringify({
+        level: "error",
+        message: "agent request failed",
+        requestId: c.get("requestId"),
+        path: c.req.path,
+        errorChain: described.chain,
+      }),
+    );
+    return sendError(c, 500, {
       error: "internal_error",
-      message: error instanceof Error ? error.message : "Internal error",
-    }),
-  );
+      message: described.message,
+    });
+  });
 
   return app;
+}
+
+/** Walk an error's `cause` chain and return the deepest message + the full chain. */
+function describeError(error: unknown): { message: string; chain: string[] } {
+  const chain: string[] = [];
+  let current: unknown = error;
+  for (let depth = 0; current instanceof Error && depth < 6; depth += 1) {
+    const code = (current as { code?: unknown }).code;
+    chain.push(code ? `${current.message} [${String(code)}]` : current.message);
+    current = (current as { cause?: unknown }).cause;
+  }
+  return {
+    message: chain.at(-1) ?? "Internal error",
+    chain: chain.length > 0 ? chain : ["Internal error"],
+  };
 }
 
 function statusBody(
