@@ -17,7 +17,6 @@ import {
   extractStreamingAgentMessageContent,
   parseAgentMessageProviderResponse,
   toAgUiAgentEvents,
-  workflowRuntimeEventsToAgUiEvents,
   validateAgentMessageRequest,
   type AgentMessageUsage,
   type AgentMessagePrompt,
@@ -35,15 +34,8 @@ import {
   assembleLoopResult,
   createInitialLoopDraft,
   createLoopModel,
-  LOOP_MAX_STEPS,
   runResumeLoop,
-  type LoopStepEvent,
 } from "./workflows/loop-runtime.js";
-import { buildAgentResumeWorkspace } from "./workflows/resume-workspace.js";
-import {
-  buildAgUiAskInterruptEvents,
-  buildWorkflowRuntimeEvents,
-} from "./workflows/workflow-runtime.js";
 import {
   buildAiCacheKey,
   getAiCacheTtlSeconds,
@@ -523,30 +515,48 @@ async function routeRequest(
           trace.recordParseResult(agentMessageCacheParseTrace(cached.value));
           trace.recordRunOutput(agentMessageCacheRunOutput(cached.value));
 
-          return sendAgUiEvents(
-            response,
-            toAgUiAgentEvents({
-              requestId: context.requestId,
-              threadId,
-              request: agentRequest,
-              result: {
-                message: cached.value.message,
-                toolCalls: cached.value.toolCalls,
-                proposedOperations: cached.value.proposedOperations,
-                ...(cached.value.questions ? { questions: cached.value.questions } : {}),
-              },
-            }),
-            context,
-            headerValue(request.headers.accept),
-            createSessionRecorderForRequest({
-              sessionStore,
-              request: agentRequest,
-              session: auth.session,
-              requestId: context.requestId,
-              now,
-              initialSnapshot: storedSnapshot,
+          if (acceptsAgUiSse(request)) {
+            return sendAgUiEvents(
+              response,
+              toAgUiAgentEvents({
+                requestId: context.requestId,
+                threadId,
+                request: agentRequest,
+                result: {
+                  message: cached.value.message,
+                  toolCalls: cached.value.toolCalls,
+                  proposedOperations: cached.value.proposedOperations,
+                  ...(cached.value.questions ? { questions: cached.value.questions } : {}),
+                },
+              }),
               context,
-            }),
+              headerValue(request.headers.accept),
+              createSessionRecorderForRequest({
+                sessionStore,
+                request: agentRequest,
+                session: auth.session,
+                requestId: context.requestId,
+                now,
+                initialSnapshot: storedSnapshot,
+                context,
+              }),
+            );
+          }
+
+          return sendJson(
+            response,
+            200,
+            {
+              status: "ok",
+              requestId: context.requestId,
+              message: cached.value.message,
+              toolCalls: cached.value.toolCalls,
+              proposedOperations: cached.value.proposedOperations,
+              usage: cached.value.usage,
+              cached: true,
+              cachedAt: cached.createdAt,
+            },
+            context,
           );
         }
         trace.recordCache("miss");
@@ -591,163 +601,122 @@ async function routeRequest(
         });
 
         try {
-          if (acceptsAgUiSse(request)) {
-            // === True Agent Loop Path ===
-            // AI SDK streamText + tools loop over DraftState sandbox.
-            const draft = createInitialLoopDraft(agentRequest);
-            const modelSettings = agentRequest.modelConfig
-              ? {
-                  baseUrl: agentRequest.modelConfig.baseUrl,
-                  apiKey: agentRequest.modelConfig.apiKey,
-                  modelName: agentRequest.modelConfig.modelName,
-                }
-              : {
-                  baseUrl: config.modelBaseUrl,
-                  apiKey: config.modelApiKey,
-                  modelName: config.modelName,
-                } as { baseUrl: string; apiKey: string; modelName: string };
-
-            const sessionRecorder = createSessionRecorderForRequest({
-              sessionStore,
+          if (acceptsAgUiSse(request) && activeAgentMessageProvider.stream) {
+            return streamAgentMessageEvents({
+              response,
+              context,
+              provider: activeAgentMessageProvider,
               request: agentRequest,
+              prompt,
               session: auth.session,
               requestId: context.requestId,
+              cacheKey,
+              aiCacheStore,
               now,
-              initialSnapshot: storedSnapshot,
-              context,
-            });
-            const loopModel = createLoopModel(modelSettings);
-
-            try {
-              const loopResult = await runResumeLoop({
-              model: loopModel,
-              request: agentRequest,
-              draft,
-              maxSteps: LOOP_MAX_STEPS,
-              onStepFinish: (stepEvent) => {
-                for (const { toolCall, proposedOperations } of stepEvent.toolCalls) {
-                  if (sessionRecorder) {
-                    sessionRecorder.record({
-                      type: EventType.TOOL_CALL_START,
-                      toolCallId: toolCall.id,
-                      toolCallName: toolCall.name,
-                      parentMessageId: `msg_${context.requestId}`,
-                    });
-                    sessionRecorder.record({
-                      type: EventType.TOOL_CALL_ARGS,
-                      toolCallId: toolCall.id,
-                      delta: JSON.stringify(toolCall.input),
-                    });
-                    sessionRecorder.record({
-                      type: EventType.TOOL_CALL_END,
-                      toolCallId: toolCall.id,
-                    });
-                    sessionRecorder.record({
-                      type: EventType.TOOL_CALL_RESULT,
-                      messageId: `${toolCall.id}_result`,
-                      toolCallId: toolCall.id,
-                      role: "tool",
-                      content: JSON.stringify({ toolCall, proposedOperations }),
-                    });
-                    }
-                }
-              },
-              telemetry: config.langfuse.enabled
-                ? {
-                    isEnabled: true,
-                    functionId: "agent.loop",
-                    metadata: {
-                      requestId: context.requestId,
-                      provider: "ai-sdk/openai-compatible",
-                      mode: agentRequest.mode ?? "optimize_existing",
-                    },
-                  }
-                : undefined,
-            });
-
-            // Write AI cache
-            const assembleId = randomUUID();
-            const parsedResult = assembleLoopResult({
-              draft,
-              finalText: loopResult.text,
-              requestId: assembleId,
-            });
-
-            const cacheValue: AgentMessageCacheValue = {
-              message: parsedResult.message,
-              toolCalls: parsedResult.toolCalls,
-              proposedOperations: parsedResult.proposedOperations,
-              usage: { provider: "ai-sdk/openai-compatible", model: modelSettings.modelName, inputTokens: 0, outputTokens: 0 },
-            };
-            await writeAiCache(aiCacheStore, cacheKey, cacheValue, "agent:chat", now);
-
-            // Handle resume_ask interrupt
-            if (loopResult.isAskPending) {
-              const askTc = draft.toolCalls.find((tc) => tc.name === "resume_ask");
-              const question = askTc?.input?.question
-                ? String(askTc.input.question)
-                : "请补充更多信息";
-              const field = askTc?.input?.field
-                ? String(askTc.input.field)
-                : undefined;
-
-              const workspace = buildAgentResumeWorkspace({
+              accept: headerValue(request.headers.accept),
+              trace,
+              modelName: requestModelName,
+              recorder: createSessionRecorderForRequest({
+                sessionStore,
                 request: agentRequest,
+                session: auth.session,
                 requestId: context.requestId,
-                result: parsedResult,
-              });
-
-              return sendAgUiEvents(
-                response,
-                buildAgUiAskInterruptEvents({
-                  requestId: context.requestId,
-                  threadId,
-                  question,
-                  field,
-                  workspace,
-                }),
+                now,
+                initialSnapshot: storedSnapshot,
                 context,
-                headerValue(request.headers.accept),
-                sessionRecorder,
-              );
-            }
-
-            const tailEvents = buildWorkflowRuntimeEvents({
-              requestId: context.requestId,
-              threadId,
-              request: agentRequest,
-              result: parsedResult,
+              }),
             });
-            const filtered = workflowRuntimeEventsToAgUiEvents(
-              tailEvents.filter(
-                (event) =>
-                  event.type !== "run_started" &&
-                  event.type !== "state_snapshot" &&
-                  event.type !== "assistant_text_delta",
-              ),
-            );
-            return sendAgUiEvents(
-              response,
-              filtered,
-            context,
-            headerValue(request.headers.accept),
-            sessionRecorder,
+          }
+
+          const providerResult = await trace.traceGeneration(
+            {
+              modelName: requestModelName,
+              provider: "ai-sdk/openai-compatible",
+              prompt,
+            },
+            () =>
+              activeAgentMessageProvider.run({
+                request: agentRequest,
+                prompt,
+                session: auth.session,
+                requestId: context.requestId,
+              }),
           );
-            } catch (loopErr) {
-              const msg = loopErr instanceof Error ? loopErr.message : "Agent loop failed";
+          const parsed = parseAgentMessageProviderResponse(providerResult.content, {
+            requestId: context.requestId,
+          });
+          if (!parsed.ok) {
+            trace.recordParseResult({ ok: false, message: parsed.message });
+            trace.recordRunOutput({ status: "error", error: parsed.message });
+
+            if (acceptsAgUiSse(request)) {
               return sendAgUiEvents(
                 response,
                 toAgUiRunErrorEvents({
                   requestId: context.requestId,
                   threadId,
-                  message: msg,
+                  message: parsed.message,
                   code: "dependency_unavailable",
                 }),
                 context,
                 headerValue(request.headers.accept),
               );
             }
+
+            return sendError(response, 503, context, {
+              error: "dependency_unavailable",
+              message: parsed.message,
+              dependency: "provider",
+            });
           }
+          trace.recordParseResult(agentMessageResultParseTrace(parsed.result));
+          trace.recordRunOutput(agentMessageResultRunOutput(parsed.result));
+
+          const cacheValue: AgentMessageCacheValue = {
+            message: parsed.result.message,
+            toolCalls: parsed.result.toolCalls,
+            proposedOperations: parsed.result.proposedOperations,
+            ...(parsed.result.questions ? { questions: parsed.result.questions } : {}),
+            usage: providerResult.usage,
+          };
+          await writeAiCache(aiCacheStore, cacheKey, cacheValue, "agent:chat", now);
+
+          if (acceptsAgUiSse(request)) {
+            return sendAgUiEvents(
+              response,
+              toAgUiAgentEvents({
+                requestId: context.requestId,
+                threadId,
+                request: agentRequest,
+                result: parsed.result,
+              }),
+              context,
+              headerValue(request.headers.accept),
+              createSessionRecorderForRequest({
+                sessionStore,
+                request: agentRequest,
+                session: auth.session,
+                requestId: context.requestId,
+                now,
+                initialSnapshot: storedSnapshot,
+                context,
+              }),
+            );
+          }
+
+          return sendJson(
+            response,
+            200,
+            {
+              status: "ok",
+              requestId: context.requestId,
+              message: parsed.result.message,
+              toolCalls: parsed.result.toolCalls,
+              proposedOperations: parsed.result.proposedOperations,
+              usage: providerResult.usage,
+            },
+            context,
+          );
         } catch (error) {
           if (error instanceof RichTextPolishProviderError) {
             trace.recordRunOutput({ status: "error", error: error.message });
