@@ -529,48 +529,30 @@ async function routeRequest(
           trace.recordParseResult(agentMessageCacheParseTrace(cached.value));
           trace.recordRunOutput(agentMessageCacheRunOutput(cached.value));
 
-          if (acceptsAgUiSse(request)) {
-            return sendAgUiEvents(
-              response,
-              toAgUiAgentEvents({
-                requestId: context.requestId,
-                threadId,
-                request: agentRequest,
-                result: {
-                  message: cached.value.message,
-                  toolCalls: cached.value.toolCalls,
-                  proposedOperations: cached.value.proposedOperations,
-                  ...(cached.value.questions ? { questions: cached.value.questions } : {}),
-                },
-              }),
-              context,
-              headerValue(request.headers.accept),
-              createSessionRecorderForRequest({
-                sessionStore,
-                request: agentRequest,
-                session: auth.session,
-                requestId: context.requestId,
-                now,
-                initialSnapshot: storedSnapshot,
-                context,
-              }),
-            );
-          }
-
-          return sendJson(
+          return sendAgUiEvents(
             response,
-            200,
-            {
-              status: "ok",
+            toAgUiAgentEvents({
               requestId: context.requestId,
-              message: cached.value.message,
-              toolCalls: cached.value.toolCalls,
-              proposedOperations: cached.value.proposedOperations,
-              usage: cached.value.usage,
-              cached: true,
-              cachedAt: cached.createdAt,
-            },
+              threadId,
+              request: agentRequest,
+              result: {
+                message: cached.value.message,
+                toolCalls: cached.value.toolCalls,
+                proposedOperations: cached.value.proposedOperations,
+                ...(cached.value.questions ? { questions: cached.value.questions } : {}),
+              },
+            }),
             context,
+            headerValue(request.headers.accept),
+            createSessionRecorderForRequest({
+              sessionStore,
+              request: agentRequest,
+              session: auth.session,
+              requestId: context.requestId,
+              now,
+              initialSnapshot: storedSnapshot,
+              context,
+            }),
           );
         }
         trace.recordCache("miss");
@@ -617,7 +599,7 @@ async function routeRequest(
         try {
           if (acceptsAgUiSse(request)) {
             // === True Agent Loop Path ===
-            // Use AI SDK streamText + tools loop instead of one-shot JSON parsing.
+            // AI SDK streamText + tools loop over DraftState sandbox.
             const draft = createInitialLoopDraft(agentRequest);
             const modelSettings = agentRequest.modelConfig
               ? {
@@ -640,44 +622,40 @@ async function routeRequest(
               initialSnapshot: storedSnapshot,
               context,
             });
-            if (sessionRecorder) {
+            const loopModel = createLoopModel(modelSettings);
 
-              const loopModel = createLoopModel(modelSettings);
-
-              try {
-                const loopResult = await runResumeLoop({
+            try {
+              const loopResult = await runResumeLoop({
               model: loopModel,
               request: agentRequest,
               draft,
               maxSteps: LOOP_MAX_STEPS,
               onStepFinish: (stepEvent) => {
-                // Emit AG-UI tool events per completed step
                 for (const { toolCall, proposedOperations } of stepEvent.toolCalls) {
-                  sessionRecorder.record({
-                    type: EventType.TOOL_CALL_START,
-                    toolCallId: toolCall.id,
-                    toolCallName: toolCall.name,
-                    parentMessageId: `msg_${context.requestId}`,
-                  });
-                  sessionRecorder.record({
-                    type: EventType.TOOL_CALL_ARGS,
-                    toolCallId: toolCall.id,
-                    delta: JSON.stringify(toolCall.input),
-                  });
-                  sessionRecorder.record({
-                    type: EventType.TOOL_CALL_END,
-                    toolCallId: toolCall.id,
-                  });
-                  sessionRecorder.record({
-                    type: EventType.TOOL_CALL_RESULT,
-                    messageId: `${toolCall.id}_result`,
-                    toolCallId: toolCall.id,
-                    role: "tool",
-                    content: JSON.stringify({
-                      toolCall,
-                      proposedOperations,
-                    }),
-                  });
+                  if (sessionRecorder) {
+                    sessionRecorder.record({
+                      type: EventType.TOOL_CALL_START,
+                      toolCallId: toolCall.id,
+                      toolCallName: toolCall.name,
+                      parentMessageId: `msg_${context.requestId}`,
+                    });
+                    sessionRecorder.record({
+                      type: EventType.TOOL_CALL_ARGS,
+                      toolCallId: toolCall.id,
+                      delta: JSON.stringify(toolCall.input),
+                    });
+                    sessionRecorder.record({
+                      type: EventType.TOOL_CALL_END,
+                      toolCallId: toolCall.id,
+                    });
+                    sessionRecorder.record({
+                      type: EventType.TOOL_CALL_RESULT,
+                      messageId: `${toolCall.id}_result`,
+                      toolCallId: toolCall.id,
+                      role: "tool",
+                      content: JSON.stringify({ toolCall, proposedOperations }),
+                    });
+                    }
                 }
               },
               telemetry: config.langfuse.enabled
@@ -693,13 +671,11 @@ async function routeRequest(
                 : undefined,
             });
 
-            const streamedText = loopResult.text;
-
             // Write AI cache
             const assembleId = randomUUID();
             const parsedResult = assembleLoopResult({
               draft,
-              finalText: streamedText,
+              finalText: loopResult.text,
               requestId: assembleId,
             });
 
@@ -759,65 +735,25 @@ async function routeRequest(
             return sendAgUiEvents(
               response,
               filtered,
-              context,
-              headerValue(request.headers.accept),
-              sessionRecorder,
-            );
-              } catch (loopErr) {
-                const msg = loopErr instanceof Error ? loopErr.message : "Agent loop failed";
-                return sendAgUiEvents(
-                  response,
-                  toAgUiRunErrorEvents({
-                    requestId: context.requestId,
-                    threadId,
-                    message: msg,
-                    code: "dependency_unavailable",
-                  }),
-                  context,
-                  headerValue(request.headers.accept),
-                );
-              }
-              } // end if (sessionRecorder)
-            }
-
-          // === Fallback: non-streaming path ===
-          const providerResult = await trace.traceGeneration(
-            {
-              modelName: requestModelName,
-              provider: "ai-sdk/openai-compatible",
-              prompt,
-            },
-            () =>
-              activeAgentMessageProvider.run({
-                request: agentRequest,
-                prompt,
-                session: auth.session,
-                requestId: context.requestId,
-              }),
+            context,
+            headerValue(request.headers.accept),
+            sessionRecorder,
           );
-          const parsed = parseAgentMessageProviderResponse(providerResult.content, {
-            requestId: context.requestId,
-          });
-          if (!parsed.ok) {
-            trace.recordParseResult({ ok: false, message: parsed.message });
-            trace.recordRunOutput({ status: "error", error: parsed.message });
-            return sendError(response, 503, context, {
-              error: "dependency_unavailable",
-              message: parsed.message,
-              dependency: "provider",
-            });
+            } catch (loopErr) {
+              const msg = loopErr instanceof Error ? loopErr.message : "Agent loop failed";
+              return sendAgUiEvents(
+                response,
+                toAgUiRunErrorEvents({
+                  requestId: context.requestId,
+                  threadId,
+                  message: msg,
+                  code: "dependency_unavailable",
+                }),
+                context,
+                headerValue(request.headers.accept),
+              );
+            }
           }
-          trace.recordParseResult(agentMessageResultParseTrace(parsed.result));
-          trace.recordRunOutput(agentMessageResultRunOutput(parsed.result));
-
-          return sendJson(response, 200, {
-            status: "ok",
-            requestId: context.requestId,
-            message: parsed.result.message,
-            toolCalls: parsed.result.toolCalls,
-            proposedOperations: parsed.result.proposedOperations,
-            usage: providerResult.usage,
-          }, context);
         } catch (error) {
           if (error instanceof RichTextPolishProviderError) {
             trace.recordRunOutput({ status: "error", error: error.message });
