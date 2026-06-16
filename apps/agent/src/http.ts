@@ -17,6 +17,7 @@ import {
   extractStreamingAgentMessageContent,
   toAgUiAgentEvents,
   workflowRuntimeEventsToAgUiEvents,
+  parseAgentMessageProviderResponse,
   validateAgentMessageRequest,
   type AgentMessageUsage,
   type AgentMessagePrompt,
@@ -55,7 +56,6 @@ import type { AgentConfig } from "./config.js";
 import { createErrorEnvelope } from "./errors.js";
 import {
   createAgentObservability,
-  type AgentMessageCacheValue,
   type AgentMessageParseTrace,
   type AgentMessageTrace,
   type AgentObservability,
@@ -504,7 +504,7 @@ async function routeRequest(
     }
     // Non-SSE requests are no longer supported — use SSE (Accept: text/event-stream)
     return sendError(response, 400, context, {
-      error: "sse_required",
+      error: "internal_error",
       message: "Agent chat requires SSE (Accept: text/event-stream). Use /v1/agent/chat with SSE.",
     });
   }
