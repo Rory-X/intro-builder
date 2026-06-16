@@ -6,15 +6,16 @@ const FOOTER_COLUMNS = [
     title: "产品",
     links: [
       { label: "编辑器", href: "#features" },
+      { label: "AI 诊断", href: "#features" },
       { label: "模板库", href: "#templates" },
-      { label: "AI 导入", href: "#features" },
-      { label: "协同批注", href: "#features" },
+      { label: "协同批注", href: "#collaboration" },
     ],
   },
   {
     title: "资源",
     links: [
-      { label: "简历指南", href: "#" },
+      { label: "求职文档", href: "/docs" },
+      { label: "简历指南", href: "/docs" },
       { label: "更新日志", href: "#changelog" },
       { label: "常见问题", href: "#" },
     ],
@@ -53,7 +54,7 @@ export function MarketingFooter() {
               <span className="text-sm font-bold text-white">intro-builder</span>
             </div>
             <p className="mt-4 max-w-xs text-sm leading-relaxed">
-              面向中文互联网求职者的在线简历工作台。开源、免费、克制。
+              面向中文互联网求职者的在线简历与求职工作台。开源、免费、克制。
             </p>
           </div>
 

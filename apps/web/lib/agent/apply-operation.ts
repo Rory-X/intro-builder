@@ -4,16 +4,17 @@ import type { ResumeOperation } from "@intro-builder/shared/types";
 /**
  * Pure mapping from an agent {@link ResumeOperation} to the next resume content.
  *
- * Used when the user applies a preview (create-from-zero or optimize): it sets
- * simple/top-level fields, and for array sections it creates any missing items
- * (with schema-default fields) before writing, and ensures the section is in
- * `sectionOrder` so it renders. Returns `null` when the operation is not
- * auto-applicable, so the caller can surface "not supported" instead of
- * corrupting the form. The real resume only changes here, on apply.
+ * Used when the user accepts a change-set (including create-from-zero drafts):
+ * it sets simple/top-level fields, and for array sections it creates any missing
+ * items (with schema-default fields) before writing, and makes sure the section
+ * is present in `sectionOrder` so it actually renders.
+ *
+ * Returns `null` when the operation is not auto-applicable, so the caller can
+ * surface a "not supported" message instead of corrupting the form.
  */
 export type ApplyResumeOperationResult = {
   content: ResumeContent;
-  /** Top-level resume keys that changed (for granular RHF setValue). */
+  /** Top-level resume keys that changed (for granular RHF `setValue`). */
   changedKeys: string[];
 } | null;
 
@@ -22,7 +23,12 @@ type TipTapDoc = { type: "doc"; content: unknown[] };
 const ARRAY_SECTION_FIELD =
   /^(experience|projects|education|research|custom)\.(\d+)\.(content|highlights)$/;
 
-const TOP_LEVEL_TIPTAP_FIELDS = new Set(["skills", "summary", "awards", "portfolio"]);
+const TOP_LEVEL_TIPTAP_FIELDS = new Set([
+  "skills",
+  "summary",
+  "awards",
+  "portfolio",
+]);
 
 function emptyDoc(): TipTapDoc {
   return { type: "doc", content: [{ type: "paragraph" }] };
@@ -85,6 +91,7 @@ export function applyResumeOperation(
     operation.operation === "insert_section";
   if (!isSectionWrite) return null;
 
+  // Plain-text profile summary lives on basics.
   if (operation.fieldPath === "basics.summary") {
     return {
       content: { ...content, basics: { ...content.basics, summary: operation.afterPlainText } },
@@ -92,6 +99,7 @@ export function applyResumeOperation(
     };
   }
 
+  // Top-level TipTap fields (skills/summary/awards/portfolio).
   if (TOP_LEVEL_TIPTAP_FIELDS.has(operation.fieldPath)) {
     const key = operation.fieldPath;
     const next: ResumeContent = { ...content, [key]: docFor(operation) } as ResumeContent;
@@ -103,6 +111,7 @@ export function applyResumeOperation(
     return { content: next, changedKeys };
   }
 
+  // Array sections: create missing items, then write the field.
   const match = ARRAY_SECTION_FIELD.exec(operation.fieldPath);
   if (match) {
     const section = match[1];
@@ -117,7 +126,9 @@ export function applyResumeOperation(
 
     const changedKeys = [section];
     let sectionOrder = content.sectionOrder;
-    const orderKey = section === "custom" ? (items[index].id as string) : section;
+    // built-in array sections render by their key; custom sections by item id.
+    const orderKey =
+      section === "custom" ? (items[index].id as string) : section;
     if (!sectionOrder.includes(orderKey)) {
       sectionOrder = [...sectionOrder, orderKey];
       changedKeys.push("sectionOrder");

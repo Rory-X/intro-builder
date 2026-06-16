@@ -31,7 +31,9 @@ describe("applyResumeOperation", () => {
     expect(result).not.toBeNull();
     expect(result!.content.experience).toHaveLength(1);
     expect(result!.content.experience[0].content).toEqual(doc);
+    // default scalar fields exist so the editor/template don't crash
     expect(result!.content.experience[0].company).toBe("");
+    expect(result!.content.experience[0].title).toBe("");
     expect(result!.content.sectionOrder).toContain("experience");
   });
 
@@ -81,7 +83,7 @@ describe("applyResumeOperation", () => {
       makeOp({ operation: "update_section", fieldPath: "experience.0.content", replacementTiptapJson: doc }),
     );
     expect(result!.content.experience).toHaveLength(1);
-    expect(result!.content.experience[0].company).toBe("蜂鸟");
+    expect(result!.content.experience[0].company).toBe("蜂鸟"); // preserved
     expect(result!.content.experience[0].content).toEqual(doc);
   });
 

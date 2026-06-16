@@ -18,6 +18,7 @@ export type AgentConfig = {
   modelApiKey?: string;
   modelName?: string;
   modelTimeoutMs: number;
+  loopEnabled: boolean;
   langfuse: {
     enabled: boolean;
     publicKey?: string;
@@ -107,6 +108,7 @@ export function loadConfig(env: Env = process.env): AgentConfig {
       90_000,
       { min: 1, max: 120_000 },
     ),
+    loopEnabled: parseBooleanEnv(env.AGENT_LOOP_ENABLED, false),
     langfuse: {
       enabled: langfuseTracingRequested && langfuseCredentialsConfigured,
       publicKey: langfusePublicKey,
