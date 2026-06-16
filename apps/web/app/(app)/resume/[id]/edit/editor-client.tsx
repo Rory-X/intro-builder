@@ -66,9 +66,9 @@ import { AnnotationHighlights, flashAnnotation } from "@/components/collab/annot
 import { AnnotationList } from "@/components/collab/annotation-list";
 import { ResumeDiagnoseButton } from "@/components/agent/resume-diagnose-button";
 import { AgentModeToggle } from "@/components/agent/agent-mode-toggle";
-import { AgentAiSdkPanel } from "@/components/agent/agent-aisdk-panel";
-import { applyResumeOperation } from "@/lib/agent/apply-operation";
+import { AgentPanel } from "@/components/agent/agent-panel";
 import type { ResumeOperation } from "@intro-builder/shared/types";
+import { applyResumeOperation } from "@/lib/agent/apply-operation";
 
 type Props = {
   id: string;
@@ -431,13 +431,15 @@ export default function EditorClient({ id, initialTitle, initialTemplate, initia
     form.setValue("sectionOrder", newOrder, { shouldDirty: true });
   }
 
-  function applyAgentOperation(operation: ResumeOperation): boolean {
-    // Delegate to the pure mapping so create-from-zero inserts (brand-new array
-    // items) and updates both apply consistently. Silent + returns success so
-    // the panel can report a single accurate count for a batch apply.
+  function applyAgentOperation(operation: ResumeOperation) {
+    // Delegate to the pure mapping so create-from-zero inserts (which may need
+    // brand-new array items) and updates both apply consistently.
     const current = form.getValues() as unknown as ResumeContent;
     const result = applyResumeOperation(current, operation);
-    if (!result) return false;
+    if (!result) {
+      toast.error("这条 Agent 建议暂不支持自动应用");
+      return;
+    }
 
     type SetValueArgs = Parameters<typeof form.setValue>;
     for (const key of result.changedKeys) {
@@ -450,7 +452,7 @@ export default function EditorClient({ id, initialTitle, initialTemplate, initia
     if (result.changedKeys.includes("sectionOrder")) {
       setSectionOrder(result.content.sectionOrder);
     }
-    return true;
+    toast.success("已应用 Agent 建议");
   }
 
   function flushAgentAutosave() {
@@ -799,7 +801,7 @@ export default function EditorClient({ id, initialTitle, initialTemplate, initia
               )}
             >
               {isAgentMode ? (
-                <AgentAiSdkPanel
+                <AgentPanel
                   resumeId={id}
                   title={title}
                   templateId={template}
@@ -915,7 +917,7 @@ export default function EditorClient({ id, initialTitle, initialTemplate, initia
                   移动端 Agent 面板，修改简历前仍需确认。
                 </SheetDescription>
               </SheetHeader>
-              <AgentAiSdkPanel
+              <AgentPanel
                 resumeId={id}
                 title={title}
                 templateId={template}

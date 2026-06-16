@@ -1,168 +1,137 @@
+import { createHash } from "node:crypto";
+
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Mock } from "vitest";
 
 vi.mock("@/lib/auth-helpers", () => ({ currentUserId: vi.fn() }));
 vi.mock("@/lib/agent/token", () => ({ signAgentToken: vi.fn() }));
-// We do NOT mock the fetch call to the agent’s /v1/agent/session — tests
-// intercept global fetch instead so we can assert on the upstream request.
+vi.mock("@/lib/agent/client", () => ({
+  AgentClientError: class AgentClientError extends Error {
+    statusCode: number;
+    error: string;
+    requestId: string;
+
+    constructor(
+      message: string,
+      options: { statusCode: number; error: string; requestId: string },
+    ) {
+      super(message);
+      this.name = "AgentClientError";
+      this.statusCode = options.statusCode;
+      this.error = options.error;
+      this.requestId = options.requestId;
+    }
+  },
+  createAgentClient: vi.fn(),
+}));
 
 import { currentUserId } from "@/lib/auth-helpers";
 import { signAgentToken } from "@/lib/agent/token";
-import { POST } from "@/app/api/agent/session/route";
+import { AgentClientError, createAgentClient } from "@/lib/agent/client";
+import { GET } from "@/app/api/agent/session/route";
 
-describe("POST /api/agent/session (minimal BFF)", () => {
+describe("GET /api/agent/session", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    vi.stubGlobal("fetch", vi.fn());
   });
 
   afterEach(() => {
     vi.unstubAllEnvs();
-    vi.unstubAllGlobals();
   });
 
-  it("returns 401 when the user is not signed in", async () => {
+  it("requires a Web user session", async () => {
     (currentUserId as unknown as Mock).mockResolvedValue(null);
 
-    const response = await POST(
-      new Request("https://intro.test/api/agent/session", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ resumeId: "r1" }),
-      }),
-    );
+    const response = await GET(new Request("https://intro.test/api/agent/session"));
 
     expect(response.status).toBe(401);
     await expect(response.json()).resolves.toEqual({ error: "未登录" });
   });
 
-  it("returns 404 when the resume does not belong to the user", async () => {
-    (currentUserId as unknown as Mock).mockResolvedValue("user_1");
-
-    const { db } = await import("@/db");
-    vi.spyOn(db.query.resumes, "findFirst").mockResolvedValue(null as never);
-
-    const response = await POST(
-      new Request("https://intro.test/api/agent/session", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ resumeId: "r999" }),
-      }),
-    );
-
-    expect(response.status).toBe(404);
-  });
-
-  it("signs a token, calls agent /v1/agent/session, and returns sessionId + token + agentBaseUrl", async () => {
-    (currentUserId as unknown as Mock).mockResolvedValue("user_2");
+  it("signs an Agent session token and proxies the protected Agent session", async () => {
+    (currentUserId as unknown as Mock).mockResolvedValue("user_123");
     (signAgentToken as unknown as Mock).mockResolvedValue({
-      token: "signed-jwt",
-      expiresAt: new Date("2026-06-09T10:00:00.000Z"),
+      token: "signed-agent-token",
+      expiresAt: new Date("2026-06-08T08:02:00.000Z"),
     });
+    const getSession = vi.fn().mockResolvedValue({
+      requestId: "req_agent",
+      data: {
+        status: "ok",
+        subject: "user_123",
+        resumeId: null,
+        scope: "agent:session",
+        expiresAt: "2026-06-08T08:02:00.000Z",
+        requestId: "req_agent",
+      },
+    });
+    (createAgentClient as unknown as Mock).mockReturnValue({ getSession });
 
-    const { db } = await import("@/db");
-    vi.spyOn(db.query.resumes, "findFirst").mockResolvedValue({
-      id: "r1",
-      userId: "user_2",
-    } as never);
-
-    const upstreamFetch = vi.fn().mockResolvedValue(
-      new Response(JSON.stringify({ sessionId: "session_r1", mode: "optimize_existing" }), {
-        status: 200,
-        headers: { "content-type": "application/json" },
-      }),
-    );
-    vi.stubGlobal("fetch", upstreamFetch);
-
-    const response = await POST(
-      new Request("https://intro.test/api/agent/session", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ resumeId: "r1", mode: "optimize_existing" }),
-      }),
-    );
+    const response = await GET(new Request("https://intro.test/api/agent/session"));
 
     expect(response.status).toBe(200);
-    expect(upstreamFetch).toHaveBeenCalledWith(
-      expect.stringContaining("/v1/agent/session"),
-      expect.objectContaining({
-        method: "POST",
-        headers: expect.objectContaining({
-          authorization: "Bearer signed-jwt",
-        }),
-      }),
-    );
-
+    expect(signAgentToken).toHaveBeenCalledWith({
+      userId: "user_123",
+      scope: "agent:session",
+    });
+    expect(getSession).toHaveBeenCalledWith({ token: "signed-agent-token" });
     await expect(response.json()).resolves.toEqual({
-      sessionId: "session_r1",
-      token: "signed-jwt",
-      agentBaseUrl: expect.any(String),
-      tokenExpiresAt: "2026-06-09T10:00:00.000Z",
+      status: "ok",
+      tokenExpiresAt: "2026-06-08T08:02:00.000Z",
+      agent: {
+        status: "ok",
+        subject: "user_123",
+        resumeId: null,
+        scope: "agent:session",
+        expiresAt: "2026-06-08T08:02:00.000Z",
+        requestId: "req_agent",
+      },
+      requestId: "req_agent",
     });
   });
 
-  it("returns 502 when the upstream agent session creation fails", async () => {
-    (currentUserId as unknown as Mock).mockResolvedValue("user_3");
+  it("includes safe Web runtime diagnostics on explicit debug Agent failures", async () => {
+    vi.stubEnv("AGENT_JWT_SECRET", ' export AGENT_JWT_SECRET="test-agent-secret" \n');
+    vi.stubEnv("AGENT_JWT_ISSUER", "intro-builder-web");
+    vi.stubEnv("AGENT_JWT_AUDIENCE", "intro-builder-agent");
+    vi.stubEnv("AGENT_BASE_URL", "https://api.rory-x.me/intro-builder/agent");
+    (currentUserId as unknown as Mock).mockResolvedValue("user_123");
     (signAgentToken as unknown as Mock).mockResolvedValue({
-      token: "signed-jwt",
-      expiresAt: new Date(),
+      token: "signed-agent-token",
+      expiresAt: new Date("2026-06-08T08:02:00.000Z"),
     });
-
-    const { db } = await import("@/db");
-    vi.spyOn(db.query.resumes, "findFirst").mockResolvedValue({
-      id: "r1",
-      userId: "user_3",
-    } as never);
-
-    vi.stubGlobal(
-      "fetch",
-      vi.fn().mockResolvedValue(
-        new Response(JSON.stringify({ error: "internal_error" }), { status: 500 }),
-      ),
-    );
-
-    const response = await POST(
-      new Request("https://intro.test/api/agent/session", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ resumeId: "r1" }),
+    const getSession = vi.fn().mockRejectedValue(
+      new AgentClientError("Invalid or expired bearer token", {
+        statusCode: 401,
+        error: "unauthorized",
+        requestId: "req_agent_debug",
       }),
     );
+    (createAgentClient as unknown as Mock).mockReturnValue({ getSession });
 
-    expect(response.status).toBe(500);
-  });
-
-  it("handles null resumeId (create-from-zero mode)", async () => {
-    (currentUserId as unknown as Mock).mockResolvedValue("user_4");
-    (signAgentToken as unknown as Mock).mockResolvedValue({
-      token: "signed-jwt",
-      expiresAt: new Date(),
-    });
-
-    vi.stubGlobal(
-      "fetch",
-      vi.fn().mockResolvedValue(
-        new Response(JSON.stringify({ sessionId: "session_create_from_zero" }), {
-          status: 200,
-          headers: { "content-type": "application/json" },
-        }),
-      ),
+    const response = await GET(
+      new Request("https://intro.test/api/agent/session?debug=1"),
     );
 
-    const response = await POST(
-      new Request("https://intro.test/api/agent/session", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({}),
-      }),
-    );
-
-    expect(response.status).toBe(200);
+    expect(response.status).toBe(401);
     await expect(response.json()).resolves.toEqual({
-      sessionId: "session_create_from_zero",
-      token: "signed-jwt",
-      agentBaseUrl: expect.any(String),
-      tokenExpiresAt: expect.any(String),
+      error: "Agent 服务暂不可用",
+      code: "unauthorized",
+      requestId: "req_agent_debug",
+      debug: {
+        agentBaseUrl: "https://api.rory-x.me/intro-builder/agent",
+        jwtAudience: "intro-builder-agent",
+        jwtIssuer: "intro-builder-web",
+        jwtSecret: {
+          isSet: true,
+          rawLength: 46,
+          normalizedLength: 17,
+          normalizedSha256_12: createHash("sha256")
+            .update("test-agent-secret")
+            .digest("hex")
+            .slice(0, 12),
+        },
+      },
     });
   });
 });

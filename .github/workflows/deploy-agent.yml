@@ -33,7 +33,6 @@ env:
   AGENT_MODEL_API_KEY: ${{ secrets.AGENT_MODEL_API_KEY }}
   AGENT_MODEL_NAME: ${{ vars.AGENT_MODEL_NAME }}
   AGENT_MODEL_TIMEOUT_MS: ${{ vars.AGENT_MODEL_TIMEOUT_MS || '20000' }}
-  DATABASE_URL: ${{ secrets.AGENT_DATABASE_URL }}
 
 jobs:
   deploy:
@@ -151,9 +150,6 @@ jobs:
           if [ -n "${AGENT_MODEL_NAME:-}" ]; then
             printf 'AGENT_MODEL_NAME=%s\n' "$AGENT_MODEL_NAME" >> "$runtime_env"
           fi
-          if [ -n "${DATABASE_URL:-}" ]; then
-            printf 'DATABASE_URL=%s\n' "$DATABASE_URL" >> "$runtime_env"
-          fi
           if [ -s "$runtime_env" ]; then
             $ssh_cmd "$remote" "umask 077 && cat > '${AGENT_DEPLOY_PATH}/apps/agent/.agent-runtime-env.tmp'" < "$runtime_env"
           fi
@@ -218,7 +214,7 @@ jobs:
           if [ -f .agent-runtime-env.tmp ]; then
             while IFS='=' read -r key value; do
               case "$key" in
-                AGENT_JWT_SECRET|AGENT_MODEL_BASE_URL|AGENT_MODEL_API_KEY|AGENT_MODEL_NAME|DATABASE_URL)
+                AGENT_JWT_SECRET|AGENT_MODEL_BASE_URL|AGENT_MODEL_API_KEY|AGENT_MODEL_NAME)
                   upsert_env "$key" "$value"
                   ;;
               esac

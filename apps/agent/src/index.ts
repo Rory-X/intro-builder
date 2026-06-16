@@ -1,7 +1,5 @@
-import { serve } from "@hono/node-server";
-
 import { loadConfig } from "./config.js";
-import { createAgentApp } from "./server/app.js";
+import { createAgentServer } from "./http.js";
 import { createRedisAiCacheStore } from "./ai-cache.js";
 import {
   checkRedisReady,
@@ -9,11 +7,12 @@ import {
   createRedisConnection,
   createRedisReplayStore,
 } from "./redis.js";
-import { createPostgresAgentSessionStore } from "./session-store-postgres.js";
-import { createDrizzleAgentSessionRepository } from "./db/agent-session-repository.js";
+import { createRedisAgentSessionStore } from "./session-store.js";
 import { createOpenAICompatibleRichTextPolishProvider } from "./rich-text-polish.js";
 import { createOpenAICompatibleResumeHelperProvider } from "./resume-helpers.js";
+import { createOpenAICompatibleAgentMessageProvider } from "./agent-messages.js";
 import { createAgentObservability } from "./observability.js";
+import { createDevelopmentAgentMessageProvider } from "./workflows/dev-preview-provider.js";
 
 const config = loadConfig();
 const observability = createAgentObservability(config);
@@ -22,8 +21,7 @@ const redis = createRedisConnection(config, {
     log("error", "redis client error", { error: error.message });
   },
 });
-
-const app = createAgentApp({
+const server = createAgentServer({
   config,
   redisReady: () =>
     checkRedisReady(redis, { timeoutMs: config.redisConnectTimeoutMs }),
@@ -32,24 +30,23 @@ const app = createAgentApp({
   }),
   rateLimitStore: redis,
   aiCacheStore: createRedisAiCacheStore(redis),
-  sessionStore: createPostgresAgentSessionStore(
-    createDrizzleAgentSessionRepository(),
-  ),
+  sessionStore: createRedisAgentSessionStore(redis),
   richTextPolishProvider: createOpenAICompatibleRichTextPolishProvider(config),
   resumeHelperProvider: createOpenAICompatibleResumeHelperProvider(config),
+  agentMessageProvider:
+    createOpenAICompatibleAgentMessageProvider(config) ??
+    createDevelopmentAgentMessageProvider(config),
+  observability,
 });
 
-const server = serve(
-  { fetch: app.fetch, port: config.port, hostname: config.host },
-  (info) => {
-    log("info", "agent service listening", {
-      host: config.host,
-      port: info.port,
-      service: config.serviceName,
-      version: config.version,
-    });
-  },
-);
+server.listen(config.port, config.host, () => {
+  log("info", "agent service listening", {
+    host: config.host,
+    port: config.port,
+    service: config.serviceName,
+    version: config.version,
+  });
+});
 
 for (const signal of ["SIGINT", "SIGTERM"] as const) {
   process.once(signal, () => {
