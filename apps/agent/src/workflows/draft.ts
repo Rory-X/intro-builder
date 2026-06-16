@@ -264,6 +264,145 @@ export function draftToChangeSet(
   };
 }
 
+export type DeleteSectionInput = {
+  toolCallId: string;
+  section: ResumeOperation["section"];
+  fieldPath: string;
+  label?: string;
+  changeSummary?: string;
+};
+
+export function deleteFromDraft(
+  draft: DraftState,
+  input: DeleteSectionInput,
+): { ok: true; operation: ResumeOperation } | { ok: false; message: string } {
+  const fieldPath = input.fieldPath.trim();
+  if (!isAllowedOperationFieldPath(fieldPath)) {
+    return { ok: false, message: `fieldPath is not allowed: ${fieldPath}` };
+  }
+  const toolCallId = input.toolCallId.trim() || `tool_${randomUUID()}`;
+  const label = input.label?.trim() || sectionLabel(input.section);
+  const previousOpId = draft.byFieldPath.get(fieldPath);
+  const previous = previousOpId
+    ? draft.operations.find((op) => op.id === previousOpId) ?? null
+    : null;
+
+  const operation: ResumeOperation = {
+    id: `op_${randomUUID()}`,
+    toolCallId,
+    label,
+    section: input.section,
+    fieldPath,
+    operation: "delete_section",
+    beforePlainText: previous?.afterPlainText ?? "（空）",
+    afterPlainText: "",
+    changeSummary: input.changeSummary?.trim() || `删除${label}`,
+    riskFlags: [{ type: "needs_user_fact", message: "删除操作不可逆，请确认" }],
+  };
+
+  if (previousOpId) {
+    draft.operations = draft.operations.filter(
+      (existing) => existing.id !== previousOpId,
+    );
+  }
+  draft.operations.push(operation);
+  draft.byFieldPath.set(fieldPath, operation.id);
+  draft.sections = draft.sections.filter(
+    (section) => section.key !== input.section || section.label !== label,
+  );
+  draft.toolCalls.push({
+    id: toolCallId,
+    name: "resume_delete_section",
+    status: "completed",
+    title: label,
+    summary: operation.changeSummary,
+    input: { section: input.section, fieldPath },
+    result: { operationIds: [operation.id] },
+  });
+
+  return { ok: true, operation };
+}
+
+export type ReorderSectionsInput = {
+  toolCallId: string;
+  newOrder: string[];
+  changeSummary?: string;
+};
+
+export function reorderDraftSections(
+  draft: DraftState,
+  input: ReorderSectionsInput,
+): { ok: true; operation: ResumeOperation } | { ok: false; message: string } {
+  const toolCallId = input.toolCallId.trim() || `tool_${randomUUID()}`;
+  const label = "重排分区顺序";
+
+  const operation: ResumeOperation = {
+    id: `op_${randomUUID()}`,
+    toolCallId,
+    label,
+    section: "custom",
+    fieldPath: "sectionOrder",
+    operation: "reorder_sections",
+    beforePlainText: "",
+    afterPlainText: input.newOrder.join(", "),
+    sectionOrder: input.newOrder,
+    changeSummary: input.changeSummary?.trim() || "重排分区顺序",
+    riskFlags: [],
+  };
+
+  draft.operations.push(operation);
+  draft.byFieldPath.set("sectionOrder", operation.id);
+  draft.toolCalls.push({
+    id: toolCallId,
+    name: "resume_reorder_sections",
+    status: "completed",
+    title: label,
+    summary: operation.changeSummary,
+    input: { newOrder: input.newOrder },
+    result: { operationIds: [operation.id] },
+  });
+
+  return { ok: true, operation };
+}
+
+export function draftStateToJson(draft: DraftState): Record<string, unknown> {
+  return {
+    title: draft.title,
+    targetRole: draft.targetRole,
+    profileSummary: draft.profileSummary,
+    sections: draft.sections,
+    operations: draft.operations,
+    toolCalls: draft.toolCalls,
+    byFieldPath: Object.fromEntries(draft.byFieldPath),
+  };
+}
+
+export function jsonToDraftState(json: Record<string, unknown>): DraftState {
+  const draft = createDraft({
+    title: typeof json.title === "string" ? json.title : undefined,
+    targetRole: typeof json.targetRole === "string" ? json.targetRole : null,
+  });
+  if (typeof json.profileSummary === "string") {
+    draft.profileSummary = json.profileSummary;
+  }
+  if (Array.isArray(json.sections)) {
+    draft.sections = json.sections as DraftSection[];
+  }
+  if (Array.isArray(json.operations)) {
+    draft.operations = json.operations as ResumeOperation[];
+  }
+  if (Array.isArray(json.toolCalls)) {
+    draft.toolCalls = json.toolCalls as AgentToolCall[];
+  }
+  if (json.byFieldPath && typeof json.byFieldPath === "object") {
+    const entries = Object.entries(json.byFieldPath as Record<string, unknown>);
+    for (const [key, value] of entries) {
+      if (typeof value === "string") draft.byFieldPath.set(key, value);
+    }
+  }
+  return draft;
+}
+
 function summarize(value: string): string {
   const flat = value.replace(/\s+/g, " ").trim();
   return flat.length > 140 ? `${flat.slice(0, 139)}…` : flat;
