@@ -26,10 +26,11 @@ export async function POST(req: Request) {
 
   const body = await req.text();
   let resumeId: string | undefined;
+  let parsed: unknown;
   try {
-    const parsed = JSON.parse(body) as { resumeId?: unknown };
-    if (typeof parsed.resumeId === "string" && parsed.resumeId) {
-      resumeId = parsed.resumeId;
+    parsed = JSON.parse(body);
+    if (typeof (parsed as { resumeId?: unknown }).resumeId === "string" && (parsed as { resumeId?: unknown }).resumeId) {
+      resumeId = (parsed as { resumeId?: unknown }).resumeId as string;
     }
   } catch {
     return Response.json({ error: "请求体必须是合法 JSON" }, { status: 400 });
@@ -56,6 +57,15 @@ export async function POST(req: Request) {
     return Response.json({ error: "Agent 服务暂不可用" }, { status: 503 });
   }
 
+  // Filter body to only include fields agent expects: sessionId, messages, mode, modelConfig
+  // Remove resumeId (used for auth only) and tools (assistant-ui internal state)
+  const agentBody = {
+    ...(typeof (parsed as { sessionId?: unknown }).sessionId === "string" ? { sessionId: (parsed as { sessionId?: unknown }).sessionId } : {}),
+    ...(Array.isArray((parsed as { messages?: unknown }).messages) ? { messages: (parsed as { messages?: unknown }).messages } : {}),
+    ...(typeof (parsed as { mode?: unknown }).mode === "string" ? { mode: (parsed as { mode?: unknown }).mode } : {}),
+    ...((parsed as { modelConfig?: unknown }).modelConfig ? { modelConfig: (parsed as { modelConfig?: unknown }).modelConfig } : {}),
+  };
+
   let upstream: Response;
   try {
     upstream = await fetch(`${AGENT_BASE_URL}/v1/agent/chat`, {
@@ -65,7 +75,7 @@ export async function POST(req: Request) {
         accept: "text/event-stream",
         authorization: `Bearer ${signed.token}`,
       },
-      body,
+      body: JSON.stringify(agentBody),
     });
   } catch (error) {
     console.error("[agent-chat] upstream fetch failed:", error);
