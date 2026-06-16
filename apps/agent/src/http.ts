@@ -796,14 +796,27 @@ async function routeRequest(
                 requestId: context.requestId,
               }),
           );
-          trace.recordRunOutput({
-            status: "ok",
+          const parsed = parseAgentMessageProviderResponse(providerResult.content, {
+            requestId: context.requestId,
           });
+          if (!parsed.ok) {
+            trace.recordParseResult({ ok: false, message: parsed.message });
+            trace.recordRunOutput({ status: "error", error: parsed.message });
+            return sendError(response, 503, context, {
+              error: "dependency_unavailable",
+              message: parsed.message,
+              dependency: "provider",
+            });
+          }
+          trace.recordParseResult(agentMessageResultParseTrace(parsed.result));
+          trace.recordRunOutput(agentMessageResultRunOutput(parsed.result));
 
           return sendJson(response, 200, {
             status: "ok",
             requestId: context.requestId,
-            content: providerResult.content,
+            message: parsed.result.message,
+            toolCalls: parsed.result.toolCalls,
+            proposedOperations: parsed.result.proposedOperations,
             usage: providerResult.usage,
           }, context);
         } catch (error) {
