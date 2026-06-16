@@ -3,7 +3,10 @@ export type AgentToolName =
   | "resume_update_section"
   | "resume_delete_section"
   | "resume_reorder_sections"
-  | "resume_insert_section";
+  | "resume_insert_section"
+  | "resume_polish_text"
+  | "resume_set_text"
+  | "resume_ask";
 
 export type AgentToolCall = {
   id: string;
@@ -59,6 +62,9 @@ const TOOL_NAMES = new Set<AgentToolName>([
   "resume_delete_section",
   "resume_reorder_sections",
   "resume_insert_section",
+  "resume_polish_text",
+  "resume_set_text",
+  "resume_ask",
 ]);
 
 const SECTIONS = new Set<ResumeOperation["section"]>([
