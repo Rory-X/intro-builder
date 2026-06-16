@@ -17,6 +17,8 @@ import type { ResumeContent } from "@intro-builder/shared/schemas";
 import type { ResumeOperation } from "@intro-builder/shared/types";
 
 import { Button } from "@/components/ui/button";
+import { ByokSettingsDialog } from "@/components/agent/byok-settings-dialog";
+import { readByokConfig } from "@/lib/agent/byok-store";
 
 /**
  * Agent panel on the AI SDK runtime (assistant-ui `useChatRuntime` over the
@@ -95,11 +97,14 @@ export function AgentAiSdkPanel({
         title={title}
         onBackToEdit={onBackToEdit}
         toolbar={
-          <ApplyPreviewButton
+          <>
+            <ByokSettingsDialog />
+            <ApplyPreviewButton
             sessionId={sessionId}
             applyOperation={applyOperation}
             flushAutosave={flushAutosave}
-          />
+            />
+          </>
         }
       >
         <AskUserToolUI />
@@ -125,6 +130,14 @@ function AgentAiSdkRuntime({
       new AssistantChatTransport({
         api: "/api/agent/chat",
         body: { resumeId, sessionId, mode: "optimize_existing" },
+        // Inject the user's BYOK key fresh from localStorage on each send; it is
+        // never persisted server-side, only forwarded for this request.
+        prepareSendMessagesRequest: ({ body }) => {
+          const modelConfig = readByokConfig();
+          return {
+            body: { ...body, ...(modelConfig ? { modelConfig } : {}) },
+          };
+        },
       }),
     [resumeId, sessionId],
   );
@@ -154,7 +167,7 @@ function PanelShell({
           返回编辑
         </Button>
         <span className="truncate text-sm font-medium">{title}</span>
-        <div className="ml-auto">{toolbar}</div>
+        <div className="ml-auto flex items-center gap-1">{toolbar}</div>
       </div>
       <div className="min-h-0 flex-1">{children}</div>
     </div>
