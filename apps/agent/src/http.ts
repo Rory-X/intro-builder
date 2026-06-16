@@ -763,23 +763,22 @@ async function routeRequest(
               headerValue(request.headers.accept),
               sessionRecorder,
             );
-} catch (loopErr) {
-  // If model not available or other provider error, emit RUN_ERROR
-  const msg = loopErr instanceof Error ? loopErr.message : "Agent loop failed";
-  return sendAgUiEvents(
-    response,
-    toAgUiRunErrorEvents({
-      requestId: context.requestId,
-      threadId,
-      message: msg,
-      code: "dependency_unavailable",
-    }),
-    context,
-    headerValue(request.headers.accept),
-  );
-}
-          } // end if (sessionRecorder)
-          }
+              } catch (loopErr) {
+                const msg = loopErr instanceof Error ? loopErr.message : "Agent loop failed";
+                return sendAgUiEvents(
+                  response,
+                  toAgUiRunErrorEvents({
+                    requestId: context.requestId,
+                    threadId,
+                    message: msg,
+                    code: "dependency_unavailable",
+                  }),
+                  context,
+                  headerValue(request.headers.accept),
+                );
+              }
+              } // end if (sessionRecorder)
+            }
 
           // === Fallback: non-streaming path ===
           const providerResult = await trace.traceGeneration(
