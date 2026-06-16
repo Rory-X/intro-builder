@@ -11,6 +11,10 @@ import {
   runResumeLoop,
 } from "../src/workflows/loop-runtime";
 
+function docWithText(text: string) {
+  return { type: "doc" as const, content: [{ type: "paragraph" as const, content: [{ type: "text" as const, text }] }] };
+}
+
 function createFromZeroRequest(): AgentMessageRequest {
   return {
     resumeId: null,
@@ -60,15 +64,14 @@ describe("loop runtime", () => {
     // Fake streamText: invokes a write tool (mutating the shared draft), then
     // streams two visible text deltas — simulating one AI SDK loop step.
     const fakeStreamText = ((options: {
-      tools: { upsert_section: { execute: (i: unknown, o: unknown) => Promise<unknown> } };
+      tools: { resume_update_section: { execute: (i: unknown, o: unknown) => Promise<unknown> } };
     }) => ({
       textStream: (async function* () {
-        await options.tools.upsert_section.execute(
+        await options.tools.resume_update_section.execute(
           {
-            section: "summary",
             fieldPath: "basics.summary",
             label: "个人简介",
-            afterPlainText: "三年后端经验，擅长 Go 与云原生。",
+            newContent: docWithText("三年后端经验，擅长 Go 与云原生。"),
           },
           { toolCallId: "call_1" },
         );
