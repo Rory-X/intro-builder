@@ -54,16 +54,36 @@ export function AgentAiSdkPanel({
     let cancelled = false;
     void (async () => {
       try {
+        // Session is created via the minimal BFF that only signs a JWT and returns
+        // the agent's public URL + token — the browser then calls the agent directly.
         const res = await fetch("/api/agent/session", {
           method: "POST",
           headers: { "content-type": "application/json" },
           body: JSON.stringify({ resumeId, mode: "optimize_existing" }),
         });
-        const data = (await res.json()) as { sessionId?: string; error?: string };
+        const data = (await res.json()) as {
+          sessionId?: string;
+          token?: string;
+          agentBaseUrl?: string;
+          tokenExpiresAt?: string;
+          error?: string;
+        };
         if (cancelled) return;
         if (!res.ok || !data.sessionId) {
           setSessionError(data.error ?? "无法开启会话");
           return;
+        }
+        // Store the agent origin + token so the chat transport can reach the agent
+        // directly (browser → agent, bypassing the Vercel BFF for the data plane).
+        if (typeof window !== "undefined") {
+          window.sessionStorage.setItem(
+            `agent.${data.sessionId}`,
+            JSON.stringify({
+              token: data.token ?? "",
+              agentBaseUrl: data.agentBaseUrl ?? "",
+              expiresAt: data.tokenExpiresAt ?? "",
+            }),
+          );
         }
         setSessionId(data.sessionId);
       } catch {
@@ -125,22 +145,47 @@ function AgentAiSdkRuntime({
   sessionId: string;
   children: React.ReactNode;
 }) {
-  const transport = useMemo(
-    () =>
-      new AssistantChatTransport({
-        api: "/api/agent/chat",
-        body: { resumeId, sessionId, mode: "optimize_existing" },
-        // Inject the user's BYOK key fresh from localStorage on each send; it is
-        // never persisted server-side, only forwarded for this request.
-        prepareSendMessagesRequest: ({ body }) => {
-          const modelConfig = readByokConfig();
-          return {
-            body: { ...body, ...(modelConfig ? { modelConfig } : {}) },
-          };
-        },
-      }),
-    [resumeId, sessionId],
-  );
+  const transport = useMemo(() => {
+    // Read the agent origin + token that were stored when the session was created.
+    let credential: { token: string; agentBaseUrl: string } | null = null;
+    try {
+      const raw =
+        typeof window !== "undefined"
+          ? window.sessionStorage.getItem(`agent.${sessionId}`)
+          : null;
+      if (raw) credential = JSON.parse(raw) as { token: string; agentBaseUrl: string };
+    } catch {
+      // ignore
+    }
+
+    const stored = credential;
+    const agentOrigin = stored?.agentBaseUrl?.replace(/\/+$/, "") ?? "";
+    const agentToken = stored?.token ?? "";
+
+    // When we have the agent's public URL, the browser connects directly to the
+    // agent's SSE stream — no BFF proxy on the data plane. The Vercel 120 s
+    // timeout only applies to serverless functions, not to browser→agent fetches.
+    const api = agentOrigin
+      ? `${agentOrigin}/v1/agent/chat`
+      : "/api/agent/chat";
+
+    return new AssistantChatTransport({
+      api,
+      body: { resumeId, sessionId, mode: "optimize_existing" },
+      headers: agentToken
+        ? { authorization: `Bearer ${agentToken}` }
+        : undefined,
+      // Inject the user's BYOK key fresh from localStorage on each send; it is
+      // never persisted server-side, only forwarded for this request.
+      prepareSendMessagesRequest: ({ body }) => {
+        const modelConfig = readByokConfig();
+        return {
+          body: { ...body, ...(modelConfig ? { modelConfig } : {}) },
+          ...(agentToken ? { headers: { authorization: `Bearer ${agentToken}` } } : {}),
+        };
+      },
+    });
+  }, [resumeId, sessionId]);
   const runtime = useChatRuntime({ transport });
   return (
     <AssistantRuntimeProvider runtime={runtime}>
