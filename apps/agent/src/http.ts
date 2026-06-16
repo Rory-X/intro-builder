@@ -463,49 +463,40 @@ async function routeRequest(
       });
     }
 
-    if (
-      acceptsAgUiSse(request)
-    ) {
-      const loopModel = resolveLoopModel(agentRequest, config);
-      if (!loopModel) {
-        return sendError(response, 503, context, {
-          error: "dependency_unavailable",
-          message: "Agent message provider is not configured",
-          dependency: "provider",
-        });
-      }
-      return streamAgentLoopEvents({
-        response,
-        context,
-        request: agentRequest,
-        requestId: context.requestId,
-        threadId,
-        model: loopModel,
-        accept: headerValue(request.headers.accept),
-        telemetry: {
-          isEnabled: config.langfuse.enabled,
-          functionId: "agent.loop",
-          metadata: {
-            requestId: context.requestId,
-            provider: "ai-sdk/openai-compatible",
-            mode: agentRequest.mode ?? "create_from_zero",
-          },
-        },
-        recorder: createSessionRecorderForRequest({
-          sessionStore,
-          request: agentRequest,
-          session: auth.session,
-          requestId: context.requestId,
-          now,
-          initialSnapshot: storedSnapshot,
-          context,
-        }),
+    const loopModel = resolveLoopModel(agentRequest, config);
+    if (!loopModel) {
+      return sendError(response, 503, context, {
+        error: "dependency_unavailable",
+        message: "Agent message provider is not configured",
+        dependency: "provider",
       });
     }
-    // Non-SSE requests are no longer supported — use SSE (Accept: text/event-stream)
-    return sendError(response, 400, context, {
-      error: "internal_error",
-      message: "Agent chat requires SSE (Accept: text/event-stream). Use /v1/agent/chat with SSE.",
+    return streamAgentLoopEvents({
+      response,
+      context,
+      request: agentRequest,
+      requestId: context.requestId,
+      threadId,
+      model: loopModel,
+      accept: headerValue(request.headers.accept),
+      telemetry: {
+        isEnabled: config.langfuse.enabled,
+        functionId: "agent.loop",
+        metadata: {
+          requestId: context.requestId,
+          provider: "ai-sdk/openai-compatible",
+          mode: agentRequest.mode ?? "create_from_zero",
+        },
+      },
+      recorder: createSessionRecorderForRequest({
+        sessionStore,
+        request: agentRequest,
+        session: auth.session,
+        requestId: context.requestId,
+        now,
+        initialSnapshot: storedSnapshot,
+        context,
+      }),
     });
   }
 
