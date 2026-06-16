@@ -15,7 +15,6 @@ import {
   appendAgUiContextStatusEvents,
   createOpenAICompatibleAgentMessageProvider,
   extractStreamingAgentMessageContent,
-  parseAgentMessageProviderResponse,
   toAgUiAgentEvents,
   workflowRuntimeEventsToAgUiEvents,
   validateAgentMessageRequest,
@@ -56,9 +55,11 @@ import type { AgentConfig } from "./config.js";
 import { createErrorEnvelope } from "./errors.js";
 import {
   createAgentObservability,
+  type AgentMessageCacheValue,
   type AgentMessageParseTrace,
   type AgentMessageTrace,
   type AgentObservability,
+} from "./observability.js";
 import { checkRateLimit, type RateLimitRedis } from "./rate-limit.js";
 import type { RedisReadyResult } from "./redis.js";
 import {
