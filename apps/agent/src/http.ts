@@ -190,7 +190,7 @@ async function routeRequest(
     ...(corsHeaders ? { corsHeaders } : {}),
   };
 
-  if (method === "OPTIONS" && url.pathname === "/v1/agent/messages") {
+  if (method === "OPTIONS" && url.pathname === "/v1/agent/chat") {
     return sendCorsPreflight(response, context);
   }
 
@@ -377,7 +377,7 @@ async function routeRequest(
     }
   }
 
-  if (url.pathname === "/v1/agent/messages") {
+  if (url.pathname === "/v1/agent/chat") {
     if (method !== "POST") return methodNotAllowed(response, context, "POST");
 
     const auth = await authenticateAgentRequest({
@@ -456,19 +456,11 @@ async function routeRequest(
     }
 
     if (
-      config.loopEnabled &&
-      acceptsAgUiSse(request) &&
-      agentRequest.mode === "create_from_zero"
+      acceptsAgUiSse(request)
     ) {
       const loopModel = resolveLoopModel(agentRequest, config);
-      if (!loopModel) {
-        return sendError(response, 503, context, {
-          error: "dependency_unavailable",
-          message: "Agent message provider is not configured",
-          dependency: "provider",
-        });
-      }
-      return streamAgentLoopEvents({
+      if (loopModel) {
+        return streamAgentLoopEvents({
         response,
         context,
         request: agentRequest,
@@ -496,6 +488,7 @@ async function routeRequest(
         }),
       });
     }
+  }
 
     return observability.traceAgentMessageRun(
       {

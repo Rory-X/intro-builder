@@ -40,7 +40,13 @@ export function agentRunSessionId({
   userId: string;
   threadId: string;
 }): string {
-  if (resumeId) return `agent_session_${resumeId}`;
+  if (resumeId) {
+    return [
+      "agent_session",
+      sanitizeIdPart(resumeId),
+      sanitizeIdPart(threadId),
+    ].join("_");
+  }
   return [
     "agent_session_create_from_zero",
     hashIdPart(userId),

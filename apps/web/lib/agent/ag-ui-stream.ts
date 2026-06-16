@@ -13,6 +13,12 @@ export type AgUiResumeToolResult = {
   proposedOperations: ResumeOperation[];
 };
 
+export type AgUiAgentQuestion = {
+  toolCallId: string;
+  question: string;
+  field?: string;
+};
+
 export type AgUiContextStatus = AgentContextStatusSnapshot;
 export type AgUiResumeWorkspace = AgentResumeWorkspaceSnapshot;
 
@@ -172,6 +178,32 @@ export function extractAgUiResumeWorkspace(
   }
 
   return null;
+}
+
+export function extractAgUiQuestion(event: BaseEvent): AgUiAgentQuestion | null {
+  if (event.type !== "TOOL_CALL_RESULT") return null;
+  if (typeof event.content !== "string") return null;
+
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(event.content);
+  } catch {
+    return null;
+  }
+  if (!isRecord(parsed)) return null;
+
+  const toolCall = parsed.toolCall;
+  if (!isRecord(toolCall)) return null;
+  if (toolCall.name !== "resume_ask") return null;
+
+  const question = typeof parsed.question === "string" ? parsed.question : null;
+  if (!question) return null;
+
+  return {
+    toolCallId: typeof toolCall.id === "string" ? toolCall.id : "",
+    question,
+    field: typeof parsed.field === "string" ? parsed.field : undefined,
+  };
 }
 
 function isAgentToolCall(value: unknown): value is AgentToolCall {

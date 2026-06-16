@@ -13,7 +13,7 @@ describe("fetchDirectAgentRunStream", () => {
       .mockResolvedValueOnce(
         Response.json({
           status: "ok",
-          streamUrl: "https://api.rory-x.me/intro-builder/agent/v1/agent/messages",
+          streamUrl: "https://api.rory-x.me/intro-builder/agent/v1/agent/chat",
           token: "signed-chat-token",
           tokenExpiresAt: "2026-06-08T08:02:00.000Z",
           request: {
@@ -34,7 +34,7 @@ describe("fetchDirectAgentRunStream", () => {
       .mockResolvedValueOnce(directStream);
 
     const response = await fetchDirectAgentRunStream({
-      requestUrl: "/api/agent/runs",
+      requestUrl: "/api/agent/direct-runs",
       requestInit: {
         method: "POST",
         body: JSON.stringify({ threadId: "resume_abc" }),
@@ -55,7 +55,7 @@ describe("fetchDirectAgentRunStream", () => {
     );
     expect(fetchFn).toHaveBeenNthCalledWith(
       2,
-      "https://api.rory-x.me/intro-builder/agent/v1/agent/messages",
+      "https://api.rory-x.me/intro-builder/agent/v1/agent/chat",
       expect.objectContaining({
         method: "POST",
         body: expect.stringContaining('"resumeId":"resume_abc"'),
@@ -85,13 +85,14 @@ describe("fetchDirectAgentRunStream", () => {
     };
 
     const response = await fetchDirectAgentRunStream({
-      requestUrl: "/api/agent/runs",
+      requestUrl: "/api/agent/direct-runs",
       requestInit,
       fetchFn,
       directEnabled: true,
     });
 
     expect(response).toBe(fallbackStream);
-    expect(fetchFn).toHaveBeenNthCalledWith(2, "/api/agent/runs", requestInit);
+    expect(fetchFn).toHaveBeenNthCalledWith(2, "/api/agent/direct-runs", requestInit);
   });
+
 });

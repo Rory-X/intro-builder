@@ -123,7 +123,7 @@ describe("AgentPanel", () => {
 
     await waitFor(() => {
       expect(fetchMock).toHaveBeenCalledWith(
-        "/api/agent/runs",
+        "/api/agent/direct-runs",
         expect.objectContaining({
           method: "POST",
           headers: expect.objectContaining({ Accept: "text/event-stream" }),
@@ -141,6 +141,51 @@ describe("AgentPanel", () => {
     );
     expect(await screen.findByText("建议先优化工作经历。")).toBeInTheDocument();
     expect(screen.getByText("检查简历")).toBeInTheDocument();
+  });
+
+  it("loads historical Agent sessions and sends the selected thread id", async () => {
+    const fetchMock = vi.fn<
+      (...args: [RequestInfo | URL, RequestInit?]) => Promise<Response>
+    >(async (input, init) => {
+      const url = String(input);
+      if (url.startsWith("/api/agent/sessions") && init?.method === undefined) {
+        return Response.json({
+          sessions: [
+            {
+              sessionId: "agent_session_resume_1_thread_history_a",
+              threadId: "thread_history_a",
+              title: "历史对话 A",
+              status: "active",
+              updatedAt: "2026-06-16T10:00:00.000Z",
+            },
+          ],
+        });
+      }
+      return agUiResponse({
+        text: "继续历史对话。",
+        toolCalls: [],
+        proposedOperations: [],
+      });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<AgentPanel {...panelProps()} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "选择对话" }));
+    fireEvent.click(await screen.findByText("历史对话 A"));
+    sendMessage("继续刚才的建议");
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith(
+        "/api/agent/direct-runs",
+        expect.any(Object),
+      );
+    });
+    const directRunCall = fetchMock.mock.calls.find(
+      ([input]) => String(input) === "/api/agent/direct-runs",
+    );
+    const body = JSON.parse(String(directRunCall?.[1]?.body));
+    expect(body.forwardedProps.introBuilder.threadId).toBe("thread_history_a");
   });
 
   it("renders assistant copy and retry actions without touching resume state", async () => {

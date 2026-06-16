@@ -350,7 +350,7 @@ describe("Web Agent client", () => {
     expect(result.data.message.content).toContain("优化第一段工作经历");
     expect(result.data.toolCalls[0]?.name).toBe("resume_read");
     expect(fetchMock).toHaveBeenCalledWith(
-      "https://agent.test/intro-builder/agent/v1/agent/messages",
+      "https://agent.test/intro-builder/agent/v1/agent/chat",
       expect.objectContaining({
         method: "POST",
         headers: {
@@ -397,7 +397,7 @@ describe("Web Agent client", () => {
       "RUN_STARTED",
     );
     expect(fetchMock).toHaveBeenCalledWith(
-      "https://agent.test/intro-builder/agent/v1/agent/messages",
+      "https://agent.test/intro-builder/agent/v1/agent/chat",
       expect.objectContaining({
         method: "POST",
         headers: {

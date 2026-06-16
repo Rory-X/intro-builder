@@ -23,16 +23,19 @@ import {
   extractAgUiContextStatus,
   extractAgUiResumeWorkspace,
   extractAgUiResumeToolResult,
+  extractAgUiQuestion,
   readAgUiSseStream,
   type AgUiContextStatus,
   type AgUiResumeWorkspace,
   type AgUiResumeToolResult,
+  type AgUiAgentQuestion,
 } from "@/lib/agent/ag-ui-stream";
 import { fetchDirectAgentRunStream } from "@/lib/agent/direct-run-client";
 import type {
   AgentResumeContext,
   AgentResumeSessionMode,
   AgentWorkflowId,
+  ResumeOperation,
 } from "@intro-builder/shared/types";
 
 type AgentRunIntent = {
@@ -42,11 +45,12 @@ type AgentRunIntent = {
 
 type IntroBuilderForwardedProps =
   | {
-  resumeId: string;
+      resumeId: string;
       mode?: "optimize_existing";
-  locale: "zh-CN";
-  workflowId: AgentWorkflowId | null;
-  context: AgentResumeContext;
+      locale: "zh-CN";
+      workflowId: AgentWorkflowId | null;
+      context: AgentResumeContext;
+      threadId?: string;
     }
   | {
       resumeId: null;
@@ -72,6 +76,9 @@ export type AgentAgUiRuntimeProviderProps = {
   onResumeWorkspace: (workspace: AgUiResumeWorkspace) => void;
   onToolResult: (result: AgUiResumeToolResult) => void;
   onInterrupts: (interrupts: AgentAgUiInterrupt[]) => void;
+  autoAccept?: boolean;
+  onOperationApplied?: (operation: ResumeOperation) => void;
+  onQuestion?: (question: AgUiAgentQuestion) => void;
 };
 
 export type AgentAgUiInterrupt = {
@@ -113,11 +120,14 @@ export function AgentAgUiRuntimeProvider({
   onResumeWorkspace,
   onToolResult,
   onInterrupts,
+  autoAccept = false,
+  onOperationApplied,
+  onQuestion,
 }: AgentAgUiRuntimeProviderProps) {
   const agent = useMemo(
     () =>
       new IntroBuilderHttpAgent({
-        url: "/api/agent/runs",
+        url: "/api/agent/direct-runs",
         getIntroBuilderForwardedProps,
         onRunStart,
         onTextDelta,
@@ -127,6 +137,9 @@ export function AgentAgUiRuntimeProvider({
         onResumeWorkspace,
         onToolResult,
         onInterrupts,
+        autoAccept,
+        onOperationApplied,
+        onQuestion,
       }),
     [
       getIntroBuilderForwardedProps,
@@ -138,6 +151,9 @@ export function AgentAgUiRuntimeProvider({
       onResumeWorkspace,
       onToolResult,
       onInterrupts,
+      autoAccept,
+      onOperationApplied,
+      onQuestion,
     ],
   );
   const runtime = useAgUiRuntime({
@@ -182,6 +198,9 @@ class IntroBuilderHttpAgent extends HttpAgent {
     onResumeWorkspace,
     onToolResult,
     onInterrupts,
+    autoAccept = false,
+    onOperationApplied,
+    onQuestion,
   }: {
     url: string;
     getIntroBuilderForwardedProps: (
@@ -195,6 +214,9 @@ class IntroBuilderHttpAgent extends HttpAgent {
     onResumeWorkspace: (workspace: AgUiResumeWorkspace) => void;
     onToolResult: (result: AgUiResumeToolResult) => void;
     onInterrupts: (interrupts: AgentAgUiInterrupt[]) => void;
+    autoAccept?: boolean;
+    onOperationApplied?: (operation: ResumeOperation) => void;
+    onQuestion?: (question: AgUiAgentQuestion) => void;
   }) {
     const observeFetch: HttpAgentFetchFn = async (requestUrl, requestInit) => {
       const response = await fetchDirectAgentRunStream({
@@ -213,6 +235,9 @@ class IntroBuilderHttpAgent extends HttpAgent {
         onResumeWorkspace,
         onToolResult,
         onInterrupts,
+        autoAccept,
+        onOperationApplied,
+        onQuestion,
       });
       return response;
     };
@@ -276,6 +301,9 @@ async function observeAgUiResponse(
     onResumeWorkspace,
     onToolResult,
     onInterrupts,
+    autoAccept = false,
+    onOperationApplied,
+    onQuestion,
   }: {
     onTextDelta: () => void;
     onError: (message: string) => void;
@@ -283,6 +311,9 @@ async function observeAgUiResponse(
     onResumeWorkspace: (workspace: AgUiResumeWorkspace) => void;
     onToolResult: (result: AgUiResumeToolResult) => void;
     onInterrupts: (interrupts: AgentAgUiInterrupt[]) => void;
+    autoAccept?: boolean;
+    onOperationApplied?: (operation: ResumeOperation) => void;
+    onQuestion?: (question: AgUiAgentQuestion) => void;
   },
 ) {
   if (!response.ok) {
@@ -317,6 +348,16 @@ async function observeAgUiResponse(
       const toolResult = extractAgUiResumeToolResult(event);
       if (toolResult) {
         onToolResult(toolResult);
+        if (autoAccept && onOperationApplied && toolResult.proposedOperations) {
+          for (const operation of toolResult.proposedOperations) {
+            onOperationApplied(operation);
+          }
+        }
+      }
+
+      const question = extractAgUiQuestion(event);
+      if (question && onQuestion) {
+        onQuestion(question);
       }
     }
   } catch (error) {

@@ -139,3 +139,63 @@ export function AgentConfirmationCard({
     </div>
   );
 }
+
+export function AgentQuestionCard({
+  question,
+  field,
+  onSubmit,
+}: {
+  question: string;
+  field?: string;
+  onSubmit: (answer: string) => void;
+}) {
+  const [answer, setAnswer] = useState("");
+  const [submitted, setSubmitted] = useState(false);
+
+  const handleSubmit = () => {
+    if (!answer.trim()) return;
+    setSubmitted(true);
+    onSubmit(answer.trim());
+  };
+
+  if (submitted) {
+    return (
+      <div className="rounded-lg border bg-muted/40 p-3 text-sm">
+        <div className="flex items-center gap-2">
+          <span className="text-xs font-medium text-muted-foreground">已回复</span>
+        </div>
+        <p className="mt-1 text-xs text-muted-foreground">{question}</p>
+        <p className="mt-1 text-sm font-medium">{answer}</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="rounded-lg border border-amber-200 bg-amber-50/50 p-3 text-sm dark:border-amber-800 dark:bg-amber-950/20">
+      <div className="flex items-center gap-2">
+        <span className="rounded bg-amber-100 px-1.5 py-0.5 text-xs font-medium text-amber-700 dark:bg-amber-900 dark:text-amber-300">
+          需要补充
+        </span>
+        {field ? (
+          <span className="font-mono text-xs text-muted-foreground">{field}</span>
+        ) : null}
+      </div>
+      <p className="mt-2 text-sm">{question}</p>
+      <div className="mt-3 flex gap-2">
+        <input
+          type="text"
+          value={answer}
+          onChange={(e) => setAnswer(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") handleSubmit();
+          }}
+          placeholder="输入你的回答..."
+          className="flex-1 rounded-md border bg-background px-2.5 py-1.5 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring"
+        />
+        <Button size="sm" onClick={handleSubmit} disabled={!answer.trim()}>
+          回复
+        </Button>
+      </div>
+    </div>
+  );
+}

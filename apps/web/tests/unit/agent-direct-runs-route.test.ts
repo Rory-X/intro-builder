@@ -60,14 +60,14 @@ describe("POST /api/agent/direct-runs", () => {
     expect(body).toEqual({
       status: "ok",
       streamUrl:
-        "https://api.rory-x.me/intro-builder/agent/v1/agent/messages",
+        "https://api.rory-x.me/intro-builder/agent/v1/agent/chat",
       token: "signed-chat-token",
       tokenExpiresAt: "2026-06-08T08:02:00.000Z",
       request: expect.objectContaining({
         resumeId: "resume_abc",
         workflowId: "resume-diagnose",
         sessionContext: {
-          sessionId: "agent_session_resume_abc",
+          sessionId: "agent_session_resume_abc_resume_abc",
           threadId: "resume_abc",
           resumeId: "resume_abc",
           mode: "optimize_existing",
@@ -75,6 +75,39 @@ describe("POST /api/agent/direct-runs", () => {
           resumeTitle: "前端工程师",
         },
       }),
+    });
+  });
+
+  it("uses the selected Agent thread when bootstrapping an existing resume run", async () => {
+    (currentUserId as unknown as Mock).mockResolvedValue("user_123");
+    (db.query.resumes.findFirst as unknown as Mock).mockResolvedValue({
+      id: "resume_abc",
+      title: "前端工程师",
+    });
+    (signAgentToken as unknown as Mock).mockResolvedValue({
+      token: "signed-chat-token",
+      expiresAt: new Date("2026-06-08T08:02:00.000Z"),
+    });
+
+    const response = await POST(
+      runRequest({
+        ...validRunInput(),
+        threadId: "assistant-ui-current-thread",
+        forwardedProps: {
+          introBuilder: {
+            ...validRunInput().forwardedProps.introBuilder,
+            threadId: "thread_history_a",
+          },
+        },
+      }),
+    );
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body.request.sessionContext).toMatchObject({
+      sessionId: "agent_session_resume_abc_thread_history_a",
+      threadId: "thread_history_a",
+      resumeId: "resume_abc",
     });
   });
 

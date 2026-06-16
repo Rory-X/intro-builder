@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState, type ReactNode } from "react";
+import { useCallback, useRef, useState, type ReactNode } from "react";
 import * as React from "react";
 import {
   ActionBarPrimitive,
@@ -35,6 +35,8 @@ import {
 
 import { AgentConfirmationCard } from "@/components/agent/agent-confirmation-card";
 import { AgentContextIndicator } from "@/components/agent/agent-context-indicator";
+import { AgentSessionSelector } from "@/components/agent/agent-session-selector";
+import type { AgentSessionListItem } from "@/lib/agent/session-store";
 import {
   AgentAgUiRuntimeProvider,
   useAgentAgUiInterruptSubmit,
@@ -143,7 +145,51 @@ export function AgentPanel({
   const [lastRetryRequest, setLastRetryRequest] = useState<AgentRetryRequest | null>(
     null,
   );
+  const [autoAccept, setAutoAccept] = useState(false);
+  const [sessions, setSessions] = useState<AgentSessionListItem[]>([]);
+  const [activeSessionId, setActiveSessionId] = useState<string>("");
+  const [isLoadingSessions, setIsLoadingSessions] = useState(false);
   const activeTurnIdRef = useRef<string | null>(null);
+  const activeSession = sessions.find(
+    (session) => session.sessionId === activeSessionId,
+  );
+
+  const handleSessionSelect = (sessionId: string) => {
+    setActiveSessionId(sessionId);
+  };
+
+  const handleSessionCreate = () => {
+    // Notify parent to create a new session via callback
+    // For now, just reset local state
+    setActiveSessionId("");
+  };
+
+  const loadSessions = useCallback(async () => {
+    setIsLoadingSessions(true);
+    try {
+      const response = await fetch(
+        `/api/agent/sessions?resumeId=${encodeURIComponent(resumeId)}`,
+      );
+      if (!response.ok) return;
+      const body = await response.json();
+      if (!isAgentSessionListResponse(body)) return;
+      setSessions(body.sessions);
+    } finally {
+      setIsLoadingSessions(false);
+    }
+  }, [resumeId]);
+
+  const handleSessionDelete = async (sessionId: string) => {
+    const response = await fetch(
+      `/api/agent/sessions?sessionId=${encodeURIComponent(sessionId)}`,
+      { method: "DELETE" },
+    );
+    if (!response.ok) return;
+    setSessions((prev) => prev.filter((s) => s.sessionId !== sessionId));
+    if (activeSessionId === sessionId) {
+      setActiveSessionId("");
+    }
+  };
 
   function beginAgentTurn(messages: readonly { role?: unknown }[]) {
     const turnId = createTurnId();
@@ -258,6 +304,14 @@ export function AgentPanel({
     });
   }
 
+  function handleAutoAcceptOperation(operation: ResumeOperation) {
+    const turnId = activeTurnIdRef.current;
+    applyOperation(operation);
+    if (turnId) {
+      markOperationApplied(turnId, operation.id);
+    }
+  }
+
   return (
     <section
       data-agent-runtime-mode="ag-ui"
@@ -288,6 +342,9 @@ export function AgentPanel({
               activeSection: null,
               completeness,
             }),
+            ...(activeSession?.threadId
+              ? { threadId: activeSession.threadId }
+              : {}),
             ...(modelConfig ? { modelConfig } : {}),
           };
         }}
@@ -325,6 +382,8 @@ export function AgentPanel({
         onResumeWorkspace={setResumeWorkspace}
         onToolResult={appendToolResult}
         onInterrupts={setAgentTurnInterrupts}
+        autoAccept={autoAccept}
+        onOperationApplied={autoAccept ? handleAutoAcceptOperation : undefined}
       >
         <div className="flex h-12 shrink-0 items-center justify-between border-b px-3">
           <div className="flex min-w-0 items-center gap-2">
@@ -339,10 +398,44 @@ export function AgentPanel({
             </Button>
             <h2 className="truncate text-sm font-medium text-foreground">新对话</h2>
           </div>
-          <AgentModelSettingsDialog
+          <div className="flex items-center gap-2">
+            <div className="flex items-center gap-1.5">
+              <span className="text-[10px] text-muted-foreground">
+                {autoAccept ? "自动" : "确认"}
+              </span>
+              <button
+                type="button"
+                role="switch"
+                aria-checked={autoAccept}
+                aria-label={autoAccept ? "切换为确认模式" : "切换为自动应用模式"}
+                onClick={() => setAutoAccept((prev) => !prev)}
+                className={`relative inline-flex h-4 w-7 shrink-0 cursor-pointer items-center rounded-full transition-colors ${
+                  autoAccept
+                    ? "bg-primary"
+                    : "bg-muted-foreground/30"
+                }`}
+              >
+                <span
+                  className={`block h-3 w-3 rounded-full bg-background shadow-sm transition-transform ${
+                    autoAccept ? "translate-x-3.5" : "translate-x-0.5"
+                  }`}
+                />
+              </button>
+            </div>
+            <AgentSessionSelector
+              sessions={sessions}
+              activeSessionId={activeSessionId}
+              isLoading={isLoadingSessions}
+              onOpen={loadSessions}
+              onSelect={handleSessionSelect}
+              onCreate={handleSessionCreate}
+              onDelete={handleSessionDelete}
+            />
+            <AgentModelSettingsDialog
             settings={modelSettings}
             onSave={setModelSettings}
           />
+          </div>
         </div>
 
         <AgentThreadArea
@@ -1519,6 +1612,27 @@ function toAgentModelConfig(
     return null;
   }
   return normalized;
+}
+
+function isAgentSessionListResponse(
+  value: unknown,
+): value is { sessions: AgentSessionListItem[] } {
+  return (
+    isRecord(value) &&
+    Array.isArray(value.sessions) &&
+    value.sessions.every(isAgentSessionListItem)
+  );
+}
+
+function isAgentSessionListItem(value: unknown): value is AgentSessionListItem {
+  return (
+    isRecord(value) &&
+    typeof value.sessionId === "string" &&
+    typeof value.threadId === "string" &&
+    typeof value.title === "string" &&
+    typeof value.status === "string" &&
+    typeof value.updatedAt === "string"
+  );
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

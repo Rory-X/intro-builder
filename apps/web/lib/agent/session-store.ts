@@ -1,6 +1,6 @@
 import { createHash, randomUUID } from "node:crypto";
 import { EventType, type BaseEvent } from "@ag-ui/core";
-import { and, eq, isNull } from "drizzle-orm";
+import { and, eq, isNull, lt } from "drizzle-orm";
 
 import { db } from "@/db";
 import { agentSessionEvents, agentSessions } from "@/db/schema";
@@ -362,6 +362,97 @@ function isWorkspace(value: unknown): value is AgentResumeWorkspaceSnapshot {
     Array.isArray(value.decisions) &&
     typeof value.updatedAt === "string"
   );
+}
+
+export type AgentSessionListItem = {
+  sessionId: string;
+  threadId: string;
+  title: string;
+  status: string;
+  updatedAt: string;
+};
+
+export async function listAgentSessions({
+  userId,
+  resumeId,
+}: {
+  userId: string;
+  resumeId: string | null;
+}): Promise<AgentSessionListItem[]> {
+  const rows = await db.query.agentSessions.findMany({
+    where: and(
+      eq(agentSessions.userId, userId),
+      resumeId === null
+        ? isNull(agentSessions.resumeId)
+        : eq(agentSessions.resumeId, resumeId),
+    ),
+    orderBy: (sessions, { desc }) => [desc(sessions.updatedAt)],
+    columns: {
+      id: true,
+      title: true,
+      status: true,
+      stateJson: true,
+      updatedAt: true,
+    },
+  });
+  return rows.map((row) => ({
+    sessionId: row.id,
+    threadId: isAgentSessionSnapshot(row.stateJson)
+      ? row.stateJson.threadId
+      : row.id,
+    title: row.title ?? "Agent 会话",
+    status: row.status ?? "active",
+    updatedAt: row.updatedAt?.toISOString() ?? "",
+  }));
+}
+
+export async function deleteAgentSession({
+  sessionId,
+  userId,
+}: {
+  sessionId: string;
+  userId: string;
+}): Promise<boolean> {
+  const result = await db
+    .delete(agentSessions)
+    .where(and(eq(agentSessions.id, sessionId), eq(agentSessions.userId, userId)));
+  return (result.rowCount ?? 0) > 0;
+}
+
+export async function renameAgentSession({
+  sessionId,
+  userId,
+  title,
+}: {
+  sessionId: string;
+  userId: string;
+  title: string;
+}): Promise<boolean> {
+  const result = await db
+    .update(agentSessions)
+    .set({ title, updatedAt: new Date() })
+    .where(and(eq(agentSessions.id, sessionId), eq(agentSessions.userId, userId)));
+  return (result.rowCount ?? 0) > 0;
+}
+
+export async function paginateAgentSessionEvents({
+  sessionId,
+  beforeSequence,
+  limit = 20,
+}: {
+  sessionId: string;
+  beforeSequence?: number;
+  limit?: number;
+}) {
+  const where = beforeSequence
+    ? and(eq(agentSessionEvents.sessionId, sessionId), lt(agentSessionEvents.sequence, beforeSequence))
+    : eq(agentSessionEvents.sessionId, sessionId);
+
+  return db.query.agentSessionEvents.findMany({
+    where,
+    orderBy: (events, { desc }) => [desc(events.sequence)],
+    limit,
+  });
 }
 
 function isAgentSessionSnapshot(value: unknown): value is AgentSessionSnapshot {

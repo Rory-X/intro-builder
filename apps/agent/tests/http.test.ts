@@ -722,7 +722,7 @@ describe("agent HTTP service", () => {
     });
   });
 
-  it("returns Agent messages, tool calls, and proposed operations from /v1/agent/messages", async () => {
+  it("returns Agent messages, tool calls, and proposed operations from /v1/agent/chat", async () => {
     const provider = new FakeAgentMessageProvider(
       JSON.stringify({
         message: {
@@ -774,7 +774,7 @@ describe("agent HTTP service", () => {
       jti: "jti_agent_message_valid",
     });
 
-    const response = await fetch(server.url("/v1/agent/messages"), {
+    const response = await fetch(server.url("/v1/agent/chat"), {
       method: "POST",
       headers: {
         authorization: `Bearer ${token}`,
@@ -891,7 +891,7 @@ describe("agent HTTP service", () => {
       jti: "jti_agent_message_observed",
     });
 
-    const response = await fetch(server.url("/v1/agent/messages"), {
+    const response = await fetch(server.url("/v1/agent/chat"), {
       method: "POST",
       headers: {
         authorization: `Bearer ${token}`,
@@ -948,7 +948,7 @@ describe("agent HTTP service", () => {
       jti: "jti_agent_message_followup",
     });
 
-    const response = await fetch(server.url("/v1/agent/messages"), {
+    const response = await fetch(server.url("/v1/agent/chat"), {
       method: "POST",
       headers: {
         authorization: `Bearer ${token}`,
@@ -989,7 +989,7 @@ describe("agent HTTP service", () => {
     });
   });
 
-  it("streams AG-UI events from /v1/agent/messages when requested", async () => {
+  it("streams AG-UI events from /v1/agent/chat when requested", async () => {
     const assistantContent =
       "建议先优化第一段工作经历。我会按 STAR 拆成情境、任务、行动与结果，并标记需要你补充的真实指标。";
     const provider = new FakeAgentMessageProvider(
@@ -1043,7 +1043,7 @@ describe("agent HTTP service", () => {
       jti: "jti_agent_message_stream",
     });
 
-    const response = await fetch(server.url("/v1/agent/messages"), {
+    const response = await fetch(server.url("/v1/agent/chat"), {
       method: "POST",
       headers: {
         accept: "text/event-stream",
@@ -1142,7 +1142,7 @@ describe("agent HTTP service", () => {
       jti: "jti_agent_message_realtime_stream",
     });
 
-    const response = await fetch(server.url("/v1/agent/messages"), {
+    const response = await fetch(server.url("/v1/agent/chat"), {
       method: "POST",
       headers: {
         accept: "text/event-stream",
@@ -1234,7 +1234,7 @@ describe("agent HTTP service", () => {
       jti: "jti_agent_message_stream_runtime_tail",
     });
 
-    const response = await fetch(server.url("/v1/agent/messages"), {
+    const response = await fetch(server.url("/v1/agent/chat"), {
       method: "POST",
       headers: {
         accept: "text/event-stream",
@@ -1337,7 +1337,7 @@ describe("agent HTTP service", () => {
       jti: "jti_agent_message_missing_tool_call_id",
     });
 
-    const response = await fetch(server.url("/v1/agent/messages"), {
+    const response = await fetch(server.url("/v1/agent/chat"), {
       method: "POST",
       headers: {
         accept: "text/event-stream",
@@ -1403,7 +1403,7 @@ describe("agent HTTP service", () => {
       jti: "jti_agent_message_missing_message_id",
     });
 
-    const response = await fetch(server.url("/v1/agent/messages"), {
+    const response = await fetch(server.url("/v1/agent/chat"), {
       method: "POST",
       headers: {
         accept: "text/event-stream",
@@ -1468,7 +1468,7 @@ describe("agent HTTP service", () => {
       jti: "jti_agent_message_sse_cache_second",
     });
 
-    const first = await fetch(server.url("/v1/agent/messages"), {
+    const first = await fetch(server.url("/v1/agent/chat"), {
       method: "POST",
       headers: {
         authorization: `Bearer ${firstToken}`,
@@ -1477,7 +1477,7 @@ describe("agent HTTP service", () => {
       },
       body: JSON.stringify(validAgentMessageBody()),
     });
-    const second = await fetch(server.url("/v1/agent/messages"), {
+    const second = await fetch(server.url("/v1/agent/chat"), {
       method: "POST",
       headers: {
         accept: "text/event-stream",
@@ -1537,7 +1537,7 @@ describe("agent HTTP service", () => {
       jti: "jti_agent_message_observed_cache_2",
     });
 
-    await fetch(server.url("/v1/agent/messages"), {
+    await fetch(server.url("/v1/agent/chat"), {
       method: "POST",
       headers: {
         authorization: `Bearer ${firstToken}`,
@@ -1545,7 +1545,7 @@ describe("agent HTTP service", () => {
       },
       body: JSON.stringify(validAgentMessageBody()),
     });
-    await fetch(server.url("/v1/agent/messages"), {
+    await fetch(server.url("/v1/agent/chat"), {
       method: "POST",
       headers: {
         authorization: `Bearer ${secondToken}`,
@@ -1573,7 +1573,7 @@ describe("agent HTTP service", () => {
       jti: "jti_agent_message_observed_parse_error",
     });
 
-    const response = await fetch(server.url("/v1/agent/messages"), {
+    const response = await fetch(server.url("/v1/agent/chat"), {
       method: "POST",
       headers: {
         authorization: `Bearer ${token}`,
@@ -1604,7 +1604,7 @@ describe("agent HTTP service", () => {
       jti: "jti_agent_message_stream_parse_error",
     });
 
-    const response = await fetch(server.url("/v1/agent/messages"), {
+    const response = await fetch(server.url("/v1/agent/chat"), {
       method: "POST",
       headers: {
         accept: "text/event-stream",
@@ -1638,7 +1638,7 @@ describe("agent HTTP service", () => {
       jti: "jti_agent_message_stream_throw",
     });
 
-    const response = await fetch(server.url("/v1/agent/messages"), {
+    const response = await fetch(server.url("/v1/agent/chat"), {
       method: "POST",
       headers: {
         accept: "text/event-stream",
@@ -1691,7 +1691,7 @@ describe("agent HTTP service", () => {
       jti: "jti_agent_message_cache_second",
     });
 
-    const first = await fetch(server.url("/v1/agent/messages"), {
+    const first = await fetch(server.url("/v1/agent/chat"), {
       method: "POST",
       headers: {
         authorization: `Bearer ${firstToken}`,
@@ -1700,7 +1700,7 @@ describe("agent HTTP service", () => {
       },
       body: JSON.stringify(validAgentMessageBody()),
     });
-    const second = await fetch(server.url("/v1/agent/messages"), {
+    const second = await fetch(server.url("/v1/agent/chat"), {
       method: "POST",
       headers: {
         authorization: `Bearer ${secondToken}`,
@@ -1741,7 +1741,7 @@ describe("agent HTTP service", () => {
       jti: "jti_agent_message_wrong_scope",
     });
 
-    const response = await fetch(server.url("/v1/agent/messages"), {
+    const response = await fetch(server.url("/v1/agent/chat"), {
       method: "POST",
       headers: {
         authorization: `Bearer ${token}`,
@@ -1771,7 +1771,7 @@ describe("agent HTTP service", () => {
       jti: "jti_agent_message_resume_mismatch",
     });
 
-    const response = await fetch(server.url("/v1/agent/messages"), {
+    const response = await fetch(server.url("/v1/agent/chat"), {
       method: "POST",
       headers: {
         authorization: `Bearer ${token}`,
@@ -1821,7 +1821,7 @@ describe("agent HTTP service", () => {
       jti: "jti_agent_message_create_zero",
     });
 
-    const response = await fetch(server.url("/v1/agent/messages"), {
+    const response = await fetch(server.url("/v1/agent/chat"), {
       method: "POST",
       headers: {
         accept: "text/event-stream",
@@ -1882,7 +1882,7 @@ describe("agent HTTP service", () => {
       corsOrigins: ["http://localhost:3000"],
     });
 
-    const response = await fetch(server.url("/v1/agent/messages"), {
+    const response = await fetch(server.url("/v1/agent/chat"), {
       method: "OPTIONS",
       headers: {
         origin: "http://localhost:3000",
@@ -1931,7 +1931,7 @@ describe("agent HTTP service", () => {
       jti: "jti_agent_message_direct_persist",
     });
 
-    const response = await fetch(server.url("/v1/agent/messages"), {
+    const response = await fetch(server.url("/v1/agent/chat"), {
       method: "POST",
       headers: {
         accept: "text/event-stream",
@@ -1993,7 +1993,7 @@ describe("agent HTTP service", () => {
       jti: "jti_agent_message_forged_session",
     });
 
-    const response = await fetch(server.url("/v1/agent/messages"), {
+    const response = await fetch(server.url("/v1/agent/chat"), {
       method: "POST",
       headers: {
         authorization: `Bearer ${token}`,
@@ -2036,7 +2036,7 @@ describe("agent HTTP service", () => {
       jti: "jti_agent_message_no_provider",
     });
 
-    const response = await fetch(server.url("/v1/agent/messages"), {
+    const response = await fetch(server.url("/v1/agent/chat"), {
       method: "POST",
       headers: {
         authorization: `Bearer ${token}`,
@@ -2104,7 +2104,7 @@ describe("agent HTTP service", () => {
       jti: "jti_agent_message_model_settings",
     });
 
-    const response = await fetch(server.url("/v1/agent/messages"), {
+    const response = await fetch(server.url("/v1/agent/chat"), {
       method: "POST",
       headers: {
         authorization: `Bearer ${token}`,
@@ -2167,7 +2167,7 @@ describe("agent HTTP service", () => {
       jti: "jti_agent_message_unsafe_model_settings",
     });
 
-    const response = await fetch(server.url("/v1/agent/messages"), {
+    const response = await fetch(server.url("/v1/agent/chat"), {
       method: "POST",
       headers: {
         authorization: `Bearer ${token}`,
