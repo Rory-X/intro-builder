@@ -1,3 +1,4 @@
+import { EventType, type BaseEvent } from "@ag-ui/core";
 import type {
   AgentMessageParseResult,
   AgentMessageRequest,
@@ -244,4 +245,65 @@ function splitRuntimeTextDeltas(content: string): string[] {
     deltas.push(characters.slice(index, index + 18).join(""));
   }
   return deltas;
+}
+
+export function buildAgUiAskInterruptEvents({
+  requestId,
+  threadId,
+  question,
+  field,
+  workspace,
+}: {
+  requestId: string;
+  threadId: string;
+  question: string;
+  field?: string;
+  workspace?: AgentResumeWorkspaceSnapshot | null;
+}): BaseEvent[] {
+  const messageId = `msg_${requestId}`;
+  return [
+    { type: EventType.RUN_STARTED, threadId, runId: requestId },
+    {
+      type: EventType.TEXT_MESSAGE_START,
+      messageId,
+      role: "assistant" as const,
+    },
+    {
+      type: EventType.TEXT_MESSAGE_CONTENT,
+      messageId,
+      delta: `我需要补充一些信息：${question}`,
+    },
+    { type: EventType.TEXT_MESSAGE_END, messageId },
+    ...(workspace
+      ? [
+          {
+            type: EventType.STATE_DELTA as const,
+            delta: [
+              {
+                op: "replace" as const,
+                path: "/workspace",
+                value: workspace,
+              },
+            ],
+          },
+        ]
+      : []),
+    {
+      type: EventType.RUN_FINISHED,
+      threadId,
+      runId: requestId,
+      outcome: {
+        type: "interrupt" as const,
+        interrupts: [
+          {
+            id: `interrupt_${requestId}`,
+            reason: "question" as const,
+            message: question,
+            toolCallId: null,
+            metadata: field ? { field } : null,
+          },
+        ],
+      },
+    },
+  ];
 }
