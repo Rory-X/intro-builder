@@ -496,6 +496,7 @@ async function routeRequest(
         }),
       });
     }
+  }
 
     return observability.traceAgentMessageRun(
       {
