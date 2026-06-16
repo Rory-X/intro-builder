@@ -467,14 +467,8 @@ async function routeRequest(
       acceptsAgUiSse(request)
     ) {
       const loopModel = resolveLoopModel(agentRequest, config);
-      if (!loopModel) {
-        return sendError(response, 503, context, {
-          error: "dependency_unavailable",
-          message: "Agent message provider is not configured",
-          dependency: "provider",
-        });
-      }
-      return streamAgentLoopEvents({
+      if (loopModel) {
+        return streamAgentLoopEvents({
         response,
         context,
         request: agentRequest,
