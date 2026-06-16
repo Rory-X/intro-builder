@@ -20,7 +20,7 @@ export async function fetchDirectAgentRunStream({
   directEnabled?: boolean;
 }): Promise<Response> {
   const runBody = requestInit.body;
-  if (!directEnabled) {
+  if (!directEnabled || typeof runBody !== "string") {
     return fetchFn(requestUrl, requestInit);
   }
 
@@ -35,16 +35,15 @@ export async function fetchDirectAgentRunStream({
       signal: requestInit.signal,
     });
     if (isEventStreamResponse(bootstrapResponse)) {
-      throw new Error("Unexpected event-stream from bootstrap endpoint");
+      return bootstrapResponse;
     }
     if (!bootstrapResponse.ok) {
-      const errText = await bootstrapResponse.text().catch(() => "");
-      throw new Error(`Direct run bootstrap failed (${bootstrapResponse.status}): ${errText}`);
+      return fetchFn(requestUrl, requestInit);
     }
 
     const bootstrap = await readDirectRunBootstrap(bootstrapResponse);
     if (!bootstrap) {
-      throw new Error("Invalid direct run bootstrap response");
+      return fetchFn(requestUrl, requestInit);
     }
 
     const directResponse = await fetchFn(bootstrap.streamUrl, {
@@ -59,14 +58,13 @@ export async function fetchDirectAgentRunStream({
     });
 
     if (!directResponse.ok) {
-      const errText = await directResponse.text().catch(() => "");
-      throw new Error(`Agent service returned ${directResponse.status}: ${errText}`);
+      return fetchFn(requestUrl, requestInit);
     }
 
     return directResponse;
   } catch (error) {
     if (isAbortError(error)) throw error;
-    throw error;
+    return fetchFn(requestUrl, requestInit);
   }
 }
 

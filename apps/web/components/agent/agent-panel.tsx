@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState, type ReactNode } from "react";
+import { useCallback, useRef, useState, type ReactNode } from "react";
 import * as React from "react";
 import {
   ActionBarPrimitive,
@@ -148,7 +148,11 @@ export function AgentPanel({
   const [autoAccept, setAutoAccept] = useState(false);
   const [sessions, setSessions] = useState<AgentSessionListItem[]>([]);
   const [activeSessionId, setActiveSessionId] = useState<string>("");
+  const [isLoadingSessions, setIsLoadingSessions] = useState(false);
   const activeTurnIdRef = useRef<string | null>(null);
+  const activeSession = sessions.find(
+    (session) => session.sessionId === activeSessionId,
+  );
 
   const handleSessionSelect = (sessionId: string) => {
     setActiveSessionId(sessionId);
@@ -160,7 +164,27 @@ export function AgentPanel({
     setActiveSessionId("");
   };
 
-  const handleSessionDelete = (sessionId: string) => {
+  const loadSessions = useCallback(async () => {
+    setIsLoadingSessions(true);
+    try {
+      const response = await fetch(
+        `/api/agent/sessions?resumeId=${encodeURIComponent(resumeId)}`,
+      );
+      if (!response.ok) return;
+      const body = await response.json();
+      if (!isAgentSessionListResponse(body)) return;
+      setSessions(body.sessions);
+    } finally {
+      setIsLoadingSessions(false);
+    }
+  }, [resumeId]);
+
+  const handleSessionDelete = async (sessionId: string) => {
+    const response = await fetch(
+      `/api/agent/sessions?sessionId=${encodeURIComponent(sessionId)}`,
+      { method: "DELETE" },
+    );
+    if (!response.ok) return;
     setSessions((prev) => prev.filter((s) => s.sessionId !== sessionId));
     if (activeSessionId === sessionId) {
       setActiveSessionId("");
@@ -318,6 +342,9 @@ export function AgentPanel({
               activeSection: null,
               completeness,
             }),
+            ...(activeSession?.threadId
+              ? { threadId: activeSession.threadId }
+              : {}),
             ...(modelConfig ? { modelConfig } : {}),
           };
         }}
@@ -398,6 +425,8 @@ export function AgentPanel({
             <AgentSessionSelector
               sessions={sessions}
               activeSessionId={activeSessionId}
+              isLoading={isLoadingSessions}
+              onOpen={loadSessions}
               onSelect={handleSessionSelect}
               onCreate={handleSessionCreate}
               onDelete={handleSessionDelete}
@@ -1583,6 +1612,27 @@ function toAgentModelConfig(
     return null;
   }
   return normalized;
+}
+
+function isAgentSessionListResponse(
+  value: unknown,
+): value is { sessions: AgentSessionListItem[] } {
+  return (
+    isRecord(value) &&
+    Array.isArray(value.sessions) &&
+    value.sessions.every(isAgentSessionListItem)
+  );
+}
+
+function isAgentSessionListItem(value: unknown): value is AgentSessionListItem {
+  return (
+    isRecord(value) &&
+    typeof value.sessionId === "string" &&
+    typeof value.threadId === "string" &&
+    typeof value.title === "string" &&
+    typeof value.status === "string" &&
+    typeof value.updatedAt === "string"
+  );
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

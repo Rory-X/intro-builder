@@ -68,4 +68,31 @@ describe("fetchDirectAgentRunStream", () => {
     );
   });
 
+  it("falls back to the BFF stream when direct bootstrap fails before streaming", async () => {
+    const fallbackStream = new Response("data: {}\n\n", {
+      status: 200,
+      headers: { "content-type": "text/event-stream" },
+    });
+    const fetchFn = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(Response.json({ error: "disabled" }, { status: 503 }))
+      .mockResolvedValueOnce(fallbackStream);
+
+    const requestInit = {
+      method: "POST",
+      body: JSON.stringify({ threadId: "resume_abc" }),
+      headers: { "content-type": "application/json" },
+    };
+
+    const response = await fetchDirectAgentRunStream({
+      requestUrl: "/api/agent/direct-runs",
+      requestInit,
+      fetchFn,
+      directEnabled: true,
+    });
+
+    expect(response).toBe(fallbackStream);
+    expect(fetchFn).toHaveBeenNthCalledWith(2, "/api/agent/direct-runs", requestInit);
+  });
+
 });

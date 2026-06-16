@@ -391,12 +391,15 @@ export async function listAgentSessions({
       id: true,
       title: true,
       status: true,
+      stateJson: true,
       updatedAt: true,
     },
   });
   return rows.map((row) => ({
     sessionId: row.id,
-    threadId: "",
+    threadId: isAgentSessionSnapshot(row.stateJson)
+      ? row.stateJson.threadId
+      : row.id,
     title: row.title ?? "Agent 会话",
     status: row.status ?? "active",
     updatedAt: row.updatedAt?.toISOString() ?? "",

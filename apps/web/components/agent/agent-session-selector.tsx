@@ -22,14 +22,18 @@ function formatRelativeTime(iso: string): string {
 type AgentSessionSelectorProps = {
   sessions: AgentSessionListItem[];
   activeSessionId: string;
+  isLoading?: boolean;
+  onOpen?: () => void;
   onSelect: (sessionId: string) => void;
   onCreate: () => void;
-  onDelete: (sessionId: string) => void;
+  onDelete: (sessionId: string) => void | Promise<void>;
 };
 
 export function AgentSessionSelector({
   sessions,
   activeSessionId,
+  isLoading = false,
+  onOpen,
   onSelect,
   onCreate,
   onDelete,
@@ -41,7 +45,13 @@ export function AgentSessionSelector({
     <div className="relative">
       <button
         type="button"
-        onClick={() => setOpen((p) => !p)}
+        onClick={() => {
+          setOpen((current) => {
+            const next = !current;
+            if (next) onOpen?.();
+            return next;
+          });
+        }}
         className="flex items-center gap-1 rounded-md px-1.5 py-0.5 text-xs hover:bg-muted"
       >
         <MessageSquare className="h-3 w-3 shrink-0" />
@@ -69,7 +79,11 @@ export function AgentSessionSelector({
               新建对话
             </button>
             <div className="max-h-48 overflow-y-auto">
-              {sessions.length === 0 ? (
+              {isLoading ? (
+                <div className="px-3 py-4 text-center text-xs text-muted-foreground">
+                  正在加载
+                </div>
+              ) : sessions.length === 0 ? (
                 <div className="px-3 py-4 text-center text-xs text-muted-foreground">
                   暂无历史对话
                 </div>
@@ -103,7 +117,7 @@ export function AgentSessionSelector({
                         type="button"
                         onClick={(e) => {
                           e.stopPropagation();
-                          onDelete(session.sessionId);
+                          void onDelete(session.sessionId);
                         }}
                         className="shrink-0 ml-1 opacity-0 group-hover:opacity-100 transition-opacity"
                         aria-label="删除对话"

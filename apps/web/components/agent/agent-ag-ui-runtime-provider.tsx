@@ -45,11 +45,12 @@ type AgentRunIntent = {
 
 type IntroBuilderForwardedProps =
   | {
-  resumeId: string;
+      resumeId: string;
       mode?: "optimize_existing";
-  locale: "zh-CN";
-  workflowId: AgentWorkflowId | null;
-  context: AgentResumeContext;
+      locale: "zh-CN";
+      workflowId: AgentWorkflowId | null;
+      context: AgentResumeContext;
+      threadId?: string;
     }
   | {
       resumeId: null;

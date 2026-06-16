@@ -45,10 +45,12 @@ export async function POST(req: Request) {
     resumeTitle = "从 0 创建简历";
   }
 
+  const threadId =
+    readForwardedThreadId(parsed.input.forwardedProps) ?? parsed.input.threadId;
   const sessionContext = createAgentRunSessionContext({
     resumeId: mapped.request.resumeId,
     userId,
-    threadId: parsed.input.threadId,
+    threadId,
     mode: mapped.request.mode ?? "optimize_existing",
     workflowId: mapped.request.workflowId,
     resumeTitle,
@@ -82,6 +84,28 @@ function resolveAgentPublicBaseUrl(): string {
 
 function joinUrl(baseUrl: string, path: string): string {
   return `${baseUrl.replace(/\/+$/, "")}/${path.replace(/^\/+/, "")}`;
+}
+
+function readForwardedThreadId(value: unknown): string | null {
+  const introBuilder = readIntroBuilderForwardedProps(value);
+  if (!introBuilder) return null;
+  const threadId = introBuilder.threadId;
+  return typeof threadId === "string" && threadId.trim() !== ""
+    ? threadId.trim()
+    : null;
+}
+
+function readIntroBuilderForwardedProps(value: unknown): Record<string, unknown> | null {
+  if (!isRecord(value)) return null;
+  if (isRecord(value.introBuilder)) return value.introBuilder;
+  if (isRecord(value.runConfig) && isRecord(value.runConfig.introBuilder)) {
+    return value.runConfig.introBuilder;
+  }
+  return null;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
 }
 
 async function readAgUiRun(
