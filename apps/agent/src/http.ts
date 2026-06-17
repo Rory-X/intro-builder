@@ -274,7 +274,7 @@ async function routeRequest(
       });
     }
 
-    if (auth.session.resumeId !== validation.request.resumeId) {
+    if (!resumeIdMatches(auth.session.resumeId, validation.request.resumeId)) {
       return sendError(response, 403, context, {
         error: "forbidden",
         message: "Token resumeId does not match request resumeId",
@@ -810,7 +810,7 @@ async function routeRequest(
       });
     }
 
-    if (auth.session.resumeId !== validation.request.resumeId) {
+    if (!resumeIdMatches(auth.session.resumeId, validation.request.resumeId)) {
       return sendError(response, 403, context, {
         error: "forbidden",
         message: "Token resumeId does not match request resumeId",
@@ -969,15 +969,15 @@ function agentMessageRequestMatchesSession(
   session: AuthenticatedAgentSession,
   request: AgentMessageRequest,
 ): boolean {
-  if (request.resumeId === null) {
-    if (session.resumeId !== undefined) return false;
-  } else if (session.resumeId !== request.resumeId) {
+  if (!resumeIdMatches(session.resumeId, request.resumeId)) {
     return false;
   }
 
   const sessionContext = request.sessionContext;
   if (!sessionContext) return true;
-  if (sessionContext.resumeId !== request.resumeId) return false;
+  if (!resumeIdMatches(sessionContext.resumeId, request.resumeId)) {
+    return false;
+  }
   if (sessionContext.mode !== (request.mode ?? "optimize_existing")) return false;
   if (sessionContext.workflowId !== request.workflowId) return false;
 
@@ -989,6 +989,24 @@ function agentMessageRequestMatchesSession(
       threadId: sessionContext.threadId,
     })
   );
+}
+
+
+/**
+ * Compare two resumeId values, treating null (JSON body) and undefined
+ * (missing JWT claim) as semantically equivalent — both mean "no resume scope".
+ */
+function resumeIdMatches(
+  tokenResumeId: string | null | undefined,
+  requestResumeId: string | null,
+): boolean {
+  // Normalize: treat null and undefined as equivalent — both mean "no resume scope"
+  const normalizedToken = tokenResumeId ?? null;
+  const normalizedRequest = requestResumeId ?? null;
+  if (normalizedRequest === null) {
+    return normalizedToken === null;
+  }
+  return normalizedToken === normalizedRequest;
 }
 
 function agentMessageThreadId(request: AgentMessageRequest): string {
