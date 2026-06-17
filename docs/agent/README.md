@@ -75,6 +75,7 @@ Agent 微服务逐步负责：
 - [development.md](./development.md): 本地开发、Redis、命令、验证闸门。
 - [assistant-ui-research.md](./assistant-ui-research.md): assistant-ui 调研、适配结论、Phase 3 接入策略。
 - [frontend-integration.md](./frontend-integration.md): 复用现有编辑器页面表现、RHF/autosave 边界、Agent UI 入口。
+- [fogot-inspired-long-loop-agent.md](./fogot-inspired-long-loop-agent.md): 从 Fogot agent panel 提炼的长 loop、多轮 tool call、工具轨迹和简历领域 Agent 优化方向。
 - [implementation-roadmap.md](./implementation-roadmap.md): Phase 0B 到 Phase 4 的实现路线。
 
 ## 权威来源

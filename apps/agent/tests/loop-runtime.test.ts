@@ -1,7 +1,10 @@
 import type { streamText } from "ai";
 import { describe, expect, it } from "vitest";
 
-import type { AgentMessageRequest } from "../src/agent-messages";
+import {
+  toAgUiAgentEvents,
+  type AgentMessageRequest,
+} from "../src/agent-messages";
 import { validateAgentToolOutput } from "../src/agent-tools";
 import { createDraft, upsertSection } from "../src/workflows/draft";
 import {
@@ -92,6 +95,124 @@ describe("loop runtime", () => {
     expect(deltas).toEqual(["已为你", "起草个人简介。"]);
     expect(draft.operations).toHaveLength(1);
     expect(draft.operations[0].fieldPath).toBe("basics.summary");
+  });
+
+  it("surfaces resume_ask tool calls as questions for AG-UI interrupts", async () => {
+    const request = createFromZeroRequest();
+    const draft = createInitialLoopDraft(request);
+
+    const fakeStreamText = ((options: {
+      tools: { resume_ask: { execute: (i: unknown) => Promise<unknown> } };
+    }) => ({
+      textStream: (async function* () {
+        await options.tools.resume_ask.execute({
+          question: "你这次主要投递哪个岗位？",
+          field: "goal.targetRole",
+        });
+        yield "我需要先确认目标岗位。";
+      })(),
+    })) as unknown as typeof streamText;
+
+    const loopResult = await runResumeLoop({
+      model: {} as never,
+      request,
+      draft,
+      streamTextImpl: fakeStreamText,
+    });
+    const result = assembleLoopResult({
+      draft,
+      finalText: loopResult.text,
+      requestId: "req_ask",
+      questions: loopResult.questions,
+    });
+
+    expect(result.questions).toEqual([
+      {
+        id: "question_1",
+        message: "你这次主要投递哪个岗位？",
+        field: "goal.targetRole",
+      },
+    ]);
+
+    const events = toAgUiAgentEvents({
+      requestId: "req_ask",
+      threadId: "thread_ask",
+      request,
+      result,
+    });
+    const runFinished = events.find((event) => event.type === "RUN_FINISHED");
+
+    expect(runFinished).toEqual(
+      expect.objectContaining({
+        outcome: {
+          type: "interrupt",
+          interrupts: [
+            expect.objectContaining({
+              id: "question_1",
+              reason: "input_required",
+              message: "你这次主要投递哪个岗位？",
+              metadata: { kind: "question", field: "goal.targetRole" },
+            }),
+          ],
+        },
+      }),
+    );
+  });
+
+  it("falls back to an intake question when create-from-zero streams text without tools", async () => {
+    const request = createFromZeroRequest();
+    const draft = createInitialLoopDraft(request);
+    const fakeStreamText = (() => ({
+      textStream: (async function* () {
+        yield "好的，我需要先问几个问题。";
+      })(),
+    })) as unknown as typeof streamText;
+
+    const loopResult = await runResumeLoop({
+      model: {} as never,
+      request,
+      draft,
+      streamTextImpl: fakeStreamText,
+    });
+    const result = assembleLoopResult({
+      draft,
+      finalText: loopResult.text,
+      requestId: "req_plain_text_intake",
+      questions: loopResult.questions,
+    });
+
+    expect(result.questions).toEqual([
+      expect.objectContaining({
+        id: "question_1",
+        field: "goal.targetRole",
+      }),
+    ]);
+  });
+
+  it("does not leak internal tool names in streamed user-visible text", async () => {
+    const request = createFromZeroRequest();
+    const draft = createInitialLoopDraft(request);
+    const deltas: string[] = [];
+    const fakeStreamText = (() => ({
+      textStream: (async function* () {
+        yield "resume_set_";
+        yield "text 当前不可用，我改用 resume_update_section 继续。";
+      })(),
+    })) as unknown as typeof streamText;
+
+    const result = await runResumeLoop({
+      model: {} as never,
+      request,
+      draft,
+      onTextDelta: (delta) => deltas.push(delta),
+      streamTextImpl: fakeStreamText,
+    });
+
+    const streamedText = deltas.join("");
+    expect(streamedText).not.toContain("resume_set_text");
+    expect(streamedText).not.toContain("resume_update_section");
+    expect(result.text).not.toContain("resume_set_text");
+    expect(result.text).not.toContain("resume_update_section");
   });
 
   it("falls back to a default message when the model streams no text", async () => {

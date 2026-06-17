@@ -133,16 +133,66 @@ describe("create-from-zero loop tools", () => {
     expect(draft.profileSummary).toBe("资深后端工程师");
   });
 
-  it("resume_set_text returns error when setTextFn not configured", async () => {
+  it("resume_set_text falls back to built-in TipTap conversion when setTextFn is not configured", async () => {
     const draft = createDraft();
     const tools = createLoopTools(draft);
     const result = (await exec(
       tools.resume_set_text,
-      { fieldPath: "basics.summary", plainText: "test" },
-      "call_err",
-    )) as { ok: boolean; error?: string };
-    expect(result.ok).toBe(false);
-    expect(result.error).toBeTruthy();
+      {
+        fieldPath: "skills",
+        plainText: "- Vue\n- React\n- TypeScript\n- Node.js",
+        label: "技能",
+      },
+      "call_set_builtin",
+    )) as { ok: boolean; operation?: { operation: string } };
+    expect(result.ok).toBe(true);
+    expect(result.operation?.operation).toBe("insert_section");
+    expect(draft.operations[0].replacementTiptapJson).toEqual({
+      type: "doc",
+      content: [
+        {
+          type: "bulletList",
+          content: [
+            {
+              type: "listItem",
+              content: [
+                {
+                  type: "paragraph",
+                  content: [{ type: "text", text: "Vue" }],
+                },
+              ],
+            },
+            {
+              type: "listItem",
+              content: [
+                {
+                  type: "paragraph",
+                  content: [{ type: "text", text: "React" }],
+                },
+              ],
+            },
+            {
+              type: "listItem",
+              content: [
+                {
+                  type: "paragraph",
+                  content: [{ type: "text", text: "TypeScript" }],
+                },
+              ],
+            },
+            {
+              type: "listItem",
+              content: [
+                {
+                  type: "paragraph",
+                  content: [{ type: "text", text: "Node.js" }],
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    });
   });
 
   it("resume_delete_section removes an entry from draft", async () => {

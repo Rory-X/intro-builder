@@ -10,9 +10,7 @@ import {
 import { createRedisAgentSessionStore } from "./session-store.js";
 import { createOpenAICompatibleRichTextPolishProvider } from "./rich-text-polish.js";
 import { createOpenAICompatibleResumeHelperProvider } from "./resume-helpers.js";
-import { createOpenAICompatibleAgentMessageProvider } from "./agent-messages.js";
 import { createAgentObservability } from "./observability.js";
-import { createDevelopmentAgentMessageProvider } from "./workflows/dev-preview-provider.js";
 
 const config = loadConfig();
 const observability = createAgentObservability(config);
@@ -33,9 +31,6 @@ const server = createAgentServer({
   sessionStore: createRedisAgentSessionStore(redis),
   richTextPolishProvider: createOpenAICompatibleRichTextPolishProvider(config),
   resumeHelperProvider: createOpenAICompatibleResumeHelperProvider(config),
-  agentMessageProvider:
-    createOpenAICompatibleAgentMessageProvider(config) ??
-    createDevelopmentAgentMessageProvider(config),
   observability,
 });
 

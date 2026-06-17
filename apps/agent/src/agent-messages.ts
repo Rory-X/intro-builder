@@ -1,5 +1,4 @@
 import { EventType, type BaseEvent } from "@ag-ui/core";
-import { createAiSdkAgentMessageProvider } from "./providers/ai-sdk-agent-message-provider.js";
 import type { AuthenticatedAgentSession } from "./auth.js";
 import type { AgentErrorCode } from "./errors.js";
 import {
@@ -186,9 +185,6 @@ export type AgentMessageProvider = {
     options: AgentMessageProviderRunOptions,
   ) => AsyncIterable<AgentProviderStreamChunk>;
 };
-
-export const createOpenAICompatibleAgentMessageProvider =
-  createAiSdkAgentMessageProvider;
 
 export type AgentMessageParseResult =
   | {

@@ -95,4 +95,53 @@ describe("fetchDirectAgentRunStream", () => {
     expect(fetchFn).toHaveBeenNthCalledWith(2, "/api/agent/direct-runs", requestInit);
   });
 
+  it("returns direct Agent errors instead of falling back after bootstrap succeeds", async () => {
+    const directError = Response.json(
+      {
+        error: "dependency_unavailable",
+        message: "Agent model config is not configured",
+        dependency: "model",
+      },
+      { status: 503 },
+    );
+    const fetchFn = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(
+        Response.json({
+          status: "ok",
+          streamUrl: "https://api.rory-x.me/intro-builder/agent/v1/agent/chat",
+          token: "signed-chat-token",
+          tokenExpiresAt: "2026-06-08T08:02:00.000Z",
+          request: {
+            resumeId: "resume_abc",
+            locale: "zh-CN",
+            workflowId: "resume-diagnose",
+            messages: [{ id: "msg_user_1", role: "user", content: "诊断" }],
+            context: {
+              resumeTitle: "前端工程师",
+              templateId: "professional",
+              activeSection: null,
+              completeness: { overall: 80, sections: [] },
+              sections: [],
+            },
+          },
+        }),
+      )
+      .mockResolvedValueOnce(directError);
+
+    const response = await fetchDirectAgentRunStream({
+      requestUrl: "/api/agent/direct-runs",
+      requestInit: {
+        method: "POST",
+        body: JSON.stringify({ threadId: "resume_abc" }),
+        headers: { "content-type": "application/json" },
+      },
+      fetchFn,
+      directEnabled: true,
+    });
+
+    expect(response).toBe(directError);
+    expect(response.status).toBe(503);
+    expect(fetchFn).toHaveBeenCalledTimes(2);
+  });
 });

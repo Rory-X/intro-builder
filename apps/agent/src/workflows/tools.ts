@@ -6,6 +6,7 @@ import { isAllowedOperationFieldPath } from "../agent-tools.js";
 import {
   deleteFromDraft,
   draftSnapshot,
+  plainTextToTipTapDoc,
   reorderDraftSections,
   setGoal,
   upsertSection,
@@ -288,16 +289,9 @@ newContent 必须是 TipTap JSON（优先用 resume_set_text 或 resume_polish_t
         const toolCallId =
           (execOptions as ToolCallOptions)?.toolCallId ??
           `tool_${Date.now()}`;
-        if (!options.setTextFn) {
-          return {
-            ok: false as const,
-            error: "set text not available in this environment",
-          };
-        }
-        const converted = await options.setTextFn(
-          input.fieldPath,
-          input.plainText,
-        );
+        const converted = options.setTextFn
+          ? await options.setTextFn(input.fieldPath, input.plainText)
+          : { tiptapJson: plainTextToTipTapDoc(input.plainText) };
         const label = input.label ?? "更新文案";
         const result = upsertSection(draft, {
           toolCallId,

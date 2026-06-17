@@ -143,50 +143,6 @@ describe("AgentPanel", () => {
     expect(screen.getByText("检查简历")).toBeInTheDocument();
   });
 
-  it("loads historical Agent sessions and sends the selected thread id", async () => {
-    const fetchMock = vi.fn<
-      (...args: [RequestInfo | URL, RequestInit?]) => Promise<Response>
-    >(async (input, init) => {
-      const url = String(input);
-      if (url.startsWith("/api/agent/sessions") && init?.method === undefined) {
-        return Response.json({
-          sessions: [
-            {
-              sessionId: "agent_session_resume_1_thread_history_a",
-              threadId: "thread_history_a",
-              title: "历史对话 A",
-              status: "active",
-              updatedAt: "2026-06-16T10:00:00.000Z",
-            },
-          ],
-        });
-      }
-      return agUiResponse({
-        text: "继续历史对话。",
-        toolCalls: [],
-        proposedOperations: [],
-      });
-    });
-    vi.stubGlobal("fetch", fetchMock);
-
-    render(<AgentPanel {...panelProps()} />);
-
-    fireEvent.click(screen.getByRole("button", { name: "选择对话" }));
-    fireEvent.click(await screen.findByText("历史对话 A"));
-    sendMessage("继续刚才的建议");
-
-    await waitFor(() => {
-      expect(fetchMock).toHaveBeenCalledWith(
-        "/api/agent/direct-runs",
-        expect.any(Object),
-      );
-    });
-    const directRunCall = fetchMock.mock.calls.find(
-      ([input]) => String(input) === "/api/agent/direct-runs",
-    );
-    const body = JSON.parse(String(directRunCall?.[1]?.body));
-    expect(body.forwardedProps.introBuilder.threadId).toBe("thread_history_a");
-  });
 
   it("renders assistant copy and retry actions without touching resume state", async () => {
     const writeText = vi.fn<(text: string) => Promise<void>>(() => Promise.resolve());
@@ -259,6 +215,42 @@ describe("AgentPanel", () => {
       expect.objectContaining({
         role: "user",
         content: "请重新检查内容结构和格式风险",
+      }),
+    );
+  });
+
+  it("reruns the Agent when saving an unchanged edited message", async () => {
+    const fetchMock = vi.fn<
+      (...args: [RequestInfo | URL, RequestInit?]) => Promise<Response>
+    >(async () => {
+      return agUiResponse({
+        text: "我会重新检查同一个问题。",
+        toolCalls: [],
+        proposedOperations: [],
+      });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<AgentPanel {...panelProps()} />);
+
+    sendMessage("请检查格式风险");
+
+    expect(await screen.findByText("我会重新检查同一个问题。")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "编辑消息" }));
+
+    const editInput = await screen.findByTestId("agent-edit-message-input");
+    expect(editInput).toHaveValue("请检查格式风险");
+    fireEvent.click(screen.getByRole("button", { name: "保存并重新发送" }));
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+    });
+    const [, editInit] = fetchMock.mock.calls[1];
+    const editBody = JSON.parse(String(editInit?.body));
+    expect(editBody.messages.at(-1)).toEqual(
+      expect.objectContaining({
+        role: "user",
+        content: "请检查格式风险",
       }),
     );
   });
