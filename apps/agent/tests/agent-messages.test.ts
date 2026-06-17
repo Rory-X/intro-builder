@@ -175,7 +175,7 @@ describe("agent messages", () => {
     });
   });
 
-  it("builds a prompt that exposes AG-UI-aligned minimal tool names and STAR safety rules", () => {
+  it("builds a prompt that exposes AG-UI-aligned loop tool names and STAR safety rules", () => {
     const result = validateAgentMessageRequest(validBody());
     if (!result.ok) throw new Error("expected valid request");
 
@@ -185,9 +185,9 @@ describe("agent messages", () => {
     });
 
     expect(prompt.system).toContain("intro-builder 的简历 Agent");
-    expect(prompt.developer).toContain(
-      "可用 tools: resume_read, resume_update_section, resume_delete_section, resume_reorder_sections, resume_insert_section",
-    );
+    expect(prompt.developer).toContain("可用 internal loop tools");
+    expect(prompt.developer).toContain("content_claim_audit");
+    expect(prompt.developer).toContain("layout_fit_check");
     expect(prompt.developer).toContain("所有简历修改必须作为 proposedOperations 返回");
     expect(prompt.developer).toContain("使用 STAR 原则时，不得编造 Result 指标");
     expect(prompt.developer).toContain("toolCalls: [] 和 proposedOperations: []");
@@ -713,6 +713,74 @@ describe("agent messages", () => {
     );
   });
 
+  it("summarizes diagnostic tool risks into workspace quality report", () => {
+    const parsed = parseAgentMessageProviderResponse(
+      JSON.stringify({
+        message: {
+          id: "msg_assistant_quality",
+          role: "assistant",
+          content: "我先做了事实和版式自检。",
+        },
+        toolCalls: [
+          {
+            id: "tool_claim_audit",
+            name: "content_claim_audit",
+            status: "completed",
+            title: "事实自检",
+            summary: "发现需要确认的指标。",
+            input: {},
+            result: {
+              score: 60,
+              risks: [
+                {
+                  code: "possible_fabrication",
+                  message: "发现结果指标「50%」，需要用户确认真实来源。",
+                },
+              ],
+            },
+          },
+        ],
+        proposedOperations: [],
+      }),
+    );
+    if (!parsed.ok) throw new Error("expected parse success");
+
+    const events = toAgUiAgentEvents({
+      requestId: "req_quality",
+      threadId: "resume_abc",
+      request: validBody(),
+      result: parsed.result,
+    });
+    const workspaceState = events.find(
+      (event) =>
+        event.type === EventType.STATE_DELTA &&
+        event.delta.some((patch) => patch.path === "/workspace"),
+    );
+
+    expect(workspaceState).toEqual(
+      expect.objectContaining({
+        type: EventType.STATE_DELTA,
+        delta: [
+          expect.objectContaining({
+            path: "/workspace",
+            value: expect.objectContaining({
+              qualityReport: {
+                score: 60,
+                summary: "发现 1 个质量风险。",
+                risks: [
+                  {
+                    code: "fabrication_risk",
+                    message: "发现结果指标「50%」，需要用户确认真实来源。",
+                  },
+                ],
+              },
+            }),
+          }),
+        ],
+      }),
+    );
+  });
+
   it("emits durable workflow cursor state before run finish", () => {
     const parsed = parseAgentMessageProviderResponse(
       JSON.stringify({
@@ -976,6 +1044,7 @@ function agentConfig() {
     modelApiKey: "provider-key",
     modelName: "deepseek-chat",
     modelTimeoutMs: 20_000,
+    agentLoopMaxSteps: 16,
     langfuse: {
       enabled: false,
       publicKey: undefined,

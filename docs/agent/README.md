@@ -6,11 +6,11 @@
 
 - 当前落地状态：Phase 3B 已通过 PR #43 合入 `main`，并已部署到 Web 与 Agent 生产链路。
 - 微服务目录：`apps/agent`
-- 当前能力：基础 Node/TypeScript HTTP 服务，包含 `/health`、Redis-backed `/ready`、protected `/v1/session`、`POST /v1/rich-text/polish`、`POST /v1/resume/helpers/:helperId`、`POST /v1/agent/messages`、JSON 404/405、统一错误 envelope、request id、Redis readiness、rate limit primitive、短期 Agent JWT 校验、Redis `jti` replay guard、STAR-aware prompt、Agent Mode AI SDK provider、Langfuse Prompt Management fallback、配置解析、启动日志、Docker/Caddy/compose。
+- 当前能力：基础 Node/TypeScript HTTP 服务，包含 `/health`、Redis-backed `/ready`、protected `/v1/session`、`POST /v1/rich-text/polish`、`POST /v1/resume/helpers/:helperId`、`POST /v1/agent/chat`、JSON 404/405、统一错误 envelope、request id、Redis readiness、rate limit primitive、短期 Agent JWT 校验、Redis `jti` replay guard、AI SDK true loop、DraftState 沙盒、AG-UI stream、Langfuse telemetry、配置解析、启动日志、Docker/Caddy/compose。
 - Phase 2A 能力：`resume-diagnose` 提供整份简历诊断，`section-next-steps` 提供单个模块下一步建议。Web BFF 为 `POST /api/agent/resume/helpers/[helperId]`，会校验 Auth.js session 与 resume ownership 后签发 `resume:helper` JWT。
 - Phase 2A UI：编辑器顶部有 `AI 诊断` 入口，工作经历、项目经历、教育经历、研究经历、技能、自定义模块 header 有 `AI 建议` 入口。按钮使用文字与图标渐变，不使用渐变背景。
-- Phase 3B 能力：在 Phase 3A 左侧 Agent Mode 基础上，Agent `/v1/agent/messages` 与 Web BFF `/api/agent/messages` 已升级为 AG-UI `text/event-stream`。assistant-ui 继续使用 `LocalRuntime` + custom adapter，但 adapter 返回 async generator，逐步消费 AG-UI `TEXT_MESSAGE_CONTENT`，并从 `TOOL_CALL_RESULT` 渲染 tool card 与确认卡。
-- Phase 3C 能力：Agent SSE cache hit 不再返回 JSON；SSE provider/parse failure 会返回 AG-UI `RUN_ERROR`；Web stream 不再被 10 秒 JSON timeout 误杀；Agent Mode 通过 AI SDK openai-compatible adapter 支持 streaming，并从 provider JSON 的 `message.content` 安全提取可见增量；Web 新增 SDK-compatible `/api/agent/runs`，接收 AG-UI `RunAgentInput` 并通过 `forwardedProps.introBuilder` 映射到现有 Agent request。
+- Phase 3B/3C 历史能力：`/api/agent/messages`、`/api/agent/runs` 和 `/v1/agent/messages` 是旧 AG-UI 代理路径与兼容层。它们只能作为 legacy/debug 背景理解，不再代表当前 AgentPanel 主路径。
+- Agent Mode v2 当前路径：浏览器先调用 Web BFF `POST /api/agent/direct-runs`；Web 校验 Auth.js session 与 resume ownership，签发短期 `agent:chat` JWT，返回 `streamUrl`；浏览器再携带该 token 直连 Agent `POST /v1/agent/chat` AG-UI SSE。
 - Phase 3B follow-up：Agent 对话输出允许 provider 在纯追问/澄清轮次省略空 `toolCalls` 和 `proposedOperations`，服务端会归一化为 `[]`；AG-UI 文本事件会拆成多段 delta，并在 assistant-ui 首段到达前显示 `AI 正在思考` 等待态。Web 错误卡会展示 `code` 与 `requestId`，方便排查线上 provider、JWT 或依赖问题。
 - 本地 Redis：已安装并启动 Homebrew `redis 8.8.0`，连接串为 `redis://127.0.0.1:6379`。
 - 服务器部署：`101.36.117.253` 已安装 Docker/Compose，`/opt/intro-agent` 已运行 `agent + redis + caddy`。公网入口 `https://api.rory-x.me/intro-builder/agent` 已通过 Cloudflare -> Caddy -> Agent 的 `/health` 与 `/ready` 冒烟，当前 Agent 生产版本为 `github-c36362c33239`。
@@ -22,9 +22,9 @@
 
 - 如果实现、测试或文档与本节冲突，先回到 Phase 3A/3B spec/plan 修正，不要用局部实现反向改变产品形态。
 - 桌面采用 A 方案：`Agent 模式` 替换左侧编辑列，不做右侧 drawer，不遮挡右侧 `LivePreview`。
-- Browser -> Web BFF `/api/agent/runs` -> Agent `/v1/agent/messages` 是 Agent panel 的当前产品调用路径；`/api/agent/messages` 保留为旧 contract 兼容、服务端测试和 debug fallback。浏览器仍不能直连 Agent `/v1/agent/messages`。
+- Browser -> Web BFF `/api/agent/direct-runs` -> Browser direct SSE -> Agent `/v1/agent/chat` 是 Agent panel 的当前产品调用路径；`/api/agent/messages`、`/api/agent/runs` 和 `/v1/agent/messages` 只作为旧 contract / debug 背景。
 - assistant-ui 只负责 thread、composer、tool display；不能拥有 RHF、autosave、模板或 preview 状态。
-- 基础 tools 固定为 `resume_read`、`resume_update_section`、`resume_delete_section`、`resume_reorder_sections`、`resume_insert_section`；它们是最小简历能力集合，只能返回待确认 `ResumeOperation`，不能直接写 RHF/Postgres。
+- 工具分两层：internal loop tools 包含读取、完整度、目标、追问和诊断工具；visible operation tools 只围绕 `ResumeOperation` 展示和确认。任何工具都不能直接写 RHF/Postgres。
 - 不新增 prompt-specific tool 名称。`inspect_resume`、`propose_*`、`draft_section_item` 等历史草案名不得进入实现、prompt、测试或 UI，除非先更新 `docs/agent/service-contracts.md`、proto 草案和 Web confirmation 语义。
 - 用户点击 `应用` 前，任何 Agent 输出都不能改变简历内容；点击后也必须走 Web allowlist dispatcher、RHF `setValue` 和 `resume:flush-autosave`。
 - 富文本 `update_section` 必须保持 TipTap JSON 语义；原文是有序/无序列表时，润色结果仍必须是列表结构。
@@ -36,7 +36,7 @@
 
 - `Agent 模式` 是左侧编辑列模式切换，不是右侧抽屉、浮窗聊天或全屏 Agent workspace。
 - 右侧 `LivePreview` 在桌面 Agent Mode 中始终可见，并且只由 RHF 驱动。
-- Web BFF 仍是浏览器到 Agent 的唯一入口；浏览器不直连 Agent `/v1/agent/messages`。
+- Web BFF 仍是权限控制入口；当前长 SSE 数据面允许浏览器携短期 `agent:chat` token 直连 Agent `/v1/agent/chat`。
 - Agent 返回的是 AG-UI lifecycle/text/tool events；真正写回只能发生在 Web 的确认卡回调里。
 - 对话流相关实现必须优先使用 `@ag-ui/core` 类型和 `@ag-ui/encoder` 编码，不能自定义一套平行事件协议。
 - SDK-compatible UI 入口必须使用 AG-UI `RunAgentInput`，并把 Web-owned `resumeId`、`workflowId`、RHF capped context 放进 `forwardedProps.introBuilder` 或 `forwardedProps.runConfig.introBuilder`。

@@ -2,22 +2,24 @@
 
 ## 一句话架构
 
-intro-builder 的 Agent 能力采用 Web 主站 + 独立 Agent 微服务的双服务架构。Web 主站保留用户身份、编辑器状态和文档写入权；Agent 微服务只处理新增 Agent 能力的模型编排、流式输出、工具调用与 Redis 支撑能力。
+intro-builder 的 Agent 能力采用 Web 主站 + 独立 Agent 微服务的双服务架构。Web 主站保留用户身份、编辑器状态和文档写入权；Agent 微服务只处理新增 Agent 能力的模型编排、长 loop、流式输出、工具调用与 Redis 支撑能力。
 
 ## 系统边界
 
 ```mermaid
 flowchart LR
-  Browser["Browser: editor UI"] --> Web["Next.js Web App"]
+  Browser["Browser: AgentPanel + editor UI"] --> Bootstrap["Web BFF /api/agent/direct-runs"]
+  Bootstrap --> Web["Next.js Web App"]
   Web --> DB["Postgres"]
   Web --> Blob["Vercel Blob"]
-  Web --> Agent["Agent Microservice"]
+  Bootstrap -. "short-lived agent:chat JWT + streamUrl" .-> Browser
+  Browser --> Agent["Agent /v1/agent/chat"]
   Agent --> Redis["Redis"]
   Agent --> Provider["Model Provider"]
   Caddy["Caddy"] --> Agent
 
-  Web -. "short-lived Agent JWT" .-> Agent
-  Agent -. "JSON/streamed suggestion" .-> Web
+  Agent -. "AG-UI SSE tool/workspace events" .-> Browser
+  Browser -. "confirmed ResumeOperation" .-> Web
   Web -. "RHF write / autosave" .-> Browser
 ```
 
@@ -25,7 +27,7 @@ flowchart LR
 
 | 系统 | 负责 | 不负责 |
 | --- | --- | --- |
-| Browser | 用户交互、局部选择、取消请求、展示 streaming 状态 | 保存最终真源、持有 provider key |
+| Browser | 用户交互、局部选择、取消请求、展示 streaming 状态、携短期 token 直连 Agent SSE | 保存最终真源、持有长期 provider key |
 | Next.js Web App | auth、resume ownership 校验、短期 Agent JWT、React Hook Form、preview、autosave | 模型编排、长期 Agent memory、provider 直连 |
 | Agent Microservice | prompt、model call、streaming、tool calling、Redis memory/rate limit、结构化错误 | 用户登录、resume DB 写入、编辑器状态 |
 | Redis | rate limit、jti replay guard、短期 memory、后续 job/stream state | 永久简历内容真源 |
@@ -36,7 +38,7 @@ flowchart LR
 这些是当前 Agent 架构的基础构件；是否已上线以对应 PR、CI/CD 和 `deployment.md` 为准。
 
 - `apps/agent` 是独立 pnpm workspace package，包含 Node/TypeScript HTTP 服务。
-- `apps/agent/src/http.ts` 统一承载 `/health`、Redis-backed `/ready`、protected `/v1/session`、`/v1/rich-text/polish`、`/v1/resume/helpers/:helperId`、`/v1/agent/messages`、404/405、request id 和 JSON error envelope。
+- `apps/agent/src/http.ts` 统一承载 `/health`、Redis-backed `/ready`、protected `/v1/session`、`/v1/rich-text/polish`、`/v1/resume/helpers/:helperId`、`/v1/agent/chat`、404/405、request id 和 JSON error envelope。
 - `apps/agent/src/auth.ts` 校验短期 Agent JWT，并通过 Redis `jti` replay guard 防重放。
 - `apps/agent/src/redis.ts`、`apps/agent/src/rate-limit.ts` 与 `apps/agent/src/ai-cache.ts` 提供 readiness、rate limit、AI 结果缓存和后续短期 memory 基础。
 - `apps/agent/src/rich-text-polish.ts`、`apps/agent/src/resume-helpers.ts`、`apps/agent/src/agent-messages.ts` 分别承载 Phase 1、Phase 2A、Phase 3A 的新增 Agent 能力。
@@ -86,19 +88,21 @@ flowchart TB
 - 如果是 streaming，每个 chunk 必须有类型，不能让前端猜字符串语义。
 - Web 端仍负责确认写回和 autosave。
 
-### Phase 3B Agent Mode 请求
+### Agent Mode v2 请求
 
-Phase 3B 的 Agent panel 使用 AG-UI event stream。目标是稳定 lifecycle、assistant text、tool call/result、`ResumeOperation` 和用户确认写回语义。
+Agent panel 使用 Web BFF 控制面 + 浏览器直连 Agent 数据面。目标是稳定 lifecycle、assistant text、tool call/result、workspace checkpoint、`ResumeOperation` 和用户确认写回语义。
 
 ```mermaid
 flowchart LR
   Toolbar["Agent 模式"] --> LeftPanel["Left editor column AgentPanel"]
-  LeftPanel --> WebBff["Next /api/agent/messages"]
-  WebBff --> AgentRoute["Agent /v1/agent/messages"]
-  AgentRoute --> Tools["basic resume tools"]
-  AgentRoute --> Provider["Model Provider"]
-  AgentRoute -- "AG-UI SSE" --> WebBff
-  WebBff --> Confirm["Web confirmation card"]
+  LeftPanel --> Bootstrap["Next /api/agent/direct-runs"]
+  Bootstrap -- "streamUrl + short token" --> LeftPanel
+  LeftPanel --> AgentRoute["Agent /v1/agent/chat"]
+  AgentRoute --> Loop["AI SDK true loop"]
+  Loop --> Tools["resume-domain tools"]
+  Tools --> Draft["DraftState sandbox"]
+  AgentRoute -- "AG-UI SSE" --> LeftPanel
+  LeftPanel --> Confirm["Web confirmation card"]
   Confirm --> RHF["RHF setValue"]
   RHF --> Autosave["resume:flush-autosave"]
   RHF --> Preview["LivePreview"]
@@ -110,7 +114,7 @@ Rules:
 - assistant-ui 只负责 thread、composer、tool display，不拥有简历状态。
 - 基础 tools 可以推理并生成待确认 `ResumeOperation`，但不能直接写 RHF 或 Postgres。
 - 富文本 `resume_update_section` 必须保持 TipTap JSON 语义；列表不能被压成无结构段落。
-- Phase 3B 基础 tools 固定为 `resume_read`、`resume_update_section`、`resume_delete_section`、`resume_reorder_sections`、`resume_insert_section`；新增 tool 必须先更新 `service-contracts.md` 与测试。
+- Internal loop tools 可包含 `resume_read`、`get_completeness`、`set_goal`、`resume_ask`、诊断工具和写 draft 工具。真实简历写回仍只能通过 visible `ResumeOperation` confirmation。
 
 ## 稳定性原则
 

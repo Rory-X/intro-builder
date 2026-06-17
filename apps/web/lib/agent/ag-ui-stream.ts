@@ -241,7 +241,17 @@ function isAgentToolName(value: unknown): value is AgentToolCall["name"] {
     value === "resume_update_section" ||
     value === "resume_delete_section" ||
     value === "resume_reorder_sections" ||
-    value === "resume_insert_section"
+    value === "resume_insert_section" ||
+    value === "resume_polish_text" ||
+    value === "resume_set_text" ||
+    value === "resume_ask" ||
+    value === "get_completeness" ||
+    value === "set_goal" ||
+    value === "role_match_read" ||
+    value === "ats_check" ||
+    value === "content_claim_audit" ||
+    value === "layout_fit_check" ||
+    value === "section_quality_score"
   );
 }
 

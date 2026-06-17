@@ -13,6 +13,7 @@ import {
 } from "./auth.js";
 import {
   appendAgUiContextStatusEvents,
+  appendAgUiResumeWorkspaceEvents,
   extractStreamingAgentMessageContent,
   parseAgentMessageProviderResponse,
   toAgUiAgentEvents,
@@ -29,10 +30,12 @@ import {
   type AgentMessagePromptResolver,
 } from "./prompts/agent-message-prompt-resolver.js";
 import { buildAgentContextStatus } from "./workflows/context-status.js";
+import { buildAgentResumeWorkspace } from "./workflows/resume-workspace.js";
 import {
   assembleLoopResult,
   createInitialLoopDraft,
   createLoopModel,
+  resolveLoopMaxSteps,
   runResumeLoop,
 } from "./workflows/loop-runtime.js";
 import {
@@ -461,6 +464,10 @@ async function routeRequest(
             mode: agentRequest.mode ?? "optimize_existing",
           },
         },
+        maxSteps: resolveLoopMaxSteps({
+          request: agentRequest,
+          configuredMaxSteps: config.agentLoopMaxSteps,
+        }),
         recorder: createSessionRecorderForRequest({
           sessionStore,
           request: agentRequest,
@@ -1557,6 +1564,7 @@ async function streamAgentLoopEvents({
   nodeEnv,
   accept,
   telemetry,
+  maxSteps,
   recorder,
 }: {
   response: ServerResponse;
@@ -1568,11 +1576,13 @@ async function streamAgentLoopEvents({
   nodeEnv: string;
   accept?: string;
   telemetry?: TelemetrySettings;
+  maxSteps: number;
   recorder?: AgentSessionRecorder | null;
 }): Promise<void> {
   const encoder = new EventEncoder({ accept });
   const messageId = `msg_${requestId}`;
   let textStarted = false;
+  const emittedStepToolCallIds = new Set<string>();
 
   response.statusCode = 200;
   response.setHeader("X-Request-Id", requestId);
@@ -1621,14 +1631,28 @@ async function streamAgentLoopEvents({
 
   const draft = createInitialLoopDraft(request);
   try {
-    const { text, questions } = await runResumeLoop({
+    const { text, questions, summary } = await runResumeLoop({
       model,
       request,
       draft,
+      maxSteps,
       telemetry,
       onTextDelta: (delta) => {
         ensureTextStarted();
         writeEvent({ type: EventType.TEXT_MESSAGE_CONTENT, messageId, delta });
+      },
+      onStepFinish: (stepEvent) => {
+        for (const event of toStreamingLoopStepEvents({
+          requestId,
+          request,
+          messageId,
+          draft,
+          step: stepEvent,
+        })) {
+          const toolCallId = readEventToolCallId(event);
+          if (toolCallId) emittedStepToolCallIds.add(toolCallId);
+          writeEvent(event);
+        }
       },
     });
     ensureTextStarted();
@@ -1645,6 +1669,7 @@ async function streamAgentLoopEvents({
       requestId,
       result,
       textLength: text.length,
+      summary,
     });
     for (const event of toStreamingRuntimeTailEvents({
       requestId,
@@ -1653,6 +1678,8 @@ async function streamAgentLoopEvents({
       messageId,
       result,
     })) {
+      const toolCallId = readEventToolCallId(event);
+      if (toolCallId && emittedStepToolCallIds.has(toolCallId)) continue;
       writeEvent(event);
     }
     await recorder?.close();
@@ -1668,6 +1695,68 @@ async function streamAgentLoopEvents({
     await recorder?.close();
     response.end();
   }
+}
+
+function toStreamingLoopStepEvents({
+  requestId,
+  request,
+  messageId,
+  draft,
+  step,
+}: {
+  requestId: string;
+  request: AgentMessageRequest;
+  messageId: string;
+  draft: ReturnType<typeof createInitialLoopDraft>;
+  step: {
+    step: number;
+    toolCalls: Array<{
+      toolCall: AgentToolCall;
+      proposedOperations: ResumeOperation[];
+    }>;
+  };
+}): BaseEvent[] {
+  const events: BaseEvent[] = [];
+  for (const { toolCall, proposedOperations } of step.toolCalls) {
+    events.push(
+      {
+        type: EventType.TOOL_CALL_START,
+        toolCallId: toolCall.id,
+        toolCallName: toolCall.name,
+        parentMessageId: messageId,
+      },
+      {
+        type: EventType.TOOL_CALL_ARGS,
+        toolCallId: toolCall.id,
+        delta: JSON.stringify(toolCall.input),
+      },
+      {
+        type: EventType.TOOL_CALL_END,
+        toolCallId: toolCall.id,
+      },
+      {
+        type: EventType.TOOL_CALL_RESULT,
+        messageId: `${toolCall.id}_result`,
+        toolCallId: toolCall.id,
+        role: "tool",
+        content: JSON.stringify({
+          toolCall,
+          proposedOperations,
+        }),
+      },
+    );
+  }
+
+  const result = assembleLoopResult({
+    draft,
+    finalText: "",
+    requestId,
+  });
+  appendAgUiResumeWorkspaceEvents(events, {
+    messageId: `msg_workspace_${requestId}_step_${step.step}`,
+    workspace: buildAgentResumeWorkspace({ request, requestId, result }),
+  });
+  return events;
 }
 
 function toStreamingRuntimeTailEvents({
@@ -1724,6 +1813,11 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
 }
 
+function readEventToolCallId(event: BaseEvent): string | null {
+  const value = (event as { toolCallId?: unknown }).toolCallId;
+  return typeof value === "string" && value.trim() !== "" ? value : null;
+}
+
 function toAgUiRunErrorEvents({
   requestId,
   threadId,
@@ -1773,12 +1867,20 @@ function logAgentLoopSummary({
   requestId,
   result,
   textLength,
+  summary,
 }: {
   nodeEnv: string;
   request: AgentMessageRequest;
   requestId: string;
   result: Extract<AgentMessageParseResult, { ok: true }>["result"];
   textLength: number;
+  summary: {
+    maxSteps: number;
+    actualSteps: number;
+    toolCallCount: number;
+    questionCount: number;
+    reachedStepLimit: boolean;
+  };
 }): void {
   if (nodeEnv === "test") return;
 
@@ -1790,9 +1892,12 @@ function logAgentLoopSummary({
       workflowId: request.workflowId,
       resumeId: request.resumeId,
       textLength,
-      toolCallCount: result.toolCalls.length,
+      maxSteps: summary.maxSteps,
+      actualSteps: summary.actualSteps,
+      toolCallCount: summary.toolCallCount,
       proposedOperationCount: result.proposedOperations.length,
-      questionCount: result.questions?.length ?? 0,
+      questionCount: summary.questionCount,
+      reachedStepLimit: summary.reachedStepLimit,
     }),
   );
 }

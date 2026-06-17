@@ -178,12 +178,12 @@ Business endpoints:
 | `GET /v1/session` | Phase 0C | 已实现：验证 Web 签发的 Agent JWT 与 scope |
 | `POST /v1/rich-text/polish` | Phase 1 | 富文本局部润色 |
 | `POST /v1/resume/helpers/:helperId` | Phase 2 | 简历模块级增量 helper |
-| `POST /v1/agent/messages` | Phase 3 | assistant-ui Agent panel 消息入口 |
+| `POST /v1/agent/chat` | Agent Mode v2 | assistant-ui / AG-UI AgentPanel 长 loop SSE 入口 |
 
-Current Phase 3B branch status:
+Current Agent Mode v2 status:
 
-- Implemented locally: shared `AgentMessageRequest`/`AgentMessageResponse` types, capped chat context builder, minimal Agent tool validation, Agent service `POST /v1/agent/messages` route, Web BFF `POST /api/agent/messages`, assistant-ui runtime seam, left-column Agent panel, confirmation cards, RHF writeback dispatcher, and mobile Agent Sheet.
-- Implemented locally: Phase 3B message streaming uses AG-UI `text/event-stream` with `@ag-ui/core` event types and `@ag-ui/encoder`; the assistant-ui `LocalRuntime` adapter consumes that stream through an async generator.
+- Implemented locally: shared `AgentMessageRequest`/`AgentMessageResponse` types, capped chat context builder, Agent service `POST /v1/agent/chat` route, Web BFF `POST /api/agent/direct-runs`, assistant-ui runtime provider, left-column Agent panel, confirmation cards, RHF writeback dispatcher, and mobile Agent Sheet.
+- Implemented locally: Agent Mode v2 uses AG-UI `text/event-stream` with `@ag-ui/core` event types and `@ag-ui/encoder`; the browser receives `streamUrl` plus short token from the BFF and connects directly to Agent.
 - JSON response is not the product chat protocol after Phase 3B. It remains only as a compatibility/debug fallback for service tests and non-browser smoke.
 - The proto file is an IDL draft to keep naming aligned; it is not a requirement to introduce gRPC and must not override the AG-UI event stream contract.
 
@@ -439,16 +439,16 @@ Phase 3 已新增聊天式 Agent Mode。该能力使用 assistant-ui 承载多�
 重要边界：
 
 - Phase 3 UI 形态是 **Agent Mode replaces left editor**：用户点击 `Agent 模式` 后，左侧编辑列切换为 Agent panel，右侧 `LivePreview` 保持可见；移动端使用底部 Agent Sheet。
-- `POST /v1/agent/messages` 只服务新增 Agent 能力，不迁移 OCR、导入简历、AI 解析。
+- `POST /v1/agent/chat` 只服务新增 Agent 能力，不迁移 OCR、导入简历、AI 解析。
 - Agent 可以为推理调用基础简历修改 tools，但只能返回 `proposedOperations`。
 - Web 只有在用户点击 `应用` 后才把 `ResumeOperation` 写入 React Hook Form 并触发 autosave。
 - Agent 不连接 Postgres，不发布简历，不删除 section，不自动切模板。
-- Phase 3B 使用 AG-UI `text/event-stream`；JSON response 仅保留为兼容和调试 fallback。
-- Phase 3C 后，Agent panel 浏览器入口是 Web BFF `/api/agent/runs`。该 route 接收标准 AG-UI `RunAgentInput`，从 `forwardedProps.introBuilder` 或 `forwardedProps.runConfig.introBuilder` 映射到本节的 `AgentMessageRequest`，再签发短期 `agent:chat` JWT 并代理 Agent SSE。
+- Agent Mode v2 使用 AG-UI `text/event-stream`；JSON response 仅保留为非 SSE 兼容和 debug fallback。
+- 当前 Agent panel 浏览器入口是 Web BFF `/api/agent/direct-runs`。该 route 接收标准 AG-UI `RunAgentInput`，从 `forwardedProps.introBuilder` 映射到本节的 `AgentMessageRequest`，校验 Auth.js session 与 resume ownership，签发短期 `agent:chat` JWT，并返回 Agent `/v1/agent/chat` stream URL。
 
-### `POST /v1/agent/messages`
+### `POST /v1/agent/chat`
 
-用途：assistant-ui Agent panel 的消息入口。它接收 Web 裁剪后的当前 RHF 简历快照、聊天消息和 preset workflow，默认返回 AG-UI SSE events：assistant 消息增量、可见 tool calls 和待用户确认的 `ResumeOperation`。
+用途：assistant-ui Agent panel 的长 loop 消息入口。它接收 Web 裁剪后的当前 RHF 简历快照、聊天消息、preset workflow 和 session snapshot，默认返回 AG-UI SSE events：assistant 消息增量、step tool result、workspace delta、question interrupt 和待用户确认的 `ResumeOperation`。
 
 认证：`Authorization: Bearer <agent-jwt>`，scope 必须是 `agent:chat`。JWT 的 `resumeId` 必须与请求体 `resumeId` 一致。
 
@@ -461,19 +461,29 @@ Phase 3 支持的 preset workflows：
 | `experience-star` | 用 STAR 原则优化经历，但不编造 Result 指标 |
 | `pre-export-check` | 导出前检查内容和格式风险 |
 
-Phase 3B 最小简历能力 tools：
+Agent Mode v2 tool taxonomy:
 
 | Tool | Can read | Can return | Direct write? |
 | --- | --- | --- | --- |
 | `resume_read` | Web 提供的 capped resume context | 结构诊断、缺口、风险 | No |
+| `get_completeness` | draft sections | 完整度、缺失模块 | No |
+| `set_goal` | 用户目标与 session workspace | 标题/目标岗位元信息 | No |
+| `role_match_read` | 目标岗位、简历事实 | 岗位匹配缺口 | No |
+| `ats_check` | 简历文本、目标关键词 | ATS 可读性与关键词风险 | No |
+| `content_claim_audit` | 简历文本、draft operations | 编造风险、无证据数字、过强表述 | No |
+| `layout_fit_check` | 模板、内容密度、draft snapshot | 版式风险 | No |
+| `section_quality_score` | 指定 section 文本 | 结构、可信度、具体性评分 | No |
 | `resume_update_section` | 目标 section/field 的 plain text、TipTap JSON 和上下文 | `update_section` operation | No |
 | `resume_delete_section` | section/item target | `delete_section` operation | No |
 | `resume_reorder_sections` | 当前 section order | `reorder_sections` operation | No |
 | `resume_insert_section` | 简历摘要、目标 section、用户目标 | `insert_section` operation | No |
+| `resume_polish_text` | 目标 field 文本/TipTap JSON | `update_section` operation | No |
+| `resume_set_text` | 目标 field 与纯文本 | `update_section` or `insert_section` operation | No |
+| `resume_ask` | 缺失事实描述 | `input_required` interrupt | No |
 
 命名规则：
 
-- 以上五个 tool 名是 Phase 3B 的 canonical contract，代码、测试、prompt、proto 草案和 UI 文案都应引用同一组名字。
+- internal loop tools 是模型实际可调用工具；visible operation tools 是前端展示和确认写回的工具/operation 语义。两层都必须在 shared types、Agent validator、Web extractor 和文档中对齐。
 - 早期草案里出现过的 `inspect_resume`、`propose_*`、`draft_section_item`、`suggest_rewrite`、`draft_section`、`explain_template` 不属于当前 Phase 3B contract；如需恢复，必须先更新本文件、proto、Agent validator 和 Web confirmation 语义。
 - 不按 workflow 新增 tool。`resume-diagnose`、`target-role-match`、`experience-star`、`pre-export-check` 只能改变 starter prompt、tool policy 和输出解释，不改变 tool 名称集合。
 
@@ -513,9 +523,9 @@ Request:
 }
 ```
 
-### Web BFF `POST /api/agent/runs`
+### Web BFF `POST /api/agent/direct-runs`
 
-用途：assistant-ui / AG-UI SDK 兼容入口。浏览器只调用 Web BFF；Web BFF 校验 Auth.js session、resume ownership，再签发 `agent:chat` token 调 Agent `/v1/agent/messages`。
+用途：assistant-ui / AG-UI SDK 兼容入口。浏览器先调用 Web BFF；Web BFF 校验 Auth.js session、resume ownership，再签发 `agent:chat` token，并返回 Agent `/v1/agent/chat` stream URL。随后浏览器携短期 token 直连 Agent SSE。
 
 Request 是 AG-UI `RunAgentInput`，必须包含 intro-builder metadata：
 
@@ -571,8 +581,8 @@ Rules:
 
 - `forwardedProps.introBuilder.context` 必须来自 Web 当前 RHF 快照的 capped context，不能由 assistant-ui thread state 伪造完整简历内容。
 - Web BFF 必须先校验 `resumeId` 属于当前用户，再签发 Agent JWT。
-- Response 透传 Agent AG-UI `text/event-stream`，headers 包含 `cache-control: no-cache, no-transform` 和 `x-request-id`。
-- `/api/agent/messages` 仍可用于旧 JSON/SSE contract 的兼容测试，但 Agent panel 新请求应走 `/api/agent/runs`。
+- Response 是 JSON bootstrap，包含 `streamUrl`、`token`、`tokenExpiresAt` 和带 `sessionContext` 的 Agent request。
+- `/api/agent/messages` 和 `/api/agent/runs` 只作为旧 JSON/SSE contract 的兼容背景；Agent panel 新请求走 `/api/agent/direct-runs`。
 
 Compatibility/debug response when `Accept: application/json` or no SSE is requested:
 

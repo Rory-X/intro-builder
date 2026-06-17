@@ -30,6 +30,7 @@ import {
   type AgUiResumeToolResult,
   type AgUiAgentQuestion,
 } from "@/lib/agent/ag-ui-stream";
+import { isAutoApplicableOperation } from "@/lib/agent/apply-operation";
 import { fetchDirectAgentRunStream } from "@/lib/agent/direct-run-client";
 import type {
   AgentResumeContext,
@@ -356,6 +357,7 @@ async function observeAgUiResponse(
         onToolResult(toolResult);
         if (autoAccept && onOperationApplied && toolResult.proposedOperations) {
           for (const operation of toolResult.proposedOperations) {
+            if (!isAutoApplicableOperation(operation)) continue;
             onOperationApplied(operation);
           }
         }

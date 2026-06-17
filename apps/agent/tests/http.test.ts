@@ -1088,6 +1088,79 @@ describe("agent HTTP service", () => {
     expect(textDeltas.join("")).toBe(assistantContent);
   });
 
+  it("streams completed loop tool results and workspace deltas before final assistant text", async () => {
+    mockOpenAiCompatibleToolLoopStream({
+      toolCall: {
+        id: "call_update_summary",
+        name: "resume_update_section",
+        arguments: {
+          fieldPath: "basics.summary",
+          label: "个人简介",
+          newContent: {
+            type: "doc",
+            content: [
+              {
+                type: "paragraph",
+                content: [{ type: "text", text: "三年前端经验，擅长性能优化。" }],
+              },
+            ],
+          },
+        },
+      },
+      finalChunks: ["已完成", "草稿更新。"],
+    });
+    const server = await listenOnRandomPort({
+      replayStore: new FakeReplayStore(),
+    });
+    const token = await signAgentToken({
+      sub: "user_123",
+      resumeId: "resume_abc",
+      scope: "agent:chat",
+      jti: "jti_agent_loop_step_stream",
+    });
+
+    const response = await fetch(server.url("/v1/agent/chat"), {
+      method: "POST",
+      headers: {
+        accept: "text/event-stream",
+        authorization: `Bearer ${token}`,
+        "content-type": "application/json",
+        "x-request-id": "req-client-agent-loop-step-stream",
+      },
+      body: JSON.stringify(withModelConfig(validAgentMessageBody())),
+    });
+    const events = parseSseEvents(await response.text());
+
+    const toolResultIndex = events.findIndex(
+      (event) =>
+        event.type === EventType.TOOL_CALL_RESULT &&
+        event.toolCallId === "call_update_summary",
+    );
+    const workspaceDeltaIndex = events.findIndex(
+      (event) =>
+        event.type === EventType.STATE_DELTA &&
+        event.delta.some((patch) => patch.path === "/workspace"),
+    );
+    const textStartIndex = events.findIndex(
+      (event) => event.type === EventType.TEXT_MESSAGE_START,
+    );
+    const runFinishedIndex = events.findIndex(
+      (event) => event.type === EventType.RUN_FINISHED,
+    );
+
+    expect(toolResultIndex).toBeGreaterThan(0);
+    expect(workspaceDeltaIndex).toBeGreaterThan(toolResultIndex);
+    expect(toolResultIndex).toBeLessThan(textStartIndex);
+    expect(workspaceDeltaIndex).toBeLessThan(textStartIndex);
+    expect(workspaceDeltaIndex).toBeLessThan(runFinishedIndex);
+    expect(events[toolResultIndex]).toEqual(
+      expect.objectContaining({
+        type: EventType.TOOL_CALL_RESULT,
+        content: expect.stringContaining("三年前端经验"),
+      }),
+    );
+  });
+
   it("records Agent message cache hits and misses", async () => {
     const observability = new FakeAgentObservability();
     const cache = new FakeAiCacheStore();
@@ -1447,6 +1520,86 @@ describe("agent HTTP service", () => {
     );
   });
 
+  it("persists resume_ask interrupts as waiting_user session snapshots", async () => {
+    mockOpenAiCompatibleToolLoopStream({
+      toolCall: {
+        id: "call_resume_ask",
+        name: "resume_ask",
+        arguments: {
+          question: "这个项目最终提升了哪些指标？",
+          field: "experience.0.content",
+        },
+      },
+      finalChunks: ["不应继续生成。"],
+    });
+    const sessionStore = new FakeAgentSessionStore();
+    const server = await listenOnRandomPort({
+      replayStore: new FakeReplayStore(),
+      sessionStore,
+      corsOrigins: ["http://localhost:3000"],
+    });
+    const token = await signAgentToken({
+      sub: "user_123",
+      resumeId: "resume_abc",
+      scope: "agent:chat",
+      jti: "jti_agent_message_ask_persist",
+    });
+
+    const response = await fetch(server.url("/v1/agent/chat"), {
+      method: "POST",
+      headers: {
+        accept: "text/event-stream",
+        authorization: `Bearer ${token}`,
+        "content-type": "application/json",
+        origin: "http://localhost:3000",
+        "x-request-id": "req-client-agent-message-ask-persist",
+      },
+      body: JSON.stringify(withModelConfig({
+        ...validAgentMessageBody(),
+        sessionContext: {
+          sessionId: "agent_session_resume_abc_resume_abc",
+          threadId: "resume_abc",
+          resumeId: "resume_abc",
+          mode: "optimize_existing",
+          workflowId: "experience-star",
+          resumeTitle: "前端工程师",
+        },
+        workflowId: "experience-star",
+      })),
+    });
+    const events = parseSseEvents(await response.text());
+    const runFinished = events.find((event) => event.type === EventType.RUN_FINISHED);
+
+    expect(response.status).toBe(200);
+    expect(runFinished).toEqual(
+      expect.objectContaining({
+        outcome: {
+          type: "interrupt",
+          interrupts: [
+            expect.objectContaining({
+              id: "question_1",
+              reason: "input_required",
+              message: "这个项目最终提升了哪些指标？",
+              metadata: { kind: "question", field: "experience.0.content" },
+            }),
+          ],
+        },
+      }),
+    );
+    expect(sessionStore.snapshots.at(-1)).toEqual(
+      expect.objectContaining({
+        status: "waiting_user",
+        pendingInterrupts: [
+          expect.objectContaining({
+            id: "question_1",
+            reason: "input_required",
+            message: "这个项目最终提升了哪些指标？",
+          }),
+        ],
+      }),
+    );
+  });
+
   it("rejects direct Agent message requests with forged session ids", async () => {
     const server = await listenOnRandomPort({
       replayStore: new FakeReplayStore(),
@@ -1699,6 +1852,7 @@ async function listenOnRandomPort(
       modelApiKey: undefined,
       modelName: undefined,
       modelTimeoutMs: 20_000,
+      agentLoopMaxSteps: 16,
       langfuse: {
         enabled: false,
         publicKey: undefined,
@@ -1852,6 +2006,95 @@ function mockOpenAiCompatibleChatStream(chunks: string[]) {
         headers: { "content-type": "text/event-stream" },
       });
     }) as typeof fetch);
+}
+
+function mockOpenAiCompatibleToolLoopStream({
+  toolCall,
+  finalChunks,
+}: {
+  toolCall: {
+    id: string;
+    name: string;
+    arguments: Record<string, unknown>;
+  };
+  finalChunks: string[];
+}) {
+  const originalFetch = globalThis.fetch;
+  let callCount = 0;
+  return vi
+    .spyOn(globalThis, "fetch")
+    .mockImplementation((async (input, init) => {
+      const url =
+        typeof input === "string"
+          ? input
+          : input instanceof URL
+            ? input.href
+            : input.url;
+      if (url !== "https://models.example.test/v1/chat/completions") {
+        return originalFetch(input, init);
+      }
+
+      callCount += 1;
+      return new Response(
+        callCount === 1
+          ? openAiCompatibleToolCallSsePayload(toolCall)
+          : openAiCompatibleSsePayload(finalChunks),
+        {
+          status: 200,
+          headers: { "content-type": "text/event-stream" },
+        },
+      );
+    }) as typeof fetch);
+}
+
+function openAiCompatibleToolCallSsePayload(toolCall: {
+  id: string;
+  name: string;
+  arguments: Record<string, unknown>;
+}): string {
+  const events = [
+    {
+      id: "chatcmpl_tool_test",
+      object: "chat.completion.chunk",
+      created: 1_780_000_000,
+      model: "gpt-5-mini",
+      choices: [
+        {
+          index: 0,
+          delta: {
+            role: "assistant",
+            tool_calls: [
+              {
+                index: 0,
+                id: toolCall.id,
+                type: "function",
+                function: {
+                  name: toolCall.name,
+                  arguments: JSON.stringify(toolCall.arguments),
+                },
+              },
+            ],
+          },
+          finish_reason: null,
+        },
+      ],
+    },
+    {
+      id: "chatcmpl_tool_test",
+      object: "chat.completion.chunk",
+      created: 1_780_000_000,
+      model: "gpt-5-mini",
+      choices: [
+        {
+          index: 0,
+          delta: {},
+          finish_reason: "tool_calls",
+        },
+      ],
+    },
+  ];
+
+  return `${events.map((event) => `data: ${JSON.stringify(event)}\n\n`).join("")}data: [DONE]\n\n`;
 }
 
 function openAiCompatibleSsePayload(chunks: string[]): string {

@@ -412,6 +412,7 @@ describe("rich text polish prompt", () => {
         modelApiKey: "deepseek-test-key",
         modelName: "deepseek-v4-flash",
         modelTimeoutMs: 20_000,
+        agentLoopMaxSteps: 16,
         langfuse: {
           enabled: false,
           publicKey: undefined,

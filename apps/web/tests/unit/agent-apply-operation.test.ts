@@ -2,7 +2,10 @@ import { describe, expect, it } from "vitest";
 import { emptyResumeContent } from "@intro-builder/shared/schemas";
 import type { ResumeOperation } from "@intro-builder/shared/types";
 
-import { applyResumeOperation } from "@/lib/agent/apply-operation";
+import {
+  applyResumeOperation,
+  isAutoApplicableOperation,
+} from "@/lib/agent/apply-operation";
 
 function makeOp(partial: Partial<ResumeOperation>): ResumeOperation {
   return {
@@ -23,6 +26,42 @@ function makeOp(partial: Partial<ResumeOperation>): ResumeOperation {
 const doc = { type: "doc", content: [{ type: "paragraph", content: [{ type: "text", text: "x" }] }] };
 
 describe("applyResumeOperation", () => {
+  it("allows auto-apply only for low-risk update and insert operations", () => {
+    expect(
+      isAutoApplicableOperation(
+        makeOp({ operation: "update_section", riskFlags: [] }),
+      ),
+    ).toBe(true);
+    expect(
+      isAutoApplicableOperation(
+        makeOp({ operation: "insert_section", riskFlags: [] }),
+      ),
+    ).toBe(true);
+    expect(
+      isAutoApplicableOperation(
+        makeOp({
+          operation: "update_section",
+          riskFlags: [
+            {
+              type: "possible_fabrication",
+              message: "需要确认指标来源。",
+            },
+          ],
+        }),
+      ),
+    ).toBe(false);
+    expect(
+      isAutoApplicableOperation(
+        makeOp({ operation: "delete_section", riskFlags: [] }),
+      ),
+    ).toBe(false);
+    expect(
+      isAutoApplicableOperation(
+        makeOp({ operation: "reorder_sections", sectionOrder: ["basics"] }),
+      ),
+    ).toBe(false);
+  });
+
   it("creates a missing experience item with default fields and keeps it in order", () => {
     const result = applyResumeOperation(
       emptyResumeContent(),

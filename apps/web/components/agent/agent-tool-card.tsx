@@ -13,6 +13,13 @@ const TOOL_TITLES: Record<string, string> = {
   resume_polish_text: "润色文案",
   resume_set_text: "更新文案",
   resume_ask: "追问用户",
+  get_completeness: "检查完整度",
+  set_goal: "设置目标",
+  role_match_read: "岗位匹配",
+  ats_check: "ATS 检查",
+  content_claim_audit: "事实自检",
+  layout_fit_check: "版式检查",
+  section_quality_score: "分区评分",
 };
 
 type AgentToolCardProps = {
