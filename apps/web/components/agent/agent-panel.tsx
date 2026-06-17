@@ -155,6 +155,7 @@ export function AgentPanel({
   const [modelSettings, setModelSettings] = useState<AgentModelSettingsForm>(
     () => readStoredModelSettings(),
   );
+  const [threadKey, setThreadKey] = useState(0);
   const [isLoading, setIsLoading] = useState(false);
   const [autoApply, setAutoApply] = useState(() => {
     if (typeof window === "undefined") return false;
@@ -337,6 +338,7 @@ export function AgentPanel({
       className="flex h-full min-h-[480px] flex-col bg-background"
     >
       <AgentAgUiRuntimeProvider
+        key={threadKey}
         getIntroBuilderForwardedProps={(intent) => {
           const modelConfig = toAgentModelConfig(modelSettings);
           if (intent.mode === "create_from_zero") {
@@ -419,10 +421,13 @@ export function AgentPanel({
               title={title}
               modelSettings={modelSettings}
               onNewThread={() => {
-                // Clear assistant-ui thread messages
-                const threadRuntime = document.querySelector('[data-testid="agent-assistant-ui-thread"]');
                 setTurnArtifacts([]);
                 setError(null);
+                setContextStatus(null);
+                setResumeWorkspace(null);
+                setIsLoading(false);
+                setLastRetryRequest(null);
+                setThreadKey((k) => k + 1);
               }}
             />
           </div>
