@@ -46,7 +46,7 @@ describe("AgentPanel", () => {
   it("renders a compact conversation header and composer status", () => {
     render(<AgentPanel {...panelProps()} />);
 
-    expect(screen.getByText("新对话")).toBeInTheDocument();
+    expect(screen.getByText("前端工程师")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "返回编辑" })).toBeInTheDocument();
     expect(
       screen.getByRole("status", { name: "上下文状态：待更新" }),
