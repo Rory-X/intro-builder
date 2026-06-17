@@ -10,6 +10,7 @@ import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
 import type {
   AgentMessageParseResult,
   AgentMessageRequest,
+  AgentQuestionRequest,
 } from "../agent-messages.js";
 import type { AgentToolCall, ResumeOperation } from "../agent-tools.js";
 import {
@@ -63,6 +64,7 @@ export function buildLoopSystemPrompt(request: AgentMessageRequest): string {
     return [
       "你是 intro-builder 的简历共创助手，正在帮用户【从零创建】一份中文简历。",
       "你在一个草稿（draft）沙盒里工作：所有写入只改草稿，绝不直接改用户的真实简历。",
+      "工具名、字段路径和执行错误是内部实现细节，严禁写进给用户看的回复。工具失败时只用自然语言说明会换一种方式继续。",
       "",
       "工作方式（多步循环）：",
       "1. 先用 resume_read 看当前草稿；用 set_goal 记录标题与目标岗位。",
@@ -82,6 +84,7 @@ export function buildLoopSystemPrompt(request: AgentMessageRequest): string {
   return [
     "你是 intro-builder 的简历优化助手，正在帮用户【优化已有简历】。",
     "你在一个草稿（draft）沙盒里工作：所有写入只改草稿，绝不直接改用户的真实简历。",
+    "工具名、字段路径和执行错误是内部实现细节，严禁写进给用户看的回复。工具失败时只用自然语言说明会换一种方式继续。",
     "",
     "工作方式（多步循环）：",
     "1. 先用 resume_read 读取整个草稿了解简历全貌。",
@@ -101,6 +104,7 @@ export function buildLoopSystemPrompt(request: AgentMessageRequest): string {
 export type RunResumeLoopResult = {
   text: string;
   isAskPending: boolean;
+  questions: AgentQuestionRequest[];
 };
 
 export type LoopStepEvent = {
@@ -138,11 +142,11 @@ export async function runResumeLoop(
     loopToolsOptions,
   } = options;
 
-  let isAskPending = false;
+  const questions: AgentQuestionRequest[] = [];
   const tools = createLoopTools(draft, {
     ...loopToolsOptions,
-    onAsk: (_question, _field) => {
-      isAskPending = true;
+    onAsk: (question, field) => {
+      appendQuestion(questions, question, field);
     },
   });
 
@@ -185,16 +189,110 @@ export async function runResumeLoop(
   });
 
   let text = "";
+  const visibleTextStream = createVisibleTextStream(onTextDelta);
   for await (const delta of result.textStream) {
-    text += delta;
-    onTextDelta?.(delta);
+    text += visibleTextStream.push(delta);
+  }
+  text += visibleTextStream.flush();
+  if (
+    request.mode === "create_from_zero" &&
+    questions.length === 0 &&
+    draft.operations.length === 0
+  ) {
+    appendQuestion(
+      questions,
+      "你这次主要投递哪个岗位？也可以一起补充姓名、工作年限、教育背景和最近一段真实经历。",
+      "goal.targetRole",
+    );
   }
 
   return {
     text:
       text.trim() || "已根据你的输入更新草稿，请在右侧预览中查看。",
-    isAskPending,
+    isAskPending: questions.length > 0,
+    questions,
   };
+}
+
+const INTERNAL_TOOL_NAMES = [
+  "resume_reorder_sections",
+  "resume_update_section",
+  "resume_delete_section",
+  "resume_insert_section",
+  "resume_polish_text",
+  "resume_set_text",
+  "get_completeness",
+  "resume_read",
+  "resume_ask",
+  "set_goal",
+] as const;
+const INTERNAL_TOOL_NAME_PATTERN = new RegExp(
+  `\\b(?:${INTERNAL_TOOL_NAMES.join("|")})\\b`,
+  "g",
+);
+
+function createVisibleTextStream(onTextDelta?: (delta: string) => void): {
+  push: (delta: string) => string;
+  flush: () => string;
+} {
+  let pending = "";
+  return {
+    push(delta) {
+      pending += delta;
+      const retainLength = internalToolNamePrefixSuffixLength(pending);
+      const emitLength = pending.length - retainLength;
+      if (emitLength <= 0) return "";
+
+      const next = sanitizeVisibleText(pending.slice(0, emitLength));
+      pending = pending.slice(emitLength);
+      if (next) onTextDelta?.(next);
+      return next;
+    },
+    flush() {
+      const next = sanitizeVisibleText(pending);
+      pending = "";
+      if (next) onTextDelta?.(next);
+      return next;
+    },
+  };
+}
+
+function internalToolNamePrefixSuffixLength(text: string): number {
+  let longest = 0;
+  for (const toolName of INTERNAL_TOOL_NAMES) {
+    const limit = toolName.length - 1;
+    for (let length = 1; length <= limit; length += 1) {
+      if (length <= longest) continue;
+      if (text.endsWith(toolName.slice(0, length))) {
+        longest = length;
+      }
+    }
+  }
+  return longest;
+}
+
+function sanitizeVisibleText(text: string): string {
+  return text
+    .replace(INTERNAL_TOOL_NAME_PATTERN, "内部步骤")
+    .replace(
+      /内部步骤\s*当前不可用[，,]\s*我改用\s*内部步骤\s*/g,
+      "我会换一种方式",
+    );
+}
+
+function appendQuestion(
+  questions: AgentQuestionRequest[],
+  question: string,
+  field?: string,
+): void {
+  const message = question.trim();
+  if (!message) return;
+  const normalizedField = field?.trim();
+  questions.push({
+    id: `question_${questions.length + 1}`,
+    message,
+    ...(normalizedField ? { field: normalizedField } : {}),
+  });
 }
 
 /**
@@ -205,8 +303,9 @@ export function assembleLoopResult(input: {
   draft: DraftState;
   finalText: string;
   requestId: string;
+  questions?: AgentQuestionRequest[];
 }): ParsedLoopResult {
-  const { draft, finalText, requestId } = input;
+  const { draft, finalText, requestId, questions = [] } = input;
   return {
     message: {
       id: `msg_${requestId}`,
@@ -215,6 +314,7 @@ export function assembleLoopResult(input: {
     },
     toolCalls: draft.toolCalls,
     proposedOperations: draft.operations,
+    ...(questions.length > 0 ? { questions } : {}),
     draftResume: draftSnapshot(draft),
   };
 }

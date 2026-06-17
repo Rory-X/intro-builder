@@ -58,7 +58,7 @@ export async function fetchDirectAgentRunStream({
     });
 
     if (!directResponse.ok) {
-      return fetchFn(requestUrl, requestInit);
+      return directResponse;
     }
 
     return directResponse;

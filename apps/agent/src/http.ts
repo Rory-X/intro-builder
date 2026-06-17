@@ -13,7 +13,6 @@ import {
 } from "./auth.js";
 import {
   appendAgUiContextStatusEvents,
-  createOpenAICompatibleAgentMessageProvider,
   extractStreamingAgentMessageContent,
   parseAgentMessageProviderResponse,
   toAgUiAgentEvents,
@@ -434,39 +433,24 @@ async function routeRequest(
     const threadId = agentMessageThreadId(agentRequest);
     const cacheResumeId = agentMessageCacheResumeId(agentRequest);
 
-    const requestModelName = agentRequest.modelConfig?.modelName ?? config.modelName;
-    const activeAgentMessageProvider =
-      agentRequest.modelConfig
-        ? createOpenAICompatibleAgentMessageProvider(
-            {
-              ...config,
-              modelBaseUrl: agentRequest.modelConfig.baseUrl,
-              modelApiKey: agentRequest.modelConfig.apiKey,
-              modelName: agentRequest.modelConfig.modelName,
-            },
-          )
-        : agentMessageProvider;
-
-    if (!activeAgentMessageProvider) {
-      return sendError(response, 503, context, {
-        error: "dependency_unavailable",
-        message: "Agent message provider is not configured",
-        dependency: "provider",
-      });
-    }
-
-    if (
-      acceptsAgUiSse(request)
-    ) {
+    if (acceptsAgUiSse(request)) {
       const loopModel = resolveLoopModel(agentRequest, config);
-      if (loopModel) {
-        return streamAgentLoopEvents({
+      if (!loopModel) {
+        return sendError(response, 503, context, {
+          error: "dependency_unavailable",
+          message: "Agent model config is not configured",
+          dependency: "model",
+        });
+      }
+
+      return streamAgentLoopEvents({
         response,
         context,
         request: agentRequest,
         requestId: context.requestId,
         threadId,
         model: loopModel,
+        nodeEnv: config.nodeEnv,
         accept: headerValue(request.headers.accept),
         telemetry: {
           isEnabled: config.langfuse.enabled,
@@ -474,7 +458,7 @@ async function routeRequest(
           metadata: {
             requestId: context.requestId,
             provider: "ai-sdk/openai-compatible",
-            mode: agentRequest.mode ?? "create_from_zero",
+            mode: agentRequest.mode ?? "optimize_existing",
           },
         },
         recorder: createSessionRecorderForRequest({
@@ -488,7 +472,20 @@ async function routeRequest(
         }),
       });
     }
-  }
+
+    const requestModelName = agentRequest.modelConfig?.modelName ?? config.modelName;
+    const activeAgentMessageProvider =
+      agentRequest.modelConfig
+        ? undefined
+        : agentMessageProvider;
+
+    if (!activeAgentMessageProvider) {
+      return sendError(response, 503, context, {
+        error: "dependency_unavailable",
+        message: "Agent message provider is not configured",
+        dependency: "provider",
+      });
+    }
 
     return observability.traceAgentMessageRun(
       {
@@ -1557,6 +1554,7 @@ async function streamAgentLoopEvents({
   requestId,
   threadId,
   model,
+  nodeEnv,
   accept,
   telemetry,
   recorder,
@@ -1567,6 +1565,7 @@ async function streamAgentLoopEvents({
   requestId: string;
   threadId: string;
   model: ReturnType<typeof createLoopModel>;
+  nodeEnv: string;
   accept?: string;
   telemetry?: TelemetrySettings;
   recorder?: AgentSessionRecorder | null;
@@ -1622,7 +1621,7 @@ async function streamAgentLoopEvents({
 
   const draft = createInitialLoopDraft(request);
   try {
-    const { text } = await runResumeLoop({
+    const { text, questions } = await runResumeLoop({
       model,
       request,
       draft,
@@ -1634,7 +1633,19 @@ async function streamAgentLoopEvents({
     });
     ensureTextStarted();
 
-    const result = assembleLoopResult({ draft, finalText: text, requestId });
+    const result = assembleLoopResult({
+      draft,
+      finalText: text,
+      requestId,
+      questions,
+    });
+    logAgentLoopSummary({
+      nodeEnv,
+      request,
+      requestId,
+      result,
+      textLength: text.length,
+    });
     for (const event of toStreamingRuntimeTailEvents({
       requestId,
       threadId,
@@ -1733,6 +1744,7 @@ function toAgUiRunErrorEvents({
 function agentMessageResultParseTrace(result: {
   toolCalls: AgentToolCall[];
   proposedOperations: ResumeOperation[];
+  questions?: AgentQuestionRequest[];
 }): AgentMessageParseTrace {
   return {
     ok: true,
@@ -1746,12 +1758,43 @@ function agentMessageResultParseTrace(result: {
 function agentMessageResultRunOutput(result: {
   toolCalls: AgentToolCall[];
   proposedOperations: ResumeOperation[];
+  questions?: AgentQuestionRequest[];
 }) {
   return {
     status: "ok" as const,
     toolCallCount: result.toolCalls.length,
     proposedOperationCount: result.proposedOperations.length,
   };
+}
+
+function logAgentLoopSummary({
+  nodeEnv,
+  request,
+  requestId,
+  result,
+  textLength,
+}: {
+  nodeEnv: string;
+  request: AgentMessageRequest;
+  requestId: string;
+  result: Extract<AgentMessageParseResult, { ok: true }>["result"];
+  textLength: number;
+}): void {
+  if (nodeEnv === "test") return;
+
+  console.info(
+    "[agent] loop finished",
+    JSON.stringify({
+      requestId,
+      mode: request.mode ?? "optimize_existing",
+      workflowId: request.workflowId,
+      resumeId: request.resumeId,
+      textLength,
+      toolCallCount: result.toolCalls.length,
+      proposedOperationCount: result.proposedOperations.length,
+      questionCount: result.questions?.length ?? 0,
+    }),
+  );
 }
 
 function agentMessageCacheParseTrace(

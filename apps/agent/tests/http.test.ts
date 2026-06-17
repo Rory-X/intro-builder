@@ -989,58 +989,17 @@ describe("agent HTTP service", () => {
     });
   });
 
-  it("streams AG-UI events from /v1/agent/chat when requested", async () => {
-    const assistantContent =
-      "建议先优化第一段工作经历。我会按 STAR 拆成情境、任务、行动与结果，并标记需要你补充的真实指标。";
-    const provider = new FakeAgentMessageProvider(
-      JSON.stringify({
-        message: {
-          id: "msg_assistant_1",
-          role: "assistant",
-          content: assistantContent,
-        },
-        toolCalls: [
-          {
-            id: "tool_1",
-            name: "resume_update_section",
-            status: "completed",
-            title: "更新工作经历",
-            summary: "将笼统经历改成更清晰的 STAR 表达。",
-            input: { fieldPath: "experience.0.content" },
-            result: { operationIds: ["op_1"] },
-          },
-        ],
-        proposedOperations: [
-          {
-            id: "op_1",
-            toolCallId: "tool_1",
-            label: "优化工作经历第一段",
-            section: "experience",
-            fieldPath: "experience.0.content",
-            operation: "update_section",
-            beforePlainText: "负责业务系统前端开发，优化页面性能。",
-            afterPlainText: "围绕业务系统页面性能瓶颈推进前端优化；结果指标需要补充。",
-            replacementTiptapJson: { type: "doc", content: [] },
-            changeSummary: "按 STAR 补足任务与行动，不编造结果。",
-            riskFlags: [
-              {
-                type: "needs_user_fact",
-                message: "请补充真实性能提升指标。",
-              },
-            ],
-          },
-        ],
-      }),
-    );
+  it("streams AG-UI events from the Agent loop when model config is present", async () => {
+    const assistantContent = "我会先检查内容结构。";
+    const providerFetch = mockOpenAiCompatibleChatStream(["我会先", "检查内容结构。"]);
     const server = await listenOnRandomPort({
       replayStore: new FakeReplayStore(),
-      agentMessageProvider: provider,
     });
     const token = await signAgentToken({
       sub: "user_123",
       resumeId: "resume_abc",
       scope: "agent:chat",
-      jti: "jti_agent_message_stream",
+      jti: "jti_agent_loop_stream",
     });
 
     const response = await fetch(server.url("/v1/agent/chat"), {
@@ -1049,9 +1008,9 @@ describe("agent HTTP service", () => {
         accept: "text/event-stream",
         authorization: `Bearer ${token}`,
         "content-type": "application/json",
-        "x-request-id": "req-client-agent-message-stream",
+        "x-request-id": "req-client-agent-loop-stream",
       },
-      body: JSON.stringify(validAgentMessageBody()),
+      body: JSON.stringify(withModelConfig(validAgentMessageBody())),
     });
     const events = parseSseEvents(await response.text());
 
@@ -1059,7 +1018,15 @@ describe("agent HTTP service", () => {
     expect(response.headers.get("content-type")).toContain("text/event-stream");
     expect(response.headers.get("cache-control")).toBe("no-cache, no-transform");
     expect(response.headers.get("x-request-id")).toBe(
-      "req-client-agent-message-stream",
+      "req-client-agent-loop-stream",
+    );
+    expect(providerFetch).toHaveBeenCalledWith(
+      "https://models.example.test/v1/chat/completions",
+      expect.objectContaining({
+        headers: expect.objectContaining({
+          authorization: "Bearer sk-request-scoped",
+        }),
+      }),
     );
     expect(events[0]?.type).toBe(EventType.RUN_STARTED);
     const textStartIndex = events.findIndex(
@@ -1119,389 +1086,6 @@ describe("agent HTTP service", () => {
       .map((event) => event.delta);
     expect(textDeltas.length).toBeGreaterThan(1);
     expect(textDeltas.join("")).toBe(assistantContent);
-    expect(events).toContainEqual(expect.objectContaining({
-      type: EventType.TOOL_CALL_RESULT,
-      toolCallId: "tool_1",
-      content: expect.stringContaining('"proposedOperations"'),
-    }));
-  });
-
-  it("streams visible Agent message text before the provider stream finishes", async () => {
-    const provider = new StreamingAgentMessageProvider([
-      '{"message":{"id":"msg_assistant_1","role":"assistant","content":"实时',
-      '吐字。"},"toolCalls":[],"proposedOperations":[]}',
-    ]);
-    const server = await listenOnRandomPort({
-      replayStore: new FakeReplayStore(),
-      agentMessageProvider: provider,
-    });
-    const token = await signAgentToken({
-      sub: "user_123",
-      resumeId: "resume_abc",
-      scope: "agent:chat",
-      jti: "jti_agent_message_realtime_stream",
-    });
-
-    const response = await fetch(server.url("/v1/agent/chat"), {
-      method: "POST",
-      headers: {
-        accept: "text/event-stream",
-        authorization: `Bearer ${token}`,
-        "content-type": "application/json",
-        "x-request-id": "req-client-agent-message-realtime-stream",
-      },
-      body: JSON.stringify(validAgentMessageBody()),
-    });
-    const reader = response.body?.getReader();
-    if (!reader) throw new Error("expected stream reader");
-
-    const prefix = await readStreamUntil(reader, "实时");
-    expect(prefix).toContain("实时");
-    expect(provider.finished).toBe(false);
-    expect(provider.runCalls).toBe(0);
-
-    provider.release();
-    const text = prefix + await readRemainingStream(reader);
-    const events = parseSseEvents(text);
-
-    expect(response.status).toBe(200);
-    expect(response.headers.get("content-type")).toContain("text/event-stream");
-    expect(events
-      .filter((event) => event.type === EventType.TEXT_MESSAGE_CONTENT)
-      .map((event) => event.delta)
-      .join("")).toBe("实时吐字。");
-    expect(events.at(-1)?.type).toBe(EventType.RUN_FINISHED);
-  });
-
-  it("routes streaming Agent results through the v2 workflow runtime tail", async () => {
-    const providerContent = JSON.stringify({
-      message: {
-        id: "msg_assistant_stream_runtime",
-        role: "assistant",
-        content: "我需要先确认目标岗位，同时准备一条可预览的修改建议。",
-      },
-      toolCalls: [
-        {
-          id: "tool_stream_update",
-          name: "resume_update_section",
-          status: "completed",
-          title: "生成预览修改",
-          summary: "基于当前经历生成一条待确认建议。",
-          input: { fieldPath: "experience.0.content" },
-          result: { operationIds: ["op_stream_update"] },
-        },
-      ],
-      proposedOperations: [
-        {
-          id: "op_stream_update",
-          toolCallId: "tool_stream_update",
-          label: "应用经历预览改写",
-          section: "experience",
-          fieldPath: "experience.0.content",
-          operation: "update_section",
-          beforePlainText: "负责业务系统前端开发，优化页面性能。",
-          afterPlainText: "围绕业务系统页面性能瓶颈推进前端优化；结果指标待补充。",
-          replacementTiptapJson: { type: "doc", content: [] },
-          changeSummary: "补足任务与行动，并提示补充真实结果。",
-          riskFlags: [
-            {
-              type: "needs_user_fact",
-              message: "请补充真实性能提升指标。",
-            },
-          ],
-        },
-      ],
-      questions: [
-        {
-          id: "question_target_role",
-          message: "这次主要投递哪个岗位？",
-          field: "goal.targetRole",
-        },
-      ],
-    });
-    const provider = new StreamingAgentMessageProvider([
-      providerContent.slice(0, 160),
-      providerContent.slice(160),
-    ]);
-    const server = await listenOnRandomPort({
-      replayStore: new FakeReplayStore(),
-      agentMessageProvider: provider,
-    });
-    const token = await signAgentToken({
-      sub: "user_123",
-      resumeId: "resume_abc",
-      scope: "agent:chat",
-      jti: "jti_agent_message_stream_runtime_tail",
-    });
-
-    const response = await fetch(server.url("/v1/agent/chat"), {
-      method: "POST",
-      headers: {
-        accept: "text/event-stream",
-        authorization: `Bearer ${token}`,
-        "content-type": "application/json",
-        "x-request-id": "req-client-agent-message-stream-runtime-tail",
-      },
-      body: JSON.stringify(validAgentMessageBody()),
-    });
-    provider.release();
-    const events = parseSseEvents(await response.text());
-
-    expect(response.status).toBe(200);
-    expect(events).toContainEqual(expect.objectContaining({
-      type: EventType.STATE_DELTA,
-      delta: [
-        expect.objectContaining({
-          path: "/workspace",
-          value: expect.objectContaining({
-            changeSets: [
-              expect.objectContaining({
-                operationIds: ["op_stream_update"],
-              }),
-            ],
-          }),
-        }),
-      ],
-    }));
-    expect(events).toContainEqual(expect.objectContaining({
-      type: EventType.ACTIVITY_SNAPSHOT,
-      activityType: "resume_workspace",
-      content: expect.objectContaining({
-        changeSets: [
-          expect.objectContaining({
-            operationIds: ["op_stream_update"],
-          }),
-        ],
-      }),
-    }));
-    expect(events).toContainEqual(expect.objectContaining({
-      type: EventType.TOOL_CALL_RESULT,
-      toolCallId: "tool_stream_update",
-      content: expect.stringContaining('"op_stream_update"'),
-    }));
-    expect(events.at(-1)).toMatchObject({
-      type: EventType.RUN_FINISHED,
-      outcome: {
-        type: "interrupt",
-        interrupts: [
-          {
-            id: "question_target_role",
-            reason: "input_required",
-            metadata: { kind: "question", field: "goal.targetRole" },
-          },
-          {
-            id: "op_stream_update",
-            reason: "approval_required",
-            toolCallId: "tool_stream_update",
-          },
-        ],
-      },
-    });
-  });
-
-  it("streams tool results instead of RUN_ERROR when provider operations omit toolCallId", async () => {
-    const providerContent = JSON.stringify({
-      message: {
-        id: "msg_assistant_tool_fix",
-        role: "assistant",
-        content: "以下是我生成的 1 个 proposedOperation，请确认是否应用。",
-      },
-      toolCalls: [],
-      proposedOperations: [
-        {
-          id: "op_1",
-          label: "应用经历改写",
-          section: "experience",
-          fieldPath: "experience.0.content",
-          operation: "update_section",
-          beforePlainText: "Token 调用优化降低 200%。",
-          afterPlainText: "Token 调用优化提升 200% 效率。",
-          replacementTiptapJson: { type: "doc", content: [] },
-          changeSummary: "修正指标表述，保留用户确认写回。",
-          riskFlags: [],
-        },
-      ],
-    });
-    const provider = new StreamingAgentMessageProvider([
-      providerContent.slice(0, 96),
-      providerContent.slice(96),
-    ]);
-    const server = await listenOnRandomPort({
-      replayStore: new FakeReplayStore(),
-      agentMessageProvider: provider,
-    });
-    const token = await signAgentToken({
-      sub: "user_123",
-      resumeId: "resume_abc",
-      scope: "agent:chat",
-      jti: "jti_agent_message_missing_tool_call_id",
-    });
-
-    const response = await fetch(server.url("/v1/agent/chat"), {
-      method: "POST",
-      headers: {
-        accept: "text/event-stream",
-        authorization: `Bearer ${token}`,
-        "content-type": "application/json",
-        "x-request-id": "req-client-agent-message-missing-tool-call-id",
-      },
-      body: JSON.stringify(validAgentMessageBody()),
-    });
-    provider.release();
-    const events = parseSseEvents(await response.text());
-
-    expect(response.status).toBe(200);
-    expect(events.find((event) => event.type === EventType.RUN_ERROR)).toBeUndefined();
-    expect(events.at(-1)).toMatchObject({
-      type: EventType.RUN_FINISHED,
-      outcome: {
-        type: "interrupt",
-        interrupts: [
-          {
-            id: "op_1",
-            reason: "approval_required",
-            toolCallId: "tool_op_1",
-          },
-        ],
-      },
-    });
-    expect(events).toContainEqual(expect.objectContaining({
-      type: EventType.TOOL_CALL_RESULT,
-      toolCallId: "tool_op_1",
-      content: expect.stringContaining('"toolCallId":"tool_op_1"'),
-    }));
-  });
-
-  it("streams AG-UI events without RUN_ERROR when provider messages omit id", async () => {
-    const providerContent = JSON.stringify({
-      message: {
-        role: "assistant",
-        content: "好的，我会先了解一些基本信息。",
-      },
-      toolCalls: [],
-      proposedOperations: [],
-      questions: [
-        {
-          id: "question_target_role",
-          message: "你想应聘什么职位？",
-          field: "goal.targetRole",
-        },
-      ],
-    });
-    const provider = new StreamingAgentMessageProvider([
-      providerContent.slice(0, 80),
-      providerContent.slice(80),
-    ]);
-    const server = await listenOnRandomPort({
-      replayStore: new FakeReplayStore(),
-      agentMessageProvider: provider,
-    });
-    const token = await signAgentToken({
-      sub: "user_123",
-      resumeId: "resume_abc",
-      scope: "agent:chat",
-      jti: "jti_agent_message_missing_message_id",
-    });
-
-    const response = await fetch(server.url("/v1/agent/chat"), {
-      method: "POST",
-      headers: {
-        accept: "text/event-stream",
-        authorization: `Bearer ${token}`,
-        "content-type": "application/json",
-        "x-request-id": "req-client-agent-message-missing-message-id",
-      },
-      body: JSON.stringify(validAgentMessageBody()),
-    });
-    provider.release();
-    const events = parseSseEvents(await response.text());
-
-    expect(response.status).toBe(200);
-    expect(events.find((event) => event.type === EventType.RUN_ERROR)).toBeUndefined();
-    expect(events).toContainEqual(expect.objectContaining({
-      type: EventType.TEXT_MESSAGE_START,
-      messageId: "msg_req-client-agent-message-missing-message-id",
-    }));
-    expect(events.at(-1)).toMatchObject({
-      type: EventType.RUN_FINISHED,
-      outcome: {
-        type: "interrupt",
-        interrupts: [
-          {
-            id: "question_target_role",
-            reason: "input_required",
-            metadata: { kind: "question", field: "goal.targetRole" },
-          },
-        ],
-      },
-    });
-  });
-
-  it("streams cached Agent message requests as AG-UI events when requested", async () => {
-    const provider = new FakeAgentMessageProvider(
-      JSON.stringify({
-        message: {
-          id: "msg_assistant_cached",
-          role: "assistant",
-          content: "缓存命中也应该继续走 AG-UI SSE。",
-        },
-        toolCalls: [],
-        proposedOperations: [],
-      }),
-    );
-    const cacheStore = new FakeAiCacheStore();
-    const server = await listenOnRandomPort({
-      replayStore: new FakeReplayStore(),
-      agentMessageProvider: provider,
-      aiCacheStore: cacheStore,
-    });
-    const firstToken = await signAgentToken({
-      sub: "user_123",
-      resumeId: "resume_abc",
-      scope: "agent:chat",
-      jti: "jti_agent_message_sse_cache_first",
-    });
-    const secondToken = await signAgentToken({
-      sub: "user_123",
-      resumeId: "resume_abc",
-      scope: "agent:chat",
-      jti: "jti_agent_message_sse_cache_second",
-    });
-
-    const first = await fetch(server.url("/v1/agent/chat"), {
-      method: "POST",
-      headers: {
-        authorization: `Bearer ${firstToken}`,
-        "content-type": "application/json",
-        "x-request-id": "req-client-agent-message-sse-cache-1",
-      },
-      body: JSON.stringify(validAgentMessageBody()),
-    });
-    const second = await fetch(server.url("/v1/agent/chat"), {
-      method: "POST",
-      headers: {
-        accept: "text/event-stream",
-        authorization: `Bearer ${secondToken}`,
-        "content-type": "application/json",
-        "x-request-id": "req-client-agent-message-sse-cache-2",
-      },
-      body: JSON.stringify(validAgentMessageBody()),
-    });
-    const text = await second.text();
-    const events = parseSseEvents(text);
-
-    expect(first.status).toBe(200);
-    expect(second.status).toBe(200);
-    expect(second.headers.get("content-type")).toContain("text/event-stream");
-    expect(second.headers.get("content-type")).not.toContain("application/json");
-    expect(text).toContain("data:");
-    expect(provider.calls).toHaveLength(1);
-    expect(events[0]?.type).toBe(EventType.RUN_STARTED);
-    expect(events.at(-1)?.type).toBe(EventType.RUN_FINISHED);
-    expect(events
-      .filter((event) => event.type === EventType.TEXT_MESSAGE_CONTENT)
-      .map((event) => event.delta)
-      .join("")).toBe("缓存命中也应该继续走 AG-UI SSE。");
   });
 
   it("records Agent message cache hits and misses", async () => {
@@ -1589,74 +1173,6 @@ describe("agent HTTP service", () => {
     expect(observability.runOutputs.at(-1)).toEqual({
       status: "error",
       error: "Provider returned invalid JSON",
-    });
-  });
-
-  it("streams AG-UI RUN_ERROR when an SSE provider response cannot be parsed", async () => {
-    const server = await listenOnRandomPort({
-      replayStore: new FakeReplayStore(),
-      agentMessageProvider: new FakeAgentMessageProvider("not-json"),
-    });
-    const token = await signAgentToken({
-      sub: "user_123",
-      resumeId: "resume_abc",
-      scope: "agent:chat",
-      jti: "jti_agent_message_stream_parse_error",
-    });
-
-    const response = await fetch(server.url("/v1/agent/chat"), {
-      method: "POST",
-      headers: {
-        accept: "text/event-stream",
-        authorization: `Bearer ${token}`,
-        "content-type": "application/json",
-        "x-request-id": "req-client-agent-message-stream-parse-error",
-      },
-      body: JSON.stringify(validAgentMessageBody()),
-    });
-    const events = parseSseEvents(await response.text());
-
-    expect(response.status).toBe(200);
-    expect(response.headers.get("content-type")).toContain("text/event-stream");
-    expect(events[0]?.type).toBe(EventType.RUN_STARTED);
-    expect(events.at(-1)).toMatchObject({
-      type: EventType.RUN_ERROR,
-      message: "Provider returned invalid JSON",
-      code: "dependency_unavailable",
-    });
-  });
-
-  it("streams AG-UI RUN_ERROR when an SSE provider throws", async () => {
-    const server = await listenOnRandomPort({
-      replayStore: new FakeReplayStore(),
-      agentMessageProvider: new ThrowingAgentMessageProvider("Provider exploded"),
-    });
-    const token = await signAgentToken({
-      sub: "user_123",
-      resumeId: "resume_abc",
-      scope: "agent:chat",
-      jti: "jti_agent_message_stream_throw",
-    });
-
-    const response = await fetch(server.url("/v1/agent/chat"), {
-      method: "POST",
-      headers: {
-        accept: "text/event-stream",
-        authorization: `Bearer ${token}`,
-        "content-type": "application/json",
-        "x-request-id": "req-client-agent-message-stream-throw",
-      },
-      body: JSON.stringify(validAgentMessageBody()),
-    });
-    const events = parseSseEvents(await response.text());
-
-    expect(response.status).toBe(200);
-    expect(response.headers.get("content-type")).toContain("text/event-stream");
-    expect(events[0]?.type).toBe(EventType.RUN_STARTED);
-    expect(events.at(-1)).toMatchObject({
-      type: EventType.RUN_ERROR,
-      message: "Provider exploded",
-      code: "dependency_unavailable",
     });
   });
 
@@ -1793,27 +1309,9 @@ describe("agent HTTP service", () => {
   });
 
   it("accepts create-from-zero Agent messages without a resume-scoped JWT", async () => {
-    const provider = new FakeAgentMessageProvider(
-      JSON.stringify({
-        message: {
-          id: "msg_create_zero",
-          role: "assistant",
-          content: "我先确认目标岗位和基础资料。",
-        },
-        toolCalls: [],
-        proposedOperations: [],
-        questions: [
-          {
-            id: "question_target_role",
-            message: "你这次主要投递哪个岗位？",
-            field: "goal.targetRole",
-          },
-        ],
-      }),
-    );
+    mockOpenAiCompatibleChatStream(["我先确认目标岗位和基础资料。"]);
     const server = await listenOnRandomPort({
       replayStore: new FakeReplayStore(),
-      agentMessageProvider: provider,
     });
     const token = await signAgentToken({
       sub: "user_123",
@@ -1829,7 +1327,7 @@ describe("agent HTTP service", () => {
         "content-type": "application/json",
         "x-request-id": "req-client-agent-message-create-zero",
       },
-      body: JSON.stringify({
+      body: JSON.stringify(withModelConfig({
         resumeId: null,
         mode: "create_from_zero",
         locale: "zh-CN",
@@ -1842,20 +1340,11 @@ describe("agent HTTP service", () => {
           },
         ],
         context: null,
-      }),
+      })),
     });
     const events = parseSseEvents(await response.text());
 
     expect(response.status).toBe(200);
-    expect(provider.calls[0]?.request).toMatchObject({
-      resumeId: null,
-      mode: "create_from_zero",
-      workflowId: "create-from-zero",
-      context: null,
-    });
-    expect(provider.calls[0]?.prompt.user).toContain(
-      "当前还没有可读取的简历快照",
-    );
     expect(events[0]).toMatchObject({
       type: EventType.RUN_STARTED,
       threadId: "agent_create_from_zero",
@@ -1865,15 +1354,6 @@ describe("agent HTTP service", () => {
       type: EventType.RUN_FINISHED,
       threadId: "agent_create_from_zero",
       runId: "req-client-agent-message-create-zero",
-      outcome: {
-        type: "interrupt",
-        interrupts: [
-          expect.objectContaining({
-            id: "question_target_role",
-            reason: "input_required",
-          }),
-        ],
-      },
     });
   });
 
@@ -1905,22 +1385,10 @@ describe("agent HTTP service", () => {
   });
 
   it("persists direct Agent stream events and snapshots in the Agent session store", async () => {
-    const assistantContent = "我会先生成一条可预览的修改建议。";
+    mockOpenAiCompatibleChatStream(["我会先生成一条可预览的修改建议。"]);
     const sessionStore = new FakeAgentSessionStore();
-    const provider = new FakeAgentMessageProvider(
-      JSON.stringify({
-        message: {
-          id: "msg_assistant_direct",
-          role: "assistant",
-          content: assistantContent,
-        },
-        toolCalls: [],
-        proposedOperations: [],
-      }),
-    );
     const server = await listenOnRandomPort({
       replayStore: new FakeReplayStore(),
-      agentMessageProvider: provider,
       sessionStore,
       corsOrigins: ["http://localhost:3000"],
     });
@@ -1940,17 +1408,17 @@ describe("agent HTTP service", () => {
         origin: "http://localhost:3000",
         "x-request-id": "req-client-agent-message-direct-persist",
       },
-      body: JSON.stringify({
+      body: JSON.stringify(withModelConfig({
         ...validAgentMessageBody(),
         sessionContext: {
-          sessionId: "agent_session_resume_abc",
+          sessionId: "agent_session_resume_abc_resume_abc",
           threadId: "resume_abc",
           resumeId: "resume_abc",
           mode: "optimize_existing",
           workflowId: "resume-diagnose",
           resumeTitle: "前端工程师",
         },
-      }),
+      })),
     });
     const events = parseSseEvents(await response.text());
 
@@ -1961,7 +1429,7 @@ describe("agent HTTP service", () => {
     expect(sessionStore.loadCalls).toEqual([
       expect.objectContaining({
         context: expect.objectContaining({
-          sessionId: "agent_session_resume_abc",
+          sessionId: "agent_session_resume_abc_resume_abc",
           threadId: "resume_abc",
         }),
       }),
@@ -1971,7 +1439,7 @@ describe("agent HTTP service", () => {
     );
     expect(sessionStore.snapshots.at(-1)).toEqual(
       expect.objectContaining({
-        sessionId: "agent_session_resume_abc",
+        sessionId: "agent_session_resume_abc_resume_abc",
         threadId: "resume_abc",
         resumeId: "resume_abc",
         status: "active",
@@ -2055,47 +1523,57 @@ describe("agent HTTP service", () => {
     });
   });
 
-  it("uses request-scoped model settings for Agent messages without caching the access key", async () => {
-    const originalFetch = globalThis.fetch;
-    const providerFetch = vi
-      .spyOn(globalThis, "fetch")
-      .mockImplementation((async (input, init) => {
-        const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
-        if (url === "https://models.example.test/v1/chat/completions") {
-          return new Response(
-            JSON.stringify({
-              choices: [
-                {
-                  message: {
-                    content: JSON.stringify({
-                      message: {
-                        id: "msg_custom_model",
-                        role: "assistant",
-                        content: "我会使用你设置的模型继续。",
-                      },
-                      toolCalls: [],
-                      proposedOperations: [],
-                    }),
-                  },
-                },
-              ],
-              usage: {
-                prompt_tokens: 321,
-                completion_tokens: 45,
-              },
-            }),
-            {
-              status: 200,
-              headers: { "content-type": "application/json" },
-            },
-          );
-        }
-        return originalFetch(input, init);
-      }) as typeof fetch);
-    const cacheStore = new FakeAiCacheStore();
+  it("returns dependency_unavailable instead of falling back to the legacy provider when model config is missing", async () => {
+    const provider = new FakeAgentMessageProvider(
+      JSON.stringify({
+        message: {
+          id: "msg_legacy_provider",
+          role: "assistant",
+          content: "旧 provider 不应该接管 Agent loop。",
+        },
+        toolCalls: [],
+        proposedOperations: [],
+      }),
+    );
     const server = await listenOnRandomPort({
       replayStore: new FakeReplayStore(),
-      aiCacheStore: cacheStore,
+      agentMessageProvider: provider,
+    });
+    const token = await signAgentToken({
+      sub: "user_123",
+      resumeId: "resume_abc",
+      scope: "agent:chat",
+      jti: "jti_agent_message_no_model_config",
+    });
+
+    const response = await fetch(server.url("/v1/agent/chat"), {
+      method: "POST",
+      headers: {
+        accept: "text/event-stream",
+        authorization: `Bearer ${token}`,
+        "content-type": "application/json",
+        "x-request-id": "req-client-agent-message-no-model-config",
+      },
+      body: JSON.stringify(validAgentMessageBody()),
+    });
+
+    expect(response.status).toBe(503);
+    expect(response.headers.get("content-type")).toContain("application/json");
+    expect(provider.calls).toHaveLength(0);
+    await expect(response.json()).resolves.toEqual({
+      error: "dependency_unavailable",
+      message: "Agent model config is not configured",
+      requestId: "req-client-agent-message-no-model-config",
+      dependency: "model",
+    });
+  });
+
+  it("uses request-scoped model settings for Agent loop streams", async () => {
+    const providerFetch = mockOpenAiCompatibleChatStream([
+      "我会使用你设置的模型继续。",
+    ]);
+    const server = await listenOnRandomPort({
+      replayStore: new FakeReplayStore(),
     });
     const token = await signAgentToken({
       sub: "user_123",
@@ -2107,35 +1585,21 @@ describe("agent HTTP service", () => {
     const response = await fetch(server.url("/v1/agent/chat"), {
       method: "POST",
       headers: {
+        accept: "text/event-stream",
         authorization: `Bearer ${token}`,
         "content-type": "application/json",
         "x-request-id": "req-client-agent-message-model-settings",
       },
-      body: JSON.stringify({
-        ...validAgentMessageBody(),
-        modelConfig: {
-          baseUrl: "https://models.example.test/v1",
-          apiKey: "sk-request-scoped",
-          modelName: "gpt-5-mini",
-        },
-      }),
+      body: JSON.stringify(withModelConfig(validAgentMessageBody())),
     });
+    const events = parseSseEvents(await response.text());
 
     expect(response.status).toBe(200);
-    await expect(response.json()).resolves.toMatchObject({
-      status: "ok",
-      requestId: "req-client-agent-message-model-settings",
-      message: {
-        id: "msg_custom_model",
-        content: "我会使用你设置的模型继续。",
-      },
-      usage: {
-        provider: "ai-sdk/openai-compatible",
-        model: "gpt-5-mini",
-        inputTokens: 321,
-        outputTokens: 45,
-      },
-    });
+    expect(response.headers.get("content-type")).toContain("text/event-stream");
+    expect(events
+      .filter((event) => event.type === EventType.TEXT_MESSAGE_CONTENT)
+      .map((event) => event.delta)
+      .join("")).toBe("我会使用你设置的模型继续。");
     expect(providerFetch).toHaveBeenCalledWith(
       "https://models.example.test/v1/chat/completions",
       expect.objectContaining({
@@ -2143,9 +1607,6 @@ describe("agent HTTP service", () => {
           authorization: "Bearer sk-request-scoped",
         }),
       }),
-    );
-    expect(Array.from(cacheStore.entries.keys()).join("\n")).not.toContain(
-      "sk-request-scoped",
     );
   });
 
@@ -2358,6 +1819,79 @@ function validAgentMessageBody() {
   };
 }
 
+function withModelConfig<T extends Record<string, unknown>>(body: T): T & {
+  modelConfig: { baseUrl: string; apiKey: string; modelName: string };
+} {
+  return {
+    ...body,
+    modelConfig: {
+      baseUrl: "https://models.example.test/v1",
+      apiKey: "sk-request-scoped",
+      modelName: "gpt-5-mini",
+    },
+  };
+}
+
+function mockOpenAiCompatibleChatStream(chunks: string[]) {
+  const originalFetch = globalThis.fetch;
+  return vi
+    .spyOn(globalThis, "fetch")
+    .mockImplementation((async (input, init) => {
+      const url =
+        typeof input === "string"
+          ? input
+          : input instanceof URL
+            ? input.href
+            : input.url;
+      if (url !== "https://models.example.test/v1/chat/completions") {
+        return originalFetch(input, init);
+      }
+
+      return new Response(openAiCompatibleSsePayload(chunks), {
+        status: 200,
+        headers: { "content-type": "text/event-stream" },
+      });
+    }) as typeof fetch);
+}
+
+function openAiCompatibleSsePayload(chunks: string[]): string {
+  const events: Array<Record<string, unknown>> = chunks.map((content, index) => ({
+    id: "chatcmpl_test",
+    object: "chat.completion.chunk",
+    created: 1_780_000_000,
+    model: "gpt-5-mini",
+    choices: [
+      {
+        index: 0,
+        delta: {
+          ...(index === 0 ? { role: "assistant" } : {}),
+          content,
+        },
+        finish_reason: null,
+      },
+    ],
+  }));
+  events.push({
+    id: "chatcmpl_test",
+    object: "chat.completion.chunk",
+    created: 1_780_000_000,
+    model: "gpt-5-mini",
+    choices: [
+      {
+        index: 0,
+        delta: {},
+        finish_reason: "stop",
+      },
+    ],
+    usage: {
+      prompt_tokens: 128,
+      completion_tokens: chunks.join("").length,
+    },
+  });
+
+  return `${events.map((event) => `data: ${JSON.stringify(event)}\n\n`).join("")}data: [DONE]\n\n`;
+}
+
 async function signAgentToken({
   sub,
   scope,
@@ -2537,96 +2071,6 @@ class FakeAgentObservability implements AgentObservability {
   async flush(): Promise<void> {}
 
   async shutdown(): Promise<void> {}
-}
-
-class ThrowingAgentMessageProvider implements AgentMessageProvider {
-  readonly calls: Array<{
-    request: Parameters<AgentMessageProvider["run"]>[0]["request"];
-    prompt: Parameters<AgentMessageProvider["run"]>[0]["prompt"];
-  }> = [];
-
-  constructor(private readonly message: string) {}
-
-  run(
-    options: Parameters<AgentMessageProvider["run"]>[0],
-  ): ReturnType<AgentMessageProvider["run"]> {
-    this.calls.push({ request: options.request, prompt: options.prompt });
-    return Promise.reject(new Error(this.message));
-  }
-}
-
-class StreamingAgentMessageProvider implements AgentMessageProvider {
-  runCalls = 0;
-  finished = false;
-  private releaseStream!: () => void;
-  private readonly releasePromise = new Promise<void>((resolve) => {
-    this.releaseStream = resolve;
-  });
-
-  constructor(private readonly chunks: string[]) {}
-
-  async run(): ReturnType<AgentMessageProvider["run"]> {
-    this.runCalls += 1;
-    throw new Error("run should not be used for SSE streaming providers");
-  }
-
-  async *stream(): AsyncIterable<
-    | { type: "content_delta"; delta: string }
-    | {
-        type: "usage";
-        usage: {
-          provider: string;
-          model: string;
-          inputTokens: number;
-          outputTokens: number;
-        };
-      }
-  > {
-    yield { type: "content_delta", delta: this.chunks[0] ?? "" };
-    await this.releasePromise;
-    yield { type: "content_delta", delta: this.chunks[1] ?? "" };
-    yield {
-      type: "usage",
-      usage: {
-        provider: "fake-provider",
-        model: "fake-model",
-        inputTokens: 900,
-        outputTokens: 240,
-      },
-    };
-    this.finished = true;
-  }
-
-  release(): void {
-    this.releaseStream();
-  }
-}
-
-async function readStreamUntil(
-  reader: ReadableStreamDefaultReader<Uint8Array>,
-  text: string,
-): Promise<string> {
-  const decoder = new TextDecoder();
-  let output = "";
-  for (let index = 0; index < 20; index += 1) {
-    const { done, value } = await reader.read();
-    if (done) return output;
-    output += decoder.decode(value, { stream: true });
-    if (output.includes(text)) return output;
-  }
-  throw new Error(`Stream did not include ${text}`);
-}
-
-async function readRemainingStream(
-  reader: ReadableStreamDefaultReader<Uint8Array>,
-): Promise<string> {
-  const decoder = new TextDecoder();
-  let output = "";
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) return output + decoder.decode();
-    output += decoder.decode(value, { stream: true });
-  }
 }
 
 function parseSseEvents(text: string): BaseEvent[] {

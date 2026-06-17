@@ -97,6 +97,11 @@ type AgentAgUiResumeEntry = {
   payload?: unknown;
 };
 
+type AgentRuntimeMessageLike = {
+  role?: unknown;
+  content?: unknown;
+};
+
 type AgentAgUiInterruptSubmit = (
   responses: readonly AgentAgUiResumeEntry[],
 ) => Promise<void>;
@@ -254,7 +259,8 @@ class IntroBuilderHttpAgent extends HttpAgent {
     options?: { signal?: AbortSignal },
   ): Promise<RunAgentResult> {
     const forwardedProps = readForwardedProps(parameters?.forwardedProps);
-    const intent = readForwardedAgentRunIntent(forwardedProps);
+    const messages = (this.messages ?? []) as readonly AgentRuntimeMessageLike[];
+    const intent = readForwardedAgentRunIntent(forwardedProps, messages);
     const abortController = new AbortController();
     const abortSignal = options?.signal;
 
@@ -446,6 +452,7 @@ function readForwardedProps(value: unknown): Record<string, unknown> {
 
 function readForwardedAgentRunIntent(
   forwardedProps: Record<string, unknown>,
+  messages: readonly AgentRuntimeMessageLike[] = [],
 ): AgentRunIntent {
   const runConfig = isRecord(forwardedProps.runConfig)
     ? forwardedProps.runConfig
@@ -454,11 +461,14 @@ function readForwardedAgentRunIntent(
   const introBuilder = isRecord(forwardedProps.introBuilder)
     ? forwardedProps.introBuilder
     : null;
-  const mode =
+  const explicitMode =
     readAgentResumeSessionMode(custom?.mode) ??
     readAgentResumeSessionMode(runConfig?.mode) ??
     readAgentResumeSessionMode(forwardedProps.mode) ??
-    readAgentResumeSessionMode(introBuilder?.mode) ??
+    readAgentResumeSessionMode(introBuilder?.mode);
+  const mode =
+    explicitMode ??
+    (isFreeFormCreateFromZeroRequest(messages) ? "create_from_zero" : null) ??
     "optimize_existing";
   const workflowId =
     readWorkflowId(custom?.workflowId) ??
@@ -468,6 +478,29 @@ function readForwardedAgentRunIntent(
     (mode === "create_from_zero" ? "create-from-zero" : null);
 
   return { mode, workflowId };
+}
+
+function isFreeFormCreateFromZeroRequest(
+  messages: readonly AgentRuntimeMessageLike[],
+): boolean {
+  const lastUserMessage = [...messages]
+    .reverse()
+    .find((message) => message.role === "user");
+  const text = readRuntimeMessageText(lastUserMessage?.content).replace(/\s+/g, "");
+  if (!text) return false;
+  return /(?:从(?:0|零)|从头|重新|新建|创建|生成|起草|写|做).{0,16}简历|简历.{0,16}(?:从(?:0|零)|从头|重新|新建|创建|生成|起草|写|做)/.test(
+    text,
+  );
+}
+
+function readRuntimeMessageText(content: unknown): string {
+  if (typeof content === "string") return content;
+  if (!Array.isArray(content)) return "";
+  return content
+    .map((part) =>
+      isRecord(part) && typeof part.text === "string" ? part.text : "",
+    )
+    .join("");
 }
 
 function readWorkflowId(value: unknown): AgentWorkflowId | null {

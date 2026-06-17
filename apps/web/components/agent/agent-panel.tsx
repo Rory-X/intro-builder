@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import * as React from "react";
 import {
   ActionBarPrimitive,
@@ -11,9 +11,11 @@ import {
   type ToolCallMessagePartProps,
   useAuiState,
   useEditComposer,
+  useMessageRuntime,
   useThreadRuntime,
 } from "@assistant-ui/react";
 import { MarkdownTextPrimitive } from "@assistant-ui/react-markdown";
+import remarkGfm from "remark-gfm";
 import {
   ArrowLeft,
   ArrowUpDown,
@@ -38,15 +40,13 @@ import {
 
 import { AgentConfirmationCard } from "@/components/agent/agent-confirmation-card";
 import { AgentContextIndicator } from "@/components/agent/agent-context-indicator";
-import { AgentSessionSelector } from "@/components/agent/agent-session-selector";
-import type { AgentSessionListItem } from "@/lib/agent/session-store";
 import {
   AgentAgUiRuntimeProvider,
   useAgentAgUiInterruptSubmit,
   type AgentAgUiInterrupt,
 } from "@/components/agent/agent-ag-ui-runtime-provider";
 import { AgentToolCard } from "@/components/agent/agent-tool-card";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import {
   Dialog,
   DialogContent,
@@ -108,6 +108,12 @@ type AgentTurnArtifacts = {
   appliedOperationIds: string[];
 };
 
+type AgentInterruptResponse = {
+  interruptId: string;
+  status: "resolved" | "cancelled";
+  payload?: unknown;
+};
+
 const AGENT_WELCOME_SUGGESTIONS = [
   {
     label: "帮我找最值得改的一处",
@@ -164,51 +170,7 @@ export function AgentPanel({
   const [lastRetryRequest, setLastRetryRequest] = useState<AgentRetryRequest | null>(
     null,
   );
-  const [autoAccept, setAutoAccept] = useState(false);
-  const [sessions, setSessions] = useState<AgentSessionListItem[]>([]);
-  const [activeSessionId, setActiveSessionId] = useState<string>("");
-  const [isLoadingSessions, setIsLoadingSessions] = useState(false);
   const activeTurnIdRef = useRef<string | null>(null);
-  const activeSession = sessions.find(
-    (session) => session.sessionId === activeSessionId,
-  );
-
-  const handleSessionSelect = (sessionId: string) => {
-    setActiveSessionId(sessionId);
-  };
-
-  const handleSessionCreate = () => {
-    // Notify parent to create a new session via callback
-    // For now, just reset local state
-    setActiveSessionId("");
-  };
-
-  const loadSessions = useCallback(async () => {
-    setIsLoadingSessions(true);
-    try {
-      const response = await fetch(
-        `/api/agent/sessions?resumeId=${encodeURIComponent(resumeId)}`,
-      );
-      if (!response.ok) return;
-      const body = await response.json();
-      if (!isAgentSessionListResponse(body)) return;
-      setSessions(body.sessions);
-    } finally {
-      setIsLoadingSessions(false);
-    }
-  }, [resumeId]);
-
-  const handleSessionDelete = async (sessionId: string) => {
-    const response = await fetch(
-      `/api/agent/sessions?sessionId=${encodeURIComponent(sessionId)}`,
-      { method: "DELETE" },
-    );
-    if (!response.ok) return;
-    setSessions((prev) => prev.filter((s) => s.sessionId !== sessionId));
-    if (activeSessionId === sessionId) {
-      setActiveSessionId("");
-    }
-  };
 
   function beginAgentTurn(messages: readonly { role?: unknown }[]) {
     const turnId = createTurnId();
@@ -260,12 +222,39 @@ export function AgentPanel({
     updateAgentTurn(turnId, (turn) => ({
       ...turn,
       toolCalls: [...turn.toolCalls, toolResult.toolCall],
-      operations: [...turn.operations, ...toolResult.proposedOperations],
+      operations: mergeResumeOperations(
+        turn.operations,
+        toolResult.proposedOperations,
+      ),
       status:
         toolResult.proposedOperations.length > 0
           ? "waiting-confirmation"
           : "complete",
     }));
+  }
+
+  function appendWorkspaceOperations(
+    workspace: AgentResumeWorkspaceSnapshot,
+    turnId = activeTurnIdRef.current,
+  ) {
+    const operations = getPendingWorkspaceOperations(workspace);
+    if (operations.length === 0) return;
+
+    updateAgentTurn(turnId, (turn) => {
+      const nextOperations = mergeResumeOperations(turn.operations, operations);
+      if (nextOperations.length === turn.operations.length) return turn;
+
+      return {
+        ...turn,
+        operations: nextOperations,
+        status: "waiting-confirmation",
+      };
+    });
+  }
+
+  function handleResumeWorkspace(workspace: AgentResumeWorkspaceSnapshot) {
+    setResumeWorkspace(workspace);
+    appendWorkspaceOperations(workspace);
   }
 
   function setAgentTurnInterrupts(
@@ -318,7 +307,11 @@ export function AgentPanel({
       return {
         ...turn,
         appliedOperationIds,
-        status: allOperationsApplied ? "applied" : "waiting-confirmation",
+        status: allOperationsApplied
+          ? getQuestionInterrupts(turn.interrupts).length > 0
+            ? "awaiting-input"
+            : "applied"
+          : "waiting-confirmation",
       };
     });
   }
@@ -362,9 +355,6 @@ export function AgentPanel({
               activeSection: null,
               completeness,
             }),
-            ...(activeSession?.threadId
-              ? { threadId: activeSession.threadId }
-              : {}),
             ...(modelConfig ? { modelConfig } : {}),
           };
         }}
@@ -399,11 +389,11 @@ export function AgentPanel({
           setError(message);
         }}
         onContextStatus={setContextStatus}
-        onResumeWorkspace={setResumeWorkspace}
+        onResumeWorkspace={handleResumeWorkspace}
         onToolResult={appendToolResult}
         onInterrupts={setAgentTurnInterrupts}
-        autoAccept={autoAccept}
-        onOperationApplied={autoAccept ? handleAutoAcceptOperation : undefined}
+        autoAccept={autoApply}
+        onOperationApplied={autoApply ? handleAutoAcceptOperation : undefined}
       >
         <div className="flex h-12 shrink-0 items-center justify-between border-b px-3">
           <div className="flex min-w-0 items-center gap-1">
@@ -432,38 +422,6 @@ export function AgentPanel({
             />
           </div>
           <div className="flex items-center gap-2">
-            <div className="flex items-center gap-1.5">
-              <span className="text-[10px] text-muted-foreground">
-                {autoAccept ? "自动" : "确认"}
-              </span>
-              <button
-                type="button"
-                role="switch"
-                aria-checked={autoAccept}
-                aria-label={autoAccept ? "切换为确认模式" : "切换为自动应用模式"}
-                onClick={() => setAutoAccept((prev) => !prev)}
-                className={`relative inline-flex h-4 w-7 shrink-0 cursor-pointer items-center rounded-full transition-colors ${
-                  autoAccept
-                    ? "bg-primary"
-                    : "bg-muted-foreground/30"
-                }`}
-              >
-                <span
-                  className={`block h-3 w-3 rounded-full bg-background shadow-sm transition-transform ${
-                    autoAccept ? "translate-x-3.5" : "translate-x-0.5"
-                  }`}
-                />
-              </button>
-            </div>
-            <AgentSessionSelector
-              sessions={sessions}
-              activeSessionId={activeSessionId}
-              isLoading={isLoadingSessions}
-              onOpen={loadSessions}
-              onSelect={handleSessionSelect}
-              onCreate={handleSessionCreate}
-              onDelete={handleSessionDelete}
-            />
             <AgentModelSettingsDialog
             settings={modelSettings}
             onSave={setModelSettings}
@@ -724,7 +682,20 @@ function AgentResumeWorkspaceStatus({
 }: {
   workspace: AgentResumeWorkspaceSnapshot | null;
 }) {
+  const pendingChangeSets = getPendingWorkspaceChangeSets(workspace);
+  const operationCount = pendingChangeSets.reduce(
+    (total, changeSet) => total + changeSet.operationIds.length,
+    0,
+  );
+
   if (workspace?.mode === "create_from_zero" && workspace.draftResume) {
+    const draftStatus =
+      operationCount > 0
+        ? `待确认 ${operationCount} 条修改`
+        : workspace.draftResume.missingFacts.length > 0
+          ? "草稿信息待补充"
+          : "等待生成写入建议";
+
     return (
       <div
         role="status"
@@ -734,19 +705,11 @@ function AgentResumeWorkspaceStatus({
         <FilePlus2 className="h-3.5 w-3.5 shrink-0" />
         <span className="font-medium">已生成简历草稿</span>
         <span className="text-emerald-800/80 dark:text-emerald-200/80">
-          待确认后再写入
+          {draftStatus}
         </span>
       </div>
     );
   }
-
-  const pendingChangeSets = workspace?.changeSets.filter((changeSet) =>
-    changeSet.status === "staged" || changeSet.status === "partially_applied",
-  ) ?? [];
-  const operationCount = pendingChangeSets.reduce(
-    (total, changeSet) => total + changeSet.operationIds.length,
-    0,
-  );
 
   if (pendingChangeSets.length === 0 || operationCount === 0) return null;
 
@@ -765,6 +728,40 @@ function AgentResumeWorkspaceStatus({
       </span>
     </div>
   );
+}
+
+function getPendingWorkspaceChangeSets(
+  workspace: AgentResumeWorkspaceSnapshot | null,
+) {
+  return (
+    workspace?.changeSets.filter(
+      (changeSet) =>
+        changeSet.status === "staged" ||
+        changeSet.status === "partially_applied",
+    ) ?? []
+  );
+}
+
+function getPendingWorkspaceOperations(
+  workspace: AgentResumeWorkspaceSnapshot,
+): ResumeOperation[] {
+  return getPendingWorkspaceChangeSets(workspace).flatMap(
+    (changeSet) => changeSet.operations,
+  );
+}
+
+function mergeResumeOperations(
+  current: ResumeOperation[],
+  incoming: ResumeOperation[],
+) {
+  if (incoming.length === 0) return current;
+  const seen = new Set(current.map((operation) => operation.id));
+  const next = incoming.filter((operation) => {
+    if (seen.has(operation.id)) return false;
+    seen.add(operation.id);
+    return true;
+  });
+  return next.length > 0 ? [...current, ...next] : current;
 }
 
 function AgentWelcomeSuggestions() {
@@ -901,6 +898,17 @@ function AgentTurnArtifactsPanel({
   const [decisions, setDecisions] = React.useState<Map<string, boolean>>(new Map());
   const approvalInterrupts = getApprovalInterrupts(turnArtifact.interrupts);
   const questionInterrupts = getQuestionInterrupts(turnArtifact.interrupts);
+  const allApprovalInterruptsDecided = approvalInterrupts.every((interrupt) =>
+    decisions.has(interrupt.id),
+  );
+  const approvalResponses = buildApprovalInterruptResponses(
+    approvalInterrupts,
+    decisions,
+  );
+  const questionBlockedReason =
+    approvalInterrupts.length > 0 && !allApprovalInterruptsDecided
+      ? "请先应用或忽略本轮修改建议，再继续分析。"
+      : null;
 
   if (!hasVisibleTurnArtifacts(turnArtifact)) {
     return null;
@@ -919,8 +927,12 @@ function AgentTurnArtifactsPanel({
     newDecisions.set(getApprovalInterruptDecisionId(approvalInterrupts, operation), true);
     setDecisions(newDecisions);
 
-    // Submit all decisions once all interrupts have been decided
-    if (approvalInterrupts.every((interrupt) => newDecisions.has(interrupt.id))) {
+    // If a question is also open, submit all interrupt responses together from
+    // the question card; AG-UI rejects partial interrupt responses.
+    if (
+      questionInterrupts.length === 0 &&
+      approvalInterrupts.every((interrupt) => newDecisions.has(interrupt.id))
+    ) {
       await submitAllDecisions(newDecisions);
     }
   }
@@ -929,11 +941,17 @@ function AgentTurnArtifactsPanel({
     if (!hasApprovalInterrupts) return;
 
     const newDecisions = new Map(decisions);
-    newDecisions.set(operationId, false);
+    const operation = turnArtifact.operations.find((op) => op.id === operationId);
+    const decisionId = operation
+      ? getApprovalInterruptDecisionId(approvalInterrupts, operation)
+      : operationId;
+    newDecisions.set(decisionId, false);
     setDecisions(newDecisions);
 
-    // Submit all decisions once all interrupts have been decided
-    if (approvalInterrupts.every((interrupt) => newDecisions.has(interrupt.id))) {
+    if (
+      questionInterrupts.length === 0 &&
+      approvalInterrupts.every((interrupt) => newDecisions.has(interrupt.id))
+    ) {
       await submitAllDecisions(newDecisions);
     }
   }
@@ -942,11 +960,10 @@ function AgentTurnArtifactsPanel({
     if (!submitInterrupts || !hasApprovalInterrupts) return;
 
     try {
-      const responses = approvalInterrupts.map((interrupt) => ({
-        interruptId: interrupt.id,
-        status: allDecisions.get(interrupt.id) ? ("resolved" as const) : ("cancelled" as const),
-        payload: { approved: allDecisions.get(interrupt.id) || false },
-      }));
+      const responses = buildApprovalInterruptResponses(
+        approvalInterrupts,
+        allDecisions,
+      );
       await submitInterrupts(responses);
       onInterruptResolved(turnArtifact.id);
     } catch (error) {
@@ -967,7 +984,9 @@ function AgentTurnArtifactsPanel({
       approvalInterrupts.map((interrupt) => [interrupt.id, true])
     );
     setDecisions(allApproved);
-    await submitAllDecisions(allApproved);
+    if (questionInterrupts.length === 0) {
+      await submitAllDecisions(allApproved);
+    }
   }
 
   async function handleRejectAll() {
@@ -977,7 +996,9 @@ function AgentTurnArtifactsPanel({
       approvalInterrupts.map((interrupt) => [interrupt.id, false])
     );
     setDecisions(allRejected);
-    await submitAllDecisions(allRejected);
+    if (questionInterrupts.length === 0) {
+      await submitAllDecisions(allRejected);
+    }
   }
 
   return (
@@ -1001,6 +1022,8 @@ function AgentTurnArtifactsPanel({
         <div className="animate-in fade-in-0 slide-in-from-bottom-1 duration-200">
           <AgentQuestionCard
             interrupts={questionInterrupts}
+            additionalResponses={approvalResponses}
+            blockedReason={questionBlockedReason}
             onResolved={() => onInterruptResolved(turnArtifact.id)}
           />
         </div>
@@ -1009,7 +1032,7 @@ function AgentTurnArtifactsPanel({
         <div className="space-y-2 animate-in fade-in-0 slide-in-from-bottom-1 duration-200">
           <div className="flex items-center justify-between gap-2">
             <div className="text-xs font-medium text-amber-700 dark:text-amber-300">
-              {turnArtifact.status === "applied"
+              {countPendingOperations(turnArtifact) === 0
                 ? `已应用 ${turnArtifact.operations.length} 条修改`
                 : `等待确认 ${countPendingOperations(turnArtifact)} 条修改建议`}
             </div>
@@ -1057,13 +1080,16 @@ function AgentTurnStatusLine({
   turnArtifact: AgentTurnArtifacts;
 }) {
   const statusText = getAgentTurnStatusText(turnArtifact);
+  const hasQuestionInterrupts =
+    getQuestionInterrupts(turnArtifact.interrupts).length > 0;
   const isRunning =
     turnArtifact.status === "reading" || turnArtifact.status === "generating";
   const Icon =
-    turnArtifact.status === "applied"
+    turnArtifact.status === "applied" && !hasQuestionInterrupts
       ? CheckCircle2
       : turnArtifact.status === "waiting-confirmation" ||
-          turnArtifact.status === "awaiting-input"
+          turnArtifact.status === "awaiting-input" ||
+          hasQuestionInterrupts
         ? Clock3
         : Loader2;
 
@@ -1082,9 +1108,13 @@ function AgentTurnStatusLine({
 
 function AgentQuestionCard({
   interrupts,
+  additionalResponses = [],
+  blockedReason,
   onResolved,
 }: {
   interrupts: AgentAgUiInterrupt[];
+  additionalResponses?: readonly AgentInterruptResponse[];
+  blockedReason?: string | null;
   onResolved: () => void;
 }) {
   const submitInterrupts = useAgentAgUiInterruptSubmit();
@@ -1097,24 +1127,28 @@ function AgentQuestionCard({
   const allAnswered = interrupts.every(
     (interrupt) => (answers[interrupt.id] ?? "").trim() !== "",
   );
+  const canSubmit = allAnswered && !blockedReason;
 
   function updateAnswer(interruptId: string, value: string) {
     setAnswers((current) => ({ ...current, [interruptId]: value }));
   }
 
   async function submitAnswer() {
-    if (!allAnswered || isSubmitting) return;
+    if (!canSubmit || isSubmitting) return;
 
     setSubmitError(null);
     setIsSubmitting(true);
     try {
       if (submitInterrupts) {
         await submitInterrupts(
-          interrupts.map((interrupt) => ({
-            interruptId: interrupt.id,
-            status: "resolved",
-            payload: { answer: (answers[interrupt.id] ?? "").trim() },
-          })),
+          [
+            ...additionalResponses,
+            ...interrupts.map((interrupt) => ({
+              interruptId: interrupt.id,
+              status: "resolved" as const,
+              payload: { answer: (answers[interrupt.id] ?? "").trim() },
+            })),
+          ],
         );
       } else {
         await threadRuntime.append({
@@ -1185,12 +1219,13 @@ function AgentQuestionCard({
             })}
             <div className="flex items-center justify-between gap-3">
               <p className="text-xs text-muted-foreground">
-                只会作为本轮 Agent 上下文，不会直接写入简历。
+                {blockedReason ??
+                  "只会作为本轮 Agent 上下文，不会直接写入简历。"}
               </p>
               <Button
                 type="button"
                 size="sm"
-                disabled={!allAnswered || isSubmitting}
+                disabled={!canSubmit || isSubmitting}
                 onClick={submitAnswer}
               >
                 {isSubmitting ? (
@@ -1269,7 +1304,7 @@ function AgentThreadMessage({
   if (!text) return null;
 
   return (
-    <MessagePrimitive.Root className="group/message text-right">
+    <MessagePrimitive.Root className="group/message relative z-0 pb-8 text-right hover:z-20 focus-within:z-20">
       <AgentUserMessageBody text={text} />
     </MessagePrimitive.Root>
   );
@@ -1293,31 +1328,80 @@ function AgentUserMessageBody({ text }: { text: string }) {
 }
 
 function AgentEditMessageComposer() {
+  const editRuntime = useMessageRuntime({ optional: true })?.composer;
+  const state = useEditComposer();
+  const [text, setText] = useState(state.text);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  // Sync textarea height with content.
+  useEffect(() => {
+    const el = textareaRef.current;
+    if (!el) return;
+    el.style.height = "auto";
+    el.style.height = `${Math.min(el.scrollHeight, 160)}px`;
+  }, [text]);
+
+  const handleSend = () => {
+    const trimmed = text.trim();
+    if (!trimmed || !editRuntime) return;
+    const originalText = state.text.trim();
+    editRuntime.setText(trimmed);
+    if (trimmed === originalText) {
+      editRuntime.send({ startRun: true });
+      return;
+    }
+    editRuntime.send();
+  };
+
+  const handleCancel = () => {
+    editRuntime?.cancel();
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
+      e.preventDefault();
+      handleSend();
+    }
+    if (e.key === "Escape") {
+      e.preventDefault();
+      handleCancel();
+    }
+  };
+
   return (
-    <ComposerPrimitive.Root className="ml-auto max-w-[85%] rounded-xl border border-sky-200/80 bg-background p-2 text-left shadow-sm dark:border-sky-400/20">
-      <ComposerPrimitive.Input
+    <div className="ml-auto max-w-[85%] rounded-xl border border-sky-200/80 bg-background p-2 text-left shadow-sm dark:border-sky-400/20">
+      <textarea
+        ref={textareaRef}
         data-testid="agent-edit-message-input"
         rows={2}
-        submitMode="ctrlEnter"
-        className="min-h-16 w-full resize-none rounded-lg border border-input bg-transparent px-3 py-2 text-sm shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
+        value={text}
+        onChange={(e) => setText(e.target.value)}
+        onKeyDown={handleKeyDown}
+        autoComplete="off"
+        className="min-h-16 w-full resize-none rounded-lg border border-input bg-transparent px-3 py-2 text-sm shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
       />
       <div className="mt-2 flex items-center justify-end gap-2">
-        <ComposerPrimitive.Cancel
+        <button
+          type="button"
           aria-label="取消编辑"
-          className="inline-flex h-7 items-center gap-1 rounded-md border border-border bg-background px-2 text-xs text-muted-foreground shadow-sm hover:bg-muted disabled:pointer-events-none disabled:opacity-50 dark:border-input dark:bg-input/30 dark:hover:bg-input/50"
+          onClick={handleCancel}
+          className="inline-flex h-7 items-center gap-1 rounded-md border border-border bg-background px-2 text-xs text-muted-foreground shadow-sm hover:bg-muted"
         >
           <X className="h-3.5 w-3.5" />
           取消
-        </ComposerPrimitive.Cancel>
-        <ComposerPrimitive.Send
+        </button>
+        <button
+          type="button"
           aria-label="保存并重新发送"
-          className="inline-flex h-7 items-center gap-1 rounded-md bg-sky-600 px-2 text-xs font-medium text-white shadow-sm hover:bg-sky-700 disabled:pointer-events-none disabled:opacity-50 dark:bg-sky-500 dark:hover:bg-sky-400"
+          onClick={handleSend}
+          disabled={!text.trim()}
+          className="inline-flex h-7 items-center gap-1 rounded-md bg-sky-600 px-2 text-xs font-medium text-white shadow-sm hover:bg-sky-700 disabled:opacity-50"
         >
           <Check className="h-3.5 w-3.5" />
           保存并重新发送
-        </ComposerPrimitive.Send>
+        </button>
       </div>
-    </ComposerPrimitive.Root>
+    </div>
   );
 }
 
@@ -1349,20 +1433,21 @@ function AgentAssistantMessageActions() {
 function AgentUserMessageActions() {
   return (
     <ActionBarPrimitive.Root
+      hideWhenRunning
       autohide="never"
       autohideFloat="never"
-      className="ml-auto mt-1 flex max-w-[85%] justify-end gap-1 text-muted-foreground"
+      className="pointer-events-none absolute bottom-0 right-0 z-30 flex max-w-[85%] justify-end gap-1 opacity-0 transition-opacity group-hover/message:opacity-100 group-focus-within/message:opacity-100"
     >
       <ActionBarPrimitive.Copy
         aria-label="复制消息"
         copiedDuration={1600}
-        className="inline-flex h-7 w-7 items-center justify-center rounded-md border border-border bg-background text-muted-foreground shadow-sm hover:bg-muted hover:text-foreground disabled:pointer-events-none disabled:opacity-40 data-[copied=true]:border-emerald-200 data-[copied=true]:text-emerald-700 dark:border-input dark:bg-input/30 dark:hover:bg-input/50 dark:data-[copied=true]:text-emerald-300"
+        className="pointer-events-auto inline-flex h-7 w-7 items-center justify-center rounded-md bg-background/95 text-muted-foreground shadow-sm transition hover:bg-muted hover:text-foreground disabled:pointer-events-none disabled:opacity-40 data-[copied=true]:bg-emerald-50 data-[copied=true]:text-emerald-700 dark:bg-background/90 dark:hover:bg-muted/50 dark:data-[copied=true]:bg-emerald-950/30 dark:data-[copied=true]:text-emerald-300"
       >
         <Copy className="h-3.5 w-3.5" />
       </ActionBarPrimitive.Copy>
       <ActionBarPrimitive.Edit
         aria-label="编辑消息"
-        className="inline-flex h-7 w-7 items-center justify-center rounded-md border border-border bg-background text-muted-foreground shadow-sm hover:bg-muted hover:text-foreground disabled:pointer-events-none disabled:opacity-40 dark:border-input dark:bg-input/30 dark:hover:bg-input/50"
+        className="pointer-events-auto inline-flex h-7 w-7 items-center justify-center rounded-md bg-background/95 text-muted-foreground shadow-sm transition hover:bg-muted hover:text-foreground disabled:pointer-events-none disabled:opacity-40 dark:bg-background/90 dark:hover:bg-muted/50"
       >
         <Edit3 className="h-3.5 w-3.5" />
       </ActionBarPrimitive.Edit>
@@ -1435,9 +1520,34 @@ function agentActionLabel(toolName: string): string {
 function AgentMarkdownText() {
   return (
     <MarkdownTextPrimitive
-      className="space-y-2 [&_ol]:my-2 [&_ol]:list-decimal [&_ol]:pl-5 [&_p]:my-0 [&_strong]:font-semibold [&_ul]:my-2 [&_ul]:list-disc [&_ul]:pl-5"
+      className="space-y-2 [&_ol]:my-2 [&_ol]:list-decimal [&_ol]:pl-5 [&_p]:my-0 [&_strong]:font-semibold [&_td]:border [&_td]:border-border/60 [&_td]:px-2 [&_td]:py-1.5 [&_td]:align-top [&_th]:border [&_th]:border-border/60 [&_th]:bg-background/60 [&_th]:px-2 [&_th]:py-1.5 [&_th]:font-semibold [&_ul]:my-2 [&_ul]:list-disc [&_ul]:pl-5"
+      components={{
+        table: AgentMarkdownTable,
+      }}
+      remarkPlugins={[remarkGfm]}
       smooth
     />
+  );
+}
+
+function AgentMarkdownTable({
+  node: _node,
+  className,
+  ...props
+}: React.ComponentProps<"table"> & { node?: unknown }) {
+  void _node;
+  return (
+    <div className="my-2 max-w-full overflow-x-auto rounded-md border border-border/70">
+      <table
+        {...props}
+        className={[
+          "w-full min-w-max border-collapse text-left text-xs leading-relaxed",
+          className,
+        ]
+          .filter(Boolean)
+          .join(" ")}
+      />
+    </div>
   );
 }
 
@@ -1461,8 +1571,10 @@ function AgentComposer({
           data-testid="agent-assistant-ui-composer-input"
           rows={2}
           submitMode="enter"
+          disabled={isLoading}
           placeholder="输入消息，Enter 发送"
-          autoComplete="off" className="max-h-32 min-h-14 w-full resize-none border-0 !bg-transparent px-1 py-1 text-sm placeholder:text-muted-foreground focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-50"
+          autoComplete="off"
+          className="max-h-32 min-h-14 w-full resize-none border-0 !bg-transparent px-1 py-1 text-sm placeholder:text-muted-foreground focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-50"
         />
         <div className="mt-2 flex items-center justify-end gap-3">
           {isLoading ? (
@@ -1521,10 +1633,10 @@ function hasVisibleTurnArtifacts(turnArtifact: AgentTurnArtifacts) {
 }
 
 function getAgentTurnStatusText(turnArtifact: AgentTurnArtifacts) {
-  if (turnArtifact.status === "applied") return "已应用";
   if (getQuestionInterrupts(turnArtifact.interrupts).length > 0) {
     return "等待补充信息";
   }
+  if (turnArtifact.status === "applied") return "已应用";
   if (countPendingOperations(turnArtifact) > 0) return "等待确认修改";
   if (turnArtifact.status === "reading") {
     return "正在读取简历上下文";
@@ -1582,6 +1694,22 @@ function getApprovalInterruptDecisionId(
       ?.id ??
     operation.id
   );
+}
+
+function buildApprovalInterruptResponses(
+  approvalInterrupts: AgentAgUiInterrupt[],
+  decisions: Map<string, boolean>,
+): AgentInterruptResponse[] {
+  return approvalInterrupts
+    .filter((interrupt) => decisions.has(interrupt.id))
+    .map((interrupt) => {
+      const approved = decisions.get(interrupt.id) === true;
+      return {
+        interruptId: interrupt.id,
+        status: approved ? ("resolved" as const) : ("cancelled" as const),
+        payload: { approved },
+      };
+    });
 }
 
 function readStoredModelSettings(): AgentModelSettingsForm {
@@ -1665,27 +1793,6 @@ function toAgentModelConfig(
   return normalized;
 }
 
-function isAgentSessionListResponse(
-  value: unknown,
-): value is { sessions: AgentSessionListItem[] } {
-  return (
-    isRecord(value) &&
-    Array.isArray(value.sessions) &&
-    value.sessions.every(isAgentSessionListItem)
-  );
-}
-
-function isAgentSessionListItem(value: unknown): value is AgentSessionListItem {
-  return (
-    isRecord(value) &&
-    typeof value.sessionId === "string" &&
-    typeof value.threadId === "string" &&
-    typeof value.title === "string" &&
-    typeof value.status === "string" &&
-    typeof value.updatedAt === "string"
-  );
-}
-
 
 function AgentThreadDropdown({
   resumeId,
@@ -1705,16 +1812,15 @@ function AgentThreadDropdown({
 
   return (
     <DropdownMenu>
-      <DropdownMenuTrigger>
-        <Button
-          type="button"
-          variant="ghost"
-          size="sm"
-          className="group/thread max-w-[180px] gap-1.5 px-2 text-sm font-medium"
-        >
-          <span className="truncate">{displayName}</span>
-          <ChevronDown className="h-3 w-3 shrink-0 text-muted-foreground opacity-0 transition-opacity group-hover/thread:opacity-100" />
-        </Button>
+      <DropdownMenuTrigger
+        className={buttonVariants({
+          variant: "ghost",
+          size: "sm",
+          className: "group/thread max-w-[180px] gap-1.5 px-2 text-sm font-medium",
+        })}
+      >
+        <span className="truncate">{displayName}</span>
+        <ChevronDown className="h-3 w-3 shrink-0 text-muted-foreground opacity-0 transition-opacity group-hover/thread:opacity-100" />
       </DropdownMenuTrigger>
       <DropdownMenuContent align="start" className="w-64">
         <div className="px-2 py-1.5">

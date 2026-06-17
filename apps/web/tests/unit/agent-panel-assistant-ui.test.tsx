@@ -204,6 +204,64 @@ describe("AgentPanel assistant-ui runtime", () => {
     expect(screen.getByTestId("agent-assistant-ui-thread")).toBeInTheDocument();
   });
 
+  it("disables composer input while a run is active to avoid duplicate sends", async () => {
+    let resolveRun: ((response: Response) => void) | null = null;
+    const fetchMock = vi.fn<
+      (...args: [RequestInfo | URL, RequestInit?]) => Promise<Response>
+    >(async () => {
+      return new Promise<Response>((resolve) => {
+        resolveRun = resolve;
+      });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<AgentPanel {...panelProps()} />);
+
+    const input = screen.getByTestId("agent-assistant-ui-composer-input");
+    fireEvent.change(input, { target: { value: "请帮我诊断这份简历" } });
+    fireEvent.keyDown(input, { key: "Enter", code: "Enter" });
+
+    expect(await screen.findByRole("button", { name: "停止生成" })).toBeInTheDocument();
+    expect(input).toBeDisabled();
+
+    fireEvent.change(input, { target: { value: "请帮我诊断这份简历" } });
+    fireEvent.keyDown(input, { key: "Enter", code: "Enter" });
+    await new Promise((resolve) => setTimeout(resolve, 50));
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    resolveRun?.(agUiResponse(["处理完成。"]));
+    expect(await screen.findByText("处理完成。")).toBeInTheDocument();
+  });
+
+  it("treats free-form create-from-zero requests as create-from-zero runs", async () => {
+    const fetchMock = vi.fn<
+      (...args: [RequestInfo | URL, RequestInit?]) => Promise<Response>
+    >(async () => {
+      return agUiResponse(["我先确认目标岗位。"]);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<AgentPanel {...panelProps()} />);
+
+    sendMessage("从0开始帮我写简历");
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+    });
+    const [, init] = fetchMock.mock.calls[0];
+    const body = JSON.parse(String(init?.body));
+
+    expect(body.forwardedProps.introBuilder).toEqual(
+      expect.objectContaining({
+        resumeId: null,
+        mode: "create_from_zero",
+        locale: "zh-CN",
+        workflowId: "create-from-zero",
+        context: null,
+      }),
+    );
+  });
+
   it("renders assistant markdown as formatted content", async () => {
     const fetchMock = vi.fn<
       (...args: [RequestInfo | URL, RequestInit?]) => Promise<Response>
@@ -237,6 +295,57 @@ describe("AgentPanel assistant-ui runtime", () => {
     expect(copyButton.parentElement?.className).toContain("bottom-0");
     expect(copyButton.parentElement?.className).not.toContain("top-full");
     expect(copyButton.parentElement?.parentElement?.className).toContain("pb-8");
+  });
+
+  it("keeps user message actions hidden as floating hover controls", async () => {
+    const fetchMock = vi.fn<
+      (...args: [RequestInfo | URL, RequestInit?]) => Promise<Response>
+    >(async () => {
+      return agUiResponse(["我会检查这一处。"]);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<AgentPanel {...panelProps()} />);
+
+    sendMessage("帮我找出这份简历里最值得优先修改的一处，并说明原因。");
+
+    expect(await screen.findByText("我会检查这一处。")).toBeInTheDocument();
+    const copyMessageButton = screen.getByRole("button", { name: "复制消息" });
+    const editMessageButton = screen.getByRole("button", { name: "编辑消息" });
+    const actionBar = copyMessageButton.parentElement;
+
+    expect(actionBar).toBe(editMessageButton.parentElement);
+    expect(actionBar?.className).toContain("absolute");
+    expect(actionBar?.className).toContain("opacity-0");
+    expect(actionBar?.className).toContain("group-hover/message:opacity-100");
+    expect(actionBar?.className).not.toContain("mt-1 flex");
+  });
+
+  it("renders assistant markdown tables as structured table content", async () => {
+    const fetchMock = vi.fn<
+      (...args: [RequestInfo | URL, RequestInit?]) => Promise<Response>
+    >(async () => {
+      return agUiResponse([
+        "## 诊断结果\n\n",
+        "| 分区 | 状态 |\n",
+        "| --- | --- |\n",
+        "| 个人简介 | ❌ 缺失 |\n",
+        "| 工作经历 | ✅ 可优化 |\n\n",
+        "下一步建议",
+      ]);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<AgentPanel {...panelProps()} />);
+
+    sendMessage("请输出表格诊断");
+
+    expect(await screen.findByRole("table")).toBeInTheDocument();
+    expect(screen.getByRole("columnheader", { name: "分区" })).toBeInTheDocument();
+    expect(screen.getByRole("columnheader", { name: "状态" })).toBeInTheDocument();
+    expect(screen.getByRole("cell", { name: "个人简介" })).toBeInTheDocument();
+    expect(screen.getByRole("cell", { name: "❌ 缺失" })).toBeInTheDocument();
+    expect(screen.queryByText(/\| 分区 \| 状态 \|/)).not.toBeInTheDocument();
   });
 
   it("can send workflow prompts through the feature-flagged AG-UI runtime without bypassing the Web BFF", async () => {
@@ -326,7 +435,9 @@ describe("AgentPanel assistant-ui runtime", () => {
     expect(screen.queryByText(/resume_read/)).not.toBeInTheDocument();
   });
 
-  it("projects v2 resume workspace change sets without exposing state keys", async () => {
+  it("projects v2 resume workspace change sets into confirmable cards without exposing state keys", async () => {
+    const applyOperation = vi.fn();
+    const flushAutosave = vi.fn();
     const fetchMock = vi.fn<
       (...args: [RequestInfo | URL, RequestInit?]) => Promise<Response>
     >(async () => {
@@ -334,11 +445,23 @@ describe("AgentPanel assistant-ui runtime", () => {
     });
     vi.stubGlobal("fetch", fetchMock);
 
-    render(<AgentPanel {...panelProps({})} />);
+    render(<AgentPanel {...panelProps({ applyOperation, flushAutosave })} />);
     sendMessage("请改写最近经历");
 
     expect(await screen.findByText("待确认 1 组修改")).toBeInTheDocument();
     expect(screen.getByText("包含 1 条建议")).toBeInTheDocument();
+    expect(screen.getByText("应用经历改写")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "应用" }));
+    await waitFor(() => {
+      expect(applyOperation).toHaveBeenCalledWith(
+        expect.objectContaining({
+          id: "op_1",
+          fieldPath: "experience.0.content",
+          operation: "update_section",
+        }),
+      );
+    });
+    expect(flushAutosave).toHaveBeenCalledTimes(1);
     expect(screen.queryByText(/workspace/)).not.toBeInTheDocument();
     expect(screen.queryByText(/changeset_req_agent/)).not.toBeInTheDocument();
     expect(screen.queryByText(/fieldPath/)).not.toBeInTheDocument();
@@ -357,7 +480,8 @@ describe("AgentPanel assistant-ui runtime", () => {
     sendMessage("从 0 帮我做一份简历");
 
     expect(await screen.findByText("已生成简历草稿")).toBeInTheDocument();
-    expect(screen.getByText("待确认后再写入")).toBeInTheDocument();
+    expect(screen.getByText("草稿信息待补充")).toBeInTheDocument();
+    expect(screen.queryByText("待确认后再写入")).not.toBeInTheDocument();
     expect(screen.getByText("Agent 需要补充信息")).toBeInTheDocument();
     expect(
       screen.getByText(/请补充最近一段经历/),
@@ -428,6 +552,55 @@ describe("AgentPanel assistant-ui runtime", () => {
     expect(await screen.findByText("已完成 1 个动作")).toBeInTheDocument();
     expect(screen.queryByText(/tool:/)).not.toBeInTheDocument();
     expect(screen.queryByText(/resume_read/)).not.toBeInTheDocument();
+  });
+
+  it("renders tool cards without exposing internal field paths or debug payloads", async () => {
+    const toolStream: { finish: (() => void) | null } = { finish: null };
+    const fetchMock = vi.fn<
+      (...args: [RequestInfo | URL, RequestInit?]) => Promise<Response>
+    >(async () => {
+      return delayedAgUiToolResponse({
+        onReady: (finish) => {
+          toolStream.finish = finish;
+        },
+        toolCall: {
+          id: "tool_set_skills",
+          name: "resume_insert_section",
+          status: "completed",
+          title: "初始化技能区",
+          summary: "已把技术栈整理进草稿。",
+          input: {
+            operation: "insert_section",
+            section: "skills",
+            fieldPath: "skills",
+          },
+          result: { operationIds: ["op_skills"] },
+        },
+      });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<AgentPanel {...panelProps({})} />);
+    sendMessage("从 0 帮我写简历");
+
+    expect(await screen.findByText("Agent 正在处理")).toBeInTheDocument();
+
+    const finishToolCall = toolStream.finish;
+    if (!finishToolCall) {
+      throw new Error("Expected delayed AG-UI tool stream to be ready");
+    }
+    finishToolCall();
+
+    expect(await screen.findByText("新增条目")).toBeInTheDocument();
+    expect(screen.getByText("初始化技能区")).toBeInTheDocument();
+    expect(screen.getByText("已把技术栈整理进草稿。")).toBeInTheDocument();
+    expect(screen.getByText("已写入草稿")).toBeInTheDocument();
+    expect(screen.queryByText(/^skills$/)).not.toBeInTheDocument();
+    expect(screen.queryByText("调用参数")).not.toBeInTheDocument();
+    expect(screen.queryByText("执行结果")).not.toBeInTheDocument();
+    expect(screen.queryByText(/fieldPath/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/operationIds/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/resume_insert_section/)).not.toBeInTheDocument();
   });
 
   it("aborts AG-UI runtime runs when the user stops generation", async () => {
@@ -567,6 +740,100 @@ describe("AgentPanel assistant-ui runtime", () => {
       },
     ]);
     expect(await screen.findByText("收到补充信息，我继续分析。")).toBeInTheDocument();
+  });
+
+  it("submits approval decisions together with question answers for mixed AG-UI interrupts", async () => {
+    const applyOperation = vi.fn();
+    const flushAutosave = vi.fn();
+    const fetchMock = vi.fn<
+      (...args: [RequestInfo | URL, RequestInit?]) => Promise<Response>
+    >(async (_url, init) => {
+      const body = JSON.parse(String(init?.body));
+      if (Array.isArray(body.resume)) {
+        return agUiResponse(["收到确认和补充信息，我继续分析。"]);
+      }
+      return agUiToolLifecycleInterruptResponse({
+        text: "我先把已知技能写入草稿，然后追问工作经历。",
+        toolCall: {
+          id: "tool_skills",
+          name: "resume_insert_section",
+          status: "completed",
+          title: "初始化技能区",
+          summary: "写入用户提供的技术栈。",
+          input: {},
+          result: {},
+        },
+        proposedOperation: {
+          id: "op_skills",
+          toolCallId: "tool_skills",
+          label: "初始化技能区",
+          section: "skills",
+          fieldPath: "skills",
+          operation: "insert_section",
+          beforePlainText: "（空）",
+          afterPlainText: "Vue、React、TypeScript、Node.js",
+          changeSummary: "写入用户提供的技术栈。",
+          riskFlags: [],
+        },
+        extraInterrupts: [
+          {
+            id: "question_recent_experience",
+            reason: "input_required",
+            message: "请补充最近一段工作经历。",
+          },
+        ],
+      });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<AgentPanel {...panelProps({ applyOperation, flushAutosave })} />);
+    sendMessage("从 0 帮我写简历");
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+    });
+    expect(await screen.findAllByText("初始化技能区")).toHaveLength(2);
+    await waitFor(() => {
+      expect(screen.getByText("等待确认 1 条修改建议")).toBeInTheDocument();
+    });
+    expect(screen.getByText("请补充最近一段工作经历。")).toBeInTheDocument();
+
+    fireEvent.change(screen.getByLabelText("请补充最近一段工作经历。"), {
+      target: { value: "目前还没有工作经历" },
+    });
+    expect(screen.getByRole("button", { name: "继续分析" })).toBeDisabled();
+
+    fireEvent.click(screen.getByRole("button", { name: "应用" }));
+    expect(applyOperation).toHaveBeenCalledWith(
+      expect.objectContaining({ id: "op_skills" }),
+    );
+    expect(flushAutosave).toHaveBeenCalledTimes(1);
+    expect(screen.getByText("等待补充信息")).toBeInTheDocument();
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+
+    fireEvent.click(screen.getByRole("button", { name: "继续分析" }));
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+    });
+    const [, resumeInit] = fetchMock.mock.calls[1];
+    const resumeBody = JSON.parse(String(resumeInit?.body));
+    expect(resumeBody.resume).toEqual([
+      {
+        interruptId: "op_skills",
+        status: "resolved",
+        payload: { approved: true },
+      },
+      {
+        interruptId: "question_recent_experience",
+        status: "resolved",
+        payload: { answer: "目前还没有工作经历" },
+      },
+    ]);
+    expect(
+      await screen.findByText("收到确认和补充信息，我继续分析。"),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/missing responses/)).not.toBeInTheDocument();
   });
 
   it("submits separate answers for multiple AG-UI question interrupts", async () => {
@@ -908,6 +1175,7 @@ function agUiToolLifecycleInterruptResponse({
   text,
   toolCall,
   proposedOperation,
+  extraInterrupts = [],
 }: {
   text: string;
   toolCall: unknown;
@@ -917,6 +1185,11 @@ function agUiToolLifecycleInterruptResponse({
     changeSummary: string;
     toolCallId: string;
   } & Record<string, unknown>;
+  extraInterrupts?: Array<{
+    id: string;
+    reason: string;
+    message: string;
+  }>;
 }): Response {
   const events: BaseEvent[] = [
     { type: EventType.RUN_STARTED, threadId: "resume_1", runId: "req_test" },
@@ -970,6 +1243,7 @@ function agUiToolLifecycleInterruptResponse({
             toolCallId: proposedOperation.toolCallId,
             metadata: { operation: proposedOperation },
           },
+          ...extraInterrupts,
         ],
       },
     },
