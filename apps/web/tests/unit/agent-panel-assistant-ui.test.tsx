@@ -46,7 +46,7 @@ describe("AgentPanel assistant-ui runtime", () => {
   it("renders a minimal empty conversation surface without setup copy", () => {
     render(<AgentPanel {...panelProps()} />);
 
-    expect(screen.getByText("新对话")).toBeInTheDocument();
+    expect(screen.getByText("前端工程师")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "模型设置" })).toBeInTheDocument();
     expect(screen.getByText("你好。")).toBeInTheDocument();
     expect(screen.getByText("想怎么优化这份简历？")).toBeInTheDocument();

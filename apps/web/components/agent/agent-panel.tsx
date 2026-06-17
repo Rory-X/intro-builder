@@ -16,6 +16,8 @@ import {
 import { MarkdownTextPrimitive } from "@assistant-ui/react-markdown";
 import {
   ArrowLeft,
+  ArrowUpDown,
+  Bot,
   CheckCircle2,
   Check,
   ChevronDown,
@@ -31,6 +33,7 @@ import {
   Settings,
   Square,
   X,
+  Zap,
 } from "lucide-react";
 
 import { AgentConfirmationCard } from "@/components/agent/agent-confirmation-card";
@@ -51,6 +54,17 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { buildAgentResumeContext } from "@/lib/agent/chat-context";
 import type {
   AgentMessageResponse,
@@ -140,6 +154,10 @@ export function AgentPanel({
     () => readStoredModelSettings(),
   );
   const [isLoading, setIsLoading] = useState(false);
+  const [autoApply, setAutoApply] = useState(() => {
+    if (typeof window === "undefined") return false;
+    return window.localStorage.getItem("intro-builder.agent.auto-apply.v1") === "true";
+  });
   const [lastRetryRequest, setLastRetryRequest] = useState<AgentRetryRequest | null>(
     null,
   );
@@ -327,7 +345,7 @@ export function AgentPanel({
         onInterrupts={setAgentTurnInterrupts}
       >
         <div className="flex h-12 shrink-0 items-center justify-between border-b px-3">
-          <div className="flex min-w-0 items-center gap-2">
+          <div className="flex min-w-0 items-center gap-1">
             <Button
               type="button"
               variant="ghost"
@@ -337,7 +355,17 @@ export function AgentPanel({
             >
               <ArrowLeft className="h-4 w-4" />
             </Button>
-            <h2 className="truncate text-sm font-medium text-foreground">新对话</h2>
+            <AgentThreadDropdown
+              resumeId={resumeId}
+              title={title}
+              modelSettings={modelSettings}
+              onNewThread={() => {
+                // Clear assistant-ui thread messages
+                const threadRuntime = document.querySelector('[data-testid="agent-assistant-ui-thread"]');
+                setTurnArtifacts([]);
+                setError(null);
+              }}
+            />
           </div>
           <AgentModelSettingsDialog
             settings={modelSettings}
@@ -363,6 +391,12 @@ export function AgentPanel({
           flushAutosave={flushAutosave}
         />
         <AgentComposer contextStatus={contextStatus} isLoading={isLoading} />
+        <AgentStatusFooter
+          modelName={modelSettings.modelName || "默认模型"}
+          autoApply={autoApply}
+          onAutoApplyChange={setAutoApply}
+          contextStatus={contextStatus}
+        />
       </AgentAgUiRuntimeProvider>
     </section>
   );
@@ -429,13 +463,26 @@ function AgentModelSettingsDialog({
             placeholder="只保存在当前浏览器"
             onChange={(value) => setDraft((current) => ({ ...current, apiKey: value }))}
           />
-          <AgentModelSettingsField
-            id="agent-model-name"
-            label="模型名称"
-            value={draft.modelName}
-            placeholder="gpt-5-mini"
-            onChange={(value) => setDraft((current) => ({ ...current, modelName: value }))}
-          />
+          <div className="space-y-1.5">
+            <div className="flex items-end gap-2">
+              <div className="flex-1">
+                <AgentModelSettingsField
+                  id="agent-model-name"
+                  label="模型名称"
+                  value={draft.modelName}
+                  placeholder="gpt-5-mini"
+                  onChange={(value) => setDraft((current) => ({ ...current, modelName: value }))}
+                />
+              </div>
+              <AgentModelFetchButton
+                baseUrl={draft.baseUrl}
+                apiKey={draft.apiKey}
+                onSelectModel={(modelId) =>
+                  setDraft((current) => ({ ...current, modelName: modelId }))
+                }
+              />
+            </div>
+          </div>
         </div>
         <DialogFooter className="gap-2">
           <Button type="button" variant="ghost" onClick={() => setOpen(false)}>
@@ -476,7 +523,7 @@ function AgentModelSettingsField({
         value={value}
         placeholder={placeholder}
         onChange={(event) => onChange(event.target.value)}
-        className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+        autoComplete="off" className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
       />
     </div>
   );
@@ -1317,10 +1364,9 @@ function AgentComposer({
           rows={2}
           submitMode="enter"
           placeholder="输入消息，Enter 发送"
-          className="max-h-32 min-h-14 w-full resize-none border-0 !bg-transparent px-1 py-1 text-sm placeholder:text-muted-foreground focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-50"
+          autoComplete="off" className="max-h-32 min-h-14 w-full resize-none border-0 !bg-transparent px-1 py-1 text-sm placeholder:text-muted-foreground focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-50"
         />
-        <div className="mt-2 flex items-center justify-between gap-3">
-          <AgentContextIndicator status={contextStatus} className="min-w-0" />
+        <div className="mt-2 flex items-center justify-end gap-3">
           {isLoading ? (
             <ComposerPrimitive.Cancel
               aria-label="停止生成"
@@ -1519,6 +1565,245 @@ function toAgentModelConfig(
     return null;
   }
   return normalized;
+}
+
+
+function AgentThreadDropdown({
+  resumeId,
+  title,
+  modelSettings,
+  onNewThread,
+}: {
+  resumeId: string;
+  title: string;
+  modelSettings: AgentModelSettingsForm;
+  onNewThread: () => void;
+}) {
+  const messageCount = useAuiState((state) => state.thread.messages.length);
+  
+  const shortThreadId = `resume_${resumeId.slice(0, 8)}`;
+  const displayName = title || "未命名简历";
+
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger>
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          className="group/thread max-w-[180px] gap-1.5 px-2 text-sm font-medium"
+        >
+          <span className="truncate">{displayName}</span>
+          <ChevronDown className="h-3 w-3 shrink-0 text-muted-foreground opacity-0 transition-opacity group-hover/thread:opacity-100" />
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="start" className="w-64">
+        <div className="px-2 py-1.5">
+          <p className="text-xs font-medium text-foreground">{displayName}</p>
+          <p className="mt-0.5 text-xs text-muted-foreground">
+            会话 · {messageCount} 条消息
+            {modelSettings.modelName ? (
+              <span className="ml-2 inline-flex items-center gap-1">
+                <Bot className="h-3 w-3" />
+                {modelSettings.modelName}
+              </span>
+            ) : null}
+          </p>
+        </div>
+        <DropdownMenuItem
+          onClick={onNewThread}
+          className="mt-1 cursor-pointer text-xs"
+        >
+          <RotateCcw className="mr-2 h-3.5 w-3.5" />
+          开始新对话
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
+
+function AgentStatusFooter({
+  modelName,
+  autoApply,
+  onAutoApplyChange,
+  contextStatus,
+}: {
+  modelName: string;
+  autoApply: boolean;
+  onAutoApplyChange: (value: boolean) => void;
+  contextStatus: AgentContextStatusSnapshot | null;
+}) {
+  return (
+    <div className="flex shrink-0 items-center justify-between border-t bg-muted/30 px-4 py-1.5 dark:bg-muted/10">
+      <div className="flex items-center gap-3">
+        <Popover>
+          <PopoverTrigger
+            type="button"
+              className={[
+                "inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-xs font-medium transition-colors",
+                autoApply
+                  ? "bg-emerald-100 text-emerald-800 hover:bg-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-300 dark:hover:bg-emerald-950/60"
+                  : "bg-muted text-muted-foreground hover:bg-muted/80 dark:bg-muted/30 dark:hover:bg-muted/40",
+              ].join(" ")}
+            >
+              <Zap className={autoApply ? "h-3 w-3 text-emerald-600 dark:text-emerald-400" : "h-3 w-3"} />
+              {autoApply ? "自动应用" : "手动确认"}
+            </PopoverTrigger>
+          <PopoverContent align="start" className="w-56 p-3" side="top">
+            <p className="text-xs font-medium">Agent 操作模式</p>
+            <p className="mt-1 text-xs text-muted-foreground">
+              {autoApply
+                ? "Agent 的建议将自动应用到简历，无需逐条确认。"
+                : "Agent 的建议需要你逐条确认后才会应用到简历。"}
+            </p>
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              className="mt-2 h-7 w-full text-xs"
+              onClick={() => {
+                const next = !autoApply;
+                onAutoApplyChange(next);
+                if (typeof window !== "undefined") {
+                  window.localStorage.setItem(
+                    "intro-builder.agent.auto-apply.v1",
+                    String(next),
+                  );
+                }
+              }}
+            >
+              <ArrowUpDown className="mr-1 h-3 w-3" />
+              切换为{autoApply ? "手动确认" : "自动应用"}
+            </Button>
+          </PopoverContent>
+        </Popover>
+        <AgentContextIndicator status={contextStatus} className="min-w-0" />
+      </div>
+      <div className="flex items-center gap-1.5">
+        <Bot className="h-3 w-3 text-muted-foreground" />
+        <span className="text-xs text-muted-foreground">
+          {modelName || "默认模型"}
+        </span>
+      </div>
+    </div>
+  );
+}
+
+
+function AgentModelFetchButton({
+  baseUrl,
+  apiKey,
+  onSelectModel,
+}: {
+  baseUrl: string;
+  apiKey: string;
+  onSelectModel: (modelId: string) => void;
+}) {
+  const [isFetching, setIsFetching] = useState(false);
+  const [models, setModels] = useState<string[] | null>(null);
+  const [fetchError, setFetchError] = useState<string | null>(null);
+
+  async function fetchModels() {
+    if (!baseUrl || !apiKey) return;
+    setIsFetching(true);
+    setFetchError(null);
+    setModels(null);
+
+    try {
+      const response = await fetch(
+        `${baseUrl.replace(/\/+$/, "")}/models`,
+        {
+          headers: {
+            Authorization: `Bearer ${apiKey}`,
+            "Content-Type": "application/json",
+          },
+          signal: AbortSignal.timeout(10_000),
+        },
+      );
+
+      if (!response.ok) {
+        const body = await response.text().catch(() => "");
+        throw new Error(body || `HTTP ${response.status}`);
+      }
+
+      const data = await response.json();
+      const ids = extractModelIds(data);
+      if (ids.length === 0) {
+        setFetchError("未找到可用模型");
+      }
+      setModels(ids);
+    } catch (error) {
+      setFetchError(
+        error instanceof Error ? error.message : "获取模型列表失败",
+      );
+    } finally {
+      setIsFetching(false);
+    }
+  }
+
+  if (models && models.length > 0) {
+    return (
+      <DropdownMenu>
+        <DropdownMenuTrigger>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="h-9 gap-1 text-xs"
+          >
+            <Check className="h-3 w-3 text-emerald-600" />
+            {models.length} 个模型
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end" className="max-h-48 overflow-y-auto">
+          {models.map((modelId) => (
+            <DropdownMenuItem
+              key={modelId}
+              onClick={() => onSelectModel(modelId)}
+              className="cursor-pointer text-xs"
+            >
+              {modelId}
+            </DropdownMenuItem>
+          ))}
+        </DropdownMenuContent>
+      </DropdownMenu>
+    );
+  }
+
+  return (
+    <div className="flex flex-col items-end gap-1">
+      <Button
+        type="button"
+        variant="outline"
+        size="sm"
+        className="h-9 gap-1 text-xs"
+        disabled={!baseUrl || !apiKey || isFetching}
+        onClick={fetchModels}
+      >
+        {isFetching ? (
+          <Loader2 className="h-3 w-3 animate-spin" />
+        ) : (
+          <RefreshCw className="h-3 w-3" />
+        )}
+        {isFetching ? "获取中…" : "获取模型"}
+      </Button>
+      {fetchError ? (
+        <p className="text-xs text-destructive">{fetchError}</p>
+      ) : null}
+    </div>
+  );
+}
+
+function extractModelIds(data: unknown): string[] {
+  if (!isRecord(data)) return [];
+  if (Array.isArray(data.data)) {
+    return data.data
+      .map((item) =>
+        isRecord(item) && typeof item.id === "string" ? item.id : null,
+      )
+      .filter((id): id is string => id !== null);
+  }
+  return [];
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
