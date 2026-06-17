@@ -11,6 +11,7 @@ import {
   assembleLoopResult,
   buildLoopSystemPrompt,
   createInitialLoopDraft,
+  resolveLoopMaxSteps,
   runResumeLoop,
 } from "../src/workflows/loop-runtime";
 
@@ -159,6 +160,53 @@ describe("loop runtime", () => {
     );
   });
 
+  it("stops the loop immediately when resume_ask is called", async () => {
+    const request = createFromZeroRequest();
+    const draft = createInitialLoopDraft(request);
+
+    const fakeStreamText = ((options: {
+      tools: {
+        resume_ask: { execute: (i: unknown) => Promise<unknown> };
+        resume_update_section: {
+          execute: (i: unknown, o: unknown) => Promise<unknown>;
+        };
+      };
+    }) => ({
+      textStream: (async function* () {
+        await options.tools.resume_ask.execute({
+          question: "这个项目最终提升了哪些指标？",
+          field: "experience.0.content",
+        });
+        await options.tools.resume_update_section.execute(
+          {
+            fieldPath: "experience.0.content",
+            label: "工作经历",
+            newContent: docWithText("提升了 50%。"),
+          },
+          { toolCallId: "call_after_ask" },
+        );
+        yield "已继续改写。";
+      })(),
+    })) as unknown as typeof streamText;
+
+    const loopResult = await runResumeLoop({
+      model: {} as never,
+      request,
+      draft,
+      streamTextImpl: fakeStreamText,
+    });
+
+    expect(loopResult.isAskPending).toBe(true);
+    expect(loopResult.questions).toEqual([
+      expect.objectContaining({
+        message: "这个项目最终提升了哪些指标？",
+        field: "experience.0.content",
+      }),
+    ]);
+    expect(draft.operations).toHaveLength(0);
+    expect(draft.toolCalls).toHaveLength(0);
+  });
+
   it("falls back to an intake question when create-from-zero streams text without tools", async () => {
     const request = createFromZeroRequest();
     const draft = createInitialLoopDraft(request);
@@ -256,6 +304,95 @@ describe("loop runtime", () => {
     expect(captured!.experimental_telemetry).toEqual({
       isEnabled: true,
       functionId: "agent.loop",
+    });
+  });
+
+  it("resolves workflow-aware loop max steps unless env config overrides it", () => {
+    expect(
+      resolveLoopMaxSteps({
+        request: {
+          ...createFromZeroRequest(),
+          mode: "create_from_zero",
+          workflowId: "create-from-zero",
+        },
+        configuredMaxSteps: 16,
+      }),
+    ).toBe(40);
+
+    expect(
+      resolveLoopMaxSteps({
+        request: {
+          ...createFromZeroRequest(),
+          resumeId: "resume_abc",
+          mode: "optimize_existing",
+          workflowId: "resume-diagnose",
+          context: {
+            resumeTitle: "前端工程师",
+            templateId: "professional",
+            activeSection: null,
+            completeness: { overall: 50, sections: [] },
+            sections: [],
+          },
+        },
+        configuredMaxSteps: 16,
+      }),
+    ).toBe(12);
+
+    expect(
+      resolveLoopMaxSteps({
+        request: createFromZeroRequest(),
+        configuredMaxSteps: 24,
+      }),
+    ).toBe(24);
+  });
+
+  it("returns loop summary telemetry for actual steps and tool calls", async () => {
+    const request = createFromZeroRequest();
+    const draft = createInitialLoopDraft(request);
+    const fakeStreamText = ((options: {
+      onStepFinish?: (step: {
+        stepNumber: number;
+        toolCalls?: Array<{ toolName?: string; toolCallId?: string }>;
+      }) => void;
+      tools: {
+        resume_update_section: {
+          execute: (i: unknown, o: unknown) => Promise<unknown>;
+        };
+      };
+    }) => ({
+      textStream: (async function* () {
+        await options.tools.resume_update_section.execute(
+          {
+            fieldPath: "basics.summary",
+            label: "个人简介",
+            newContent: docWithText("三年后端经验。"),
+          },
+          { toolCallId: "call_1" },
+        );
+        options.onStepFinish?.({
+          stepNumber: 2,
+          toolCalls: [
+            { toolName: "resume_update_section", toolCallId: "call_1" },
+          ],
+        });
+        yield "已更新。";
+      })(),
+    })) as unknown as typeof streamText;
+
+    const result = await runResumeLoop({
+      model: {} as never,
+      request,
+      draft,
+      maxSteps: 2,
+      streamTextImpl: fakeStreamText,
+    });
+
+    expect(result.summary).toEqual({
+      maxSteps: 2,
+      actualSteps: 2,
+      toolCallCount: 1,
+      questionCount: 0,
+      reachedStepLimit: true,
     });
   });
 

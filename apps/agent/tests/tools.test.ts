@@ -297,6 +297,160 @@ describe("create-from-zero loop tools", () => {
     expect(result.ok).toBe(false);
     expect(result.error).toBeTruthy();
   });
+
+  it("role_match_read reports matched and missing target-role keywords", async () => {
+    const draft = createDraft({ targetRole: "前端工程师" });
+    const tools = createLoopTools(draft, {
+      resumeContext: {
+        resumeTitle: "前端工程师",
+        templateId: "professional",
+        activeSection: null,
+        completeness: { overall: 80, sections: [] },
+        sections: [
+          {
+            key: "experience",
+            label: "工作经历",
+            fieldPath: "experience.0.content",
+            plainText: "负责 React 数据看板开发，优化首屏性能。",
+          },
+        ],
+      },
+    });
+
+    const result = (await exec(
+      tools.role_match_read,
+      { keywords: ["React", "TypeScript", "性能"] },
+      "call_role_match",
+    )) as {
+      targetRole: string | null;
+      matchedKeywords: string[];
+      missingKeywords: string[];
+    };
+
+    expect(result.targetRole).toBe("前端工程师");
+    expect(result.matchedKeywords).toEqual(["React", "性能"]);
+    expect(result.missingKeywords).toEqual(["TypeScript"]);
+    expect(draft.operations).toHaveLength(0);
+    expect(draft.toolCalls).toContainEqual(
+      expect.objectContaining({
+        id: "call_role_match",
+        name: "role_match_read",
+        status: "completed",
+      }),
+    );
+  });
+
+  it("ats_check returns keyword and structure risks without mutating draft", async () => {
+    const draft = createDraft();
+    const tools = createLoopTools(draft, {
+      resumeContext: {
+        resumeTitle: "前端工程师",
+        templateId: "professional",
+        activeSection: null,
+        completeness: { overall: 50, sections: [] },
+        sections: [
+          {
+            key: "experience",
+            label: "工作经历",
+            fieldPath: "experience.0.content",
+            plainText: "负责业务系统开发。",
+          },
+        ],
+      },
+    });
+
+    const result = (await exec(
+      tools.ats_check,
+      { keywords: ["React", "TypeScript"] },
+      "call_ats",
+    )) as { score: number; risks: Array<{ code: string; message: string }> };
+
+    expect(result.score).toBeLessThan(100);
+    expect(result.risks).toContainEqual(
+      expect.objectContaining({ code: "missing_keyword" }),
+    );
+    expect(draft.operations).toHaveLength(0);
+    expect(draft.toolCalls).toContainEqual(
+      expect.objectContaining({ id: "call_ats", name: "ats_check" }),
+    );
+  });
+
+  it("content_claim_audit flags unsupported metrics", async () => {
+    const draft = createDraft();
+    const tools = createLoopTools(draft);
+    await exec(
+      tools.resume_set_text,
+      {
+        fieldPath: "experience.0.content",
+        plainText: "推动性能优化，提升 50%。",
+        label: "工作经历",
+      },
+      "call_set_claim",
+    );
+
+    const result = (await exec(
+      tools.content_claim_audit,
+      {},
+      "call_claim_audit",
+    )) as { risks: Array<{ code: string; message: string }> };
+
+    expect(result.risks).toContainEqual(
+      expect.objectContaining({ code: "possible_fabrication" }),
+    );
+  });
+
+  it("layout_fit_check reports overflow risk from draft density", async () => {
+    const draft = createDraft();
+    const tools = createLoopTools(draft);
+    await exec(
+      tools.resume_set_text,
+      {
+        fieldPath: "basics.summary",
+        plainText: "很长的个人简介".repeat(40),
+        label: "个人简介",
+      },
+      "call_set_long",
+    );
+
+    const result = (await exec(
+      tools.layout_fit_check,
+      { maxCharacters: 80 },
+      "call_layout",
+    )) as { riskLevel: string; risks: Array<{ code: string }> };
+
+    expect(result.riskLevel).toBe("high");
+    expect(result.risks).toContainEqual(
+      expect.objectContaining({ code: "content_overflow" }),
+    );
+  });
+
+  it("section_quality_score scores specificity and credibility", async () => {
+    const draft = createDraft();
+    const tools = createLoopTools(draft);
+    await exec(
+      tools.resume_set_text,
+      {
+        fieldPath: "experience.0.content",
+        plainText: "负责开发。",
+        label: "工作经历",
+      },
+      "call_set_quality",
+    );
+
+    const result = (await exec(
+      tools.section_quality_score,
+      { sectionKey: "experience" },
+      "call_quality",
+    )) as {
+      sectionKey: string;
+      overall: number;
+      dimensions: Record<string, number>;
+    };
+
+    expect(result.sectionKey).toBe("experience");
+    expect(result.overall).toBeLessThan(80);
+    expect(result.dimensions.specificity).toBeLessThan(60);
+  });
 });
 
 describe("computeCompleteness", () => {

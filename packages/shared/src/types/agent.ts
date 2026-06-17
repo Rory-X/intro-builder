@@ -56,12 +56,27 @@ export type AgentMessageRequest = {
   sessionSnapshot?: AgentSessionSnapshot;
 };
 
-export type AgentToolName =
+export type AgentVisibleOperationToolName =
   | "resume_read"
   | "resume_update_section"
   | "resume_delete_section"
   | "resume_reorder_sections"
-  | "resume_insert_section";
+  | "resume_insert_section"
+  | "resume_polish_text"
+  | "resume_set_text"
+  | "resume_ask";
+
+export type AgentInternalLoopToolName =
+  | AgentVisibleOperationToolName
+  | "get_completeness"
+  | "set_goal"
+  | "role_match_read"
+  | "ats_check"
+  | "content_claim_audit"
+  | "layout_fit_check"
+  | "section_quality_score";
+
+export type AgentToolName = AgentInternalLoopToolName;
 
 export type AgentToolCall = {
   id: string;

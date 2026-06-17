@@ -75,6 +75,14 @@ function docFor(operation: ResumeOperation): unknown {
     : textToDoc(operation.afterPlainText);
 }
 
+export function isAutoApplicableOperation(operation: ResumeOperation): boolean {
+  if (operation.riskFlags.length > 0) return false;
+  return (
+    operation.operation === "update_section" ||
+    operation.operation === "insert_section"
+  );
+}
+
 export function applyResumeOperation(
   content: ResumeContent,
   operation: ResumeOperation,

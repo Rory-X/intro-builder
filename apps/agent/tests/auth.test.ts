@@ -380,6 +380,7 @@ function createConfig(): AgentConfig {
     modelApiKey: undefined,
     modelName: undefined,
     modelTimeoutMs: 20_000,
+    agentLoopMaxSteps: 16,
     langfuse: {
       enabled: false,
       publicKey: undefined,

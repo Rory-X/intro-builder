@@ -26,6 +26,7 @@ describe("agent config", () => {
       modelApiKey: undefined,
       modelName: undefined,
       modelTimeoutMs: 90_000,
+      agentLoopMaxSteps: 16,
       langfuse: {
         enabled: false,
         publicKey: undefined,
@@ -69,6 +70,7 @@ describe("agent config", () => {
       AGENT_MODEL_API_KEY: "model-key",
       AGENT_MODEL_NAME: "gpt-test",
       AGENT_MODEL_TIMEOUT_MS: "30000",
+      AGENT_LOOP_MAX_STEPS: "24",
       LANGFUSE_TRACING_ENABLED: "true",
       LANGFUSE_PUBLIC_KEY: "pk_test",
       LANGFUSE_SECRET_KEY: "sk_test",
@@ -107,6 +109,7 @@ describe("agent config", () => {
       modelApiKey: "model-key",
       modelName: "gpt-test",
       modelTimeoutMs: 30000,
+      agentLoopMaxSteps: 24,
       langfuse: {
         enabled: true,
         publicKey: "pk_test",
@@ -170,6 +173,10 @@ describe("agent config", () => {
 
     expect(() => loadConfig({ AGENT_MODEL_TIMEOUT_MS: "0" })).toThrow(
       /AGENT_MODEL_TIMEOUT_MS must be an integer between 1 and 120000/,
+    );
+
+    expect(() => loadConfig({ AGENT_LOOP_MAX_STEPS: "0" })).toThrow(
+      /AGENT_LOOP_MAX_STEPS must be an integer between 1 and 64/,
     );
 
     expect(() => loadConfig({ LANGFUSE_TIMEOUT: "0" })).toThrow(

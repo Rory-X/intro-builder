@@ -4,6 +4,7 @@ import { describe, expect, it } from "vitest";
 import {
   createAgUiSseStream,
   extractAgUiContextStatus,
+  extractAgUiQuestion,
   extractAgUiResumeWorkspace,
   extractAgUiResumeToolResult,
   readAgUiSseStream,
@@ -134,6 +135,77 @@ describe("AG-UI stream helpers", () => {
           operation: "update_section",
         }),
       ],
+    });
+  });
+
+  it("accepts every long-loop tool result used by Agent Mode", () => {
+    const toolNames = [
+      "resume_read",
+      "get_completeness",
+      "set_goal",
+      "resume_polish_text",
+      "resume_set_text",
+      "resume_ask",
+      "role_match_read",
+      "ats_check",
+      "content_claim_audit",
+      "layout_fit_check",
+      "section_quality_score",
+    ] as const;
+
+    for (const toolName of toolNames) {
+      const event: BaseEvent = {
+        type: EventType.TOOL_CALL_RESULT,
+        messageId: `${toolName}_result`,
+        toolCallId: toolName,
+        role: "tool",
+        content: JSON.stringify({
+          toolCall: {
+            id: toolName,
+            name: toolName,
+            status: "completed",
+            title: "内部动作",
+            summary: "已完成内部动作。",
+            input: {},
+            result: {},
+          },
+          proposedOperations: [],
+        }),
+      };
+
+      expect(extractAgUiResumeToolResult(event)).toEqual({
+        toolCall: expect.objectContaining({ id: toolName, name: toolName }),
+        proposedOperations: [],
+      });
+    }
+  });
+
+  it("extracts resume_ask questions from long-loop tool results", () => {
+    const event: BaseEvent = {
+      type: EventType.TOOL_CALL_RESULT,
+      messageId: "tool_ask_result",
+      toolCallId: "tool_ask",
+      role: "tool",
+      content: JSON.stringify({
+        toolCall: {
+          id: "tool_ask",
+          name: "resume_ask",
+          status: "completed",
+          title: "追问用户",
+          summary: "需要补充真实结果指标。",
+          input: {},
+          result: {},
+        },
+        question: "这个项目最终提升了哪些指标？",
+        field: "experience.0.content",
+        proposedOperations: [],
+      }),
+    };
+
+    expect(extractAgUiQuestion(event)).toEqual({
+      toolCallId: "tool_ask",
+      question: "这个项目最终提升了哪些指标？",
+      field: "experience.0.content",
     });
   });
 
