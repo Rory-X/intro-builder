@@ -106,6 +106,31 @@ export const agentSessionEvents = pgTable("agent_session_event", {
   ),
 }));
 
+export const agentFloatingChatSessions = pgTable("agent_floating_chat_session", {
+  id: text("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  userId: text("userId").notNull().references(() => users.id, { onDelete: "cascade" }),
+  resumeId: text("resumeId").notNull().references(() => resumes.id, { onDelete: "cascade" }),
+  title: text("title").notNull().default("新对话"),
+  createdAt: timestamp("createdAt").notNull().defaultNow(),
+  updatedAt: timestamp("updatedAt").notNull().defaultNow(),
+}, (t) => ({
+  userResumeIdx: index("agent_floating_chat_session_user_resume_idx").on(t.userId, t.resumeId),
+  updatedAtIdx: index("agent_floating_chat_session_updated_at_idx").on(t.updatedAt),
+}));
+
+export const agentFloatingChatMessages = pgTable("agent_floating_chat_message", {
+  id: text("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  sessionId: text("sessionId").notNull().references(() => agentFloatingChatSessions.id, { onDelete: "cascade" }),
+  role: text("role").$type<"user" | "assistant">().notNull(),
+  content: text("content").notNull(),
+  parts: jsonb("parts").$type<Array<Record<string, unknown>>>(),
+  toolCalls: jsonb("toolCalls").$type<Array<Record<string, unknown>>>(),
+  operations: jsonb("operations").$type<Array<Record<string, unknown>>>(),
+  createdAt: timestamp("createdAt").notNull().defaultNow(),
+}, (t) => ({
+  sessionCreatedAtIdx: index("agent_floating_chat_message_session_created_at_idx").on(t.sessionId, t.createdAt),
+}));
+
 // ─── Collaboration Sessions ──────────────────────────────────
 
 export const collabSessions = pgTable("collab_session", {

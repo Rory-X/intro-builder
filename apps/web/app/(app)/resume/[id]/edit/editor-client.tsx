@@ -67,6 +67,8 @@ import { AnnotationList } from "@/components/collab/annotation-list";
 import { ResumeDiagnoseButton } from "@/components/agent/resume-diagnose-button";
 import { AgentModeToggle } from "@/components/agent/agent-mode-toggle";
 import { AgentPanel } from "@/components/agent/agent-panel";
+import { AgentBubble } from "@/components/agent/agent-bubble";
+import { FloatingAgentChat } from "@/components/agent/floating-agent-chat";
 import type { ResumeOperation } from "@intro-builder/shared/types";
 import { applyResumeOperation } from "@/lib/agent/apply-operation";
 
@@ -103,6 +105,7 @@ type Props = {
    * 可选，缺省 [] —— 老调用方/测试不传也不报错，只是没有收藏分组。
    */
   favoritedTemplateIds?: string[];
+  agentSurface?: "panel" | "floating";
   from: string | null;
 };
 
@@ -142,7 +145,7 @@ function parseIsoDate(value: string): Date | null {
   return Number.isNaN(date.getTime()) ? null : date;
 }
 
-export default function EditorClient({ id, initialTitle, initialTemplate, initialContent, initialIsPublic, initialSlug, initialUpdatedAtIso, initialNowIso, initialResolvedTemplate, uploadedTemplates, allTemplates, favoritedTemplateIds = [], from }: Props) {
+export default function EditorClient({ id, initialTitle, initialTemplate, initialContent, initialIsPublic, initialSlug, initialUpdatedAtIso, initialNowIso, initialResolvedTemplate, uploadedTemplates, allTemplates, favoritedTemplateIds = [], agentSurface = "panel", from }: Props) {
   const backHref = from === "templates" ? "/templates" : "/dashboard";
   const backLabel = from === "templates" ? "模板库" : "我的简历";
   const isDesktop = useSyncExternalStore(
@@ -552,6 +555,7 @@ export default function EditorClient({ id, initialTitle, initialTemplate, initia
     ? `当前自动保存状态：保存失败（${saveError}）`
     : `当前自动保存状态：${saveStatusLabel}`;
   const agentCompleteness = computeCompletenessScore(form.getValues() as ResumeContent);
+  const useFloatingAgent = agentSurface === "floating";
 
   return (
     <FormProvider {...form}>
@@ -592,13 +596,15 @@ export default function EditorClient({ id, initialTitle, initialTemplate, initia
           <SmartLayoutButton templateId={template} measureRef={previewRootRef} />
           <ModuleManager sectionOrder={sectionOrder} onOrderChange={handleOrderChange} />
           <ResumeDiagnoseButton resumeId={id} />
-          <AgentModeToggle
-            active={isAgentMode}
-            onClick={() => {
-              setShowTemplatePanel(false);
-              setIsAgentMode((value) => !value);
-            }}
-          />
+          {!useFloatingAgent ? (
+            <AgentModeToggle
+              active={isAgentMode}
+              onClick={() => {
+                setShowTemplatePanel(false);
+                setIsAgentMode((value) => !value);
+              }}
+            />
+          ) : null}
 
           {collabState?.isConnected && (
             <>
@@ -800,7 +806,7 @@ export default function EditorClient({ id, initialTitle, initialTemplate, initia
                 isAgentMode ? "p-0" : "p-3.5",
               )}
             >
-              {isAgentMode ? (
+              {isAgentMode && !useFloatingAgent ? (
                 <AgentPanel
                   resumeId={id}
                   title={title}
@@ -906,31 +912,48 @@ export default function EditorClient({ id, initialTitle, initialTemplate, initia
           <a href="/dashboard" className="mt-2 text-sm font-medium text-primary hover:underline">
             返回我的简历
           </a>
-          <Button type="button" onClick={() => setIsAgentMode(true)}>
-            打开 Agent
-          </Button>
-          <Sheet open={isAgentMode} onOpenChange={setIsAgentMode}>
-            <SheetContent side="bottom" className="h-[88vh] gap-0 p-0" showCloseButton={false}>
-              <SheetHeader className="sr-only">
-                <SheetTitle>简历 Agent</SheetTitle>
-                <SheetDescription>
-                  移动端 Agent 面板，修改简历前仍需确认。
-                </SheetDescription>
-              </SheetHeader>
-              <AgentPanel
-                resumeId={id}
-                title={title}
-                templateId={template}
-                getResumeContent={() => form.getValues() as ResumeContent}
-                completeness={agentCompleteness}
-                applyOperation={applyAgentOperation}
-                flushAutosave={flushAgentAutosave}
-                onBackToEdit={() => setIsAgentMode(false)}
-              />
-            </SheetContent>
-          </Sheet>
+          {!useFloatingAgent ? (
+            <Button type="button" onClick={() => setIsAgentMode(true)}>
+              打开 Agent
+            </Button>
+          ) : null}
+          {!useFloatingAgent ? (
+            <Sheet open={isAgentMode} onOpenChange={setIsAgentMode}>
+              <SheetContent side="bottom" className="h-[88vh] gap-0 p-0" showCloseButton={false}>
+                <SheetHeader className="sr-only">
+                  <SheetTitle>简历 Agent</SheetTitle>
+                  <SheetDescription>
+                    移动端 Agent 面板，修改简历前仍需确认。
+                  </SheetDescription>
+                </SheetHeader>
+                <AgentPanel
+                  resumeId={id}
+                  title={title}
+                  templateId={template}
+                  getResumeContent={() => form.getValues() as ResumeContent}
+                  completeness={agentCompleteness}
+                  applyOperation={applyAgentOperation}
+                  flushAutosave={flushAgentAutosave}
+                  onBackToEdit={() => setIsAgentMode(false)}
+                />
+              </SheetContent>
+            </Sheet>
+          ) : null}
         </div>
       )}
+      {useFloatingAgent ? (
+        <AgentBubble title="AI 简历助手">
+          <FloatingAgentChat
+            resumeId={id}
+            title={title}
+            templateId={template}
+            getResumeContent={() => form.getValues() as ResumeContent}
+            completeness={agentCompleteness}
+            applyOperation={applyAgentOperation}
+            flushAutosave={flushAgentAutosave}
+          />
+        </AgentBubble>
+      ) : null}
     </FormProvider>
   );
 }

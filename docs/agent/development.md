@@ -129,6 +129,7 @@ Current:
 | `AGENT_JWT_SECRET` | unset | Shared signing secret; required for protected `/v1/*` routes |
 | `AGENT_JWT_REPLAY_TTL_SECONDS` | `180` | Redis `jti` replay guard TTL |
 | `AGENT_CORS_ORIGINS` | unset | Comma-separated Web origins allowed to direct-connect to `/v1/agent/messages` |
+| `AGENT_ASSISTANT_SURFACE` | `panel` | Web editor Agent entry. Set to `floating` to AB-test the floating assistant; unset keeps the current Agent panel. |
 
 ## Phase 0C Auth Smoke
 
@@ -223,6 +224,40 @@ Editor Agent 模式
 ```
 
 Do not use this smoke to migrate OCR, resume import, or existing AI parsing. Those remain outside the Agent microservice scope.
+
+## Floating Assistant AB Smoke
+
+The floating assistant is gated by Web env, stays in the Next app, and keeps its
+own chat sessions:
+
+```bash
+PORT=3001 \
+  AGENT_ASSISTANT_SURFACE=floating \
+  AUTH_DEV_BYPASS=1 \
+  AUTH_DEV_USER_ID=dev-user \
+  pnpm dev:web
+```
+
+Open:
+
+```text
+http://localhost:3001/resume/dev-resume-agent-preview/edit?from=dashboard
+```
+
+Manual checks:
+
+- The floating bubble opens a compact chat window; the existing Agent panel
+  entry is hidden in floating mode.
+- The history control loads `/api/agent/floating/sessions?resumeId=...`,
+  then `/api/agent/floating/sessions/[sessionId]`; new chat creates a fresh
+  `新对话`, and delete removes the active session.
+- Sending without a connected model shows `需要先连接模型` locally and does not
+  call `/api/agent/floating/chat`.
+- After filling model service address, access key, and model name, chat sends
+  `sessionId` to `/api/agent/floating/chat`; tool operations returned by the
+  route are applied to the editor and flushed through autosave.
+- Restart without `AGENT_ASSISTANT_SURFACE=floating` to verify the existing
+  Agent Panel fallback still appears.
 
 ## Verification Gates
 

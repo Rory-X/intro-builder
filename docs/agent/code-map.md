@@ -54,6 +54,12 @@ Web side entrypoints:
 | `app/api/agent/rich-text/polish/route.ts` | Web BFF for rich text polish |
 | `app/api/agent/resume/helpers/[helperId]/route.ts` | Web BFF for Phase 2A resume helpers |
 | `app/api/agent/messages/route.ts` | Phase 3B: assistant-ui Agent Mode BFF AG-UI SSE proxy with JSON debug fallback |
+| `app/api/agent/floating/chat/route.ts` | Env-gated floating assistant chat route, request-scoped model config, direct resume operations, floating session persistence |
+| `app/api/agent/floating/models/route.ts` | Env-gated floating assistant model list route using user-provided service settings |
+| `app/api/agent/floating/sessions/route.ts` | Env-gated floating assistant session list/create route |
+| `app/api/agent/floating/sessions/[sessionId]/route.ts` | Env-gated floating assistant session detail/delete route |
+| `lib/agent/floating-chat-session-store.ts` | Floating-only DB session/message persistence helpers |
+| `lib/agent/surface.ts` | Web editor Agent surface env selection |
 | `tests/unit/agent-token.test.ts` | signer behavior |
 | `tests/unit/agent-client.test.ts` | timeout/error mapping |
 | `tests/unit/agent-session-route.test.ts` | Web BFF smoke route behavior |
@@ -62,6 +68,10 @@ Web side entrypoints:
 | `tests/unit/agent-resume-helper-route.test.ts` | resume helper BFF auth/ownership/proxy behavior |
 | `tests/unit/agent-chat-context.test.ts` | Phase 3B: Agent chat context extraction and field paths |
 | `tests/unit/agent-messages-route.test.ts` | Phase 3B: Agent message BFF auth/ownership/proxy behavior |
+| `tests/unit/agent-floating-chat-route.test.ts` | Floating assistant local chat route and persistence behavior |
+| `tests/unit/agent-floating-models-route.test.ts` | Floating assistant model list route behavior |
+| `tests/unit/agent-floating-sessions-route.test.ts` | Floating assistant session list/detail/delete route behavior |
+| `tests/unit/agent-surface.test.ts` | Agent surface env parsing |
 
 Rules:
 
@@ -71,6 +81,10 @@ Rules:
 - Web BFF must validate Auth.js session and resume ownership before signing `agent:chat`.
 - Browser components must call `/api/agent/messages`, never Agent `/v1/agent/messages` directly.
 - Browser Agent Mode must request AG-UI SSE (`Accept: text/event-stream`); JSON is only a non-browser debug fallback.
+- The env-gated floating assistant is the exception to the AG-UI BFF path: it
+  stays inside Web Next routes, uses request-scoped model settings from the
+  browser, persists its own chat sessions, and returns `ResumeOperation[]` for
+  the editor to apply through the existing autosave path.
 - Current Phase 3B backend contract files exist; do not recreate them under different names.
 
 ## Editor Page
@@ -131,6 +145,8 @@ Phase 3B components:
 | `components/agent/agent-preset-workflows.tsx` | 3B | preset workflow chips |
 | `components/agent/agent-tool-card.tsx` | 3B | visible tool call/result card |
 | `components/agent/agent-confirmation-card.tsx` | 3B | `ResumeOperation` apply/ignore card |
+| `components/agent/agent-bubble.tsx` | floating AB | draggable floating assistant bubble/window shell |
+| `components/agent/floating-agent-chat.tsx` | floating AB | compact chat UI, session history, model connection, direct operation apply |
 | `lib/agent/assistant-ui-react-compat.ts` | 3B | localized React 19 internals alias for assistant-ui/tap webpack build |
 | `next.config.ts` | 3B | targeted `NormalModuleReplacementPlugin` for tap dispatcher only |
 | `tests/unit/agent-panel.test.tsx` | 3B | Agent panel workflow and confirmation behavior |
@@ -153,7 +169,9 @@ Reuse:
 
 Phase 3B UI guardrails:
 
-- `Agent 模式` is a left-column mode switch, not a right drawer or floating chat.
+- 默认 `Agent 模式` is a left-column mode switch, not a right drawer. The
+  env-gated AB variant `AGENT_ASSISTANT_SURFACE=floating` is the only
+  supported floating-chat exception.
 - Agent message streaming must stay AG-UI-first: `@ag-ui/core` event types, `@ag-ui/encoder` SSE encoding, Web parser validation with `BaseEventSchema`.
 - assistant-ui imports should stay behind Agent panel/runtime files and be lazy-loaded where practical.
 - assistant-ui/tap React compatibility is localized to `lib/agent/assistant-ui-react-compat.ts`; do not alias React globally.
