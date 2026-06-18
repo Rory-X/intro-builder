@@ -19,7 +19,11 @@ import {
   rehydrateDraft,
   type DraftState,
 } from "./draft.js";
-import { createLoopTools, type LoopToolsFactoryOptions } from "./tools.js";
+import {
+  createLoopTools,
+  ResumeAskInterrupt,
+  type LoopToolsFactoryOptions,
+} from "./tools.js";
 
 /**
  * 真 agent loop 执行器（create-from-zero）。
@@ -34,6 +38,16 @@ import { createLoopTools, type LoopToolsFactoryOptions } from "./tools.js";
  */
 
 export const LOOP_MAX_STEPS = 16;
+
+const WORKFLOW_LOOP_MAX_STEPS: Partial<
+  Record<NonNullable<AgentMessageRequest["workflowId"]>, number>
+> = {
+  "resume-diagnose": 12,
+  "experience-star": 20,
+  "target-role-match": 24,
+  "pre-export-check": 16,
+  "create-from-zero": 40,
+};
 
 type ParsedLoopResult = Extract<
   AgentMessageParseResult,
@@ -88,11 +102,12 @@ export function buildLoopSystemPrompt(request: AgentMessageRequest): string {
     "",
     "工作方式（多步循环）：",
     "1. 先用 resume_read 读取整个草稿了解简历全貌。",
-    "2. 用 get_completeness 检查完整度。",
+    "2. 用 get_completeness、role_match_read、ats_check、section_quality_score 先诊断。",
     "3. 使用 resume_polish_text 逐段优化需要改善的地方。",
-    "4. 需要结构性修改时使用 resume_update_section / resume_delete_section / resume_insert_section / resume_reorder_sections。",
-    "5. 需要用户补充信息时用 resume_ask 追问。不要编造事实、数字、公司名、奖项。",
-    "6. 完成后停止调工具，用一两句话总结做了什么。",
+    "4. 写后用 content_claim_audit 和 layout_fit_check 自检风险。",
+    "5. 需要结构性修改时使用 resume_update_section / resume_delete_section / resume_insert_section / resume_reorder_sections。",
+    "6. 需要用户补充信息时用 resume_ask 追问。不要编造事实、数字、公司名、奖项。",
+    "7. 完成后停止调工具，用一两句话总结做了什么。",
     "",
     "STAR 原则优化时不得编造 Result 指标。原文是列表结构时润色结果必须保持列表。",
     "草稿之外的真实简历改动只会在用户点击「同意应用」后由系统落盘。",
@@ -105,6 +120,13 @@ export type RunResumeLoopResult = {
   text: string;
   isAskPending: boolean;
   questions: AgentQuestionRequest[];
+  summary: {
+    maxSteps: number;
+    actualSteps: number;
+    toolCallCount: number;
+    questionCount: number;
+    reachedStepLimit: boolean;
+  };
 };
 
 export type LoopStepEvent = {
@@ -127,6 +149,20 @@ export type RunResumeLoopOptions = {
   loopToolsOptions?: LoopToolsFactoryOptions;
 };
 
+export function resolveLoopMaxSteps({
+  request,
+  configuredMaxSteps = LOOP_MAX_STEPS,
+}: {
+  request: AgentMessageRequest;
+  configuredMaxSteps?: number;
+}): number {
+  if (configuredMaxSteps !== LOOP_MAX_STEPS) return configuredMaxSteps;
+  const workflowId =
+    request.workflowId ??
+    (request.mode === "create_from_zero" ? "create-from-zero" : null);
+  return workflowId ? WORKFLOW_LOOP_MAX_STEPS[workflowId] ?? LOOP_MAX_STEPS : LOOP_MAX_STEPS;
+}
+
 export async function runResumeLoop(
   options: RunResumeLoopOptions,
 ): Promise<RunResumeLoopResult> {
@@ -143,8 +179,12 @@ export async function runResumeLoop(
   } = options;
 
   const questions: AgentQuestionRequest[] = [];
+  let actualSteps = 0;
+  let toolCallCount = 0;
   const tools = createLoopTools(draft, {
+    resumeContext: request.context,
     ...loopToolsOptions,
+    stopOnAsk: loopToolsOptions?.stopOnAsk ?? true,
     onAsk: (question, field) => {
       appendQuestion(questions, question, field);
     },
@@ -164,9 +204,11 @@ export async function runResumeLoop(
         toolCallId?: string;
       }>;
     }) => {
-      if (!onStepFinish) return;
+      actualSteps = Math.max(actualSteps, step.stepNumber);
       const toolCalls: LoopStepEvent["toolCalls"] = [];
       const stepToolCalls = step.toolCalls ?? [];
+      toolCallCount += stepToolCalls.length;
+      if (!onStepFinish) return;
       const draftToolCallsSnapshot = [...draft.toolCalls];
       for (const stepTc of stepToolCalls) {
         if (stepTc.toolName === "resume_ask") continue;
@@ -190,8 +232,12 @@ export async function runResumeLoop(
 
   let text = "";
   const visibleTextStream = createVisibleTextStream(onTextDelta);
-  for await (const delta of result.textStream) {
-    text += visibleTextStream.push(delta);
+  try {
+    for await (const delta of result.textStream) {
+      text += visibleTextStream.push(delta);
+    }
+  } catch (error) {
+    if (!(error instanceof ResumeAskInterrupt)) throw error;
   }
   text += visibleTextStream.flush();
   if (
@@ -211,6 +257,14 @@ export async function runResumeLoop(
       text.trim() || "已根据你的输入更新草稿，请在右侧预览中查看。",
     isAskPending: questions.length > 0,
     questions,
+    summary: {
+      maxSteps,
+      actualSteps,
+      toolCallCount:
+        toolCallCount > 0 ? toolCallCount : draft.toolCalls.length + questions.length,
+      questionCount: questions.length,
+      reachedStepLimit: actualSteps >= maxSteps,
+    },
   };
 }
 
@@ -225,6 +279,11 @@ const INTERNAL_TOOL_NAMES = [
   "resume_read",
   "resume_ask",
   "set_goal",
+  "role_match_read",
+  "ats_check",
+  "content_claim_audit",
+  "layout_fit_check",
+  "section_quality_score",
 ] as const;
 const INTERNAL_TOOL_NAME_PATTERN = new RegExp(
   `\\b(?:${INTERNAL_TOOL_NAMES.join("|")})\\b`,

@@ -1278,6 +1278,57 @@ describe("AgentPanel assistant-ui runtime", () => {
     );
   });
 
+  it("does not auto-apply risky operations when auto apply is enabled", async () => {
+    window.localStorage.setItem("intro-builder.agent.auto-apply.v1", "true");
+    const applyOperation = vi.fn();
+    const fetchMock = vi.fn<
+      (...args: [RequestInfo | URL, RequestInit?]) => Promise<Response>
+    >(async () => {
+      return agUiToolLifecycleInterruptResponse({
+        text: "我生成了一条需要确认的修改建议。",
+        toolCall: {
+          id: "tool_risky",
+          name: "resume_update_section",
+          status: "completed",
+          title: "改写经历",
+          summary: "包含需要确认的结果指标。",
+          input: {},
+          result: {},
+        },
+        proposedOperation: {
+          id: "op_risky",
+          toolCallId: "tool_risky",
+          label: "应用经历改写",
+          section: "experience",
+          fieldPath: "experience.0.content",
+          operation: "update_section",
+          beforePlainText: "负责性能优化。",
+          afterPlainText: "推动性能优化，提升 50%。",
+          changeSummary: "加入结果指标。",
+          riskFlags: [
+            {
+              type: "possible_fabrication",
+              message: "需要确认指标来源。",
+            },
+          ],
+        },
+      });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<AgentPanel {...panelProps({ applyOperation })} />);
+    sendMessage("请自动优化这份简历");
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+    });
+    await waitFor(() => {
+      expect(screen.getByText("等待确认 1 条修改建议")).toBeInTheDocument();
+    });
+    expect(applyOperation).not.toHaveBeenCalled();
+    expect(screen.getByText("应用经历改写")).toBeInTheDocument();
+  });
+
   it("renders AG-UI interrupts as answerable question cards and resumes the run", async () => {
     const fetchMock = vi.fn<
       (...args: [RequestInfo | URL, RequestInit?]) => Promise<Response>

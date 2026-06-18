@@ -3,7 +3,7 @@ import type {
   AgentMessageRequest,
   AgentMessageParseResult,
 } from "../agent-messages.js";
-import type { ResumeOperation } from "../agent-tools.js";
+import type { AgentToolCall, ResumeOperation } from "../agent-tools.js";
 
 export type AgentResumeWorkspaceSnapshot = {
   resumeId: string | null;
@@ -82,7 +82,7 @@ export function buildAgentResumeWorkspace({
     draftResume,
     changeSets: buildChangeSets(requestId, now, result.proposedOperations),
     decisions: [],
-    qualityReport: null,
+    qualityReport: buildQualityReport(result.toolCalls),
     updatedAt: now,
   };
 }
@@ -158,6 +158,73 @@ function summarizeOperations(operations: ResumeOperation[]): string {
     .filter(Boolean);
   if (summaries.length === 0) return `包含 ${operations.length} 条修改建议`;
   return summaries.join("；");
+}
+
+function buildQualityReport(
+  toolCalls: AgentToolCall[],
+): AgentResumeWorkspaceSnapshot["qualityReport"] {
+  const risks: NonNullable<AgentResumeWorkspaceSnapshot["qualityReport"]>["risks"] = [];
+  const scores: number[] = [];
+
+  for (const toolCall of toolCalls) {
+    const score = readNumericScore(toolCall.result);
+    if (score !== null) scores.push(score);
+    const rawRisks = Array.isArray(toolCall.result.risks)
+      ? toolCall.result.risks
+      : [];
+    for (const rawRisk of rawRisks) {
+      if (!isRecord(rawRisk) || typeof rawRisk.message !== "string") continue;
+      const code = mapQualityRiskCode(rawRisk.code);
+      if (!code) continue;
+      risks.push({ code, message: rawRisk.message });
+    }
+  }
+
+  if (risks.length === 0 && scores.length === 0) return null;
+  const score =
+    scores.length > 0
+      ? Math.round(scores.reduce((sum, item) => sum + item, 0) / scores.length)
+      : Math.max(0, 100 - risks.length * 15);
+  return {
+    score,
+    summary:
+      risks.length > 0
+        ? `发现 ${risks.length} 个质量风险。`
+        : "未发现明显质量风险。",
+    risks,
+  };
+}
+
+function readNumericScore(result: Record<string, unknown>): number | null {
+  const score = typeof result.score === "number" ? result.score : null;
+  if (score !== null) return clampScore(score);
+  const overall = typeof result.overall === "number" ? result.overall : null;
+  return overall === null ? null : clampScore(overall);
+}
+
+function clampScore(score: number): number {
+  return Math.max(0, Math.min(100, Math.round(score)));
+}
+
+function mapQualityRiskCode(
+  code: unknown,
+): NonNullable<AgentResumeWorkspaceSnapshot["qualityReport"]>["risks"][number]["code"] | null {
+  if (code === "possible_fabrication") return "fabrication_risk";
+  if (code === "missing_keyword" || code === "weak_structure") return "low_impact";
+  if (code === "content_overflow") return "formatting_risk";
+  if (code === "missing_fact") return "missing_fact";
+  if (
+    code === "fabrication_risk" ||
+    code === "formatting_risk" ||
+    code === "low_impact"
+  ) {
+    return code;
+  }
+  return null;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
 }
 
 function safeId(value: string): string {
