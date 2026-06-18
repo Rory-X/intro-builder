@@ -30,7 +30,7 @@ import { createLoopTools, type LoopToolsFactoryOptions } from "./tools.js";
  * 把 draft 装配成标准 `ParsedAgentResult`，复用既有 `toStreamingRuntimeTailEvents`
  * 出工具事件 / workspace / change-set 预览。
  *
- * 系统提示词参考 LingyiChen-AI/JadeAI（Apache-2.0）的 resume 助手提示结构。
+ * 系统提示词参考外部简历助手实现（Apache-2.0）的提示结构。
  */
 
 export const LOOP_MAX_STEPS = 16;

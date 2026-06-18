@@ -13,6 +13,7 @@ import {
 import { listUploadedTemplates } from "@/lib/templates/uploaded/fetch";
 import { getFavoriteTemplateIds } from "@/app/(app)/templates/actions";
 import { toSerializable } from "@/lib/templates/render";
+import { readAgentSurface } from "@/lib/agent/surface";
 import type { Metadata } from "next";
 export const metadata: Metadata = { title: "编辑简历" };
 
@@ -52,6 +53,7 @@ export default async function EditPage({ params, searchParams }: { params: Promi
       uploadedTemplates={dbUploadedTemplates}
       allTemplates={allTemplates}
       favoritedTemplateIds={favoritedTemplateIds}
+      agentSurface={readAgentSurface()}
       from={from ?? null}
     />
   );

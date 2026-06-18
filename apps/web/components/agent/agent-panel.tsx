@@ -29,6 +29,7 @@ import {
   FilePlus2,
   Loader2,
   MessageCircleQuestion,
+  Plus,
   RefreshCw,
   RotateCcw,
   Send,
@@ -108,6 +109,8 @@ type AgentTurnArtifacts = {
   appliedOperationIds: string[];
 };
 
+type AgentPanelSurface = "panel" | "floating";
+
 type AgentInterruptResponse = {
   interruptId: string;
   status: "resolved" | "cancelled";
@@ -142,6 +145,10 @@ export function AgentPanel({
   applyOperation,
   flushAutosave,
   onBackToEdit,
+  defaultAutoApply = false,
+  lockAutoApply = false,
+  showBackButton = true,
+  surface = "panel",
 }: {
   resumeId: string;
   title: string;
@@ -150,7 +157,11 @@ export function AgentPanel({
   completeness: AgentResumeContext["completeness"];
   applyOperation: (operation: ResumeOperation) => void;
   flushAutosave: () => void;
-  onBackToEdit: () => void;
+  onBackToEdit?: () => void;
+  defaultAutoApply?: boolean;
+  lockAutoApply?: boolean;
+  showBackButton?: boolean;
+  surface?: AgentPanelSurface;
 }) {
   const [turnArtifacts, setTurnArtifacts] = useState<AgentTurnArtifacts[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -159,18 +170,41 @@ export function AgentPanel({
   const [resumeWorkspace, setResumeWorkspace] =
     useState<AgentResumeWorkspaceSnapshot | null>(null);
   const [modelSettings, setModelSettings] = useState<AgentModelSettingsForm>(
-    () => readStoredModelSettings(),
+    () => emptyModelSettings(),
   );
   const [threadKey, setThreadKey] = useState(0);
   const [isLoading, setIsLoading] = useState(false);
   const [autoApply, setAutoApply] = useState(() => {
-    if (typeof window === "undefined") return false;
-    return window.localStorage.getItem("intro-builder.agent.auto-apply.v1") === "true";
+    if (lockAutoApply) return true;
+    return defaultAutoApply;
   });
   const [lastRetryRequest, setLastRetryRequest] = useState<AgentRetryRequest | null>(
     null,
   );
   const activeTurnIdRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      setModelSettings(readStoredModelSettings());
+    }, 0);
+    return () => window.clearTimeout(timer);
+  }, []);
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      if (lockAutoApply) {
+        setAutoApply(true);
+        return;
+      }
+      const stored = window.localStorage.getItem("intro-builder.agent.auto-apply.v1");
+      if (stored === "true" || stored === "false") {
+        setAutoApply(stored === "true");
+        return;
+      }
+      setAutoApply(defaultAutoApply);
+    }, 0);
+    return () => window.clearTimeout(timer);
+  }, [defaultAutoApply, lockAutoApply]);
 
   function beginAgentTurn(messages: readonly { role?: unknown }[]) {
     const turnId = createTurnId();
@@ -324,6 +358,18 @@ export function AgentPanel({
     }
   }
 
+  function startNewThread() {
+    setTurnArtifacts([]);
+    setError(null);
+    setContextStatus(null);
+    setResumeWorkspace(null);
+    setIsLoading(false);
+    setLastRetryRequest(null);
+    setThreadKey((k) => k + 1);
+  }
+
+  const isFloatingSurface = surface === "floating";
+
   return (
     <section
       data-agent-runtime-mode="ag-ui"
@@ -395,41 +441,45 @@ export function AgentPanel({
         autoAccept={autoApply}
         onOperationApplied={autoApply ? handleAutoAcceptOperation : undefined}
       >
-        <div className="flex h-12 shrink-0 items-center justify-between border-b px-3">
-          <div className="flex min-w-0 items-center gap-1">
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon-sm"
-              aria-label="返回编辑"
-              onClick={onBackToEdit}
-            >
-              <ArrowLeft className="h-4 w-4" />
-            </Button>
-            <AgentThreadDropdown
-              resumeId={resumeId}
-              title={title}
-              modelSettings={modelSettings}
-              onNewThread={() => {
-                setTurnArtifacts([]);
-                setError(null);
-                setContextStatus(null);
-                setResumeWorkspace(null);
-                setIsLoading(false);
-                setLastRetryRequest(null);
-                setThreadKey((k) => k + 1);
-              }}
-            />
-          </div>
-          <div className="flex items-center gap-2">
-            <AgentModelSettingsDialog
-            settings={modelSettings}
-            onSave={setModelSettings}
+        {isFloatingSurface ? (
+          <AgentFloatingHeader
+            title={title}
+            modelSettings={modelSettings}
+            onNewThread={startNewThread}
+            onSaveModelSettings={setModelSettings}
           />
+        ) : (
+          <div className="flex h-12 shrink-0 items-center justify-between border-b px-3">
+            <div className="flex min-w-0 items-center gap-1">
+              {showBackButton ? (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon-sm"
+                  aria-label="返回编辑"
+                  onClick={onBackToEdit}
+                >
+                  <ArrowLeft className="h-4 w-4" />
+                </Button>
+              ) : null}
+              <AgentThreadDropdown
+                resumeId={resumeId}
+                title={title}
+                modelSettings={modelSettings}
+                onNewThread={startNewThread}
+              />
+            </div>
+            <div className="flex items-center gap-2">
+              <AgentModelSettingsDialog
+                settings={modelSettings}
+                onSave={setModelSettings}
+              />
+            </div>
           </div>
-        </div>
+        )}
 
         <AgentThreadArea
+          surface={surface}
           turnArtifacts={turnArtifacts}
           error={error}
           resumeWorkspace={resumeWorkspace}
@@ -448,13 +498,83 @@ export function AgentPanel({
         />
         <AgentComposer contextStatus={contextStatus} isLoading={isLoading} />
         <AgentStatusFooter
-          modelName={modelSettings.modelName || "默认模型"}
+          modelName={modelSettings.modelName || "连接模型"}
           autoApply={autoApply}
           onAutoApplyChange={setAutoApply}
+          autoApplyLocked={lockAutoApply}
           contextStatus={contextStatus}
         />
       </AgentAgUiRuntimeProvider>
     </section>
+  );
+}
+
+function AgentFloatingHeader({
+  title,
+  modelSettings,
+  onNewThread,
+  onSaveModelSettings,
+}: {
+  title: string;
+  modelSettings: AgentModelSettingsForm;
+  onNewThread: () => void;
+  onSaveModelSettings: (settings: AgentModelSettingsForm) => void;
+}) {
+  const messageCount = useAuiState((state) => state.thread.messages.length);
+  const displayName = title || "未命名简历";
+
+  return (
+    <div className="flex h-12 shrink-0 items-center justify-between border-b bg-background/95 px-3 backdrop-blur dark:bg-background/90">
+      <div className="flex min-w-0 items-center gap-2">
+        <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-sky-100 text-sky-700 dark:bg-sky-950/50 dark:text-sky-300">
+          <Bot className="h-4 w-4" />
+        </div>
+        <div className="min-w-0">
+          <p className="truncate text-sm font-semibold text-foreground">
+            AI 简历助手
+          </p>
+          <p className="truncate text-[11px] text-muted-foreground">
+            {displayName}
+          </p>
+        </div>
+      </div>
+      <div className="flex items-center gap-1">
+        <Popover>
+          <PopoverTrigger
+            render={
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon-sm"
+                aria-label="历史对话"
+              />
+            }
+          >
+            <Clock3 className="h-4 w-4" />
+          </PopoverTrigger>
+          <PopoverContent align="end" className="w-60 p-3">
+            <p className="text-xs font-medium text-foreground">当前对话</p>
+            <p className="mt-1 text-xs text-muted-foreground">
+              {displayName} · {messageCount} 条消息
+              {modelSettings.modelName ? ` · ${modelSettings.modelName}` : ""}
+            </p>
+          </PopoverContent>
+        </Popover>
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon-sm"
+          aria-label="新对话"
+          onClick={onNewThread}
+        >
+          <Plus className="h-4 w-4" />
+        </Button>
+        <AgentModelSettingsDialog
+          settings={modelSettings}
+          onSave={onSaveModelSettings}
+        />
+      </div>
+    </div>
   );
 }
 
@@ -586,6 +706,7 @@ function AgentModelSettingsField({
 }
 
 function AgentThreadArea({
+  surface,
   turnArtifacts,
   error,
   resumeWorkspace,
@@ -598,6 +719,7 @@ function AgentThreadArea({
   applyOperation,
   flushAutosave,
 }: {
+  surface: AgentPanelSurface;
   turnArtifacts: AgentTurnArtifacts[];
   error: string | null;
   resumeWorkspace: AgentResumeWorkspaceSnapshot | null;
@@ -620,7 +742,10 @@ function AgentThreadArea({
     <ThreadPrimitive.Root className="min-h-0 flex-1">
       <ThreadPrimitive.Viewport
         data-testid="agent-assistant-ui-thread"
-        className="h-full space-y-4 overflow-y-auto px-4 py-3"
+        className={[
+          "h-full overflow-y-auto",
+          surface === "floating" ? "space-y-4 px-4 py-4" : "space-y-4 px-4 py-3",
+        ].join(" ")}
         autoScroll
       >
         {isEmpty ? (
@@ -630,6 +755,7 @@ function AgentThreadArea({
         <ThreadPrimitive.Messages>
           {({ message }) => (
             <AgentThreadMessage
+              surface={surface}
               message={message}
               turnArtifact={
                 message.role === "assistant"
@@ -1245,6 +1371,7 @@ function AgentQuestionCard({
 }
 
 function AgentThreadMessage({
+  surface,
   message,
   turnArtifact,
   onInterruptResolved,
@@ -1252,6 +1379,7 @@ function AgentThreadMessage({
   applyOperation,
   flushAutosave,
 }: {
+  surface: AgentPanelSurface;
   message: ThreadMessage;
   turnArtifact: AgentTurnArtifacts | null;
   onInterruptResolved: (turnId: string) => void;
@@ -1269,24 +1397,56 @@ function AgentThreadMessage({
     return (
       <>
         {text || hasRunningToolCall ? (
-          <MessagePrimitive.Root className="group/message relative z-0 pb-8 text-left hover:z-20 focus-within:z-20">
-            <div className="inline-block max-w-[85%] rounded-xl bg-muted px-3 py-2 text-sm text-foreground">
-              <MessagePrimitive.Content
-                components={{
-                  Text: AgentMarkdownText,
-                  ToolGroup: hasRunningToolCall
-                    ? AgentAssistantUiToolGroup
-                    : AgentAssistantUiHiddenToolGroup,
-                  tools: {
-                    Override: hasRunningToolCall
-                      ? AgentAssistantUiToolPart
-                      : AgentAssistantUiHiddenToolPart,
-                  },
-                }}
-              />
-            </div>
-            <AgentAssistantMessageActions />
-          </MessagePrimitive.Root>
+          surface === "floating" ? (
+            <MessagePrimitive.Root className="group/message relative z-0 flex items-start gap-2 pb-5 text-left hover:z-20 focus-within:z-20">
+              <div
+                data-testid="agent-assistant-avatar"
+                className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-sky-100 text-sky-700 shadow-sm ring-1 ring-sky-200/70 dark:bg-sky-950/50 dark:text-sky-300 dark:ring-sky-400/20"
+              >
+                <Bot className="h-4 w-4" />
+              </div>
+              <div className="min-w-0 max-w-[82%]">
+                <div
+                  data-testid="agent-assistant-message-bubble"
+                  className="inline-block rounded-2xl rounded-tl-md border border-border bg-background px-3.5 py-2.5 text-sm text-foreground shadow-sm dark:border-border dark:bg-muted/20"
+                >
+                  <MessagePrimitive.Content
+                    components={{
+                      Text: AgentMarkdownText,
+                      ToolGroup: hasRunningToolCall
+                        ? AgentAssistantUiToolGroup
+                        : AgentAssistantUiHiddenToolGroup,
+                      tools: {
+                        Override: hasRunningToolCall
+                          ? AgentAssistantUiToolPart
+                          : AgentAssistantUiHiddenToolPart,
+                      },
+                    }}
+                  />
+                </div>
+                <AgentAssistantMessageActions />
+              </div>
+            </MessagePrimitive.Root>
+          ) : (
+            <MessagePrimitive.Root className="group/message relative z-0 pb-8 text-left hover:z-20 focus-within:z-20">
+              <div className="inline-block max-w-[85%] rounded-xl bg-muted px-3 py-2 text-sm text-foreground">
+                <MessagePrimitive.Content
+                  components={{
+                    Text: AgentMarkdownText,
+                    ToolGroup: hasRunningToolCall
+                      ? AgentAssistantUiToolGroup
+                      : AgentAssistantUiHiddenToolGroup,
+                    tools: {
+                      Override: hasRunningToolCall
+                        ? AgentAssistantUiToolPart
+                        : AgentAssistantUiHiddenToolPart,
+                    },
+                  }}
+                />
+              </div>
+              <AgentAssistantMessageActions />
+            </MessagePrimitive.Root>
+          )
         ) : null}
         {turnArtifact ? (
           <AgentTurnArtifactsPanel
@@ -1304,17 +1464,49 @@ function AgentThreadMessage({
   if (!text) return null;
 
   return (
-    <MessagePrimitive.Root className="group/message relative z-0 pb-8 text-right hover:z-20 focus-within:z-20">
-      <AgentUserMessageBody text={text} />
+    <MessagePrimitive.Root
+      className={[
+        "group/message relative z-0 hover:z-20 focus-within:z-20",
+        surface === "floating"
+          ? "flex flex-row-reverse items-start gap-2 pb-5 text-right"
+          : "pb-8 text-right",
+      ].join(" ")}
+    >
+      <AgentUserMessageBody text={text} surface={surface} />
     </MessagePrimitive.Root>
   );
 }
 
-function AgentUserMessageBody({ text }: { text: string }) {
+function AgentUserMessageBody({
+  text,
+  surface,
+}: {
+  text: string;
+  surface: AgentPanelSurface;
+}) {
   const isEditing = useEditComposer((state) => state.isEditing);
 
   if (isEditing) {
     return <AgentEditMessageComposer />;
+  }
+
+  if (surface === "floating") {
+    return (
+      <>
+        <div
+          data-testid="agent-user-avatar"
+          className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-foreground text-[11px] font-semibold text-background shadow-sm"
+        >
+          我
+        </div>
+        <div className="min-w-0 max-w-[82%]">
+          <div className="inline-block whitespace-pre-wrap rounded-2xl rounded-tr-md bg-foreground px-3.5 py-2.5 text-sm text-background shadow-sm">
+            {text}
+          </div>
+          <AgentUserMessageActions />
+        </div>
+      </>
+    );
   }
 
   return (
@@ -1851,17 +2043,28 @@ function AgentStatusFooter({
   modelName,
   autoApply,
   onAutoApplyChange,
+  autoApplyLocked,
   contextStatus,
 }: {
   modelName: string;
   autoApply: boolean;
   onAutoApplyChange: (value: boolean) => void;
+  autoApplyLocked: boolean;
   contextStatus: AgentContextStatusSnapshot | null;
 }) {
   return (
     <div className="flex shrink-0 items-center justify-between border-t bg-muted/30 px-4 py-1.5 dark:bg-muted/10">
       <div className="flex items-center gap-3">
-        <Popover>
+        {autoApplyLocked ? (
+          <span
+            title="AI 简历助手会自动应用低风险修改。"
+            className="inline-flex items-center gap-1.5 rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-medium text-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-300"
+          >
+            <Zap className="h-3 w-3 text-emerald-600 dark:text-emerald-400" />
+            自动应用
+          </span>
+        ) : (
+          <Popover>
           <PopoverTrigger
             type="button"
               className={[
@@ -1902,12 +2105,13 @@ function AgentStatusFooter({
             </Button>
           </PopoverContent>
         </Popover>
+        )}
         <AgentContextIndicator status={contextStatus} className="min-w-0" />
       </div>
       <div className="flex items-center gap-1.5">
         <Bot className="h-3 w-3 text-muted-foreground" />
         <span className="text-xs text-muted-foreground">
-          {modelName || "默认模型"}
+          {modelName || "连接模型"}
         </span>
       </div>
     </div>

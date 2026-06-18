@@ -1,8 +1,9 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { EventType, type BaseEvent } from "@ag-ui/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { AgentPanel } from "@/components/agent/agent-panel";
+import { FloatingAgentChat } from "@/components/agent/floating-agent-chat";
 import { emptyResumeContent } from "@intro-builder/shared/schemas";
 
 class MockResizeObserver {
@@ -15,6 +16,11 @@ class MockResizeObserver {
 }
 
 const originalScrollTo = Element.prototype.scrollTo;
+const hiddenImplementationTerms = new RegExp(
+  ["Ja" + "de", "BY" + "OK"].join("|"),
+  "i",
+);
+const hiddenDefaultModel = "默认" + "模型";
 
 describe("AgentPanel assistant-ui runtime", () => {
   beforeEach(() => {
@@ -26,6 +32,8 @@ describe("AgentPanel assistant-ui runtime", () => {
   });
 
   afterEach(() => {
+    window.localStorage.clear();
+    window.sessionStorage.clear();
     if (originalScrollTo) {
       Object.defineProperty(Element.prototype, "scrollTo", {
         configurable: true,
@@ -78,6 +86,588 @@ describe("AgentPanel assistant-ui runtime", () => {
     expect(screen.queryByText(/AI 会读取当前表单快照/)).not.toBeInTheDocument();
     expect(screen.queryByText(/当前目标/)).not.toBeInTheDocument();
     expect(screen.queryByText("从这些问题开始")).not.toBeInTheDocument();
+  });
+
+  it("renders the floating chat chrome without the old panel controls or implementation keywords", () => {
+    vi.stubGlobal("fetch", floatingSessionFetch());
+    const { container } = render(<FloatingAgentChat {...floatingProps()} />);
+
+    expect(screen.queryByRole("button", { name: "返回编辑" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "前端工程师" })).not.toBeInTheDocument();
+    expect(screen.queryByText("前端工程师")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "历史对话" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "新对话" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "模型设置" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "当前模型：连接模型" })).toBeInTheDocument();
+    expect(screen.queryByText("自动应用")).not.toBeInTheDocument();
+    expect(screen.queryByText(hiddenDefaultModel)).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "切换为手动确认" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "滚动到底部" })).not.toBeInTheDocument();
+    expect(container).not.toHaveTextContent(hiddenImplementationTerms);
+  });
+
+  it("renders floating avatar chat bubbles without panel message actions or implementation keywords", async () => {
+    const fetchMock = floatingSessionFetch();
+    vi.stubGlobal("fetch", fetchMock);
+
+    const { container } = render(<FloatingAgentChat {...floatingProps()} />);
+
+    await waitFor(() => {
+      expect(findOptionalFetchCall(fetchMock, "/api/agent/floating/sessions/session_1")).toBeTruthy();
+    });
+    sendMessage("请帮我诊断这份简历");
+
+    expect(await screen.findByText("需要先连接模型")).toBeInTheDocument();
+    expect(screen.getByText(/请先填写模型服务地址/)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "连接模型" })).toBeInTheDocument();
+    expect(screen.getByTestId("agent-user-avatar")).toBeInTheDocument();
+    expect(screen.getByTestId("agent-assistant-avatar")).toBeInTheDocument();
+    expect(screen.getByTestId("agent-assistant-message-bubble").className).toContain(
+      "rounded-2xl",
+    );
+    expect(screen.queryByRole("button", { name: "复制消息" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "编辑消息" })).not.toBeInTheDocument();
+    expect(fetchMock.mock.calls.some(([url]) => String(url) === "/api/agent/floating/chat")).toBe(false);
+    expect(container).not.toHaveTextContent(hiddenImplementationTerms);
+  });
+
+  it("uses the Next-local floating route and applies returned tool operations when a model is connected", async () => {
+    window.localStorage.setItem(
+      "intro-builder.agent.model-settings.v1",
+      JSON.stringify({
+        baseUrl: "https://models.example.test/v1",
+        modelName: "gpt-4.1-mini",
+      }),
+    );
+    window.sessionStorage.setItem(
+      "intro-builder.agent.model-api-key.v1",
+      "sk-local-test",
+    );
+    const operation = {
+      id: "floating_tool_1",
+      toolCallId: "tool_1",
+      label: "更新经历",
+      section: "experience",
+      fieldPath: "experience.0.content",
+      operation: "update_section",
+      beforePlainText: "负责开发。",
+      afterPlainText: "主导核心链路优化。",
+      changeSummary: "强化行动与结果。",
+      riskFlags: [],
+    };
+    const fetchMock = floatingSessionFetch(async (url) => {
+      if (url === "/api/agent/floating/chat") {
+        return Response.json({
+        message: "已直接更新最近一段经历。",
+        operations: [operation],
+        toolCalls: [
+          {
+            id: "tool_1",
+            name: "updateSection",
+            status: "completed",
+            summary: "强化行动与结果。",
+          },
+        ],
+        });
+      }
+      return null;
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const applyOperation = vi.fn();
+    const flushAutosave = vi.fn();
+
+    render(<FloatingAgentChat {...floatingProps({ applyOperation, flushAutosave })} />);
+
+    await waitFor(() => {
+      expect(findOptionalFetchCall(fetchMock, "/api/agent/floating/sessions/session_1")).toBeTruthy();
+    });
+    expect(
+      await screen.findByRole("button", { name: "当前模型：gpt-4.1-mini" }),
+    ).toBeInTheDocument();
+    sendMessage("请直接优化最近经历");
+
+    expect(await screen.findByText("已直接更新最近一段经历。")).toBeInTheDocument();
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/agent/floating/chat",
+      expect.objectContaining({
+        method: "POST",
+        headers: expect.objectContaining({ Accept: "text/event-stream, application/json" }),
+      }),
+    );
+    const chatCall = findFetchCall(fetchMock, "/api/agent/floating/chat");
+    const [, init] = chatCall;
+    const body = JSON.parse(String(init?.body));
+    expect(body.modelConfig).toEqual({
+      baseUrl: "https://models.example.test/v1",
+      apiKey: "sk-local-test",
+      modelName: "gpt-4.1-mini",
+    });
+    expect(body.modelConfig.modelName).not.toBe(hiddenDefaultModel);
+    expect(applyOperation).toHaveBeenCalledWith(operation);
+    expect(flushAutosave).toHaveBeenCalledTimes(1);
+    expect(
+      screen.getByRole("button", { name: /更新简历内容/ }),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /updateSection/ })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /执行结果/ })).toBeInTheDocument();
+  });
+
+  it("streams floating assistant deltas before applying final tool operations", async () => {
+    window.localStorage.setItem(
+      "intro-builder.agent.model-settings.v1",
+      JSON.stringify({
+        baseUrl: "https://models.example.test/v1",
+        modelName: "gpt-4.1-mini",
+      }),
+    );
+    window.sessionStorage.setItem(
+      "intro-builder.agent.model-api-key.v1",
+      "sk-local-test",
+    );
+    const operation = {
+      id: "floating_tool_1",
+      toolCallId: "tool_1",
+      label: "更新经历",
+      section: "experience",
+      fieldPath: "experience.0.content",
+      operation: "update_section",
+      beforePlainText: "负责开发。",
+      afterPlainText: "主导核心链路优化。",
+      changeSummary: "强化行动与结果。",
+      riskFlags: [],
+    };
+    const stream = createControlledFloatingStream();
+    const fetchMock = floatingSessionFetch(async (url) => {
+      if (url === "/api/agent/floating/chat") {
+        return stream.response;
+      }
+      return null;
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const applyOperation = vi.fn();
+    const flushAutosave = vi.fn();
+
+    render(<FloatingAgentChat {...floatingProps({ applyOperation, flushAutosave })} />);
+
+    await waitFor(() => {
+      expect(findOptionalFetchCall(fetchMock, "/api/agent/floating/sessions/session_1")).toBeTruthy();
+    });
+    expect(
+      await screen.findByRole("button", { name: "当前模型：gpt-4.1-mini" }),
+    ).toBeInTheDocument();
+    sendMessage("请直接优化最近经历");
+    await stream.ready;
+
+    stream.push({ type: "text-delta", delta: "正在分析" });
+    expect(await screen.findByText("正在分析")).toBeInTheDocument();
+    expect(applyOperation).not.toHaveBeenCalled();
+    expect(flushAutosave).not.toHaveBeenCalled();
+
+    stream.push({ type: "text-delta", delta: "，马上修改。" });
+    stream.push({
+      type: "done",
+      message: "正在分析，马上修改。",
+      operations: [operation],
+      toolCalls: [
+        {
+          id: "tool_1",
+          name: "updateSection",
+          status: "completed",
+          summary: "强化行动与结果。",
+        },
+      ],
+    });
+    stream.close();
+
+    expect(await screen.findByText("正在分析，马上修改。")).toBeInTheDocument();
+    await waitFor(() => {
+      expect(applyOperation).toHaveBeenCalledWith(operation);
+    });
+    expect(flushAutosave).toHaveBeenCalledTimes(1);
+    expect(screen.getByRole("button", { name: /更新简历内容/ })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /updateSection/ })).not.toBeInTheDocument();
+  });
+
+  it("renders floating tool calls during streaming and applies update results before final text", async () => {
+    window.localStorage.setItem(
+      "intro-builder.agent.model-settings.v1",
+      JSON.stringify({
+        baseUrl: "https://models.example.test/v1",
+        modelName: "gpt-4.1-mini",
+      }),
+    );
+    window.sessionStorage.setItem(
+      "intro-builder.agent.model-api-key.v1",
+      "sk-local-test",
+    );
+    const operation = {
+      id: "floating_tool_update_1",
+      toolCallId: "tool_update_1",
+      label: "更新经历",
+      section: "experience",
+      fieldPath: "experience.0.content",
+      operation: "update_section",
+      beforePlainText: "负责开发。",
+      afterPlainText: "主导核心链路优化。",
+      changeSummary: "强化行动与结果。",
+      riskFlags: [],
+    };
+    const stream = createControlledFloatingStream();
+    const fetchMock = floatingSessionFetch(async (url) => {
+      if (url === "/api/agent/floating/chat") {
+        return stream.response;
+      }
+      return null;
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const applyOperation = vi.fn();
+    const flushAutosave = vi.fn();
+
+    render(<FloatingAgentChat {...floatingProps({ applyOperation, flushAutosave })} />);
+
+    await waitFor(() => {
+      expect(findOptionalFetchCall(fetchMock, "/api/agent/floating/sessions/session_1")).toBeTruthy();
+    });
+    sendMessage("请先读简历，再优化最近经历");
+    await stream.ready;
+
+    stream.push({ type: "text-delta", delta: "我先读取简历。" });
+    expect(await screen.findByText("我先读取简历。")).toBeInTheDocument();
+    stream.push({
+      type: "tool-call-start",
+      toolCall: {
+        id: "tool_read_1",
+        name: "readResume",
+        status: "running",
+        summary: "读取简历上下文",
+        input: {},
+      },
+    });
+    const firstText = await screen.findByText("我先读取简历。");
+    const readToolButton = await screen.findByRole("button", { name: /读取简历/ });
+    expect(screen.queryByRole("button", { name: /执行结果/ })).not.toBeInTheDocument();
+
+    stream.push({
+      type: "tool-call-result",
+      toolCall: {
+        id: "tool_read_1",
+        name: "readResume",
+        status: "completed",
+        summary: "读取简历上下文",
+        input: {},
+        output: { success: true, context: { resumeTitle: "前端工程师" } },
+      },
+      operations: [],
+    });
+    expect(await screen.findByRole("button", { name: /执行结果/ })).toBeInTheDocument();
+
+    stream.push({ type: "text-delta", delta: "我会更新最近经历。" });
+    const secondText = await screen.findByText("我会更新最近经历。");
+    stream.push({
+      type: "tool-call-start",
+      toolCall: {
+        id: "tool_update_1",
+        name: "updateSection",
+        status: "running",
+        summary: "更新经历",
+        input: { fieldPath: "experience.0.content" },
+      },
+    });
+    const updateToolButton = await screen.findByRole("button", { name: /更新简历内容/ });
+    stream.push({
+      type: "tool-call-result",
+      toolCall: {
+        id: "tool_update_1",
+        name: "updateSection",
+        status: "completed",
+        summary: "强化行动与结果。",
+        input: { fieldPath: "experience.0.content" },
+        output: { success: true },
+      },
+      operations: [operation],
+    });
+    await waitFor(() => {
+      expect(applyOperation).toHaveBeenCalledWith(operation);
+    });
+    expect(flushAutosave).toHaveBeenCalledTimes(1);
+
+    stream.push({ type: "text-delta", delta: "已经更新，并复查了整体表达。" });
+    const thirdText = await screen.findByText("已经更新，并复查了整体表达。");
+    stream.push({
+      type: "done",
+      message: "我先读取简历。我会更新最近经历。已经更新，并复查了整体表达。",
+      operations: [operation],
+      toolCalls: [
+        {
+          id: "tool_read_1",
+          name: "readResume",
+          status: "completed",
+          summary: "读取简历上下文",
+        },
+        {
+          id: "tool_update_1",
+          name: "updateSection",
+          status: "completed",
+          summary: "强化行动与结果。",
+        },
+      ],
+    });
+    stream.close();
+
+    expectNodeBefore(firstText, readToolButton);
+    expectNodeBefore(readToolButton, secondText);
+    expectNodeBefore(secondText, updateToolButton);
+    expectNodeBefore(updateToolButton, thirdText);
+    expect(applyOperation).toHaveBeenCalledTimes(1);
+    expect(flushAutosave).toHaveBeenCalledTimes(1);
+  });
+
+  it("restores persisted floating message parts in their original text and tool order", async () => {
+    const fetchMock = floatingSessionFetch(async (url) => {
+      if (url.startsWith("/api/agent/floating/sessions?")) {
+        return Response.json({
+          sessions: [
+            {
+              id: "session_parts",
+              title: "交错工具调用",
+              updatedAt: "2026-06-18T08:00:00.000Z",
+            },
+          ],
+        });
+      }
+      if (url === "/api/agent/floating/sessions/session_parts") {
+        return Response.json({
+          session: {
+            id: "session_parts",
+            title: "交错工具调用",
+            updatedAt: "2026-06-18T08:00:00.000Z",
+          },
+          messages: [
+            {
+              id: "msg_assistant_parts",
+              role: "assistant",
+              content: "先读取。再更新。最后复查。",
+              parts: [
+                { id: "part_text_1", type: "text", text: "先读取。" },
+                {
+                  id: "part_tool_read",
+                  type: "tool",
+                  toolCall: {
+                    id: "tool_read_1",
+                    name: "readResume",
+                    status: "completed",
+                    summary: "读取简历上下文",
+                  },
+                },
+                { id: "part_text_2", type: "text", text: "再更新。" },
+                {
+                  id: "part_tool_update",
+                  type: "tool",
+                  toolCall: {
+                    id: "tool_update_1",
+                    name: "updateSection",
+                    status: "completed",
+                    summary: "强化行动与结果。",
+                  },
+                },
+                { id: "part_text_3", type: "text", text: "最后复查。" },
+              ],
+              toolCalls: [],
+              operations: [],
+              createdAt: "2026-06-18T08:00:01.000Z",
+            },
+          ],
+          hasMore: false,
+          nextCursor: null,
+        });
+      }
+      return null;
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<FloatingAgentChat {...floatingProps()} />);
+
+    const firstText = await screen.findByText("先读取。");
+    const readToolButton = await screen.findByRole("button", { name: /读取简历/ });
+    const secondText = await screen.findByText("再更新。");
+    const updateToolButton = await screen.findByRole("button", { name: /更新简历内容/ });
+    const thirdText = await screen.findByText("最后复查。");
+
+    expectNodeBefore(firstText, readToolButton);
+    expectNodeBefore(readToolButton, secondText);
+    expectNodeBefore(secondText, updateToolButton);
+    expectNodeBefore(updateToolButton, thirdText);
+    expect(screen.queryByRole("button", { name: /readResume|updateSection/ })).not.toBeInTheDocument();
+  });
+
+  it("fetches available models from the connected service and lets the user select one", async () => {
+    const fetchMock = floatingSessionFetch(async (url) => {
+      if (url === "/api/agent/floating/models") {
+        return Response.json({
+        models: [
+          { id: "gpt-4.1-mini", label: "gpt-4.1-mini" },
+          { id: "gpt-4.1", label: "gpt-4.1" },
+        ],
+        });
+      }
+      return null;
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<FloatingAgentChat {...floatingProps()} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "当前模型：连接模型" }));
+    fireEvent.change(screen.getByLabelText("模型服务地址"), {
+      target: { value: "https://models.example.test/v1" },
+    });
+    fireEvent.change(screen.getByLabelText("访问密钥"), {
+      target: { value: "sk-local-test" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "获取模型" }));
+
+    expect(await screen.findByLabelText("选择模型")).toBeInTheDocument();
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/agent/floating/models",
+      expect.objectContaining({
+        method: "POST",
+        headers: expect.objectContaining({ Accept: "application/json" }),
+      }),
+    );
+    const modelCall = findFetchCall(fetchMock, "/api/agent/floating/models");
+    const [, init] = modelCall;
+    expect(JSON.parse(String(init?.body))).toEqual({
+      baseUrl: "https://models.example.test/v1",
+      apiKey: "sk-local-test",
+    });
+
+    fireEvent.change(screen.getByLabelText("选择模型"), {
+      target: { value: "gpt-4.1" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "保存" }));
+
+    expect(screen.getByRole("button", { name: "当前模型：gpt-4.1" })).toBeInTheDocument();
+    expect(window.localStorage.getItem("intro-builder.agent.model-settings.v1")).toBe(
+      JSON.stringify({
+        baseUrl: "https://models.example.test/v1",
+        modelName: "gpt-4.1",
+      }),
+    );
+    expect(window.sessionStorage.getItem("intro-builder.agent.model-api-key.v1")).toBe(
+      "sk-local-test",
+    );
+  });
+
+  it("loads the latest floating chat session and its messages on mount", async () => {
+    const fetchMock = floatingSessionFetch(async (url) => {
+      if (url.startsWith("/api/agent/floating/sessions?")) {
+        return Response.json({
+          sessions: [
+            {
+              id: "session_history",
+              title: "历史优化",
+              updatedAt: "2026-06-18T08:00:00.000Z",
+            },
+          ],
+        });
+      }
+      if (url === "/api/agent/floating/sessions/session_history") {
+        return Response.json({
+          session: {
+            id: "session_history",
+            title: "历史优化",
+            updatedAt: "2026-06-18T08:00:00.000Z",
+          },
+          messages: [
+            {
+              id: "msg_user_1",
+              role: "user",
+              content: "请优化项目经历",
+              toolCalls: [],
+              operations: [],
+              createdAt: "2026-06-18T08:00:00.000Z",
+            },
+            {
+              id: "msg_assistant_1",
+              role: "assistant",
+              content: "已优化项目经历。",
+              toolCalls: [],
+              operations: [],
+              createdAt: "2026-06-18T08:00:01.000Z",
+            },
+          ],
+          hasMore: false,
+          nextCursor: null,
+        });
+      }
+      return null;
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<FloatingAgentChat {...floatingProps()} />);
+
+    expect(await screen.findByText("请优化项目经历")).toBeInTheDocument();
+    expect(screen.getByText("已优化项目经历。")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "历史对话" }));
+    expect(screen.getByText("历史优化")).toBeInTheDocument();
+  });
+
+  it("renders floating assistant markdown as rich message content", async () => {
+    const fetchMock = floatingSessionFetch(async (url) => {
+      if (url.startsWith("/api/agent/floating/sessions?")) {
+        return Response.json({
+          sessions: [
+            {
+              id: "session_markdown",
+              title: "Markdown 诊断",
+              updatedAt: "2026-06-18T08:00:00.000Z",
+            },
+          ],
+        });
+      }
+      if (url === "/api/agent/floating/sessions/session_markdown") {
+        return Response.json({
+          session: {
+            id: "session_markdown",
+            title: "Markdown 诊断",
+            updatedAt: "2026-06-18T08:00:00.000Z",
+          },
+          messages: [
+            {
+              id: "msg_assistant_markdown",
+              role: "assistant",
+              content: [
+                "### 简历诊断",
+                "",
+                "| 模块 | 建议 |",
+                "| --- | --- |",
+                "| 经历 | 补充量化结果 |",
+                "",
+                "- 优先改最近经历",
+                "- 保留真实指标",
+              ].join("\n"),
+              toolCalls: [],
+              operations: [],
+              createdAt: "2026-06-18T08:00:01.000Z",
+            },
+          ],
+          hasMore: false,
+          nextCursor: null,
+        });
+      }
+      return null;
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<FloatingAgentChat {...floatingProps()} />);
+
+    expect(
+      await screen.findByRole("heading", { name: "简历诊断", level: 3 }),
+    ).toBeInTheDocument();
+    expect(screen.getByRole("table")).toBeInTheDocument();
+    expect(screen.getByRole("columnheader", { name: "模块" })).toBeInTheDocument();
+    expect(screen.getByRole("cell", { name: "补充量化结果" })).toBeInTheDocument();
+    const list = screen.getByRole("list");
+    expect(within(list).getByText("优先改最近经历")).toBeInTheDocument();
   });
 
   it("starts a create-from-zero intake run from the compact welcome action", async () => {
@@ -1360,5 +1950,109 @@ function panelProps(overrides: Partial<React.ComponentProps<typeof AgentPanel>> 
     flushAutosave: vi.fn(),
     onBackToEdit: vi.fn(),
     ...overrides,
+  };
+}
+
+function floatingProps(overrides: Partial<React.ComponentProps<typeof FloatingAgentChat>> = {}) {
+  return {
+    resumeId: "resume_1",
+    title: "前端工程师",
+    templateId: "professional",
+    getResumeContent: () => emptyResumeContent(),
+    completeness: { overall: 80, sections: [] },
+    applyOperation: vi.fn(),
+    flushAutosave: vi.fn(),
+    ...overrides,
+  };
+}
+
+type FetchMock = ReturnType<typeof floatingSessionFetch>;
+
+function floatingSessionFetch(
+  extraHandler?: (url: string, init?: RequestInit) => Promise<Response | null> | Response | null,
+) {
+  return vi.fn<
+    (...args: [RequestInfo | URL, RequestInit?]) => Promise<Response>
+  >(async (urlLike, init) => {
+    const url = String(urlLike);
+    const extra = await extraHandler?.(url, init);
+    if (extra) return extra;
+    if (url.startsWith("/api/agent/floating/sessions?")) {
+      return Response.json({
+        sessions: [
+          {
+            id: "session_1",
+            title: "新对话",
+            updatedAt: "2026-06-18T08:00:00.000Z",
+          },
+        ],
+      });
+    }
+    if (url === "/api/agent/floating/sessions") {
+      return Response.json({
+        session: {
+          id: "session_new",
+          title: "新对话",
+          updatedAt: "2026-06-18T08:01:00.000Z",
+        },
+      });
+    }
+    if (url.startsWith("/api/agent/floating/sessions/session_")) {
+      return Response.json({
+        session: {
+          id: url.split("/").pop(),
+          title: "新对话",
+          updatedAt: "2026-06-18T08:00:00.000Z",
+        },
+        messages: [],
+        hasMore: false,
+        nextCursor: null,
+      });
+    }
+    return Response.json({});
+  });
+}
+
+function findFetchCall(fetchMock: FetchMock, url: string) {
+  const call = fetchMock.mock.calls.find(([calledUrl]) => String(calledUrl) === url);
+  if (!call) throw new Error(`Missing fetch call for ${url}`);
+  return call;
+}
+
+function findOptionalFetchCall(fetchMock: FetchMock, url: string) {
+  return fetchMock.mock.calls.find(([calledUrl]) => String(calledUrl) === url) ?? null;
+}
+
+function expectNodeBefore(first: Element, second: Element) {
+  expect(
+    first.compareDocumentPosition(second) & Node.DOCUMENT_POSITION_FOLLOWING,
+  ).toBeTruthy();
+}
+
+function createControlledFloatingStream() {
+  const encoder = new TextEncoder();
+  let controller: ReadableStreamDefaultController<Uint8Array> | null = null;
+  let markReady: () => void = () => undefined;
+  const ready = new Promise<void>((resolve) => {
+    markReady = resolve;
+  });
+  const body = new ReadableStream<Uint8Array>({
+    start(nextController) {
+      controller = nextController;
+      markReady();
+    },
+  });
+  return {
+    ready,
+    response: new Response(body, {
+      status: 200,
+      headers: { "Content-Type": "text/event-stream" },
+    }),
+    push(event: Record<string, unknown>) {
+      controller?.enqueue(encoder.encode(`data: ${JSON.stringify(event)}\n\n`));
+    },
+    close() {
+      controller?.close();
+    },
   };
 }

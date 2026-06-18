@@ -112,6 +112,7 @@ describe("EditorClient live preview", () => {
 
   afterEach(() => {
     vi.useRealTimers();
+    window.localStorage.clear();
   });
 
   it("keeps the server-resolved unified template for classic", () => {
@@ -215,6 +216,66 @@ describe("EditorClient live preview", () => {
     expect(templateButton.className).toContain("font-semibold");
     expect(templateButton.className).toContain("text-primary");
     expect(templateButton.className).not.toContain("text-primary-foreground");
+  });
+
+  it("keeps the existing Agent panel entry by default", () => {
+    render(
+      <EditorClient
+        id="r1"
+        initialTitle="简历"
+        initialTemplate="professional"
+        initialContent={emptyResumeContent()}
+        initialIsPublic={false}
+        initialSlug={null}
+        initialUpdatedAtIso={new Date().toISOString()}
+        initialNowIso={new Date().toISOString()}
+        initialResolvedTemplate={DB_RESOLVED}
+        uploadedTemplates={[]}
+        allTemplates={DB_TEMPLATE_ROWS}
+        from={null}
+      />,
+    );
+
+    expect(screen.getByRole("button", { name: "Agent 模式" })).toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "打开 AI 简历助手" }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("uses a floating assistant when the agent surface is enabled", () => {
+    window.localStorage.setItem("intro-builder.agent.auto-apply.v1", "false");
+
+    render(
+      <EditorClient
+        id="r1"
+        initialTitle="简历"
+        initialTemplate="professional"
+        initialContent={emptyResumeContent()}
+        initialIsPublic={false}
+        initialSlug={null}
+        initialUpdatedAtIso={new Date().toISOString()}
+        initialNowIso={new Date().toISOString()}
+        initialResolvedTemplate={DB_RESOLVED}
+        uploadedTemplates={[]}
+        allTemplates={DB_TEMPLATE_ROWS}
+        agentSurface="floating"
+        from={null}
+      />,
+    );
+
+    expect(screen.queryByRole("button", { name: "Agent 模式" })).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "打开 AI 简历助手" }));
+
+    expect(screen.getByRole("dialog", { name: "AI 简历助手" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "当前模型：连接模型" })).toBeInTheDocument();
+    expect(screen.queryByText("自动应用")).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "切换为手动确认" }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.getByTestId("agent-assistant-ui-composer-input"),
+    ).toBeInTheDocument();
   });
 
   it("uses a solid blue toolbar state when public sharing is enabled", () => {

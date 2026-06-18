@@ -106,6 +106,9 @@ importers:
       '@ag-ui/encoder':
         specifier: 0.0.56
         version: 0.0.56
+      '@ai-sdk/openai-compatible':
+        specifier: 2.0.50
+        version: 2.0.50(zod@4.4.3)
       '@assistant-ui/react':
         specifier: ^0.14.15
         version: 0.14.15(@types/react-dom@19.2.3(@types/react@19.2.14))(@types/react@19.2.14)(react-dom@19.2.4(react@19.2.4))(react@19.2.4)(use-sync-external-store@1.6.0(react@19.2.4))
@@ -184,6 +187,9 @@ importers:
       '@vercel/blob':
         specifier: ^2.3.3
         version: 2.3.3
+      ai:
+        specifier: 6.0.204
+        version: 6.0.204(zod@4.4.3)
       bcryptjs:
         specifier: ^3.0.3
         version: 3.0.3
@@ -262,6 +268,9 @@ importers:
       react-hook-form:
         specifier: ^7.74.0
         version: 7.74.0(react@19.2.4)
+      react-markdown:
+        specifier: 10.1.0
+        version: 10.1.0(@types/react@19.2.14)(react@19.2.4)
       remark-gfm:
         specifier: 4.0.1
         version: 4.0.1
