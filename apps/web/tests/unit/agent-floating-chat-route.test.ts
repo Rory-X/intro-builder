@@ -76,13 +76,9 @@ describe("POST /api/agent/floating/chat", () => {
         readResume: {
           execute: (input: unknown, options: { toolCallId: string }) => Promise<unknown>;
         };
-        updateSection: {
+        updateWorkExperienceBlock: {
           execute: (input: unknown, options: { toolCallId: string }) => Promise<unknown>;
         };
-        addSection: {
-          execute: (input: unknown, options: { toolCallId: string }) => Promise<unknown>;
-        };
-        rewriteText: unknown;
         suggestSkills: unknown;
         analyzeJobMatch: unknown;
       };
@@ -109,13 +105,11 @@ describe("POST /api/agent/floating/chat", () => {
           output: readOutput,
         };
         yield { type: "text-delta", text: "我会更新最近经历。" };
-        await options.tools.updateSection.execute(
+        await options.tools.updateWorkExperienceBlock.execute(
           {
-            fieldPath: "experience.0.content",
-            section: "experience",
+            index: 0,
             beforePlainText: "负责开发。",
-            value: "主导核心链路优化。",
-            label: "更新经历",
+            content: "主导核心链路优化。",
             changeSummary: "强化行动与结果。",
           },
           { toolCallId: "tool_1" },
@@ -123,13 +117,11 @@ describe("POST /api/agent/floating/chat", () => {
         yield {
           type: "tool-result",
           toolCallId: "tool_1",
-          toolName: "updateSection",
+          toolName: "updateWorkExperienceBlock",
           input: {
-            fieldPath: "experience.0.content",
-            section: "experience",
+            index: 0,
             beforePlainText: "负责开发。",
-            value: "主导核心链路优化。",
-            label: "更新经历",
+            content: "主导核心链路优化。",
             changeSummary: "强化行动与结果。",
           },
           output: { success: true },
@@ -155,9 +147,7 @@ describe("POST /api/agent/floating/chat", () => {
         stopWhen: { type: "step-count", count: 25 },
         tools: expect.objectContaining({
           readResume: expect.any(Object),
-          updateSection: expect.any(Object),
-          addSection: expect.any(Object),
-          rewriteText: expect.any(Object),
+          updateWorkExperienceBlock: expect.any(Object),
           suggestSkills: expect.any(Object),
           analyzeJobMatch: expect.any(Object),
         }),
@@ -193,13 +183,13 @@ describe("POST /api/agent/floating/chat", () => {
           type: "tool-call-result",
           toolCall: expect.objectContaining({
             id: "tool_1",
-            name: "updateSection",
+            name: "updateWorkExperienceBlock",
             status: "completed",
           }),
           operations: [
             expect.objectContaining({
               id: "floating_tool_1",
-              fieldPath: "experience.0.content",
+              fieldPath: "experience.0",
               afterPlainText: "主导核心链路优化。",
             }),
           ],
@@ -211,13 +201,97 @@ describe("POST /api/agent/floating/chat", () => {
           operations: [
             expect.objectContaining({
               id: "floating_tool_1",
-              fieldPath: "experience.0.content",
+              fieldPath: "experience.0",
             }),
           ],
           toolCalls: expect.arrayContaining([
             expect.objectContaining({ id: "tool_read_1", name: "readResume" }),
-            expect.objectContaining({ id: "tool_1", name: "updateSection" }),
+            expect.objectContaining({ id: "tool_1", name: "updateWorkExperienceBlock" }),
           ]),
+        }),
+      ]),
+    );
+    expect(streamArgs.tools).not.toHaveProperty("updateSection");
+    expect(streamArgs.tools).not.toHaveProperty("addSection");
+    expect(streamArgs.tools).not.toHaveProperty("rewriteText");
+    expect(streamArgs.tools.suggestSkills.inputSchema.def.shape).not.toHaveProperty("fieldPath");
+  });
+
+  it("emits approval requests instead of direct operations in approval write mode", async () => {
+    (currentUserId as unknown as Mock).mockResolvedValue("user_123");
+    aiMocks.streamText.mockImplementation((options: {
+      tools: {
+        updateWorkExperienceBlock: {
+          execute: (input: unknown, options: { toolCallId: string }) => Promise<unknown>;
+        };
+      };
+    }) => ({
+      fullStream: (async function* () {
+        yield { type: "text-delta", text: "我准备更新最近经历。" };
+        await options.tools.updateWorkExperienceBlock.execute(
+          {
+            index: 0,
+            beforePlainText: "负责开发。",
+            content: "主导核心链路优化。",
+            changeSummary: "强化行动与结果。",
+          },
+          { toolCallId: "tool_approval_1" },
+        );
+        yield {
+          type: "tool-result",
+          toolCallId: "tool_approval_1",
+          toolName: "updateWorkExperienceBlock",
+          input: {
+            index: 0,
+          },
+          output: { success: true },
+        };
+      })(),
+    }));
+
+    const response = await POST(
+      jsonRequest({
+        ...validBody(),
+        writeMode: "approval",
+      }),
+    );
+
+    expect(response.status).toBe(200);
+    const events = await readSseEvents(response);
+    expect(events).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          type: "tool-call-result",
+          toolCall: expect.objectContaining({
+            id: "tool_approval_1",
+            name: "updateWorkExperienceBlock",
+            status: "completed",
+          }),
+          operations: [],
+        }),
+        expect.objectContaining({
+          type: "approval-request",
+          approvalRequest: expect.objectContaining({
+            id: "floating_tool_approval_1",
+            status: "pending",
+            reason: "approval_required",
+            message: "强化行动与结果。",
+            operation: expect.objectContaining({
+              id: "floating_tool_approval_1",
+              fieldPath: "experience.0",
+              afterPlainText: "主导核心链路优化。",
+            }),
+          }),
+        }),
+        expect.objectContaining({
+          type: "done",
+          operations: [],
+          approvalRequests: [
+            expect.objectContaining({
+              id: "floating_tool_approval_1",
+              status: "pending",
+            }),
+          ],
         }),
       ]),
     );
@@ -227,7 +301,7 @@ describe("POST /api/agent/floating/chat", () => {
     (currentUserId as unknown as Mock).mockResolvedValue("user_123");
     aiMocks.streamText.mockImplementation((options: {
       tools: {
-        addSection: {
+        addProject: {
           execute: (input: unknown, options: { toolCallId: string }) => Promise<unknown>;
         };
         analyzeJobMatch: {
@@ -237,11 +311,10 @@ describe("POST /api/agent/floating/chat", () => {
     }) => ({
       fullStream: (async function* () {
         yield { type: "text-delta", text: "先补一个项目经历。" };
-        await options.tools.addSection.execute(
+        await options.tools.addProject.execute(
           {
-            section: "projects",
-            value: "负责在线简历编辑器性能优化，首屏渲染耗时下降 32%。",
-            label: "新增项目经历",
+            name: "在线简历编辑器",
+            content: "负责在线简历编辑器性能优化，首屏渲染耗时下降 32%。",
             changeSummary: "补充可量化项目经历。",
           },
           { toolCallId: "tool_add_1" },
@@ -249,8 +322,8 @@ describe("POST /api/agent/floating/chat", () => {
         yield {
           type: "tool-result",
           toolCallId: "tool_add_1",
-          toolName: "addSection",
-          input: { section: "projects" },
+          toolName: "addProject",
+          input: { name: "在线简历编辑器" },
           output: { success: true },
         };
         yield { type: "text-delta", text: "再看岗位匹配。" };
@@ -295,7 +368,7 @@ describe("POST /api/agent/floating/chat", () => {
           type: "tool-call-result",
           toolCall: expect.objectContaining({
             id: "tool_add_1",
-            name: "addSection",
+            name: "addProject",
             status: "completed",
           }),
           operations: [
@@ -303,8 +376,11 @@ describe("POST /api/agent/floating/chat", () => {
               id: "floating_tool_add_1",
               operation: "insert_section",
               section: "projects",
-              fieldPath: "projects.1.content",
+              fieldPath: "projects.1",
               afterPlainText: "负责在线简历编辑器性能优化，首屏渲染耗时下降 32%。",
+              replacementValue: expect.objectContaining({
+                name: "在线简历编辑器",
+              }),
             }),
           ],
         }),
@@ -319,6 +395,1044 @@ describe("POST /api/agent/floating/chat", () => {
           operations: [],
         }),
         { type: "text-delta", delta: "项目经历已经对齐岗位关键词。" },
+      ]),
+    );
+  });
+
+  it("exposes semantic basics and style tools as block actions", async () => {
+    (currentUserId as unknown as Mock).mockResolvedValue("user_123");
+    aiMocks.streamText.mockImplementation((options: {
+      tools: {
+        updateBasicsBlock: {
+          execute: (input: unknown, options: { toolCallId: string }) => Promise<unknown>;
+        };
+        updateStyleSettingsBlock: {
+          execute: (input: unknown, options: { toolCallId: string }) => Promise<unknown>;
+        };
+      };
+    }) => ({
+      fullStream: (async function* () {
+        await options.tools.updateBasicsBlock.execute(
+          {
+            name: "李四",
+            photo: "https://example.com/avatar.jpg",
+            summary: "三年后端经验",
+            beforePlainText: "张三",
+          },
+          { toolCallId: "tool_basics_1" },
+        );
+        yield {
+          type: "tool-result",
+          toolCallId: "tool_basics_1",
+          toolName: "updateBasicsBlock",
+          input: { name: "李四", photo: "https://example.com/avatar.jpg" },
+          output: { success: true },
+        };
+        await options.tools.updateStyleSettingsBlock.execute(
+          {
+            fontSize: 12,
+            photoScale: 0.9,
+            beforePlainText: "13",
+          },
+          { toolCallId: "tool_style_1" },
+        );
+        yield {
+          type: "tool-result",
+          toolCallId: "tool_style_1",
+          toolName: "updateStyleSettingsBlock",
+          input: { fontSize: 12, photoScale: 0.9 },
+          output: { success: true },
+        };
+      })(),
+    }));
+
+    const response = await POST(jsonRequest(validBody()));
+
+    expect(response.status).toBe(200);
+    expect(aiMocks.streamText).toHaveBeenCalledWith(
+      expect.objectContaining({
+        tools: expect.objectContaining({
+          updateBasicsBlock: expect.any(Object),
+          updateStyleSettingsBlock: expect.any(Object),
+        }),
+      }),
+    );
+    const streamArgs = aiMocks.streamText.mock.calls[0][0];
+    expect(streamArgs.tools).not.toHaveProperty("setCandidateName");
+    expect(streamArgs.tools).not.toHaveProperty("setCandidatePhoto");
+    expect(streamArgs.tools).not.toHaveProperty("setContactEmail");
+    expect(streamArgs.tools).not.toHaveProperty("setResumeFontSize");
+    expect(streamArgs.tools).not.toHaveProperty("setResumePhotoScale");
+    const events = await readSseEvents(response);
+    expect(events).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          type: "tool-call-result",
+          toolCall: expect.objectContaining({
+            id: "tool_basics_1",
+            name: "updateBasicsBlock",
+          }),
+          operations: [
+            expect.objectContaining({
+              id: "floating_tool_basics_1",
+              section: "basics",
+              fieldPath: "basics",
+              replacementValue: expect.objectContaining({
+                name: "李四",
+                photo: "https://example.com/avatar.jpg",
+                summary: "三年后端经验",
+              }),
+            }),
+          ],
+        }),
+        expect.objectContaining({
+          type: "tool-call-result",
+          toolCall: expect.objectContaining({
+            id: "tool_style_1",
+            name: "updateStyleSettingsBlock",
+          }),
+          operations: [
+            expect.objectContaining({
+              id: "floating_tool_style_1",
+              section: "style",
+              fieldPath: "styleSettings",
+              replacementValue: expect.objectContaining({
+                fontSize: 12,
+                photoScale: 0.9,
+              }),
+            }),
+          ],
+        }),
+      ]),
+    );
+  });
+
+  it("keeps block tool schemas aligned with editable resume schema fields", async () => {
+    (currentUserId as unknown as Mock).mockResolvedValue("user_123");
+    aiMocks.streamText.mockReturnValue({
+      fullStream: (async function* () {})(),
+    });
+
+    const response = await POST(jsonRequest(validBody()));
+
+    expect(response.status).toBe(200);
+    await response.text();
+    const tools = aiMocks.streamText.mock.calls[0][0].tools;
+    expectToolSchemaKeys(tools.updateBasicsBlock, [
+        "name",
+        "status",
+        "title",
+        "email",
+        "phone",
+        "location",
+        "website",
+        "summary",
+        "photo",
+        "beforePlainText",
+        "changeSummary",
+      ]);
+    expectToolSchemaKeys(tools.updateStyleSettingsBlock, [
+        "fontFamily",
+        "fontSize",
+        "lineHeight",
+        "bodyLineHeight",
+        "headingGap",
+        "pagePadding",
+        "sectionGap",
+        "itemGap",
+        "photoScale",
+        "beforePlainText",
+        "changeSummary",
+      ]);
+    expectToolSchemaKeys(tools.updateWorkExperienceBlock, [
+      "index",
+      "company",
+      "title",
+      "start",
+      "end",
+      "location",
+      "content",
+      "beforePlainText",
+      "changeSummary",
+    ]);
+    expectToolSchemaKeys(tools.addWorkExperience, [
+      "company",
+      "title",
+      "start",
+      "end",
+      "location",
+      "content",
+      "beforePlainText",
+      "changeSummary",
+    ]);
+    expectToolSchemaKeys(tools.updateEducationBlock, [
+        "index",
+        "school",
+        "degree",
+        "major",
+        "location",
+        "start",
+        "end",
+        "gpa",
+        "highlights",
+        "beforePlainText",
+        "changeSummary",
+      ]);
+    expectToolSchemaKeys(tools.addEducation, [
+        "school",
+        "degree",
+        "major",
+        "location",
+        "start",
+        "end",
+        "gpa",
+        "highlights",
+        "beforePlainText",
+        "changeSummary",
+      ]);
+    expectToolSchemaKeys(tools.updateProjectBlock, [
+        "index",
+        "name",
+        "role",
+        "location",
+        "start",
+        "end",
+        "stack",
+        "link",
+        "content",
+        "beforePlainText",
+        "changeSummary",
+      ]);
+    expectToolSchemaKeys(tools.addProject, [
+        "name",
+        "role",
+        "location",
+        "start",
+        "end",
+        "stack",
+        "link",
+        "content",
+        "beforePlainText",
+        "changeSummary",
+      ]);
+    expectToolSchemaKeys(tools.updateResearchBlock, [
+        "index",
+        "name",
+        "role",
+        "location",
+        "start",
+        "end",
+        "paperTitle",
+        "link",
+        "content",
+        "beforePlainText",
+        "changeSummary",
+      ]);
+    expectToolSchemaKeys(tools.addResearch, [
+        "name",
+        "role",
+        "location",
+        "start",
+        "end",
+        "paperTitle",
+        "link",
+        "content",
+        "beforePlainText",
+        "changeSummary",
+      ]);
+    expectToolSchemaKeys(tools.updateCustomSectionBlock, [
+      "sectionId",
+      "title",
+      "content",
+      "beforePlainText",
+      "changeSummary",
+    ]);
+    expectToolSchemaKeys(tools.addCustomSection, [
+      "title",
+      "content",
+      "beforePlainText",
+      "changeSummary",
+    ]);
+    expectToolSchemaKeys(tools.writeSkillsSection, ["content", "beforePlainText", "changeSummary"]);
+    expectToolSchemaKeys(tools.writePersonalSummarySection, ["content", "beforePlainText", "changeSummary"]);
+    expectToolSchemaKeys(tools.writeAwardsSection, ["content", "beforePlainText", "changeSummary"]);
+    expectToolSchemaKeys(tools.writePortfolioSection, ["content", "beforePlainText", "changeSummary"]);
+    expect(schemaKeys(tools.reorderResumeModules)).toContain("sectionOrder");
+  });
+
+  it("allows block tools to clear rich-text fields with an empty string", async () => {
+    (currentUserId as unknown as Mock).mockResolvedValue("user_123");
+    aiMocks.streamText.mockReturnValue({
+      fullStream: (async function* () {})(),
+    });
+
+    const response = await POST(jsonRequest(validBody()));
+
+    expect(response.status).toBe(200);
+    await response.text();
+    const tools = aiMocks.streamText.mock.calls[0][0].tools;
+    expectToolInputToParse(tools.addWorkExperience, { company: "星河科技", content: "" });
+    expectToolInputToParse(tools.addEducation, { school: "浙江大学", highlights: "" });
+    expectToolInputToParse(tools.addProject, { name: "简历助手", content: "" });
+    expectToolInputToParse(tools.addResearch, { name: "检索增强研究", content: "" });
+    expectToolInputToParse(tools.addCustomSection, { title: "其他", content: "" });
+    expectToolInputToParse(tools.writeSkillsSection, { content: "" });
+    expectToolInputToParse(tools.writePersonalSummarySection, { content: "" });
+    expectToolInputToParse(tools.writeAwardsSection, { content: "" });
+    expectToolInputToParse(tools.writePortfolioSection, { content: "" });
+  });
+
+  it("exposes semantic block tools for repeatable resume sections", async () => {
+    (currentUserId as unknown as Mock).mockResolvedValue("user_123");
+    aiMocks.streamText.mockImplementation((options: {
+      tools: {
+        updateWorkExperienceBlock: {
+          execute: (input: unknown, options: { toolCallId: string }) => Promise<unknown>;
+        };
+        updateEducationBlock: {
+          execute: (input: unknown, options: { toolCallId: string }) => Promise<unknown>;
+        };
+        updateProjectBlock: {
+          execute: (input: unknown, options: { toolCallId: string }) => Promise<unknown>;
+        };
+        updateResearchBlock: {
+          execute: (input: unknown, options: { toolCallId: string }) => Promise<unknown>;
+        };
+      };
+    }) => ({
+      fullStream: (async function* () {
+        await options.tools.updateWorkExperienceBlock.execute(
+          {
+            index: 0,
+            company: "字节跳动",
+            title: "前端工程师",
+            location: "北京",
+            content: "主导增长平台搭建。",
+            beforePlainText: "旧公司 / 前端",
+          },
+          { toolCallId: "tool_exp_block_1" },
+        );
+        yield {
+          type: "tool-result",
+          toolCallId: "tool_exp_block_1",
+          toolName: "updateWorkExperienceBlock",
+          input: { index: 0, company: "字节跳动", title: "前端工程师" },
+          output: { success: true },
+        };
+        await options.tools.updateEducationBlock.execute(
+          { index: 0, school: "清华大学", degree: "本科", beforePlainText: "旧学校" },
+          { toolCallId: "tool_edu_block_1" },
+        );
+        yield {
+          type: "tool-result",
+          toolCallId: "tool_edu_block_1",
+          toolName: "updateEducationBlock",
+          input: { index: 0, school: "清华大学", degree: "本科" },
+          output: { success: true },
+        };
+        await options.tools.updateProjectBlock.execute(
+          {
+            index: 0,
+            name: "简历助手",
+            stack: ["React", "TypeScript"],
+            content: "主导简历编辑器性能优化，首屏耗时下降 32%。",
+          },
+          { toolCallId: "tool_project_block_1" },
+        );
+        yield {
+          type: "tool-result",
+          toolCallId: "tool_project_block_1",
+          toolName: "updateProjectBlock",
+          input: { index: 0, name: "简历助手", stack: ["React", "TypeScript"] },
+          output: { success: true },
+        };
+        await options.tools.updateResearchBlock.execute(
+          { index: 0, name: "LLM 简历生成", paperTitle: "LLM 简历生成评测" },
+          { toolCallId: "tool_research_block_1" },
+        );
+        yield {
+          type: "tool-result",
+          toolCallId: "tool_research_block_1",
+          toolName: "updateResearchBlock",
+          input: { index: 0, name: "LLM 简历生成", paperTitle: "LLM 简历生成评测" },
+          output: { success: true },
+        };
+      })(),
+    }));
+
+    const response = await POST(jsonRequest(validBody()));
+
+    expect(response.status).toBe(200);
+    expect(aiMocks.streamText).toHaveBeenCalledWith(
+      expect.objectContaining({
+        tools: expect.objectContaining({
+          updateWorkExperienceBlock: expect.any(Object),
+          updateEducationBlock: expect.any(Object),
+          updateProjectBlock: expect.any(Object),
+          updateResearchBlock: expect.any(Object),
+        }),
+      }),
+    );
+    const streamArgs = aiMocks.streamText.mock.calls[0][0];
+    expect(streamArgs.tools).not.toHaveProperty("setWorkExperienceCompany");
+    expect(streamArgs.tools).not.toHaveProperty("setEducationSchool");
+    expect(streamArgs.tools).not.toHaveProperty("setProjectTechStack");
+    expect(streamArgs.tools).not.toHaveProperty("setResearchPaperTitle");
+    expect(streamArgs.tools).not.toHaveProperty("writeWorkExperienceContent");
+    expect(streamArgs.tools).not.toHaveProperty("writeEducationHighlights");
+    expect(streamArgs.tools).not.toHaveProperty("writeProjectContent");
+    expect(streamArgs.tools).not.toHaveProperty("writeResearchContent");
+    const events = await readSseEvents(response);
+    expect(events).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          type: "tool-call-result",
+          toolCall: expect.objectContaining({
+            id: "tool_exp_block_1",
+            name: "updateWorkExperienceBlock",
+          }),
+          operations: [
+            expect.objectContaining({
+              id: "floating_tool_exp_block_1",
+              section: "experience",
+              fieldPath: "experience.0",
+              afterPlainText: "主导增长平台搭建。",
+              replacementValue: expect.objectContaining({
+                company: "字节跳动",
+                title: "前端工程师",
+                location: "北京",
+              }),
+            }),
+          ],
+        }),
+        expect.objectContaining({
+          type: "tool-call-result",
+          toolCall: expect.objectContaining({
+            id: "tool_edu_block_1",
+            name: "updateEducationBlock",
+          }),
+          operations: [
+            expect.objectContaining({
+              id: "floating_tool_edu_block_1",
+              section: "education",
+              fieldPath: "education.0",
+              replacementValue: expect.objectContaining({
+                school: "清华大学",
+                degree: "本科",
+              }),
+            }),
+          ],
+        }),
+        expect.objectContaining({
+          type: "tool-call-result",
+          toolCall: expect.objectContaining({
+            id: "tool_project_block_1",
+            name: "updateProjectBlock",
+          }),
+          operations: [
+            expect.objectContaining({
+              id: "floating_tool_project_block_1",
+              section: "projects",
+              fieldPath: "projects.0",
+              replacementValue: expect.objectContaining({
+                name: "简历助手",
+                stack: ["React", "TypeScript"],
+              }),
+              afterPlainText: "主导简历编辑器性能优化，首屏耗时下降 32%。",
+            }),
+          ],
+        }),
+        expect.objectContaining({
+          type: "tool-call-result",
+          toolCall: expect.objectContaining({
+            id: "tool_research_block_1",
+            name: "updateResearchBlock",
+          }),
+          operations: [
+            expect.objectContaining({
+              id: "floating_tool_research_block_1",
+              section: "research",
+              fieldPath: "research.0",
+              replacementValue: expect.objectContaining({
+                name: "LLM 简历生成",
+                paperTitle: "LLM 简历生成评测",
+              }),
+            }),
+          ],
+        }),
+      ]),
+    );
+  });
+
+  it("exposes semantic delete, item reorder, and module structure tools", async () => {
+    (currentUserId as unknown as Mock).mockResolvedValue("user_123");
+    aiMocks.streamText.mockImplementation((options: {
+      tools: {
+        deleteProject: {
+          execute: (input: unknown, options: { toolCallId: string }) => Promise<unknown>;
+        };
+        reorderWorkExperiences: {
+          execute: (input: unknown, options: { toolCallId: string }) => Promise<unknown>;
+        };
+        hideResumeModule: {
+          execute: (input: unknown, options: { toolCallId: string }) => Promise<unknown>;
+        };
+        reorderResumeModules: {
+          execute: (input: unknown, options: { toolCallId: string }) => Promise<unknown>;
+        };
+        deleteWorkExperience: unknown;
+        deleteEducation: unknown;
+        deleteResearch: unknown;
+        reorderEducation: unknown;
+        reorderProjects: unknown;
+        reorderResearch: unknown;
+        showResumeModule: {
+          execute: (input: unknown, options: { toolCallId: string }) => Promise<unknown>;
+        };
+      };
+    }) => ({
+      fullStream: (async function* () {
+        await options.tools.deleteProject.execute(
+          { index: 1, beforePlainText: "旧项目" },
+          { toolCallId: "tool_delete_project_1" },
+        );
+        yield {
+          type: "tool-result",
+          toolCallId: "tool_delete_project_1",
+          toolName: "deleteProject",
+          input: { index: 1 },
+          output: { success: true },
+        };
+        await options.tools.reorderWorkExperiences.execute(
+          { itemOrder: [1, 0] },
+          { toolCallId: "tool_reorder_exp_1" },
+        );
+        yield {
+          type: "tool-result",
+          toolCallId: "tool_reorder_exp_1",
+          toolName: "reorderWorkExperiences",
+          input: { itemOrder: [1, 0] },
+          output: { success: true },
+        };
+        await options.tools.hideResumeModule.execute(
+          { moduleKey: "projects" },
+          { toolCallId: "tool_hide_module_1" },
+        );
+        yield {
+          type: "tool-result",
+          toolCallId: "tool_hide_module_1",
+          toolName: "hideResumeModule",
+          input: { moduleKey: "projects" },
+          output: { success: true },
+        };
+        await options.tools.showResumeModule.execute(
+          { moduleKey: "projects", position: 2 },
+          { toolCallId: "tool_show_module_1" },
+        );
+        yield {
+          type: "tool-result",
+          toolCallId: "tool_show_module_1",
+          toolName: "showResumeModule",
+          input: { moduleKey: "projects", position: 2 },
+          output: { success: true },
+        };
+        await options.tools.reorderResumeModules.execute(
+          { sectionOrder: ["basics", "skills", "experience"] },
+          { toolCallId: "tool_reorder_modules_1" },
+        );
+        yield {
+          type: "tool-result",
+          toolCallId: "tool_reorder_modules_1",
+          toolName: "reorderResumeModules",
+          input: { sectionOrder: ["basics", "skills", "experience"] },
+          output: { success: true },
+        };
+      })(),
+    }));
+
+    const response = await POST(
+      jsonRequest({
+        ...validBody(),
+        context: {
+          ...validBody().context,
+          sectionOrder: ["basics", "experience", "education", "skills"],
+        },
+      }),
+    );
+
+    expect(response.status).toBe(200);
+    expect(aiMocks.streamText).toHaveBeenCalledWith(
+      expect.objectContaining({
+        tools: expect.objectContaining({
+          deleteWorkExperience: expect.any(Object),
+          deleteEducation: expect.any(Object),
+          deleteProject: expect.any(Object),
+          deleteResearch: expect.any(Object),
+          reorderWorkExperiences: expect.any(Object),
+          reorderEducation: expect.any(Object),
+          reorderProjects: expect.any(Object),
+          reorderResearch: expect.any(Object),
+          hideResumeModule: expect.any(Object),
+          showResumeModule: expect.any(Object),
+          reorderResumeModules: expect.any(Object),
+        }),
+      }),
+    );
+    const events = await readSseEvents(response);
+    expect(events).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          type: "tool-call-result",
+          toolCall: expect.objectContaining({ name: "deleteProject" }),
+          operations: [
+            expect.objectContaining({
+              operation: "delete_section",
+              section: "projects",
+              fieldPath: "projects.1",
+            }),
+          ],
+        }),
+        expect.objectContaining({
+          type: "tool-call-result",
+          toolCall: expect.objectContaining({ name: "reorderWorkExperiences" }),
+          operations: [
+            expect.objectContaining({
+              operation: "reorder_items",
+              section: "experience",
+              fieldPath: "experience",
+              itemOrder: [1, 0],
+            }),
+          ],
+        }),
+        expect.objectContaining({
+          type: "tool-call-result",
+          toolCall: expect.objectContaining({ name: "hideResumeModule" }),
+          operations: [
+            expect.objectContaining({
+              operation: "delete_section",
+              fieldPath: "projects",
+            }),
+          ],
+        }),
+        expect.objectContaining({
+          type: "tool-call-result",
+          toolCall: expect.objectContaining({ name: "showResumeModule" }),
+          operations: [
+            expect.objectContaining({
+              operation: "reorder_sections",
+              fieldPath: "sectionOrder",
+              sectionOrder: ["basics", "experience", "projects", "education", "skills"],
+            }),
+          ],
+        }),
+        expect.objectContaining({
+          type: "tool-call-result",
+          toolCall: expect.objectContaining({ name: "reorderResumeModules" }),
+          operations: [
+            expect.objectContaining({
+              operation: "reorder_sections",
+              sectionOrder: ["basics", "skills", "experience"],
+            }),
+          ],
+        }),
+      ]),
+    );
+  });
+
+  it("exposes semantic singleton rich-text section tools", async () => {
+    (currentUserId as unknown as Mock).mockResolvedValue("user_123");
+    aiMocks.streamText.mockImplementation((options: {
+      tools: {
+        writeSkillsSection: {
+          execute: (input: unknown, options: { toolCallId: string }) => Promise<unknown>;
+        };
+        writeAwardsSection: {
+          execute: (input: unknown, options: { toolCallId: string }) => Promise<unknown>;
+        };
+        writePersonalSummarySection: unknown;
+        writePortfolioSection: unknown;
+      };
+    }) => ({
+      fullStream: (async function* () {
+        await options.tools.writeSkillsSection.execute(
+          {
+            content: "TypeScript、React、性能优化",
+            beforePlainText: "React",
+          },
+          { toolCallId: "tool_skills_1" },
+        );
+        yield {
+          type: "tool-result",
+          toolCallId: "tool_skills_1",
+          toolName: "writeSkillsSection",
+          input: { content: "TypeScript、React、性能优化" },
+          output: { success: true },
+        };
+        await options.tools.writeAwardsSection.execute(
+          {
+            content: "ACM 区域赛银奖",
+            beforePlainText: "",
+          },
+          { toolCallId: "tool_awards_1" },
+        );
+        yield {
+          type: "tool-result",
+          toolCallId: "tool_awards_1",
+          toolName: "writeAwardsSection",
+          input: { content: "ACM 区域赛银奖" },
+          output: { success: true },
+        };
+      })(),
+    }));
+
+    const response = await POST(jsonRequest(validBody()));
+
+    expect(response.status).toBe(200);
+    expect(aiMocks.streamText).toHaveBeenCalledWith(
+      expect.objectContaining({
+        tools: expect.objectContaining({
+          writeSkillsSection: expect.any(Object),
+          writePersonalSummarySection: expect.any(Object),
+          writeAwardsSection: expect.any(Object),
+          writePortfolioSection: expect.any(Object),
+        }),
+      }),
+    );
+    const events = await readSseEvents(response);
+    expect(events).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          type: "tool-call-result",
+          toolCall: expect.objectContaining({ name: "writeSkillsSection" }),
+          operations: [
+            expect.objectContaining({
+              section: "skills",
+              fieldPath: "skills",
+              afterPlainText: "TypeScript、React、性能优化",
+            }),
+          ],
+        }),
+        expect.objectContaining({
+          type: "tool-call-result",
+          toolCall: expect.objectContaining({ name: "writeAwardsSection" }),
+          operations: [
+            expect.objectContaining({
+              section: "awards",
+              fieldPath: "awards",
+              afterPlainText: "ACM 区域赛银奖",
+            }),
+          ],
+        }),
+      ]),
+    );
+  });
+
+  it("exposes semantic custom section tools", async () => {
+    (currentUserId as unknown as Mock).mockResolvedValue("user_123");
+    aiMocks.streamText.mockImplementation((options: {
+      tools: {
+        addCustomSection: {
+          execute: (input: unknown, options: { toolCallId: string }) => Promise<unknown>;
+        };
+        updateCustomSectionBlock: {
+          execute: (input: unknown, options: { toolCallId: string }) => Promise<unknown>;
+        };
+        deleteCustomSection: {
+          execute: (input: unknown, options: { toolCallId: string }) => Promise<unknown>;
+        };
+        reorderCustomSections: {
+          execute: (input: unknown, options: { toolCallId: string }) => Promise<unknown>;
+        };
+      };
+    }) => ({
+      fullStream: (async function* () {
+        await options.tools.addCustomSection.execute(
+          { title: "开源贡献", content: "维护 3 个开源项目。" },
+          { toolCallId: "tool_custom_add_1" },
+        );
+        yield {
+          type: "tool-result",
+          toolCallId: "tool_custom_add_1",
+          toolName: "addCustomSection",
+          input: { title: "开源贡献" },
+          output: { success: true },
+        };
+        await options.tools.updateCustomSectionBlock.execute(
+          {
+            sectionId: "custom_1",
+            title: "开源贡献",
+            content: "维护 3 个开源项目。",
+          },
+          { toolCallId: "tool_custom_update_1" },
+        );
+        yield {
+          type: "tool-result",
+          toolCallId: "tool_custom_update_1",
+          toolName: "updateCustomSectionBlock",
+          input: { sectionId: "custom_1" },
+          output: { success: true },
+        };
+        await options.tools.deleteCustomSection.execute(
+          { sectionId: "custom_1" },
+          { toolCallId: "tool_custom_delete_1" },
+        );
+        yield {
+          type: "tool-result",
+          toolCallId: "tool_custom_delete_1",
+          toolName: "deleteCustomSection",
+          input: { sectionId: "custom_1" },
+          output: { success: true },
+        };
+        await options.tools.reorderCustomSections.execute(
+          { itemOrder: ["custom_2", "custom_1"] },
+          { toolCallId: "tool_custom_reorder_1" },
+        );
+        yield {
+          type: "tool-result",
+          toolCallId: "tool_custom_reorder_1",
+          toolName: "reorderCustomSections",
+          input: { itemOrder: ["custom_2", "custom_1"] },
+          output: { success: true },
+        };
+      })(),
+    }));
+
+    const response = await POST(jsonRequest(validBody()));
+
+    expect(response.status).toBe(200);
+    expect(aiMocks.streamText).toHaveBeenCalledWith(
+      expect.objectContaining({
+        tools: expect.objectContaining({
+          addCustomSection: expect.any(Object),
+          updateCustomSectionBlock: expect.any(Object),
+          deleteCustomSection: expect.any(Object),
+          reorderCustomSections: expect.any(Object),
+        }),
+      }),
+    );
+    const streamArgs = aiMocks.streamText.mock.calls[0][0];
+    expect(streamArgs.tools).not.toHaveProperty("renameCustomSection");
+    expect(streamArgs.tools).not.toHaveProperty("writeCustomSectionContent");
+    const events = await readSseEvents(response);
+    expect(events).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          type: "tool-call-result",
+          toolCall: expect.objectContaining({ name: "addCustomSection" }),
+          operations: [
+            expect.objectContaining({
+              operation: "insert_section",
+              fieldPath: "custom.0",
+              replacementValue: { title: "开源贡献" },
+              afterPlainText: "维护 3 个开源项目。",
+            }),
+          ],
+        }),
+        expect.objectContaining({
+          type: "tool-call-result",
+          toolCall: expect.objectContaining({ name: "updateCustomSectionBlock" }),
+          operations: [
+            expect.objectContaining({
+              operation: "update_section",
+              fieldPath: "custom.custom_1",
+              replacementValue: expect.objectContaining({
+                title: "开源贡献",
+                content: "维护 3 个开源项目。",
+              }),
+              afterPlainText: "维护 3 个开源项目。",
+            }),
+          ],
+        }),
+        expect.objectContaining({
+          type: "tool-call-result",
+          toolCall: expect.objectContaining({ name: "deleteCustomSection" }),
+          operations: [
+            expect.objectContaining({
+              operation: "delete_section",
+              fieldPath: "custom.custom_1",
+            }),
+          ],
+        }),
+        expect.objectContaining({
+          type: "tool-call-result",
+          toolCall: expect.objectContaining({ name: "reorderCustomSections" }),
+          operations: [
+            expect.objectContaining({
+              operation: "reorder_items",
+              section: "custom",
+              fieldPath: "custom",
+              itemOrder: ["custom_2", "custom_1"],
+            }),
+          ],
+        }),
+      ]),
+    );
+  });
+
+  it("exposes semantic add item tools for repeatable resume sections", async () => {
+    (currentUserId as unknown as Mock).mockResolvedValue("user_123");
+    aiMocks.streamText.mockImplementation((options: {
+      tools: {
+        addWorkExperience: {
+          execute: (input: unknown, options: { toolCallId: string }) => Promise<unknown>;
+        };
+        addEducation: {
+          execute: (input: unknown, options: { toolCallId: string }) => Promise<unknown>;
+        };
+        addProject: {
+          execute: (input: unknown, options: { toolCallId: string }) => Promise<unknown>;
+        };
+        addResearch: {
+          execute: (input: unknown, options: { toolCallId: string }) => Promise<unknown>;
+        };
+      };
+    }) => ({
+      fullStream: (async function* () {
+        await options.tools.addWorkExperience.execute(
+          {
+            company: "字节跳动",
+            title: "前端工程师",
+            content: "负责核心链路性能优化。",
+          },
+          { toolCallId: "tool_add_exp_1" },
+        );
+        yield {
+          type: "tool-result",
+          toolCallId: "tool_add_exp_1",
+          toolName: "addWorkExperience",
+          input: { company: "字节跳动" },
+          output: { success: true },
+        };
+        await options.tools.addEducation.execute(
+          {
+            school: "浙江大学",
+            degree: "本科",
+            highlights: "GPA 3.8 / 4.0。",
+          },
+          { toolCallId: "tool_add_edu_1" },
+        );
+        yield {
+          type: "tool-result",
+          toolCallId: "tool_add_edu_1",
+          toolName: "addEducation",
+          input: { school: "浙江大学" },
+          output: { success: true },
+        };
+        await options.tools.addProject.execute(
+          {
+            name: "智能简历助手",
+            role: "负责人",
+            stack: ["React", "Next.js"],
+            content: "搭建流式对话和简历修改工具。",
+          },
+          { toolCallId: "tool_add_project_1" },
+        );
+        yield {
+          type: "tool-result",
+          toolCallId: "tool_add_project_1",
+          toolName: "addProject",
+          input: { name: "智能简历助手" },
+          output: { success: true },
+        };
+        await options.tools.addResearch.execute(
+          {
+            name: "LLM 简历生成研究",
+            paperTitle: "Resume Agents",
+            content: "分析工具调用可靠性。",
+          },
+          { toolCallId: "tool_add_research_1" },
+        );
+        yield {
+          type: "tool-result",
+          toolCallId: "tool_add_research_1",
+          toolName: "addResearch",
+          input: { name: "LLM 简历生成研究" },
+          output: { success: true },
+        };
+      })(),
+    }));
+
+    const response = await POST(jsonRequest(validBody()));
+
+    expect(response.status).toBe(200);
+    expect(aiMocks.streamText).toHaveBeenCalledWith(
+      expect.objectContaining({
+        tools: expect.objectContaining({
+          addWorkExperience: expect.any(Object),
+          addEducation: expect.any(Object),
+          addProject: expect.any(Object),
+          addResearch: expect.any(Object),
+        }),
+      }),
+    );
+    const events = await readSseEvents(response);
+    expect(events).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          type: "tool-call-result",
+          toolCall: expect.objectContaining({ name: "addWorkExperience" }),
+          operations: [
+            expect.objectContaining({
+              operation: "insert_section",
+              section: "experience",
+              fieldPath: "experience.0",
+              replacementValue: expect.objectContaining({
+                company: "字节跳动",
+                title: "前端工程师",
+              }),
+              afterPlainText: "负责核心链路性能优化。",
+            }),
+          ],
+        }),
+        expect.objectContaining({
+          type: "tool-call-result",
+          toolCall: expect.objectContaining({ name: "addEducation" }),
+          operations: [
+            expect.objectContaining({
+              operation: "insert_section",
+              section: "education",
+              fieldPath: "education.0",
+              replacementValue: expect.objectContaining({
+                school: "浙江大学",
+                degree: "本科",
+              }),
+              afterPlainText: "GPA 3.8 / 4.0。",
+            }),
+          ],
+        }),
+        expect.objectContaining({
+          type: "tool-call-result",
+          toolCall: expect.objectContaining({ name: "addProject" }),
+          operations: [
+            expect.objectContaining({
+              operation: "insert_section",
+              section: "projects",
+              fieldPath: "projects.0",
+              replacementValue: expect.objectContaining({
+                name: "智能简历助手",
+                role: "负责人",
+                stack: ["React", "Next.js"],
+              }),
+              afterPlainText: "搭建流式对话和简历修改工具。",
+            }),
+          ],
+        }),
+        expect.objectContaining({
+          type: "tool-call-result",
+          toolCall: expect.objectContaining({ name: "addResearch" }),
+          operations: [
+            expect.objectContaining({
+              operation: "insert_section",
+              section: "research",
+              fieldPath: "research.0",
+              replacementValue: expect.objectContaining({
+                name: "LLM 简历生成研究",
+                paperTitle: "Resume Agents",
+              }),
+              afterPlainText: "分析工具调用可靠性。",
+            }),
+          ],
+        }),
       ]),
     );
   });
@@ -393,6 +1507,24 @@ function jsonRequest(body: unknown): Request {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
   });
+}
+
+function schemaKeys(toolDefinition: unknown): string[] {
+  const schema = (toolDefinition as { inputSchema?: { def?: { shape?: unknown } } }).inputSchema;
+  const shape = schema?.def?.shape;
+  return shape && typeof shape === "object" ? Object.keys(shape) : [];
+}
+
+function expectToolSchemaKeys(toolDefinition: unknown, expectedKeys: string[]) {
+  expect([...schemaKeys(toolDefinition)].sort()).toEqual([...expectedKeys].sort());
+}
+
+function expectToolInputToParse(toolDefinition: unknown, input: unknown) {
+  const schema = (toolDefinition as {
+    inputSchema?: { safeParse?: (value: unknown) => { success: boolean; error?: unknown } };
+  }).inputSchema;
+  const result = schema?.safeParse?.(input);
+  expect(result?.success).toBe(true);
 }
 
 function validBody() {

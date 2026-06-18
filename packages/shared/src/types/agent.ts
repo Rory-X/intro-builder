@@ -17,6 +17,7 @@ export type AgentResumeContext = {
   resumeTitle: string;
   templateId: string;
   activeSection: string | null;
+  sectionOrder?: string[];
   completeness: {
     overall: number;
     sections: Array<{ key: string; label: string; score: number; max: number }>;
@@ -34,6 +35,8 @@ export type AgentModelConfig = {
   apiKey: string;
   modelName: string;
 };
+
+export type AgentWriteMode = "direct" | "approval";
 
 export type AgentRunSessionContext = {
   sessionId: string;
@@ -93,23 +96,30 @@ export type ResumeOperation = {
   toolCallId: string;
   label: string;
   section:
+    | "basics"
     | "summary"
     | "experience"
     | "projects"
     | "education"
     | "skills"
     | "research"
-    | "custom";
+    | "awards"
+    | "portfolio"
+    | "custom"
+    | "style";
   fieldPath: string;
   operation:
     | "update_section"
     | "delete_section"
     | "reorder_sections"
-    | "insert_section";
+    | "insert_section"
+    | "reorder_items";
   beforePlainText: string;
   afterPlainText: string;
+  replacementValue?: unknown;
   replacementTiptapJson?: unknown;
   sectionOrder?: string[];
+  itemOrder?: Array<number | string>;
   changeSummary: string;
   diagnosis?: string;
   riskFlags: Array<{
@@ -120,6 +130,16 @@ export type ResumeOperation = {
       | "unsafe_claim";
     message: string;
   }>;
+};
+
+export type AgentOperationApprovalRequest = {
+  id: string;
+  status: "pending" | "approved" | "rejected";
+  reason: "approval_required";
+  message: string;
+  toolCallId: string | null;
+  source: { kind: "tool" | "skill"; name: string };
+  operation: ResumeOperation;
 };
 
 export type AgentMessageResponse = {

@@ -17,7 +17,9 @@ import {
   ChevronDown,
   ChevronRight,
   Clock,
+  Copy,
   MessageSquare,
+  PencilLine,
   Play,
   Plus,
   RefreshCw,
@@ -46,10 +48,13 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
+import { AgentConfirmationCard } from "@/components/agent/agent-confirmation-card";
 import { buildAgentResumeContext } from "@/lib/agent/chat-context";
 import type {
   AgentModelConfig,
+  AgentOperationApprovalRequest,
   AgentResumeContext,
+  AgentWriteMode,
   AgentWorkflowId,
   ResumeOperation,
 } from "@intro-builder/shared/types";
@@ -65,7 +70,8 @@ type FloatingAgentMessage = {
 
 type FloatingAgentMessagePart =
   | { id: string; type: "text"; text: string }
-  | { id: string; type: "tool"; toolCall: FloatingAgentToolCall };
+  | { id: string; type: "tool"; toolCall: FloatingAgentToolCall }
+  | { id: string; type: "approval"; approvalRequest: AgentOperationApprovalRequest };
 
 type FloatingAgentToolCall = {
   id: string;
@@ -96,6 +102,8 @@ type FloatingChatSession = {
 
 const MODEL_SETTINGS_STORAGE_KEY = "intro-builder.agent.model-settings.v1";
 const MODEL_API_KEY_SESSION_STORAGE_KEY = "intro-builder.agent.model-api-key.v1";
+const FLOATING_WRITE_MODE_STORAGE_KEY =
+  "intro-builder.agent.floating.operation-mode.v1";
 const FLOATING_STREAM_ACCEPT_HEADER = "text/event-stream, application/json";
 
 type FloatingAgentChatProps = {
@@ -127,20 +135,41 @@ export function FloatingAgentChat({
   const [sessionsLoaded, setSessionsLoaded] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [editingMessageId, setEditingMessageId] = useState<string | null>(null);
   const [modelSettings, setModelSettings] = useState<AgentModelSettingsForm>(
     () => emptyModelSettings(),
   );
+  const [writeMode, setWriteModeState] = useState<AgentWriteMode>("direct");
   const scrollRef = useRef<HTMLDivElement>(null);
+  const requestAbortControllerRef = useRef<AbortController | null>(null);
   const modelConfig = useMemo(
     () => toAgentModelConfig(modelSettings),
     [modelSettings],
   );
+  const regenerableAssistantMessageId = useMemo(() => {
+    for (let index = messages.length - 1; index >= 0; index -= 1) {
+      const message = messages[index];
+      if (message.role !== "assistant") continue;
+      if (message.content === MODEL_MISSING_MESSAGE) return null;
+      const hasPreviousUserMessage = messages
+        .slice(0, index)
+        .some((item) => item.role === "user" && item.content.trim().length > 0);
+      return hasPreviousUserMessage ? message.id : null;
+    }
+    return null;
+  }, [messages]);
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
       setModelSettings(readStoredModelSettings());
+      setWriteModeState(readStoredWriteMode());
     }, 0);
     return () => window.clearTimeout(timer);
+  }, []);
+
+  const setWriteMode = useCallback((nextMode: AgentWriteMode) => {
+    setWriteModeState(nextMode);
+    storeWriteMode(nextMode);
   }, []);
 
   const loadSessionMessages = useCallback(async (sessionId: string) => {
@@ -172,6 +201,7 @@ export function FloatingAgentChat({
     setActiveSessionId(session.id);
     setMessages([]);
     setInput("");
+    setEditingMessageId(null);
     setHistoryOpen(false);
     return session;
   }, [resumeId]);
@@ -183,6 +213,8 @@ export function FloatingAgentChat({
         return;
       }
       setActiveSessionId(sessionId);
+      setEditingMessageId(null);
+      setInput("");
       setHistoryOpen(false);
       try {
         await loadSessionMessages(sessionId);
@@ -215,61 +247,115 @@ export function FloatingAgentChat({
         await createNewSession().catch(() => {
           setActiveSessionId(null);
           setMessages([]);
+          setInput("");
+          setEditingMessageId(null);
         });
       }
     },
     [activeSessionId, createNewSession, loadSessionMessages, sessions],
   );
 
-  useEffect(() => {
-    let cancelled = false;
-    async function loadSessions() {
+  const updateApprovalStatus = useCallback(
+    (
+      approvalId: string,
+      status: AgentOperationApprovalRequest["status"],
+    ) => {
+      setMessages((current) =>
+        current.map((message) => ({
+          ...message,
+          parts: message.parts?.map((part) =>
+            part.type === "approval" && part.approvalRequest.id === approvalId
+              ? {
+                  ...part,
+                  approvalRequest: {
+                    ...part.approvalRequest,
+                    status,
+                  },
+                }
+              : part,
+          ),
+        })),
+      );
+    },
+    [],
+  );
+
+  const persistApprovalStatus = useCallback(
+    async (
+      messageId: string,
+      approvalId: string,
+      status: Extract<AgentOperationApprovalRequest["status"], "approved" | "rejected">,
+    ) => {
+      if (!activeSessionId) return;
       try {
-        const response = await fetch(
-          `/api/agent/floating/sessions?resumeId=${encodeURIComponent(resumeId)}`,
-          { headers: { Accept: "application/json" } },
-        );
-        const body = await response.json().catch(() => ({}));
-        const loadedSessions = Array.isArray(body.sessions)
-          ? body.sessions.map(toFloatingChatSession).filter(isFloatingChatSession)
-          : [];
-        if (cancelled) return;
-        setSessions(loadedSessions);
-        if (loadedSessions.length > 0) {
-          const latest = loadedSessions[0];
-          setActiveSessionId(latest.id);
-          await loadSessionMessages(latest.id);
-        } else if (response.ok) {
-          await createNewSession();
-        }
+        const response = await fetch(`/api/agent/floating/sessions/${activeSessionId}`, {
+          method: "PATCH",
+          headers: {
+            Accept: "application/json",
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ messageId, approvalId, status }),
+        });
+        if (!response.ok) throw new Error("persist_failed");
       } catch {
-        if (!cancelled) {
-          setActiveSessionId(null);
-        }
-      } finally {
-        if (!cancelled) setSessionsLoaded(true);
+        toast.error("确认状态保存失败");
       }
+    },
+    [activeSessionId],
+  );
+
+  const applyApprovalRequest = useCallback(
+    (messageId: string, operation: ResumeOperation) => {
+      applyOperation(operation);
+      flushAutosave();
+      updateApprovalStatus(operation.id, "approved");
+      void persistApprovalStatus(messageId, operation.id, "approved");
+    },
+    [applyOperation, flushAutosave, persistApprovalStatus, updateApprovalStatus],
+  );
+
+  const rejectApprovalRequest = useCallback(
+    (messageId: string, operationId: string) => {
+      updateApprovalStatus(operationId, "rejected");
+      void persistApprovalStatus(messageId, operationId, "rejected");
+    },
+    [persistApprovalStatus, updateApprovalStatus],
+  );
+
+  const copyMessage = useCallback(async (content: string) => {
+    try {
+      await navigator.clipboard?.writeText(content);
+      toast.success("已复制消息");
+    } catch {
+      toast.error("复制失败");
     }
+  }, []);
 
-    void loadSessions();
-    return () => {
-      cancelled = true;
-    };
-  }, [createNewSession, loadSessionMessages, resumeId]);
+  const editUserMessage = useCallback(
+    (message: FloatingAgentMessage) => {
+      if (isLoading || message.role !== "user") return;
+      setEditingMessageId(message.id);
+      setInput(message.content);
+    },
+    [isLoading],
+  );
 
-  const sendMessage = useCallback(
-    async (event?: FormEvent<HTMLFormElement>) => {
-      event?.preventDefault();
-      const text = input.trim();
-      if (!text || isLoading) return;
+  const cancelEditing = useCallback(() => {
+    setEditingMessageId(null);
+    setInput("");
+  }, []);
 
-      const userMessage: FloatingAgentMessage = {
-        id: createMessageId("user"),
-        role: "user",
-        content: text,
-      };
-      setMessages((current) => [...current, userMessage]);
-      setInput("");
+  const runFloatingRequest = useCallback(
+    async ({
+      requestMessages,
+      initialMessages,
+      titleSource,
+    }: {
+      requestMessages: FloatingAgentMessage[];
+      initialMessages: FloatingAgentMessage[];
+      titleSource: string;
+    }) => {
+      setMessages(initialMessages);
 
       if (!modelConfig) {
         setMessages((current) => [
@@ -284,9 +370,13 @@ export function FloatingAgentChat({
       }
 
       setIsLoading(true);
+      const abortController = new AbortController();
+      requestAbortControllerRef.current?.abort();
+      requestAbortControllerRef.current = abortController;
       const assistantMessageId = createMessageId("assistant");
       const appliedOperationIds = new Set<string>();
       const applyStreamOperations = (operations: ResumeOperation[]) => {
+        if (writeMode !== "direct") return;
         const nextOperations = operations.filter((operation) => {
           if (appliedOperationIds.has(operation.id)) return false;
           appliedOperationIds.add(operation.id);
@@ -302,6 +392,7 @@ export function FloatingAgentChat({
       try {
         const response = await fetch("/api/agent/floating/chat", {
           method: "POST",
+          signal: abortController.signal,
           headers: {
             Accept: FLOATING_STREAM_ACCEPT_HEADER,
             "Content-Type": "application/json",
@@ -311,7 +402,8 @@ export function FloatingAgentChat({
             locale: "zh-CN",
             workflowId: null satisfies AgentWorkflowId | null,
             sessionId: activeSessionId,
-            messages: [...messages, userMessage].map((message) => ({
+            writeMode,
+            messages: requestMessages.map((message) => ({
               role: message.role,
               content:
                 message.content === MODEL_MISSING_MESSAGE ? "" : message.content,
@@ -379,20 +471,40 @@ export function FloatingAgentChat({
               );
               scrollMessagesToBottom(scrollRef);
             },
+            onApprovalRequest: (approvalRequest) => {
+              setMessages((current) =>
+                current.map((message) =>
+                  message.id === assistantMessageId
+                    ? {
+                        ...message,
+                        parts: upsertFloatingApprovalPart(
+                          message.parts ?? [],
+                          approvalRequest,
+                        ),
+                      }
+                    : message,
+                ),
+              );
+              scrollMessagesToBottom(scrollRef);
+            },
             onOperations: applyStreamOperations,
           });
         } else {
           body = await response.json().catch(() => ({}));
         }
 
-        const operations = normalizeResumeOperations(body.operations).filter(
-          (operation) => !appliedOperationIds.has(operation.id),
-        );
+        const operations =
+          writeMode === "direct"
+            ? normalizeResumeOperations(body.operations).filter(
+                (operation) => !appliedOperationIds.has(operation.id),
+              )
+            : [];
+        const approvalRequests = normalizeApprovalRequests(body.approvalRequests);
         const toolCalls = normalizeToolCalls(body.toolCalls);
         const responseParts = normalizeFloatingMessageParts(body.parts);
         applyStreamOperations(operations);
         if (activeSessionId) {
-          const nextTitle = text.slice(0, 50);
+          const nextTitle = titleSource.slice(0, 50);
           setSessions((current) =>
             current.map((session) =>
               session.id === activeSessionId && session.title === "新对话"
@@ -407,13 +519,14 @@ export function FloatingAgentChat({
                 message.id === assistantMessageId
                   ? {
                       ...message,
-                      content: finalAssistantMessage(body, operations),
+                      content: finalAssistantMessage(body, operations, approvalRequests),
                       parts:
                         responseParts ??
                         finalizeFloatingParts(
                           message.parts ?? [],
-                          finalAssistantMessage(body, operations),
+                          finalAssistantMessage(body, operations, approvalRequests),
                           toolCalls,
+                          approvalRequests,
                         ),
                       toolCalls: mergeFloatingToolCalls(
                         message.toolCalls ?? [],
@@ -427,19 +540,21 @@ export function FloatingAgentChat({
                 {
                   id: assistantMessageId,
                   role: "assistant" as const,
-                  content: finalAssistantMessage(body, operations),
+                  content: finalAssistantMessage(body, operations, approvalRequests),
                   parts:
                     responseParts ??
                     finalizeFloatingParts(
                       [],
-                      finalAssistantMessage(body, operations),
+                      finalAssistantMessage(body, operations, approvalRequests),
                       toolCalls,
+                      approvalRequests,
                     ),
                   toolCalls,
                 },
               ]),
         ]);
       } catch (error) {
+        if (isAbortError(error)) return;
         const message =
           error instanceof Error ? error.message : "AI 助手暂时不可用";
         toast.error(message);
@@ -452,24 +567,143 @@ export function FloatingAgentChat({
           },
         ]);
       } finally {
+        if (requestAbortControllerRef.current === abortController) {
+          requestAbortControllerRef.current = null;
+        }
         setIsLoading(false);
         scrollMessagesToBottom(scrollRef);
       }
     },
     [
+      activeSessionId,
       applyOperation,
       completeness,
       flushAutosave,
       getResumeContent,
+      modelConfig,
+      resumeId,
+      templateId,
+      writeMode,
+    ],
+  );
+
+  useEffect(() => {
+    let cancelled = false;
+    async function loadSessions() {
+      try {
+        const response = await fetch(
+          `/api/agent/floating/sessions?resumeId=${encodeURIComponent(resumeId)}`,
+          { headers: { Accept: "application/json" } },
+        );
+        const body = await response.json().catch(() => ({}));
+        const loadedSessions = Array.isArray(body.sessions)
+          ? body.sessions.map(toFloatingChatSession).filter(isFloatingChatSession)
+          : [];
+        if (cancelled) return;
+        setSessions(loadedSessions);
+        if (loadedSessions.length > 0) {
+          const latest = loadedSessions[0];
+          setActiveSessionId(latest.id);
+          await loadSessionMessages(latest.id);
+        } else if (response.ok) {
+          await createNewSession();
+        }
+      } catch {
+        if (!cancelled) {
+          setActiveSessionId(null);
+        }
+      } finally {
+        if (!cancelled) setSessionsLoaded(true);
+      }
+    }
+
+    void loadSessions();
+    return () => {
+      cancelled = true;
+    };
+  }, [createNewSession, loadSessionMessages, resumeId]);
+
+  const sendMessage = useCallback(
+    async (event?: FormEvent<HTMLFormElement>) => {
+      event?.preventDefault();
+      const text = input.trim();
+      if (!text || isLoading) return;
+      const editingIndex = editingMessageId
+        ? messages.findIndex(
+            (message) => message.id === editingMessageId && message.role === "user",
+          )
+        : -1;
+      const baseMessages = editingIndex >= 0 ? messages.slice(0, editingIndex) : messages;
+
+      const userMessage: FloatingAgentMessage = {
+        id: createMessageId("user"),
+        role: "user",
+        content: text,
+      };
+      setMessages([...baseMessages, userMessage]);
+      setEditingMessageId(null);
+      setInput("");
+
+      await runFloatingRequest({
+        requestMessages: [...baseMessages, userMessage],
+        initialMessages: [...baseMessages, userMessage],
+        titleSource: text,
+      });
+    },
+    [
+      editingMessageId,
       input,
       isLoading,
       messages,
-      modelConfig,
-      resumeId,
-      activeSessionId,
-      templateId,
+      runFloatingRequest,
     ],
   );
+
+  const regenerateAssistantMessage = useCallback(
+    async (message: FloatingAgentMessage) => {
+      if (isLoading || message.role !== "assistant") return;
+      const assistantIndex = messages.findIndex((item) => item.id === message.id);
+      if (assistantIndex <= 0) return;
+      const requestMessages = messages.slice(0, assistantIndex);
+      const previousUserMessage = [...requestMessages]
+        .reverse()
+        .find((item) => item.role === "user" && item.content.trim().length > 0);
+      if (!previousUserMessage) return;
+      setEditingMessageId(null);
+      setInput("");
+      await runFloatingRequest({
+        requestMessages,
+        initialMessages: requestMessages,
+        titleSource: previousUserMessage.content.trim(),
+      });
+    },
+    [isLoading, messages, runFloatingRequest],
+  );
+
+  const sendWelcomePrompt = useCallback(
+    async (prompt: string) => {
+      const text = prompt.trim();
+      if (!text || isLoading) return;
+      const userMessage: FloatingAgentMessage = {
+        id: createMessageId("user"),
+        role: "user",
+        content: text,
+      };
+      const nextMessages = [...messages, userMessage];
+      setEditingMessageId(null);
+      setInput("");
+      await runFloatingRequest({
+        requestMessages: nextMessages,
+        initialMessages: nextMessages,
+        titleSource: text,
+      });
+    },
+    [isLoading, messages, runFloatingRequest],
+  );
+
+  const stopGeneration = useCallback(() => {
+    requestAbortControllerRef.current?.abort();
+  }, []);
 
   return (
     <div className="flex h-full flex-col overflow-hidden bg-background">
@@ -570,7 +804,7 @@ export function FloatingAgentChat({
 
       <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto px-4 py-4">
         {messages.length === 0 ? (
-          <FloatingWelcome />
+          <FloatingWelcome onPromptClick={sendWelcomePrompt} />
         ) : (
           <div className="space-y-4">
             {messages.map((message) => (
@@ -578,6 +812,15 @@ export function FloatingAgentChat({
                 key={message.id}
                 message={message}
                 onOpenSettings={() => setSettingsOpen(true)}
+                onApplyApproval={applyApprovalRequest}
+                onRejectApproval={rejectApprovalRequest}
+                onCopyMessage={copyMessage}
+                onEditMessage={editUserMessage}
+                onRegenerateMessage={regenerateAssistantMessage}
+                canRegenerate={
+                  !isLoading && message.id === regenerableAssistantMessageId
+                }
+                isLoading={isLoading}
               />
             ))}
             {isLoading ? <FloatingTyping /> : null}
@@ -590,7 +833,12 @@ export function FloatingAgentChat({
         setInput={setInput}
         isLoading={isLoading}
         modelName={modelConfig?.modelName ?? null}
+        editing={editingMessageId !== null}
+        writeMode={writeMode}
+        onWriteModeChange={setWriteMode}
         onOpenSettings={() => setSettingsOpen(true)}
+        onCancelEditing={cancelEditing}
+        onStop={stopGeneration}
         onSubmit={sendMessage}
       />
       <FloatingModelSettingsDialog
@@ -606,12 +854,15 @@ export function FloatingAgentChat({
 function finalAssistantMessage(
   body: Record<string, unknown>,
   operations: ResumeOperation[],
+  approvalRequests: AgentOperationApprovalRequest[] = [],
 ) {
   return typeof body.message === "string" && body.message.trim()
     ? body.message.trim()
-    : operations.length > 0
-      ? `已直接应用 ${operations.length} 条简历修改。`
-      : "我看完了，可以继续告诉我你想优化的方向。";
+    : approvalRequests.length > 0
+      ? `我整理了 ${approvalRequests.length} 条修改建议，请确认后应用。`
+      : operations.length > 0
+        ? `已直接应用 ${operations.length} 条简历修改。`
+        : "我看完了，可以继续告诉我你想优化的方向。";
 }
 
 function scrollMessagesToBottom(ref: React.RefObject<HTMLDivElement | null>) {
@@ -626,15 +877,21 @@ function isEventStreamResponse(response: Response) {
   return response.headers.get("content-type")?.includes("text/event-stream") ?? false;
 }
 
+function isAbortError(error: unknown) {
+  return error instanceof DOMException && error.name === "AbortError";
+}
+
 async function readFloatingAgentStream(
   response: Response,
   {
     onTextDelta,
     onToolCall,
+    onApprovalRequest,
     onOperations,
   }: {
     onTextDelta: (delta: string) => void;
     onToolCall: (toolCall: FloatingAgentToolCall) => void;
+    onApprovalRequest: (approvalRequest: AgentOperationApprovalRequest) => void;
     onOperations: (operations: ResumeOperation[]) => void;
   },
 ): Promise<Record<string, unknown>> {
@@ -649,17 +906,25 @@ async function readFloatingAgentStream(
     if (done) break;
     buffer += decoder.decode(value, { stream: true });
     buffer = consumeFloatingStreamBuffer(buffer, (event) => {
-      handleFloatingStreamEvent(event, { onTextDelta, onToolCall, onOperations }, (done) => {
-        doneEvent = done;
-      });
+      handleFloatingStreamEvent(
+        event,
+        { onTextDelta, onToolCall, onApprovalRequest, onOperations },
+        (done) => {
+          doneEvent = done;
+        },
+      );
     });
   }
 
   buffer += decoder.decode();
   consumeFloatingStreamBuffer(`${buffer}\n\n`, (event) => {
-    handleFloatingStreamEvent(event, { onTextDelta, onToolCall, onOperations }, (done) => {
-      doneEvent = done;
-    });
+    handleFloatingStreamEvent(
+      event,
+      { onTextDelta, onToolCall, onApprovalRequest, onOperations },
+      (done) => {
+        doneEvent = done;
+      },
+    );
   });
 
   return doneEvent ?? {};
@@ -670,6 +935,7 @@ function handleFloatingStreamEvent(
   handlers: {
     onTextDelta: (delta: string) => void;
     onToolCall: (toolCall: FloatingAgentToolCall) => void;
+    onApprovalRequest: (approvalRequest: AgentOperationApprovalRequest) => void;
     onOperations: (operations: ResumeOperation[]) => void;
   },
   onDone: (event: Record<string, unknown>) => void,
@@ -687,6 +953,11 @@ function handleFloatingStreamEvent(
     if (toolCall) handlers.onToolCall(toolCall);
     const operations = normalizeResumeOperations(event.operations);
     if (operations.length > 0) handlers.onOperations(operations);
+    return;
+  }
+  if (event.type === "approval-request") {
+    const approvalRequest = normalizeApprovalRequest(event.approvalRequest);
+    if (approvalRequest) handlers.onApprovalRequest(approvalRequest);
     return;
   }
   if (event.type === "done") {
@@ -722,7 +993,17 @@ function consumeFloatingStreamBuffer(
   return nextBuffer;
 }
 
-function FloatingWelcome() {
+function FloatingWelcome({
+  onPromptClick,
+}: {
+  onPromptClick: (prompt: string) => void;
+}) {
+  const prompts = [
+    "从 0 创建简历",
+    "帮我找最值得改的一处",
+    "按 STAR 优化最近经历",
+    "检查导出前风险",
+  ];
   return (
     <div className="flex min-h-[360px] flex-col justify-end pb-16 pt-24">
       <p className="text-3xl font-semibold leading-tight text-foreground">
@@ -732,10 +1013,11 @@ function FloatingWelcome() {
         想怎么优化这份简历？
       </p>
       <div className="mt-6 flex flex-wrap gap-2">
-        {["从 0 创建简历", "帮我找最值得改的一处", "按 STAR 优化最近经历", "检查导出前风险"].map((label) => (
+        {prompts.map((label) => (
           <button
             key={label}
             type="button"
+            onClick={() => onPromptClick(label)}
             className="rounded-full border bg-background px-3 py-1.5 text-xs font-medium text-muted-foreground shadow-sm transition hover:bg-muted hover:text-foreground"
           >
             {label}
@@ -749,13 +1031,28 @@ function FloatingWelcome() {
 function FloatingMessage({
   message,
   onOpenSettings,
+  onApplyApproval,
+  onRejectApproval,
+  onCopyMessage,
+  onEditMessage,
+  onRegenerateMessage,
+  canRegenerate,
+  isLoading,
 }: {
   message: FloatingAgentMessage;
   onOpenSettings: () => void;
+  onApplyApproval: (messageId: string, operation: ResumeOperation) => void;
+  onRejectApproval: (messageId: string, operationId: string) => void;
+  onCopyMessage: (content: string) => void;
+  onEditMessage: (message: FloatingAgentMessage) => void;
+  onRegenerateMessage: (message: FloatingAgentMessage) => void;
+  canRegenerate: boolean;
+  isLoading: boolean;
 }) {
   const isUser = message.role === "user";
+  const canCopy = message.content.trim().length > 0 && message.content !== MODEL_MISSING_MESSAGE;
   return (
-    <div className={`flex gap-2.5 ${isUser ? "flex-row-reverse" : ""}`}>
+    <div className={`group/message flex gap-2.5 ${isUser ? "flex-row-reverse" : ""}`}>
       <div
         data-testid={isUser ? "agent-user-avatar" : "agent-assistant-avatar"}
         className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full ${
@@ -768,40 +1065,90 @@ function FloatingMessage({
           <Bot className="h-3 w-3 text-white" />
         )}
       </div>
-      <div
-        data-testid={isUser ? "agent-user-message-bubble" : "agent-assistant-message-bubble"}
-        className={`min-w-0 max-w-[calc(100%-2.5rem)] rounded-2xl px-3 py-2 text-[13px] leading-relaxed ${
-          isUser
-            ? "bg-zinc-800 text-white"
-            : "bg-zinc-50 text-zinc-700 ring-1 ring-zinc-200/60 dark:bg-muted/30 dark:text-foreground dark:ring-border"
-        }`}
-      >
-        {message.content === MODEL_MISSING_MESSAGE ? (
-          <ModelMissingCard onConfigure={onOpenSettings} />
-        ) : isUser ? (
-          <p className="whitespace-pre-wrap">{message.content}</p>
-        ) : message.parts && message.parts.length > 0 ? (
-          <div className="space-y-2">
-            {message.parts.map((part) =>
-              part.type === "text" ? (
-                <FloatingMarkdown key={part.id} text={part.text} />
-              ) : (
-                <FloatingToolCallCard key={part.id} toolCall={part.toolCall} />
-              ),
-            )}
-          </div>
-        ) : (
-          <>
-            <FloatingMarkdown text={message.content} />
-            {message.toolCalls && message.toolCalls.length > 0 ? (
-              <div className="mt-2 space-y-1.5">
-                {message.toolCalls.map((toolCall) => (
-                  <FloatingToolCallCard key={toolCall.id} toolCall={toolCall} />
-                ))}
-              </div>
+      <div className="relative min-w-0 max-w-[calc(100%-2.5rem)] pb-7">
+        <div
+          data-testid={isUser ? "agent-user-message-bubble" : "agent-assistant-message-bubble"}
+          className={`rounded-2xl px-3 py-2 text-[13px] leading-relaxed ${
+            isUser
+              ? "bg-zinc-800 text-white"
+              : "bg-zinc-50 text-zinc-700 ring-1 ring-zinc-200/60 dark:bg-muted/30 dark:text-foreground dark:ring-border"
+          }`}
+        >
+          {message.content === MODEL_MISSING_MESSAGE ? (
+            <ModelMissingCard onConfigure={onOpenSettings} />
+          ) : isUser ? (
+            <p className="whitespace-pre-wrap">{message.content}</p>
+          ) : message.parts && message.parts.length > 0 ? (
+            <div className="space-y-2">
+              {message.parts.map((part) =>
+                part.type === "text" ? (
+                  <FloatingMarkdown key={part.id} text={part.text} />
+                ) : part.type === "tool" ? (
+                  <FloatingToolCallCard key={part.id} toolCall={part.toolCall} />
+                ) : (
+                  <AgentConfirmationCard
+                    key={part.id}
+                    operation={part.approvalRequest.operation}
+                    status={part.approvalRequest.status}
+                    onApply={(operation) => onApplyApproval(message.id, operation)}
+                    onReject={(operationId) => onRejectApproval(message.id, operationId)}
+                  />
+                ),
+              )}
+            </div>
+          ) : (
+            <>
+              <FloatingMarkdown text={message.content} />
+              {message.toolCalls && message.toolCalls.length > 0 ? (
+                <div className="mt-2 space-y-1.5">
+                  {message.toolCalls.map((toolCall) => (
+                    <FloatingToolCallCard key={toolCall.id} toolCall={toolCall} />
+                  ))}
+                </div>
+              ) : null}
+            </>
+          )}
+        </div>
+        {canCopy || isUser || canRegenerate ? (
+          <div
+            className={`absolute bottom-0 z-10 flex gap-1 opacity-0 transition-opacity group-hover/message:opacity-100 focus-within:opacity-100 ${
+              isUser ? "right-0" : "left-0"
+            }`}
+          >
+            {canCopy ? (
+              <button
+                type="button"
+                aria-label="复制消息"
+                onClick={() => onCopyMessage(message.content)}
+                className="inline-flex h-6 w-6 items-center justify-center rounded-md text-zinc-400 hover:bg-zinc-100 hover:text-zinc-700 dark:hover:bg-muted dark:hover:text-foreground"
+              >
+                <Copy className="h-3.5 w-3.5" />
+              </button>
             ) : null}
-          </>
-        )}
+            {isUser ? (
+              <button
+                type="button"
+                aria-label="编辑消息"
+                disabled={isLoading}
+                onClick={() => onEditMessage(message)}
+                className="inline-flex h-6 w-6 items-center justify-center rounded-md text-zinc-400 hover:bg-zinc-100 hover:text-zinc-700 disabled:cursor-not-allowed disabled:opacity-40 dark:hover:bg-muted dark:hover:text-foreground"
+              >
+                <PencilLine className="h-3.5 w-3.5" />
+              </button>
+            ) : null}
+            {canRegenerate ? (
+              <button
+                type="button"
+                aria-label="重新生成回答"
+                disabled={isLoading}
+                onClick={() => onRegenerateMessage(message)}
+                className="inline-flex h-6 w-6 items-center justify-center rounded-md text-zinc-400 hover:bg-zinc-100 hover:text-zinc-700 disabled:cursor-not-allowed disabled:opacity-40 dark:hover:bg-muted dark:hover:text-foreground"
+              >
+                <RefreshCw className="h-3.5 w-3.5" />
+              </button>
+            ) : null}
+          </div>
+        ) : null}
       </div>
     </div>
   );
@@ -943,6 +1290,62 @@ function formatToolPayload(value: unknown) {
 function formatToolCallTitle(toolCall: FloatingAgentToolCall) {
   const titleByName: Record<string, string> = {
     readResume: "读取简历",
+    updateBasicsBlock: "更新基础信息块",
+    setCandidateName: "更新姓名",
+    setJobSearchStatus: "更新求职状态",
+    setTargetRoleTitle: "更新目标岗位",
+    setContactEmail: "更新邮箱",
+    setContactPhone: "更新手机号",
+    setCandidateLocation: "更新所在地",
+    setPersonalWebsite: "更新个人链接",
+    setCandidatePhoto: "更新候选人头像",
+    writeProfileIntro: "更新个人简介",
+    writeSkillsSection: "更新专业技能",
+    writePersonalSummarySection: "更新个人总结",
+    writeAwardsSection: "更新荣誉奖项",
+    writePortfolioSection: "更新作品集",
+    addCustomSection: "新增自定义模块",
+    renameCustomSection: "重命名自定义模块",
+    writeCustomSectionContent: "更新自定义模块内容",
+    deleteCustomSection: "删除自定义模块",
+    reorderCustomSections: "调整自定义模块顺序",
+    updateCustomSectionBlock: "更新自定义模块",
+    updateStyleSettingsBlock: "调整简历样式",
+    setResumeFontFamily: "调整字体",
+    setResumeFontSize: "调整正文字号",
+    setResumeBodyLineHeight: "调整正文行高",
+    setResumeHeadingGap: "调整标题间距",
+    setResumePagePadding: "调整页边距",
+    setResumeSectionGap: "调整模块间距",
+    setResumeItemGap: "调整条目间距",
+    setResumePhotoScale: "调整头像大小",
+    addWorkExperience: "新增工作经历",
+    updateWorkExperienceBlock: "更新工作经历块",
+    updateWorkExperienceMeta: "更新工作经历信息",
+    writeWorkExperienceContent: "改写工作经历内容",
+    addEducation: "新增教育经历",
+    updateEducationBlock: "更新教育经历块",
+    updateEducationMeta: "更新教育经历信息",
+    writeEducationHighlights: "改写教育经历亮点",
+    addProject: "新增项目经历",
+    updateProjectBlock: "更新项目经历块",
+    updateProjectMeta: "更新项目经历信息",
+    writeProjectContent: "改写项目经历内容",
+    addResearch: "新增研究经历",
+    updateResearchBlock: "更新研究经历块",
+    updateResearchMeta: "更新研究经历信息",
+    writeResearchContent: "改写研究经历内容",
+    deleteWorkExperience: "删除工作经历",
+    deleteEducation: "删除教育经历",
+    deleteProject: "删除项目经历",
+    deleteResearch: "删除研究经历",
+    reorderWorkExperiences: "调整工作经历顺序",
+    reorderEducation: "调整教育经历顺序",
+    reorderProjects: "调整项目经历顺序",
+    reorderResearch: "调整研究经历顺序",
+    hideResumeModule: "隐藏简历模块",
+    showResumeModule: "显示简历模块",
+    reorderResumeModules: "调整模块顺序",
     updateSection: "更新简历内容",
     addSection: "新增简历内容",
     rewriteText: "润色文本",
@@ -996,18 +1399,40 @@ function FloatingAgentInput({
   setInput,
   isLoading,
   modelName,
+  editing,
+  writeMode,
+  onWriteModeChange,
   onOpenSettings,
+  onCancelEditing,
+  onStop,
   onSubmit,
 }: {
   input: string;
   setInput: (value: string) => void;
   isLoading: boolean;
   modelName: string | null;
+  editing: boolean;
+  writeMode: AgentWriteMode;
+  onWriteModeChange: (mode: AgentWriteMode) => void;
   onOpenSettings: () => void;
+  onCancelEditing: () => void;
+  onStop: () => void;
   onSubmit: (event: FormEvent<HTMLFormElement>) => void;
 }) {
   return (
     <form onSubmit={onSubmit} className="shrink-0 border-t p-3">
+      {editing ? (
+        <div className="mb-2 flex items-center justify-between rounded-lg border border-sky-200 bg-sky-50 px-3 py-1.5 text-[12px] text-sky-700 dark:border-sky-900/60 dark:bg-sky-950/30 dark:text-sky-200">
+          <span>正在编辑上一条消息</span>
+          <button
+            type="button"
+            onClick={onCancelEditing}
+            className="font-medium hover:text-sky-900 dark:hover:text-sky-100"
+          >
+            取消
+          </button>
+        </div>
+      ) : null}
       <div
         data-testid="agent-assistant-ui-composer-shell"
         className="rounded-2xl border border-zinc-200 bg-zinc-50/50 transition-colors focus-within:border-zinc-300 focus-within:bg-white dark:border-border dark:bg-muted/20 dark:focus-within:bg-background"
@@ -1028,25 +1453,60 @@ function FloatingAgentInput({
           }}
         />
         <div className="flex items-center justify-between px-3 pb-2.5">
-          <button
-            type="button"
-            aria-label={`当前模型：${modelName ?? "连接模型"}`}
-            onClick={onOpenSettings}
-            className="inline-flex h-7 max-w-[220px] items-center gap-1 rounded-full border border-zinc-200 bg-white px-2.5 text-[11px] font-medium text-zinc-600 shadow-none hover:bg-zinc-50 dark:border-border dark:bg-background dark:text-muted-foreground"
-          >
-            <span
-              className={`h-1.5 w-1.5 rounded-full ${modelName ? "bg-emerald-400" : "bg-amber-400"}`}
-            />
-            <span className="truncate">{modelName ?? "连接模型"}</span>
-          </button>
-          <button
-            type="submit"
-            aria-label="发送"
-            disabled={isLoading || !input.trim()}
-            className="flex h-8 w-8 items-center justify-center rounded-full bg-zinc-200 text-zinc-500 transition-colors hover:bg-zinc-300 disabled:cursor-not-allowed disabled:opacity-40 enabled:bg-sky-600 enabled:text-white enabled:hover:bg-sky-700"
-          >
-            <SendHorizonal className="h-4 w-4" />
-          </button>
+          <div className="flex min-w-0 items-center gap-2">
+            <button
+              type="button"
+              aria-label={`当前模型：${modelName ?? "连接模型"}`}
+              onClick={onOpenSettings}
+              className="inline-flex h-7 max-w-[140px] items-center gap-1 rounded-full border border-zinc-200 bg-white px-2.5 text-[11px] font-medium text-zinc-600 shadow-none hover:bg-zinc-50 dark:border-border dark:bg-background dark:text-muted-foreground"
+            >
+              <span
+                className={`h-1.5 w-1.5 rounded-full ${modelName ? "bg-emerald-400" : "bg-amber-400"}`}
+              />
+              <span className="truncate">{modelName ?? "连接模型"}</span>
+            </button>
+            <div
+              role="group"
+              aria-label="修改模式"
+              className="inline-flex h-7 shrink-0 overflow-hidden rounded-full border border-zinc-200 bg-white p-0.5 text-[11px] font-medium dark:border-border dark:bg-background"
+            >
+              {(["direct", "approval"] as const).map((mode) => (
+                <button
+                  key={mode}
+                  type="button"
+                  disabled={isLoading}
+                  aria-pressed={writeMode === mode}
+                  onClick={() => onWriteModeChange(mode)}
+                  className={`rounded-full px-2 transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${
+                    writeMode === mode
+                      ? "bg-zinc-900 text-white dark:bg-foreground dark:text-background"
+                      : "text-zinc-500 hover:bg-zinc-100 hover:text-zinc-800 dark:text-muted-foreground dark:hover:bg-muted dark:hover:text-foreground"
+                  }`}
+                >
+                  {mode === "direct" ? "直接修改" : "请求批准"}
+                </button>
+              ))}
+            </div>
+          </div>
+          {isLoading ? (
+            <button
+              type="button"
+              aria-label="停止生成"
+              onClick={onStop}
+              className="flex h-8 w-8 items-center justify-center rounded-full bg-zinc-900 text-white transition-colors hover:bg-zinc-700 dark:bg-foreground dark:text-background dark:hover:bg-foreground/80"
+            >
+              <XCircle className="h-4 w-4" />
+            </button>
+          ) : (
+            <button
+              type="submit"
+              aria-label="发送"
+              disabled={!input.trim()}
+              className="flex h-8 w-8 items-center justify-center rounded-full bg-zinc-200 text-zinc-500 transition-colors hover:bg-zinc-300 disabled:cursor-not-allowed disabled:opacity-40 enabled:bg-sky-600 enabled:text-white enabled:hover:bg-sky-700"
+            >
+              <SendHorizonal className="h-4 w-4" />
+            </button>
+          )}
         </div>
       </div>
     </form>
@@ -1381,14 +1841,45 @@ function upsertFloatingToolPart(
   return next;
 }
 
+function upsertFloatingApprovalPart(
+  parts: FloatingAgentMessagePart[],
+  approvalRequest: AgentOperationApprovalRequest,
+): FloatingAgentMessagePart[] {
+  const index = parts.findIndex(
+    (part) => part.type === "approval" && part.approvalRequest.id === approvalRequest.id,
+  );
+  if (index === -1) {
+    return [
+      ...parts,
+      {
+        id: `part_approval_${approvalRequest.id}`,
+        type: "approval",
+        approvalRequest,
+      },
+    ];
+  }
+  const next = [...parts];
+  const existing = next[index];
+  next[index] = {
+    id: existing.id,
+    type: "approval",
+    approvalRequest,
+  };
+  return next;
+}
+
 function finalizeFloatingParts(
   parts: FloatingAgentMessagePart[],
   finalText: string,
   toolCalls: FloatingAgentToolCall[],
+  approvalRequests: AgentOperationApprovalRequest[] = [],
 ): FloatingAgentMessagePart[] {
   let next = parts;
   for (const toolCall of toolCalls) {
     next = upsertFloatingToolPart(next, toolCall);
+  }
+  for (const approvalRequest of approvalRequests) {
+    next = upsertFloatingApprovalPart(next, approvalRequest);
   }
   const hasText = next.some((part) => part.type === "text" && part.text.trim());
   if (!hasText && finalText.trim()) {
@@ -1424,6 +1915,11 @@ function normalizeFloatingMessagePart(
     const toolCall = normalizeToolCall(record.toolCall);
     if (!toolCall) return null;
     return { id, type: "tool", toolCall };
+  }
+  if (record.type === "approval") {
+    const approvalRequest = normalizeApprovalRequest(record.approvalRequest);
+    if (!approvalRequest) return null;
+    return { id, type: "approval", approvalRequest };
   }
   return null;
 }
@@ -1477,8 +1973,80 @@ function normalizeToolCall(value: unknown): FloatingAgentToolCall | null {
   };
 }
 
+function normalizeApprovalRequests(value: unknown): AgentOperationApprovalRequest[] {
+  if (!Array.isArray(value)) return [];
+  return value.flatMap((item) => {
+    const approvalRequest = normalizeApprovalRequest(item);
+    return approvalRequest ? [approvalRequest] : [];
+  });
+}
+
+function normalizeApprovalRequest(
+  value: unknown,
+): AgentOperationApprovalRequest | null {
+  if (!value || typeof value !== "object") return null;
+  const record = value as Record<string, unknown>;
+  const operation = normalizeResumeOperation(record.operation);
+  if (!operation) return null;
+  const source =
+    record.source && typeof record.source === "object"
+      ? (record.source as Record<string, unknown>)
+      : null;
+  const status =
+    record.status === "approved" || record.status === "rejected"
+      ? record.status
+      : "pending";
+  return {
+    id: typeof record.id === "string" && record.id.trim()
+      ? record.id.trim()
+      : operation.id,
+    status,
+    reason: "approval_required",
+    message:
+      typeof record.message === "string" && record.message.trim()
+        ? record.message.trim()
+        : operation.changeSummary,
+    toolCallId:
+      typeof record.toolCallId === "string" && record.toolCallId.trim()
+        ? record.toolCallId.trim()
+        : operation.toolCallId || null,
+    source: {
+      kind: source?.kind === "skill" ? "skill" : "tool",
+      name:
+        typeof source?.name === "string" && source.name.trim()
+          ? source.name.trim()
+          : "floatingAgent",
+    },
+    operation,
+  };
+}
+
 function normalizeResumeOperations(value: unknown): ResumeOperation[] {
-  return Array.isArray(value) ? (value as ResumeOperation[]) : [];
+  if (!Array.isArray(value)) return [];
+  return value.flatMap((item) => {
+    const operation = normalizeResumeOperation(item);
+    return operation ? [operation] : [];
+  });
+}
+
+function normalizeResumeOperation(value: unknown): ResumeOperation | null {
+  if (!value || typeof value !== "object") return null;
+  const record = value as ResumeOperation & Record<string, unknown>;
+  if (
+    typeof record.id !== "string" ||
+    typeof record.toolCallId !== "string" ||
+    typeof record.label !== "string" ||
+    typeof record.section !== "string" ||
+    typeof record.fieldPath !== "string" ||
+    typeof record.operation !== "string" ||
+    typeof record.beforePlainText !== "string" ||
+    typeof record.afterPlainText !== "string" ||
+    typeof record.changeSummary !== "string" ||
+    !Array.isArray(record.riskFlags)
+  ) {
+    return null;
+  }
+  return record;
 }
 
 function formatSessionTime(value: string) {
@@ -1528,6 +2096,18 @@ function storeModelSettings(settings: AgentModelSettingsForm) {
   } else {
     window.sessionStorage.removeItem(MODEL_API_KEY_SESSION_STORAGE_KEY);
   }
+}
+
+function readStoredWriteMode(): AgentWriteMode {
+  if (typeof window === "undefined") return "direct";
+  return window.localStorage.getItem(FLOATING_WRITE_MODE_STORAGE_KEY) === "approval"
+    ? "approval"
+    : "direct";
+}
+
+function storeWriteMode(mode: AgentWriteMode) {
+  if (typeof window === "undefined") return;
+  window.localStorage.setItem(FLOATING_WRITE_MODE_STORAGE_KEY, mode);
 }
 
 function readSessionModelApiKey() {

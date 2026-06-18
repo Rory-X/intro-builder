@@ -2,6 +2,13 @@ import { fireEvent, render, screen, waitFor, within } from "@testing-library/rea
 import { EventType, type BaseEvent } from "@ag-ui/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+const toastMocks = vi.hoisted(() => ({
+  error: vi.fn(),
+  success: vi.fn(),
+}));
+
+vi.mock("sonner", () => ({ toast: toastMocks }));
+
 import { AgentPanel } from "@/components/agent/agent-panel";
 import { FloatingAgentChat } from "@/components/agent/floating-agent-chat";
 import { emptyResumeContent } from "@intro-builder/shared/schemas";
@@ -24,6 +31,8 @@ const hiddenDefaultModel = "默认" + "模型";
 
 describe("AgentPanel assistant-ui runtime", () => {
   beforeEach(() => {
+    toastMocks.error.mockReset();
+    toastMocks.success.mockReset();
     vi.stubGlobal("ResizeObserver", MockResizeObserver);
     Object.defineProperty(Element.prototype, "scrollTo", {
       configurable: true,
@@ -106,7 +115,7 @@ describe("AgentPanel assistant-ui runtime", () => {
     expect(container).not.toHaveTextContent(hiddenImplementationTerms);
   });
 
-  it("renders floating avatar chat bubbles without panel message actions or implementation keywords", async () => {
+  it("renders floating avatar chat bubbles with lightweight message actions", async () => {
     const fetchMock = floatingSessionFetch();
     vi.stubGlobal("fetch", fetchMock);
 
@@ -125,10 +134,224 @@ describe("AgentPanel assistant-ui runtime", () => {
     expect(screen.getByTestId("agent-assistant-message-bubble").className).toContain(
       "rounded-2xl",
     );
-    expect(screen.queryByRole("button", { name: "复制消息" })).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "编辑消息" })).not.toBeInTheDocument();
+    expect(screen.getAllByRole("button", { name: "复制消息" }).length).toBeGreaterThan(0);
+    expect(screen.getByRole("button", { name: "编辑消息" })).toBeInTheDocument();
     expect(fetchMock.mock.calls.some(([url]) => String(url) === "/api/agent/floating/chat")).toBe(false);
     expect(container).not.toHaveTextContent(hiddenImplementationTerms);
+  });
+
+  it("sends a floating welcome prompt through the same chat route", async () => {
+    window.localStorage.setItem(
+      "intro-builder.agent.model-settings.v1",
+      JSON.stringify({
+        baseUrl: "https://models.example.test/v1",
+        modelName: "gpt-4.1-mini",
+      }),
+    );
+    window.sessionStorage.setItem(
+      "intro-builder.agent.model-api-key.v1",
+      "sk-local-test",
+    );
+    const fetchMock = floatingSessionFetch(async (url) => {
+      if (url === "/api/agent/floating/chat") {
+        return Response.json({
+          message: "我会按 STAR 优化最近经历。",
+          operations: [],
+          toolCalls: [],
+        });
+      }
+      return null;
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<FloatingAgentChat {...floatingProps()} />);
+
+    await waitFor(() => {
+      expect(findOptionalFetchCall(fetchMock, "/api/agent/floating/sessions/session_1")).toBeTruthy();
+    });
+    expect(
+      await screen.findByRole("button", { name: "当前模型：gpt-4.1-mini" }),
+    ).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "按 STAR 优化最近经历" }));
+
+    expect(await screen.findByText("我会按 STAR 优化最近经历。")).toBeInTheDocument();
+    const chatCall = findFetchCall(fetchMock, "/api/agent/floating/chat");
+    const body = JSON.parse(String(chatCall[1]?.body));
+    expect(body.messages).toEqual([
+      { role: "user", content: "按 STAR 优化最近经历" },
+    ]);
+  });
+
+  it("copies floating messages and resends from an edited user message", async () => {
+    window.localStorage.setItem(
+      "intro-builder.agent.model-settings.v1",
+      JSON.stringify({
+        baseUrl: "https://models.example.test/v1",
+        modelName: "gpt-4.1-mini",
+      }),
+    );
+    window.sessionStorage.setItem(
+      "intro-builder.agent.model-api-key.v1",
+      "sk-local-test",
+    );
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: { writeText },
+    });
+    let chatCount = 0;
+    const fetchMock = floatingSessionFetch(async (url) => {
+      if (url === "/api/agent/floating/chat") {
+        chatCount += 1;
+        return Response.json({
+          message: chatCount === 1 ? "第一版回答" : "第二版回答",
+          operations: [],
+          toolCalls: [],
+        });
+      }
+      return null;
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<FloatingAgentChat {...floatingProps()} />);
+
+    await waitFor(() => {
+      expect(findOptionalFetchCall(fetchMock, "/api/agent/floating/sessions/session_1")).toBeTruthy();
+    });
+    expect(
+      await screen.findByRole("button", { name: "当前模型：gpt-4.1-mini" }),
+    ).toBeInTheDocument();
+
+    sendMessage("原始问题");
+    expect(await screen.findByText("第一版回答")).toBeInTheDocument();
+
+    fireEvent.click(screen.getAllByRole("button", { name: "复制消息" })[0]);
+    await waitFor(() => {
+      expect(writeText).toHaveBeenCalledWith("原始问题");
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "编辑消息" }));
+    const input = screen.getByTestId("agent-assistant-ui-composer-input");
+    expect(input).toHaveValue("原始问题");
+    expect(screen.getByText("正在编辑上一条消息")).toBeInTheDocument();
+
+    fireEvent.change(input, { target: { value: "修改后的问题" } });
+    fireEvent.keyDown(input, { key: "Enter", code: "Enter" });
+
+    expect(await screen.findByText("第二版回答")).toBeInTheDocument();
+    expect(screen.queryByText("第一版回答")).not.toBeInTheDocument();
+    const chatCalls = fetchMock.mock.calls.filter(
+      ([url]) => String(url) === "/api/agent/floating/chat",
+    );
+    expect(chatCalls).toHaveLength(2);
+    const secondBody = JSON.parse(String(chatCalls[1][1]?.body));
+    expect(secondBody.messages).toEqual([
+      { role: "user", content: "修改后的问题" },
+    ]);
+  });
+
+  it("regenerates the latest floating assistant reply from the previous user message", async () => {
+    window.localStorage.setItem(
+      "intro-builder.agent.model-settings.v1",
+      JSON.stringify({
+        baseUrl: "https://models.example.test/v1",
+        modelName: "gpt-4.1-mini",
+      }),
+    );
+    window.sessionStorage.setItem(
+      "intro-builder.agent.model-api-key.v1",
+      "sk-local-test",
+    );
+    let chatCount = 0;
+    const fetchMock = floatingSessionFetch(async (url) => {
+      if (url === "/api/agent/floating/chat") {
+        chatCount += 1;
+        return Response.json({
+          message: chatCount === 1 ? "第一版回答" : "第二版回答",
+          operations: [],
+          toolCalls: [],
+        });
+      }
+      return null;
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<FloatingAgentChat {...floatingProps()} />);
+
+    await waitFor(() => {
+      expect(findOptionalFetchCall(fetchMock, "/api/agent/floating/sessions/session_1")).toBeTruthy();
+    });
+    expect(
+      await screen.findByRole("button", { name: "当前模型：gpt-4.1-mini" }),
+    ).toBeInTheDocument();
+
+    sendMessage("原始问题");
+    expect(await screen.findByText("第一版回答")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "重新生成回答" }));
+
+    expect(await screen.findByText("第二版回答")).toBeInTheDocument();
+    expect(screen.queryByText("第一版回答")).not.toBeInTheDocument();
+    const chatCalls = fetchMock.mock.calls.filter(
+      ([url]) => String(url) === "/api/agent/floating/chat",
+    );
+    expect(chatCalls).toHaveLength(2);
+    const secondBody = JSON.parse(String(chatCalls[1][1]?.body));
+    expect(secondBody.messages).toEqual([
+      { role: "user", content: "原始问题" },
+    ]);
+  });
+
+  it("aborts the active floating request when the user stops generation", async () => {
+    window.localStorage.setItem(
+      "intro-builder.agent.model-settings.v1",
+      JSON.stringify({
+        baseUrl: "https://models.example.test/v1",
+        modelName: "gpt-4.1-mini",
+      }),
+    );
+    window.sessionStorage.setItem(
+      "intro-builder.agent.model-api-key.v1",
+      "sk-local-test",
+    );
+    let capturedSignal: AbortSignal | null = null;
+    const fetchMock = floatingSessionFetch(async (url, init) => {
+      if (url === "/api/agent/floating/chat") {
+        capturedSignal = init?.signal instanceof AbortSignal ? init.signal : null;
+        return new Promise<Response>((_resolve, reject) => {
+          capturedSignal?.addEventListener(
+            "abort",
+            () => reject(new DOMException("Aborted", "AbortError")),
+            { once: true },
+          );
+        });
+      }
+      return null;
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<FloatingAgentChat {...floatingProps()} />);
+
+    await waitFor(() => {
+      expect(findOptionalFetchCall(fetchMock, "/api/agent/floating/sessions/session_1")).toBeTruthy();
+    });
+    expect(
+      await screen.findByRole("button", { name: "当前模型：gpt-4.1-mini" }),
+    ).toBeInTheDocument();
+
+    sendMessage("请直接优化最近经历");
+
+    expect(await screen.findByRole("button", { name: "停止生成" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "停止生成" }));
+
+    await waitFor(() => {
+      expect(capturedSignal?.aborted).toBe(true);
+    });
+    await waitFor(() => {
+      expect(screen.queryByRole("button", { name: "停止生成" })).not.toBeInTheDocument();
+    });
+    expect(screen.queryByText(/请求失败/)).not.toBeInTheDocument();
   });
 
   it("uses the Next-local floating route and applies returned tool operations when a model is connected", async () => {
@@ -197,6 +420,7 @@ describe("AgentPanel assistant-ui runtime", () => {
     const chatCall = findFetchCall(fetchMock, "/api/agent/floating/chat");
     const [, init] = chatCall;
     const body = JSON.parse(String(init?.body));
+    expect(body.writeMode).toBe("direct");
     expect(body.modelConfig).toEqual({
       baseUrl: "https://models.example.test/v1",
       apiKey: "sk-local-test",
@@ -210,6 +434,93 @@ describe("AgentPanel assistant-ui runtime", () => {
     ).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /updateSection/ })).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: /执行结果/ })).toBeInTheDocument();
+  });
+
+  it("renders approval cards in request-approval mode before applying floating operations", async () => {
+    window.localStorage.setItem(
+      "intro-builder.agent.model-settings.v1",
+      JSON.stringify({
+        baseUrl: "https://models.example.test/v1",
+        modelName: "gpt-4.1-mini",
+      }),
+    );
+    window.sessionStorage.setItem(
+      "intro-builder.agent.model-api-key.v1",
+      "sk-local-test",
+    );
+    const operation = {
+      id: "floating_tool_approval_1",
+      toolCallId: "tool_approval_1",
+      label: "更新经历",
+      section: "experience",
+      fieldPath: "experience.0.content",
+      operation: "update_section",
+      beforePlainText: "负责开发。",
+      afterPlainText: "主导核心链路优化。",
+      changeSummary: "强化行动与结果。",
+      riskFlags: [],
+    };
+    const approvalRequest = {
+      id: operation.id,
+      status: "pending",
+      reason: "approval_required",
+      message: "强化行动与结果。",
+      toolCallId: operation.toolCallId,
+      source: { kind: "tool", name: "updateSection" },
+      operation,
+    };
+    const stream = createControlledFloatingStream();
+    const fetchMock = floatingSessionFetch(async (url) => {
+      if (url === "/api/agent/floating/chat") {
+        return stream.response;
+      }
+      return null;
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const applyOperation = vi.fn();
+    const flushAutosave = vi.fn();
+
+    render(<FloatingAgentChat {...floatingProps({ applyOperation, flushAutosave })} />);
+
+    await waitFor(() => {
+      expect(findOptionalFetchCall(fetchMock, "/api/agent/floating/sessions/session_1")).toBeTruthy();
+    });
+    fireEvent.click(screen.getByRole("button", { name: "请求批准" }));
+    sendMessage("请优化最近经历，但先让我确认");
+    await stream.ready;
+    expect(screen.getByRole("button", { name: "直接修改" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "请求批准" })).toBeDisabled();
+
+    const chatCall = findFetchCall(fetchMock, "/api/agent/floating/chat");
+    expect(JSON.parse(String(chatCall[1]?.body))).toEqual(
+      expect.objectContaining({ writeMode: "approval" }),
+    );
+
+    stream.push({ type: "text-delta", delta: "我准备更新最近经历。" });
+    stream.push({
+      type: "approval-request",
+      approvalRequest,
+    });
+    stream.push({
+      type: "done",
+      message: "我准备更新最近经历。",
+      operations: [],
+      approvalRequests: [approvalRequest],
+      toolCalls: [],
+    });
+    stream.close();
+
+    expect(await screen.findByText("强化行动与结果。")).toBeInTheDocument();
+    expect(applyOperation).not.toHaveBeenCalled();
+    expect(flushAutosave).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole("button", { name: "应用" }));
+
+    expect(applyOperation).toHaveBeenCalledWith(operation);
+    expect(flushAutosave).toHaveBeenCalledTimes(1);
+    expect(
+      fetchMock.mock.calls.filter(([url]) => String(url) === "/api/agent/floating/chat"),
+    ).toHaveLength(1);
   });
 
   it("streams floating assistant deltas before applying final tool operations", async () => {
@@ -498,6 +809,356 @@ describe("AgentPanel assistant-ui runtime", () => {
     expectNodeBefore(secondText, updateToolButton);
     expectNodeBefore(updateToolButton, thirdText);
     expect(screen.queryByRole("button", { name: /readResume|updateSection/ })).not.toBeInTheDocument();
+  });
+
+  it("restores persisted floating approval cards without applying them", async () => {
+    const operation = {
+      id: "floating_tool_history_approval",
+      toolCallId: "tool_history_approval",
+      label: "更新经历",
+      section: "experience",
+      fieldPath: "experience.0.content",
+      operation: "update_section",
+      beforePlainText: "负责开发。",
+      afterPlainText: "主导核心链路优化。",
+      changeSummary: "强化行动与结果。",
+      riskFlags: [],
+    };
+    const approvalRequest = {
+      id: operation.id,
+      status: "pending",
+      reason: "approval_required",
+      message: "强化行动与结果。",
+      toolCallId: operation.toolCallId,
+      source: { kind: "tool", name: "updateSection" },
+      operation,
+    };
+    const fetchMock = floatingSessionFetch(async (url) => {
+      if (url.startsWith("/api/agent/floating/sessions?")) {
+        return Response.json({
+          sessions: [
+            {
+              id: "session_approval_parts",
+              title: "待确认修改",
+              updatedAt: "2026-06-18T08:00:00.000Z",
+            },
+          ],
+        });
+      }
+      if (url === "/api/agent/floating/sessions/session_approval_parts") {
+        return Response.json({
+          session: {
+            id: "session_approval_parts",
+            title: "待确认修改",
+            updatedAt: "2026-06-18T08:00:00.000Z",
+          },
+          messages: [
+            {
+              id: "msg_assistant_approval_parts",
+              role: "assistant",
+              content: "我准备了一条修改建议。",
+              parts: [
+                { id: "part_text_approval", type: "text", text: "我准备了一条修改建议。" },
+                {
+                  id: "part_approval_history",
+                  type: "approval",
+                  approvalRequest,
+                },
+              ],
+              toolCalls: [],
+              operations: [],
+              createdAt: "2026-06-18T08:00:01.000Z",
+            },
+          ],
+          hasMore: false,
+          nextCursor: null,
+        });
+      }
+      return null;
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const applyOperation = vi.fn();
+    const flushAutosave = vi.fn();
+
+    render(<FloatingAgentChat {...floatingProps({ applyOperation, flushAutosave })} />);
+
+    expect(await screen.findByText("我准备了一条修改建议。")).toBeInTheDocument();
+    expect(screen.getByText("强化行动与结果。")).toBeInTheDocument();
+    expect(applyOperation).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole("button", { name: "应用" }));
+
+    expect(applyOperation).toHaveBeenCalledWith(operation);
+    expect(flushAutosave).toHaveBeenCalledTimes(1);
+    const statusUpdateCall = fetchMock.mock.calls.find(
+      ([url, init]) =>
+        String(url) === "/api/agent/floating/sessions/session_approval_parts" &&
+        init?.method === "PATCH",
+    );
+    expect(statusUpdateCall).toBeTruthy();
+    expect(JSON.parse(String(statusUpdateCall?.[1]?.body))).toEqual({
+      messageId: "msg_assistant_approval_parts",
+      approvalId: operation.id,
+      status: "approved",
+    });
+  });
+
+  it("shows a toast when floating approval status persistence fails", async () => {
+    const operation = {
+      id: "floating_tool_history_approval_failed",
+      toolCallId: "tool_history_approval_failed",
+      label: "更新经历",
+      section: "experience",
+      fieldPath: "experience.0.content",
+      operation: "update_section",
+      beforePlainText: "负责开发。",
+      afterPlainText: "主导核心链路优化。",
+      changeSummary: "强化行动与结果。",
+      riskFlags: [],
+    };
+    const approvalRequest = {
+      id: operation.id,
+      status: "pending",
+      reason: "approval_required",
+      message: "强化行动与结果。",
+      toolCallId: operation.toolCallId,
+      source: { kind: "tool", name: "updateSection" },
+      operation,
+    };
+    const fetchMock = floatingSessionFetch(async (url, init) => {
+      if (
+        url === "/api/agent/floating/sessions/session_approval_failed" &&
+        init?.method === "PATCH"
+      ) {
+        return Response.json({ error: "修改建议不存在" }, { status: 404 });
+      }
+      if (url.startsWith("/api/agent/floating/sessions?")) {
+        return Response.json({
+          sessions: [
+            {
+              id: "session_approval_failed",
+              title: "待确认修改",
+              updatedAt: "2026-06-18T08:00:00.000Z",
+            },
+          ],
+        });
+      }
+      if (url === "/api/agent/floating/sessions/session_approval_failed") {
+        return Response.json({
+          session: {
+            id: "session_approval_failed",
+            title: "待确认修改",
+            updatedAt: "2026-06-18T08:00:00.000Z",
+          },
+          messages: [
+            {
+              id: "msg_assistant_approval_failed",
+              role: "assistant",
+              content: "我准备了一条修改建议。",
+              parts: [
+                { id: "part_text_approval_failed", type: "text", text: "我准备了一条修改建议。" },
+                {
+                  id: "part_approval_failed",
+                  type: "approval",
+                  approvalRequest,
+                },
+              ],
+              toolCalls: [],
+              operations: [],
+              createdAt: "2026-06-18T08:00:01.000Z",
+            },
+          ],
+          hasMore: false,
+          nextCursor: null,
+        });
+      }
+      return null;
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const applyOperation = vi.fn();
+    const flushAutosave = vi.fn();
+
+    render(<FloatingAgentChat {...floatingProps({ applyOperation, flushAutosave })} />);
+
+    expect(await screen.findByText("我准备了一条修改建议。")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "应用" }));
+
+    expect(applyOperation).toHaveBeenCalledWith(operation);
+    await waitFor(() => {
+      expect(toastMocks.error).toHaveBeenCalledWith("确认状态保存失败");
+    });
+  });
+
+  it("persists rejected floating approval cards when the user ignores them", async () => {
+    const operation = {
+      id: "floating_tool_history_rejected",
+      toolCallId: "tool_history_rejected",
+      label: "更新经历",
+      section: "experience",
+      fieldPath: "experience.0.content",
+      operation: "update_section",
+      beforePlainText: "负责开发。",
+      afterPlainText: "主导核心链路优化。",
+      changeSummary: "强化行动与结果。",
+      riskFlags: [],
+    };
+    const approvalRequest = {
+      id: operation.id,
+      status: "pending",
+      reason: "approval_required",
+      message: "强化行动与结果。",
+      toolCallId: operation.toolCallId,
+      source: { kind: "tool", name: "updateSection" },
+      operation,
+    };
+    const fetchMock = floatingSessionFetch(async (url) => {
+      if (url.startsWith("/api/agent/floating/sessions?")) {
+        return Response.json({
+          sessions: [
+            {
+              id: "session_rejected_parts",
+              title: "待确认修改",
+              updatedAt: "2026-06-18T08:00:00.000Z",
+            },
+          ],
+        });
+      }
+      if (url === "/api/agent/floating/sessions/session_rejected_parts") {
+        return Response.json({
+          session: {
+            id: "session_rejected_parts",
+            title: "待确认修改",
+            updatedAt: "2026-06-18T08:00:00.000Z",
+          },
+          messages: [
+            {
+              id: "msg_assistant_rejected_parts",
+              role: "assistant",
+              content: "我准备了一条修改建议。",
+              parts: [
+                { id: "part_text_rejected", type: "text", text: "我准备了一条修改建议。" },
+                {
+                  id: "part_approval_rejected",
+                  type: "approval",
+                  approvalRequest,
+                },
+              ],
+              toolCalls: [],
+              operations: [],
+              createdAt: "2026-06-18T08:00:01.000Z",
+            },
+          ],
+          hasMore: false,
+          nextCursor: null,
+        });
+      }
+      return null;
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const applyOperation = vi.fn();
+    const flushAutosave = vi.fn();
+
+    render(<FloatingAgentChat {...floatingProps({ applyOperation, flushAutosave })} />);
+
+    expect(await screen.findByText("我准备了一条修改建议。")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "忽略" }));
+
+    expect(applyOperation).not.toHaveBeenCalled();
+    expect(flushAutosave).not.toHaveBeenCalled();
+    expect(screen.getByText("已忽略这条建议。")).toBeInTheDocument();
+    const statusUpdateCall = fetchMock.mock.calls.find(
+      ([url, init]) =>
+        String(url) === "/api/agent/floating/sessions/session_rejected_parts" &&
+        init?.method === "PATCH",
+    );
+    expect(statusUpdateCall).toBeTruthy();
+    expect(JSON.parse(String(statusUpdateCall?.[1]?.body))).toEqual({
+      messageId: "msg_assistant_rejected_parts",
+      approvalId: operation.id,
+      status: "rejected",
+    });
+  });
+
+  it("keeps persisted resolved floating approval cards from applying twice", async () => {
+    const operation = {
+      id: "floating_tool_history_approved",
+      toolCallId: "tool_history_approved",
+      label: "更新经历",
+      section: "experience",
+      fieldPath: "experience.0.content",
+      operation: "update_section",
+      beforePlainText: "负责开发。",
+      afterPlainText: "主导核心链路优化。",
+      changeSummary: "强化行动与结果。",
+      riskFlags: [],
+    };
+    const approvalRequest = {
+      id: operation.id,
+      status: "approved",
+      reason: "approval_required",
+      message: "强化行动与结果。",
+      toolCallId: operation.toolCallId,
+      source: { kind: "tool", name: "updateSection" },
+      operation,
+    };
+    const fetchMock = floatingSessionFetch(async (url) => {
+      if (url.startsWith("/api/agent/floating/sessions?")) {
+        return Response.json({
+          sessions: [
+            {
+              id: "session_approved_parts",
+              title: "已处理修改",
+              updatedAt: "2026-06-18T08:00:00.000Z",
+            },
+          ],
+        });
+      }
+      if (url === "/api/agent/floating/sessions/session_approved_parts") {
+        return Response.json({
+          session: {
+            id: "session_approved_parts",
+            title: "已处理修改",
+            updatedAt: "2026-06-18T08:00:00.000Z",
+          },
+          messages: [
+            {
+              id: "msg_assistant_approved_parts",
+              role: "assistant",
+              content: "这条建议已经应用。",
+              parts: [
+                { id: "part_text_approved", type: "text", text: "这条建议已经应用。" },
+                {
+                  id: "part_approval_approved",
+                  type: "approval",
+                  approvalRequest,
+                },
+              ],
+              toolCalls: [],
+              operations: [],
+              createdAt: "2026-06-18T08:00:01.000Z",
+            },
+          ],
+          hasMore: false,
+          nextCursor: null,
+        });
+      }
+      return null;
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const applyOperation = vi.fn();
+    const flushAutosave = vi.fn();
+
+    render(<FloatingAgentChat {...floatingProps({ applyOperation, flushAutosave })} />);
+
+    expect(await screen.findByText("这条建议已经应用。")).toBeInTheDocument();
+    expect(screen.getByText("已应用，等待自动保存。")).toBeInTheDocument();
+    const applyButton = screen.getByRole("button", { name: "应用" });
+    expect(applyButton).toBeDisabled();
+
+    fireEvent.click(applyButton);
+
+    expect(applyOperation).not.toHaveBeenCalled();
+    expect(flushAutosave).not.toHaveBeenCalled();
   });
 
   it("fetches available models from the connected service and lets the user select one", async () => {

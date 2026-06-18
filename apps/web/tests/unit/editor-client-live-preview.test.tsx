@@ -278,6 +278,44 @@ describe("EditorClient live preview", () => {
     ).toBeInTheDocument();
   });
 
+  it("docks the floating assistant conversation into the editor column", () => {
+    render(
+      <EditorClient
+        id="r1"
+        initialTitle="简历"
+        initialTemplate="professional"
+        initialContent={emptyResumeContent()}
+        initialIsPublic={false}
+        initialSlug={null}
+        initialUpdatedAtIso={new Date().toISOString()}
+        initialNowIso={new Date().toISOString()}
+        initialResolvedTemplate={DB_RESOLVED}
+        uploadedTemplates={[]}
+        allTemplates={DB_TEMPLATE_ROWS}
+        agentSurface="floating"
+        from={null}
+      />,
+    );
+
+    expect(screen.getByLabelText("姓名")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "打开 AI 简历助手" }));
+    fireEvent.click(screen.getByRole("button", { name: "停靠到左侧编辑区" }));
+
+    expect(
+      screen.getByRole("region", { name: "AI 简历助手对话面板" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "返回表单编辑" }),
+    ).toBeInTheDocument();
+    expect(screen.queryByLabelText("姓名")).not.toBeInTheDocument();
+    expect(screen.queryByText("自动应用")).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "返回表单编辑" }));
+
+    expect(screen.getByLabelText("姓名")).toBeInTheDocument();
+  });
+
   it("uses a solid blue toolbar state when public sharing is enabled", () => {
     render(
       <EditorClient

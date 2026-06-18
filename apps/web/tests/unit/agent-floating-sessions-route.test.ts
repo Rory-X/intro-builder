@@ -8,6 +8,7 @@ vi.mock("@/lib/agent/floating-chat-session-store", () => ({
   getFloatingChatSession: vi.fn(),
   listFloatingChatMessages: vi.fn(),
   listFloatingChatSessions: vi.fn(),
+  updateFloatingChatMessageApprovalStatus: vi.fn(),
 }));
 
 import {
@@ -17,6 +18,7 @@ import {
 import {
   DELETE as deleteSession,
   GET as getSession,
+  PATCH as updateSession,
 } from "@/app/api/agent/floating/sessions/[sessionId]/route";
 import { currentUserId } from "@/lib/auth-helpers";
 import {
@@ -25,6 +27,7 @@ import {
   getFloatingChatSession,
   listFloatingChatMessages,
   listFloatingChatSessions,
+  updateFloatingChatMessageApprovalStatus,
 } from "@/lib/agent/floating-chat-session-store";
 
 describe("floating agent session routes", () => {
@@ -137,10 +140,49 @@ describe("floating agent session routes", () => {
     });
     await expect(response.json()).resolves.toEqual({ ok: true });
   });
+
+  it("updates a floating approval status in an owned session message", async () => {
+    (currentUserId as unknown as Mock).mockResolvedValue("user_123");
+    (getFloatingChatSession as unknown as Mock).mockResolvedValue({
+      id: "session_1",
+      title: "优化经历",
+      resumeId: "resume_1",
+      updatedAt: new Date("2026-06-18T08:00:00.000Z"),
+    });
+    (updateFloatingChatMessageApprovalStatus as unknown as Mock).mockResolvedValue(true);
+
+    const response = await updateSession(
+      jsonRequest(
+        {
+          messageId: "msg_1",
+          approvalId: "floating_tool_1",
+          status: "approved",
+        },
+        "https://intro.test/api/agent/floating/sessions/session_1",
+      ),
+      routeContext("session_1"),
+    );
+
+    expect(response.status).toBe(200);
+    expect(getFloatingChatSession).toHaveBeenCalledWith({
+      sessionId: "session_1",
+      userId: "user_123",
+    });
+    expect(updateFloatingChatMessageApprovalStatus).toHaveBeenCalledWith({
+      sessionId: "session_1",
+      messageId: "msg_1",
+      approvalId: "floating_tool_1",
+      status: "approved",
+    });
+    await expect(response.json()).resolves.toEqual({ ok: true });
+  });
 });
 
-function jsonRequest(body: unknown): Request {
-  return new Request("https://intro.test/api/agent/floating/sessions", {
+function jsonRequest(
+  body: unknown,
+  url = "https://intro.test/api/agent/floating/sessions",
+): Request {
+  return new Request(url, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),

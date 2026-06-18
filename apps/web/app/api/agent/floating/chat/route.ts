@@ -8,7 +8,12 @@ import {
   getFloatingChatSession,
   renameFloatingChatSession,
 } from "@/lib/agent/floating-chat-session-store";
-import type { AgentModelConfig, ResumeOperation } from "@intro-builder/shared/types";
+import type {
+  AgentModelConfig,
+  AgentOperationApprovalRequest,
+  AgentWriteMode,
+  ResumeOperation,
+} from "@intro-builder/shared/types";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -20,6 +25,7 @@ type FloatingChatBody = {
   messages?: Array<{ role?: string; content?: string }>;
   context?: unknown;
   modelConfig?: AgentModelConfig;
+  writeMode?: AgentWriteMode;
 };
 
 type FloatingSectionToolArgs = {
@@ -30,6 +36,7 @@ type FloatingSectionToolArgs = {
   operation?: ResumeOperation["operation"];
   beforePlainText?: string;
   value?: string;
+  replacementValue?: unknown;
   afterPlainText?: string;
   label?: string;
   changeSummary?: string;
@@ -52,60 +59,17 @@ type ExecutedFloatingToolCall = {
 
 type FloatingMessagePart =
   | { id: string; type: "text"; text: string }
-  | { id: string; type: "tool"; toolCall: FloatingToolCall };
+  | { id: string; type: "tool"; toolCall: FloatingToolCall }
+  | { id: string; type: "approval"; approvalRequest: AgentOperationApprovalRequest };
 
 type FloatingStreamPart = {
   type: string;
   [key: string]: unknown;
 };
 
-const SECTION_VALUES = [
-  "summary",
-  "experience",
-  "education",
-  "projects",
-  "research",
-  "skills",
-  "custom",
-] as const;
-
-const floatingUpdateSectionArgsSchema = z.object({
-  fieldPath: z
-    .string()
-    .optional()
-    .describe("Field path, e.g. experience.0.content"),
-  sectionId: z.string().optional(),
-  field: z.string().optional(),
-  section: z.enum(SECTION_VALUES).optional(),
-  beforePlainText: z.string().optional(),
-  value: z.string(),
-  label: z.string().optional(),
-  changeSummary: z.string().optional(),
-});
-
-const floatingRewriteTextArgsSchema = z.object({
-  fieldPath: z.string().optional(),
-  sectionId: z.string().optional(),
-  field: z.string().optional(),
-  section: z.enum(SECTION_VALUES).optional(),
-  beforePlainText: z.string().optional(),
-  improvedText: z.string(),
-  label: z.string().optional(),
-  changeSummary: z.string().optional(),
-});
-
-const floatingAddSectionArgsSchema = z.object({
-  section: z.enum(SECTION_VALUES),
-  fieldPath: z.string().optional(),
-  value: z.string(),
-  label: z.string().optional(),
-  changeSummary: z.string().optional(),
-});
-
 const floatingSuggestSkillsArgsSchema = z.object({
   skills: z.array(z.string()),
   category: z.string().optional(),
-  fieldPath: z.string().optional(),
   beforePlainText: z.string().optional(),
   changeSummary: z.string().optional(),
 });
@@ -120,17 +84,212 @@ const floatingReadToolArgsSchema = z.object({
   fieldPath: z.string().optional(),
 });
 
+const floatingCommonSemanticArgsSchema = {
+  beforePlainText: z.string().optional(),
+  changeSummary: z.string().optional(),
+};
+
+const floatingBasicsBlockArgsSchema = z.object({
+  name: z.string().optional(),
+  status: z.string().optional(),
+  title: z.string().optional(),
+  email: z.string().optional(),
+  phone: z.string().optional(),
+  location: z.string().optional(),
+  website: z.string().optional(),
+  summary: z.string().optional(),
+  photo: z.string().optional(),
+  ...floatingCommonSemanticArgsSchema,
+});
+
+const floatingStyleSettingsBlockArgsSchema = z.object({
+  fontFamily: z.enum(["sans", "serif", "mono"]).optional(),
+  fontSize: z.number().min(8).max(16).optional(),
+  lineHeight: z.number().min(1.05).max(2).optional(),
+  bodyLineHeight: z.number().min(1.05).max(2).optional(),
+  headingGap: z.number().min(0).max(32).optional(),
+  pagePadding: z.number().min(8).max(60).optional(),
+  sectionGap: z.number().min(4).max(24).optional(),
+  itemGap: z.number().min(2).max(16).optional(),
+  photoScale: z.number().min(0.5).max(1.5).optional(),
+  ...floatingCommonSemanticArgsSchema,
+});
+
+const floatingAddWorkExperienceArgsSchema = z.object({
+  company: z.string().optional(),
+  title: z.string().optional(),
+  start: z.string().optional(),
+  end: z.string().optional(),
+  location: z.string().optional(),
+  content: z.string(),
+  ...floatingCommonSemanticArgsSchema,
+});
+
+const floatingWorkExperienceBlockArgsSchema = z.object({
+  index: z.number().int().min(0),
+  company: z.string().optional(),
+  title: z.string().optional(),
+  start: z.string().optional(),
+  end: z.string().optional(),
+  location: z.string().optional(),
+  content: z.string().optional(),
+  ...floatingCommonSemanticArgsSchema,
+});
+
+const floatingAddEducationArgsSchema = z.object({
+  school: z.string().optional(),
+  degree: z.string().optional(),
+  major: z.string().optional(),
+  location: z.string().optional(),
+  start: z.string().optional(),
+  end: z.string().optional(),
+  gpa: z.string().optional(),
+  highlights: z.string(),
+  ...floatingCommonSemanticArgsSchema,
+});
+
+const floatingEducationBlockArgsSchema = z.object({
+  index: z.number().int().min(0),
+  school: z.string().optional(),
+  degree: z.string().optional(),
+  major: z.string().optional(),
+  location: z.string().optional(),
+  start: z.string().optional(),
+  end: z.string().optional(),
+  gpa: z.string().optional(),
+  highlights: z.string().optional(),
+  ...floatingCommonSemanticArgsSchema,
+});
+
+const floatingAddProjectArgsSchema = z.object({
+  name: z.string().optional(),
+  role: z.string().optional(),
+  location: z.string().optional(),
+  start: z.string().optional(),
+  end: z.string().optional(),
+  stack: z.array(z.string()).optional(),
+  link: z.string().optional(),
+  content: z.string(),
+  ...floatingCommonSemanticArgsSchema,
+});
+
+const floatingProjectBlockArgsSchema = z.object({
+  index: z.number().int().min(0),
+  name: z.string().optional(),
+  role: z.string().optional(),
+  location: z.string().optional(),
+  start: z.string().optional(),
+  end: z.string().optional(),
+  stack: z.array(z.string()).optional(),
+  link: z.string().optional(),
+  content: z.string().optional(),
+  ...floatingCommonSemanticArgsSchema,
+});
+
+const floatingAddResearchArgsSchema = z.object({
+  name: z.string().optional(),
+  role: z.string().optional(),
+  location: z.string().optional(),
+  start: z.string().optional(),
+  end: z.string().optional(),
+  paperTitle: z.string().optional(),
+  link: z.string().optional(),
+  content: z.string(),
+  ...floatingCommonSemanticArgsSchema,
+});
+
+const floatingResearchBlockArgsSchema = z.object({
+  index: z.number().int().min(0),
+  name: z.string().optional(),
+  role: z.string().optional(),
+  location: z.string().optional(),
+  start: z.string().optional(),
+  end: z.string().optional(),
+  paperTitle: z.string().optional(),
+  link: z.string().optional(),
+  content: z.string().optional(),
+  ...floatingCommonSemanticArgsSchema,
+});
+
+const floatingSingletonContentArgsSchema = z.object({
+  content: z.string(),
+  ...floatingCommonSemanticArgsSchema,
+});
+
+const floatingAddCustomSectionArgsSchema = z.object({
+  title: z.string().min(1),
+  content: z.string(),
+  ...floatingCommonSemanticArgsSchema,
+});
+
+const floatingCustomSectionBlockArgsSchema = z.object({
+  sectionId: z.string().min(1),
+  title: z.string().optional(),
+  content: z.string().optional(),
+  ...floatingCommonSemanticArgsSchema,
+});
+
+const floatingDeleteCustomSectionArgsSchema = z.object({
+  sectionId: z.string().min(1),
+  beforePlainText: z.string().optional(),
+  changeSummary: z.string().optional(),
+});
+
+const floatingItemIndexArgsSchema = z.object({
+  index: z.number().int().min(0),
+  beforePlainText: z.string().optional(),
+  changeSummary: z.string().optional(),
+});
+
+const floatingItemOrderArgsSchema = z.object({
+  itemOrder: z.array(z.number().int().min(0)).min(1),
+  changeSummary: z.string().optional(),
+});
+
+const floatingCustomItemOrderArgsSchema = z.object({
+  itemOrder: z.array(z.string().min(1)).min(1),
+  changeSummary: z.string().optional(),
+});
+
+const BUILTIN_MODULE_KEYS = [
+  "experience",
+  "education",
+  "projects",
+  "research",
+  "skills",
+  "summary",
+  "awards",
+  "portfolio",
+] as const;
+
+const floatingHideModuleArgsSchema = z.object({
+  moduleKey: z.enum(BUILTIN_MODULE_KEYS),
+  changeSummary: z.string().optional(),
+});
+
+const floatingShowModuleArgsSchema = z.object({
+  moduleKey: z.enum(BUILTIN_MODULE_KEYS),
+  position: z.number().int().min(0).optional(),
+  changeSummary: z.string().optional(),
+});
+
+const floatingReorderModulesArgsSchema = z.object({
+  sectionOrder: z.array(z.string().min(1)).min(1),
+  changeSummary: z.string().optional(),
+});
+
 const SECTION_BY_FIELD_PREFIX: Array<[string, ResumeOperation["section"]]> = [
-  ["basics.", "summary"],
+  ["basics.", "basics"],
   ["experience.", "experience"],
   ["education.", "education"],
   ["projects.", "projects"],
   ["research.", "research"],
   ["skills", "skills"],
   ["summary", "summary"],
-  ["awards", "custom"],
-  ["portfolio", "custom"],
+  ["awards", "awards"],
+  ["portfolio", "portfolio"],
   ["custom.", "custom"],
+  ["styleSettings.", "style"],
 ];
 
 export async function POST(req: Request) {
@@ -195,6 +354,7 @@ export async function POST(req: Request) {
   }
 
   const executedToolCalls: ExecutedFloatingToolCall[] = [];
+  const writeMode = readFloatingWriteMode(body.writeMode);
   const model = createOpenAICompatible({
     name: "intro-floating-openai-compatible",
     baseURL: modelConfig.baseUrl,
@@ -211,10 +371,225 @@ export async function POST(req: Request) {
     stopWhen: stepCountIs(25),
     tools: {
       readResume: createReadResumeTool(executedToolCalls, body.context),
-      updateSection: createUpdateSectionTool(executedToolCalls),
-      addSection: createAddSectionTool(executedToolCalls, body.context),
-      rewriteText: createRewriteTextTool(executedToolCalls),
-      suggestSkills: createSuggestSkillsTool(executedToolCalls),
+      updateBasicsBlock: createBasicsBlockTool(executedToolCalls, writeMode),
+      writeSkillsSection: createSingletonRichTextTool({
+        executedToolCalls,
+        writeMode,
+        toolName: "writeSkillsSection",
+        section: "skills",
+        fieldPath: "skills",
+        label: "更新专业技能",
+        description: "Write the standalone skills section.",
+      }),
+      writePersonalSummarySection: createSingletonRichTextTool({
+        executedToolCalls,
+        writeMode,
+        toolName: "writePersonalSummarySection",
+        section: "summary",
+        fieldPath: "summary",
+        label: "更新个人总结",
+        description: "Write the standalone personal summary section.",
+      }),
+      writeAwardsSection: createSingletonRichTextTool({
+        executedToolCalls,
+        writeMode,
+        toolName: "writeAwardsSection",
+        section: "awards",
+        fieldPath: "awards",
+        label: "更新荣誉奖项",
+        description: "Write the standalone awards section.",
+      }),
+      writePortfolioSection: createSingletonRichTextTool({
+        executedToolCalls,
+        writeMode,
+        toolName: "writePortfolioSection",
+        section: "portfolio",
+        fieldPath: "portfolio",
+        label: "更新作品集",
+        description: "Write the standalone portfolio section.",
+      }),
+      addCustomSection: createAddCustomSectionTool(
+        executedToolCalls,
+        body.context,
+        writeMode,
+      ),
+      updateCustomSectionBlock: createUpdateCustomSectionBlockTool(
+        executedToolCalls,
+        writeMode,
+      ),
+      deleteCustomSection: createDeleteCustomSectionTool(
+        executedToolCalls,
+        writeMode,
+      ),
+      reorderCustomSections: createReorderCustomSectionsTool(
+        executedToolCalls,
+        writeMode,
+      ),
+      updateStyleSettingsBlock: createStyleSettingsBlockTool(executedToolCalls, writeMode),
+      addWorkExperience: createAddItemTool({
+        executedToolCalls,
+        context: body.context,
+        writeMode,
+        toolName: "addWorkExperience",
+        section: "experience",
+        label: "新增工作经历",
+        description: "Add one work experience item with metadata and rich-text content.",
+        inputSchema: floatingAddWorkExperienceArgsSchema,
+        fields: ["company", "title", "start", "end", "location"],
+        contentField: "content",
+      }),
+      updateWorkExperienceBlock: createItemBlockTool({
+        executedToolCalls,
+        writeMode,
+        toolName: "updateWorkExperienceBlock",
+        section: "experience",
+        label: "更新工作经历块",
+        description: "Update one work experience block, including metadata and optional content.",
+        inputSchema: floatingWorkExperienceBlockArgsSchema,
+        fields: ["company", "title", "start", "end", "location"],
+        contentField: "content",
+      }),
+      addEducation: createAddItemTool({
+        executedToolCalls,
+        context: body.context,
+        writeMode,
+        toolName: "addEducation",
+        section: "education",
+        label: "新增教育经历",
+        description: "Add one education item with metadata and rich-text highlights.",
+        inputSchema: floatingAddEducationArgsSchema,
+        fields: ["school", "degree", "major", "location", "start", "end", "gpa"],
+        contentField: "highlights",
+      }),
+      updateEducationBlock: createItemBlockTool({
+        executedToolCalls,
+        writeMode,
+        toolName: "updateEducationBlock",
+        section: "education",
+        label: "更新教育经历块",
+        description: "Update one education block, including metadata and optional highlights.",
+        inputSchema: floatingEducationBlockArgsSchema,
+        fields: ["school", "degree", "major", "location", "start", "end", "gpa"],
+        contentField: "highlights",
+      }),
+      addProject: createAddItemTool({
+        executedToolCalls,
+        context: body.context,
+        writeMode,
+        toolName: "addProject",
+        section: "projects",
+        label: "新增项目经历",
+        description: "Add one project item with metadata and rich-text content.",
+        inputSchema: floatingAddProjectArgsSchema,
+        fields: ["name", "role", "location", "start", "end", "stack", "link"],
+        contentField: "content",
+      }),
+      updateProjectBlock: createItemBlockTool({
+        executedToolCalls,
+        writeMode,
+        toolName: "updateProjectBlock",
+        section: "projects",
+        label: "更新项目经历块",
+        description: "Update one project block, including metadata and optional content.",
+        inputSchema: floatingProjectBlockArgsSchema,
+        fields: ["name", "role", "location", "start", "end", "stack", "link"],
+        contentField: "content",
+      }),
+      addResearch: createAddItemTool({
+        executedToolCalls,
+        context: body.context,
+        writeMode,
+        toolName: "addResearch",
+        section: "research",
+        label: "新增研究经历",
+        description: "Add one research item with metadata and rich-text content.",
+        inputSchema: floatingAddResearchArgsSchema,
+        fields: ["name", "role", "location", "start", "end", "paperTitle", "link"],
+        contentField: "content",
+      }),
+      updateResearchBlock: createItemBlockTool({
+        executedToolCalls,
+        writeMode,
+        toolName: "updateResearchBlock",
+        section: "research",
+        label: "更新研究经历块",
+        description: "Update one research block, including metadata and optional content.",
+        inputSchema: floatingResearchBlockArgsSchema,
+        fields: ["name", "role", "location", "start", "end", "paperTitle", "link"],
+        contentField: "content",
+      }),
+      deleteWorkExperience: createDeleteItemTool({
+        executedToolCalls,
+        writeMode,
+        toolName: "deleteWorkExperience",
+        section: "experience",
+        label: "删除工作经历",
+        description: "Delete one work experience item.",
+      }),
+      deleteEducation: createDeleteItemTool({
+        executedToolCalls,
+        writeMode,
+        toolName: "deleteEducation",
+        section: "education",
+        label: "删除教育经历",
+        description: "Delete one education item.",
+      }),
+      deleteProject: createDeleteItemTool({
+        executedToolCalls,
+        writeMode,
+        toolName: "deleteProject",
+        section: "projects",
+        label: "删除项目经历",
+        description: "Delete one project item.",
+      }),
+      deleteResearch: createDeleteItemTool({
+        executedToolCalls,
+        writeMode,
+        toolName: "deleteResearch",
+        section: "research",
+        label: "删除研究经历",
+        description: "Delete one research item.",
+      }),
+      reorderWorkExperiences: createReorderItemsTool({
+        executedToolCalls,
+        writeMode,
+        toolName: "reorderWorkExperiences",
+        section: "experience",
+        label: "调整工作经历顺序",
+        description: "Reorder work experience items.",
+      }),
+      reorderEducation: createReorderItemsTool({
+        executedToolCalls,
+        writeMode,
+        toolName: "reorderEducation",
+        section: "education",
+        label: "调整教育经历顺序",
+        description: "Reorder education items.",
+      }),
+      reorderProjects: createReorderItemsTool({
+        executedToolCalls,
+        writeMode,
+        toolName: "reorderProjects",
+        section: "projects",
+        label: "调整项目经历顺序",
+        description: "Reorder project items.",
+      }),
+      reorderResearch: createReorderItemsTool({
+        executedToolCalls,
+        writeMode,
+        toolName: "reorderResearch",
+        section: "research",
+        label: "调整研究经历顺序",
+        description: "Reorder research items.",
+      }),
+      hideResumeModule: createHideResumeModuleTool(executedToolCalls, writeMode),
+      showResumeModule: createShowResumeModuleTool(
+        executedToolCalls,
+        body.context,
+        writeMode,
+      ),
+      reorderResumeModules: createReorderResumeModulesTool(executedToolCalls, writeMode),
+      suggestSkills: createSuggestSkillsTool(executedToolCalls, writeMode),
       analyzeJobMatch: createAnalyzeJobMatchTool(executedToolCalls, body.context),
     },
   });
@@ -224,6 +599,7 @@ export async function POST(req: Request) {
       fullStream: result.fullStream,
       executedToolCalls,
       sessionId: session?.id ?? null,
+      writeMode,
     }),
     {
       headers: {
@@ -242,6 +618,10 @@ function normalizeModelConfig(config: AgentModelConfig): AgentModelConfig | null
   const modelName = config.modelName?.trim();
   if (!baseUrl || !apiKey || !modelName) return null;
   return { baseUrl, apiKey, modelName };
+}
+
+function readFloatingWriteMode(value: unknown): AgentWriteMode {
+  return value === "approval" ? "approval" : "direct";
 }
 
 function createReadResumeTool(
@@ -278,72 +658,618 @@ function createReadResumeTool(
   });
 }
 
-function createUpdateSectionTool(
+function createBasicsBlockTool(
   executedToolCalls: ExecutedFloatingToolCall[],
+  writeMode: AgentWriteMode,
 ) {
   return tool({
-    description: "Update the content of a specific resume section field.",
-    inputSchema: floatingUpdateSectionArgsSchema,
+    description: "Update the resume basics block, including identity, contact, headline, photo, and intro.",
+    inputSchema: floatingBasicsBlockArgsSchema,
     execute: async (
-      args: z.infer<typeof floatingUpdateSectionArgsSchema>,
+      args: z.infer<typeof floatingBasicsBlockArgsSchema>,
       options: { toolCallId?: string },
     ) => {
-      const toolCallId = options.toolCallId ?? createToolCallId();
+      const record = args as Record<string, unknown>;
+      const values = pickBlockValues(record, [
+        "name",
+        "status",
+        "title",
+        "email",
+        "phone",
+        "location",
+        "website",
+        "summary",
+        "photo",
+      ]);
       return executeResumeUpdateTool({
         executedToolCalls,
-        toolCallId,
-        toolName: "updateSection",
-        args: { ...args, afterPlainText: args.value },
+        toolCallId: options.toolCallId ?? createToolCallId(),
+        toolName: "updateBasicsBlock",
+        args: {
+          fieldPath: "basics",
+          section: "basics",
+          beforePlainText: stringArg(record.beforePlainText),
+          afterPlainText: summarizeBlockValues(values),
+          replacementValue: values,
+          label: "更新基础信息",
+          changeSummary: stringArg(record.changeSummary) ?? "更新基础信息块。",
+        },
+        writeMode,
       });
     },
   });
 }
 
-function createRewriteTextTool(
+function createStyleSettingsBlockTool(
   executedToolCalls: ExecutedFloatingToolCall[],
+  writeMode: AgentWriteMode,
 ) {
   return tool({
-    description: "Rewrite a resume text field to improve clarity and impact.",
-    inputSchema: floatingRewriteTextArgsSchema,
+    description: "Update the resume style settings block, including typography, spacing, page padding, and photo scale.",
+    inputSchema: floatingStyleSettingsBlockArgsSchema,
     execute: async (
-      args: z.infer<typeof floatingRewriteTextArgsSchema>,
+      args: z.infer<typeof floatingStyleSettingsBlockArgsSchema>,
       options: { toolCallId?: string },
     ) => {
-      const toolCallId = options.toolCallId ?? createToolCallId();
+      const record = args as Record<string, unknown>;
+      const values = pickBlockValues(record, [
+        "fontFamily",
+        "fontSize",
+        "lineHeight",
+        "bodyLineHeight",
+        "headingGap",
+        "pagePadding",
+        "sectionGap",
+        "itemGap",
+        "photoScale",
+      ]);
       return executeResumeUpdateTool({
         executedToolCalls,
-        toolCallId,
-        toolName: "rewriteText",
-        args: { ...args, afterPlainText: args.improvedText },
+        toolCallId: options.toolCallId ?? createToolCallId(),
+        toolName: "updateStyleSettingsBlock",
+        args: {
+          fieldPath: "styleSettings",
+          section: "style",
+          beforePlainText: stringArg(record.beforePlainText),
+          afterPlainText: summarizeBlockValues(values),
+          replacementValue: values,
+          label: "调整简历样式",
+          changeSummary: stringArg(record.changeSummary) ?? "调整简历样式。",
+        },
+        writeMode,
       });
     },
   });
 }
 
-function createAddSectionTool(
+function createSingletonRichTextTool({
+  executedToolCalls,
+  writeMode,
+  toolName,
+  section,
+  fieldPath,
+  label,
+  description,
+}: {
+  executedToolCalls: ExecutedFloatingToolCall[];
+  writeMode: AgentWriteMode;
+  toolName: string;
+  section: Extract<ResumeOperation["section"], "skills" | "summary" | "awards" | "portfolio">;
+  fieldPath: string;
+  label: string;
+  description: string;
+}) {
+  return tool({
+    description,
+    inputSchema: floatingSingletonContentArgsSchema,
+    execute: async (
+      args: z.infer<typeof floatingSingletonContentArgsSchema>,
+      options: { toolCallId?: string },
+    ) => {
+      return executeResumeUpdateTool({
+        executedToolCalls,
+        toolCallId: options.toolCallId ?? createToolCallId(),
+        toolName,
+        args: {
+          fieldPath,
+          section,
+          beforePlainText: args.beforePlainText,
+          afterPlainText: args.content,
+          label,
+          changeSummary: args.changeSummary ?? `${label}。`,
+        },
+        writeMode,
+      });
+    },
+  });
+}
+
+function createAddItemTool<TSchema extends z.ZodObject<z.ZodRawShape>>({
+  executedToolCalls,
+  context,
+  writeMode,
+  toolName,
+  section,
+  label,
+  description,
+  inputSchema,
+  fields,
+  contentField,
+}: {
+  executedToolCalls: ExecutedFloatingToolCall[];
+  context: unknown;
+  writeMode: AgentWriteMode;
+  toolName: string;
+  section: Extract<ResumeOperation["section"], "experience" | "education" | "projects" | "research">;
+  label: string;
+  description: string;
+  inputSchema: TSchema;
+  fields: string[];
+  contentField: "content" | "highlights";
+}) {
+  return tool({
+    description,
+    inputSchema,
+    execute: async (
+      args: z.infer<TSchema>,
+      options: { toolCallId?: string },
+    ) => {
+      const record = args as Record<string, unknown>;
+      const values: Record<string, unknown> = {};
+      for (const field of fields) {
+        if (record[field] !== undefined) values[field] = record[field];
+      }
+      const text = stringArg(record[contentField]) ?? "";
+      const toolCallId = options.toolCallId ?? createToolCallId();
+      return executeResumeOperationTool({
+        executedToolCalls,
+        toolCallId,
+        toolName,
+        operation: {
+          id: `floating_${toolCallId}`,
+          toolCallId,
+          label,
+          section,
+          fieldPath: `${section}.${countContextSections(context, section)}`,
+          operation: "insert_section",
+          beforePlainText: stringArg(record.beforePlainText) ?? "",
+          afterPlainText: text,
+          replacementValue: values,
+          changeSummary: stringArg(record.changeSummary) ?? `${label}。`,
+          riskFlags: [],
+        },
+        input: args,
+        writeMode,
+      });
+    },
+  });
+}
+
+function createAddCustomSectionTool(
   executedToolCalls: ExecutedFloatingToolCall[],
   context: unknown,
+  writeMode: AgentWriteMode,
 ) {
   return tool({
-    description: "Add a new resume section or section item with concrete content.",
-    inputSchema: floatingAddSectionArgsSchema,
+    description: "Add one custom resume section with a title and rich-text content.",
+    inputSchema: floatingAddCustomSectionArgsSchema,
     execute: async (
-      args: z.infer<typeof floatingAddSectionArgsSchema>,
+      args: z.infer<typeof floatingAddCustomSectionArgsSchema>,
       options: { toolCallId?: string },
     ) => {
       const toolCallId = options.toolCallId ?? createToolCallId();
-      return executeResumeUpdateTool({
+      const label = "新增自定义模块";
+      return executeResumeOperationTool({
         executedToolCalls,
         toolCallId,
-        toolName: "addSection",
-        args: {
-          ...args,
-          fieldPath: args.fieldPath ?? defaultInsertFieldPath(args.section, context),
-          afterPlainText: args.value,
+        toolName: "addCustomSection",
+        operation: {
+          id: `floating_${toolCallId}`,
+          toolCallId,
+          label,
+          section: "custom",
+          fieldPath: `custom.${countContextSections(context, "custom")}`,
           operation: "insert_section",
-          label: args.label ?? "新增简历内容",
-          changeSummary: args.changeSummary ?? "新增简历内容。",
+          beforePlainText: args.beforePlainText ?? "",
+          afterPlainText: args.content,
+          replacementValue: { title: args.title },
+          changeSummary: args.changeSummary ?? `${label}。`,
+          riskFlags: [],
         },
+        input: args,
+        writeMode,
+      });
+    },
+  });
+}
+
+function createUpdateCustomSectionBlockTool(
+  executedToolCalls: ExecutedFloatingToolCall[],
+  writeMode: AgentWriteMode,
+) {
+  return tool({
+    description: "Update one custom resume section block by section id, including title and optional rich-text content.",
+    inputSchema: floatingCustomSectionBlockArgsSchema,
+    execute: async (
+      args: z.infer<typeof floatingCustomSectionBlockArgsSchema>,
+      options: { toolCallId?: string },
+    ) => {
+      const toolCallId = options.toolCallId ?? createToolCallId();
+      const label = "更新自定义模块";
+      const values: Record<string, unknown> = {};
+      if (args.title !== undefined) values.title = args.title;
+      if (args.content !== undefined) values.content = args.content;
+      return executeResumeOperationTool({
+        executedToolCalls,
+        toolCallId,
+        toolName: "updateCustomSectionBlock",
+        operation: {
+          id: `floating_${toolCallId}`,
+          toolCallId,
+          label,
+          section: "custom",
+          fieldPath: customSectionFieldPath(args.sectionId),
+          operation: "update_section",
+          beforePlainText: args.beforePlainText ?? "",
+          afterPlainText: args.content ?? args.title ?? summarizeBlockValues(values),
+          replacementValue: values,
+          changeSummary: args.changeSummary ?? `${label}。`,
+          riskFlags: [],
+        },
+        input: args,
+        writeMode,
+      });
+    },
+  });
+}
+
+function createDeleteCustomSectionTool(
+  executedToolCalls: ExecutedFloatingToolCall[],
+  writeMode: AgentWriteMode,
+) {
+  return tool({
+    description: "Delete an existing custom resume section by section id.",
+    inputSchema: floatingDeleteCustomSectionArgsSchema,
+    execute: async (
+      args: z.infer<typeof floatingDeleteCustomSectionArgsSchema>,
+      options: { toolCallId?: string },
+    ) => {
+      const toolCallId = options.toolCallId ?? createToolCallId();
+      const label = "删除自定义模块";
+      return executeResumeOperationTool({
+        executedToolCalls,
+        toolCallId,
+        toolName: "deleteCustomSection",
+        operation: {
+          id: `floating_${toolCallId}`,
+          toolCallId,
+          label,
+          section: "custom",
+          fieldPath: customSectionFieldPath(args.sectionId),
+          operation: "delete_section",
+          beforePlainText: args.beforePlainText ?? "",
+          afterPlainText: "",
+          changeSummary: args.changeSummary ?? `${label}。`,
+          riskFlags: [],
+        },
+        input: args,
+        writeMode,
+      });
+    },
+  });
+}
+
+function createReorderCustomSectionsTool(
+  executedToolCalls: ExecutedFloatingToolCall[],
+  writeMode: AgentWriteMode,
+) {
+  return tool({
+    description: "Reorder custom resume sections by their section ids.",
+    inputSchema: floatingCustomItemOrderArgsSchema,
+    execute: async (
+      args: z.infer<typeof floatingCustomItemOrderArgsSchema>,
+      options: { toolCallId?: string },
+    ) => {
+      const toolCallId = options.toolCallId ?? createToolCallId();
+      const label = "调整自定义模块顺序";
+      return executeResumeOperationTool({
+        executedToolCalls,
+        toolCallId,
+        toolName: "reorderCustomSections",
+        operation: {
+          id: `floating_${toolCallId}`,
+          toolCallId,
+          label,
+          section: "custom",
+          fieldPath: "custom",
+          operation: "reorder_items",
+          beforePlainText: "",
+          afterPlainText: args.itemOrder.join(","),
+          itemOrder: args.itemOrder,
+          changeSummary: args.changeSummary ?? `${label}。`,
+          riskFlags: [],
+        },
+        input: args,
+        writeMode,
+      });
+    },
+  });
+}
+
+function createItemBlockTool<TSchema extends z.ZodObject<z.ZodRawShape>>({
+  executedToolCalls,
+  writeMode,
+  toolName,
+  section,
+  label,
+  description,
+  inputSchema,
+  fields,
+  contentField,
+}: {
+  executedToolCalls: ExecutedFloatingToolCall[];
+  writeMode: AgentWriteMode;
+  toolName: string;
+  section: Extract<ResumeOperation["section"], "experience" | "education" | "projects" | "research">;
+  label: string;
+  description: string;
+  inputSchema: TSchema;
+  fields: string[];
+  contentField: "content" | "highlights";
+}) {
+  return tool({
+    description,
+    inputSchema,
+    execute: async (
+      args: z.infer<TSchema>,
+      options: { toolCallId?: string },
+    ) => {
+      const record = args as Record<string, unknown>;
+      const index = Number(record.index);
+      const values: Record<string, unknown> = {};
+      for (const field of fields) {
+        if (record[field] !== undefined) values[field] = normalizeBlockFieldValue(record[field]);
+      }
+      const hasContent = typeof record[contentField] === "string";
+      if (hasContent) values[contentField] = String(record[contentField]);
+      const afterPlainText = hasContent
+        ? String(record[contentField])
+        : summarizeBlockValues(values);
+      return executeResumeUpdateTool({
+        executedToolCalls,
+        toolCallId: options.toolCallId ?? createToolCallId(),
+        toolName,
+        args: {
+          fieldPath: `${section}.${index}`,
+          section,
+          beforePlainText: stringArg(record.beforePlainText),
+          afterPlainText,
+          replacementValue: values,
+          label,
+          changeSummary: stringArg(record.changeSummary) ?? `${label}。`,
+        },
+        writeMode,
+      });
+    },
+  });
+}
+
+function createDeleteItemTool({
+  executedToolCalls,
+  writeMode,
+  toolName,
+  section,
+  label,
+  description,
+}: {
+  executedToolCalls: ExecutedFloatingToolCall[];
+  writeMode: AgentWriteMode;
+  toolName: string;
+  section: Extract<ResumeOperation["section"], "experience" | "education" | "projects" | "research">;
+  label: string;
+  description: string;
+}) {
+  return tool({
+    description,
+    inputSchema: floatingItemIndexArgsSchema,
+    execute: async (
+      args: z.infer<typeof floatingItemIndexArgsSchema>,
+      options: { toolCallId?: string },
+    ) => {
+      const toolCallId = options.toolCallId ?? createToolCallId();
+      return executeResumeOperationTool({
+        executedToolCalls,
+        toolCallId,
+        toolName,
+        operation: {
+          id: `floating_${toolCallId}`,
+          toolCallId,
+          label,
+          section,
+          fieldPath: `${section}.${args.index}`,
+          operation: "delete_section",
+          beforePlainText: args.beforePlainText ?? "",
+          afterPlainText: "",
+          changeSummary: args.changeSummary ?? `${label}。`,
+          riskFlags: [],
+        },
+        input: args,
+        writeMode,
+      });
+    },
+  });
+}
+
+function createReorderItemsTool({
+  executedToolCalls,
+  writeMode,
+  toolName,
+  section,
+  label,
+  description,
+}: {
+  executedToolCalls: ExecutedFloatingToolCall[];
+  writeMode: AgentWriteMode;
+  toolName: string;
+  section: Extract<ResumeOperation["section"], "experience" | "education" | "projects" | "research">;
+  label: string;
+  description: string;
+}) {
+  return tool({
+    description,
+    inputSchema: floatingItemOrderArgsSchema,
+    execute: async (
+      args: z.infer<typeof floatingItemOrderArgsSchema>,
+      options: { toolCallId?: string },
+    ) => {
+      const toolCallId = options.toolCallId ?? createToolCallId();
+      return executeResumeOperationTool({
+        executedToolCalls,
+        toolCallId,
+        toolName,
+        operation: {
+          id: `floating_${toolCallId}`,
+          toolCallId,
+          label,
+          section,
+          fieldPath: section,
+          operation: "reorder_items",
+          beforePlainText: "",
+          afterPlainText: args.itemOrder.join(","),
+          itemOrder: args.itemOrder,
+          changeSummary: args.changeSummary ?? `${label}。`,
+          riskFlags: [],
+        },
+        input: args,
+        writeMode,
+      });
+    },
+  });
+}
+
+function createHideResumeModuleTool(
+  executedToolCalls: ExecutedFloatingToolCall[],
+  writeMode: AgentWriteMode,
+) {
+  return tool({
+    description: "Hide a built-in resume module by removing it from the visible section order.",
+    inputSchema: floatingHideModuleArgsSchema,
+    execute: async (
+      args: z.infer<typeof floatingHideModuleArgsSchema>,
+      options: { toolCallId?: string },
+    ) => {
+      const toolCallId = options.toolCallId ?? createToolCallId();
+      return executeResumeOperationTool({
+        executedToolCalls,
+        toolCallId,
+        toolName: "hideResumeModule",
+        operation: {
+          id: `floating_${toolCallId}`,
+          toolCallId,
+          label: "隐藏简历模块",
+          section: sectionForModuleKey(args.moduleKey),
+          fieldPath: args.moduleKey,
+          operation: "delete_section",
+          beforePlainText: args.moduleKey,
+          afterPlainText: "",
+          changeSummary: args.changeSummary ?? "隐藏简历模块。",
+          riskFlags: [],
+        },
+        input: args,
+        writeMode,
+      });
+    },
+  });
+}
+
+function createShowResumeModuleTool(
+  executedToolCalls: ExecutedFloatingToolCall[],
+  context: unknown,
+  writeMode: AgentWriteMode,
+) {
+  return tool({
+    description: "Show a built-in resume module by adding it back to the visible section order.",
+    inputSchema: floatingShowModuleArgsSchema,
+    execute: async (
+      args: z.infer<typeof floatingShowModuleArgsSchema>,
+      options: { toolCallId?: string },
+    ) => {
+      const currentOrder = readContextSectionOrder(context);
+      const toolCallId = options.toolCallId ?? createToolCallId();
+      if (!currentOrder) {
+        return executeResumeOperationTool({
+          executedToolCalls,
+          toolCallId,
+          toolName: "showResumeModule",
+          operation: null,
+          input: args,
+          writeMode,
+        });
+      }
+      const orderWithoutModule = currentOrder.filter((key) => key !== args.moduleKey);
+      const insertAt = args.position === undefined
+        ? orderWithoutModule.length
+        : Math.min(args.position, orderWithoutModule.length);
+      const nextOrder = [
+        ...orderWithoutModule.slice(0, insertAt),
+        args.moduleKey,
+        ...orderWithoutModule.slice(insertAt),
+      ];
+      return executeResumeOperationTool({
+        executedToolCalls,
+        toolCallId,
+        toolName: "showResumeModule",
+        operation: {
+          id: `floating_${toolCallId}`,
+          toolCallId,
+          label: "显示简历模块",
+          section: sectionForModuleKey(args.moduleKey),
+          fieldPath: "sectionOrder",
+          operation: "reorder_sections",
+          beforePlainText: currentOrder.join(","),
+          afterPlainText: nextOrder.join(","),
+          sectionOrder: nextOrder,
+          changeSummary: args.changeSummary ?? "显示简历模块。",
+          riskFlags: [],
+        },
+        input: args,
+        writeMode,
+      });
+    },
+  });
+}
+
+function createReorderResumeModulesTool(
+  executedToolCalls: ExecutedFloatingToolCall[],
+  writeMode: AgentWriteMode,
+) {
+  return tool({
+    description: "Reorder visible resume modules using section keys.",
+    inputSchema: floatingReorderModulesArgsSchema,
+    execute: async (
+      args: z.infer<typeof floatingReorderModulesArgsSchema>,
+      options: { toolCallId?: string },
+    ) => {
+      const toolCallId = options.toolCallId ?? createToolCallId();
+      return executeResumeOperationTool({
+        executedToolCalls,
+        toolCallId,
+        toolName: "reorderResumeModules",
+        operation: {
+          id: `floating_${toolCallId}`,
+          toolCallId,
+          label: "调整模块顺序",
+          section: "custom",
+          fieldPath: "sectionOrder",
+          operation: "reorder_sections",
+          beforePlainText: "",
+          afterPlainText: args.sectionOrder.join(","),
+          sectionOrder: args.sectionOrder,
+          changeSummary: args.changeSummary ?? "调整简历模块顺序。",
+          riskFlags: [],
+        },
+        input: args,
+        writeMode,
       });
     },
   });
@@ -351,6 +1277,7 @@ function createAddSectionTool(
 
 function createSuggestSkillsTool(
   executedToolCalls: ExecutedFloatingToolCall[],
+  writeMode: AgentWriteMode,
 ) {
   return tool({
     description: "Suggest relevant skills and update the skills section.",
@@ -369,13 +1296,14 @@ function createSuggestSkillsTool(
         toolCallId,
         toolName: "suggestSkills",
         args: {
-          fieldPath: args.fieldPath ?? "skills",
+          fieldPath: "skills",
           section: "skills",
           beforePlainText: args.beforePlainText,
           afterPlainText: skillText,
           label: "更新技能",
           changeSummary: args.changeSummary ?? "补充相关技能。",
         },
+        writeMode,
       });
     },
   });
@@ -420,13 +1348,40 @@ function executeResumeUpdateTool({
   toolCallId,
   toolName,
   args,
+  writeMode,
 }: {
   executedToolCalls: ExecutedFloatingToolCall[];
   toolCallId: string;
   toolName: string;
   args: FloatingSectionToolArgs;
+  writeMode: AgentWriteMode;
 }) {
   const operation = toResumeOperation(toolCallId, args);
+  return executeResumeOperationTool({
+    executedToolCalls,
+    toolCallId,
+    toolName,
+    operation,
+    input: args,
+    writeMode,
+  });
+}
+
+function executeResumeOperationTool({
+  executedToolCalls,
+  toolCallId,
+  toolName,
+  operation,
+  input,
+  writeMode,
+}: {
+  executedToolCalls: ExecutedFloatingToolCall[];
+  toolCallId: string;
+  toolName: string;
+  operation: ResumeOperation | null;
+  input: unknown;
+  writeMode: AgentWriteMode;
+}) {
   if (!operation) {
     const output = {
       success: false,
@@ -439,7 +1394,7 @@ function executeResumeUpdateTool({
         name: toolName,
         status: "error",
         summary: "修改参数不完整。",
-        input: args,
+        input,
         output,
         errorText: output.error,
       },
@@ -449,6 +1404,8 @@ function executeResumeUpdateTool({
 
   const output = {
     success: true,
+    applied: writeMode === "direct",
+    approvalRequired: writeMode === "approval",
     operationId: operation.id,
     fieldPath: operation.fieldPath,
     summary: operation.changeSummary,
@@ -460,7 +1417,7 @@ function executeResumeUpdateTool({
       name: toolName,
       status: "completed",
       summary: operation.changeSummary,
-      input: args,
+      input,
       output,
     },
   });
@@ -471,10 +1428,12 @@ function createFloatingChatEventStream({
   fullStream,
   executedToolCalls,
   sessionId,
+  writeMode,
 }: {
   fullStream: AsyncIterable<FloatingStreamPart>;
   executedToolCalls: ExecutedFloatingToolCall[];
   sessionId: string | null;
+  writeMode: AgentWriteMode;
 }) {
   const encoder = new TextEncoder();
   return new ReadableStream<Uint8Array>({
@@ -482,6 +1441,7 @@ function createFloatingChatEventStream({
       let assistantMessage = "";
       let messageParts: FloatingMessagePart[] = [];
       const toolCalls = new Map<string, FloatingToolCall>();
+      const approvalRequests = new Map<string, AgentOperationApprovalRequest>();
       const inputBuffers = new Map<string, string>();
       const send = (event: Record<string, unknown>) => {
         controller.enqueue(encoder.encode(`data: ${JSON.stringify(event)}\n\n`));
@@ -558,11 +1518,25 @@ function createFloatingChatEventStream({
               input: executed?.toolCall.input ?? part.input,
               output: executed?.toolCall.output ?? part.output,
             };
-            sendToolEvent(
-              "tool-call-result",
-              toolCall,
-              executed?.operation ? [executed.operation] : [],
-            );
+            if (executed?.operation && writeMode === "approval") {
+              const approvalRequest = createApprovalRequest(
+                executed.operation,
+                part.toolName,
+              );
+              approvalRequests.set(approvalRequest.id, approvalRequest);
+              messageParts = upsertFloatingMessageApprovalPart(
+                messageParts,
+                approvalRequest,
+              );
+              sendToolEvent("tool-call-result", toolCall, []);
+              send({ type: "approval-request", approvalRequest });
+            } else {
+              sendToolEvent(
+                "tool-call-result",
+                toolCall,
+                executed?.operation ? [executed.operation] : [],
+              );
+            }
             continue;
           }
 
@@ -596,10 +1570,14 @@ function createFloatingChatEventStream({
         const operations = executedToolCalls
           .map(({ operation }) => operation)
           .filter((operation): operation is ResumeOperation => operation !== null);
+        const directOperations = writeMode === "approval" ? [] : operations;
+        const responseApprovalRequests = [...approvalRequests.values()];
         const finalMessage =
           assistantMessage.trim() ||
-          (operations.length > 0
-            ? `已根据你的要求修改 ${operations.length} 处简历内容。`
+          (writeMode === "approval" && responseApprovalRequests.length > 0
+            ? `我整理了 ${responseApprovalRequests.length} 条修改建议，请确认后应用。`
+            : operations.length > 0
+              ? `已根据你的要求修改 ${operations.length} 处简历内容。`
             : "我已经检查完这份简历。");
         const finalParts = finalizeFloatingMessageParts(
           messageParts,
@@ -613,7 +1591,7 @@ function createFloatingChatEventStream({
             role: "assistant",
             content: finalMessage,
             toolCalls: persistedToolCalls(responseToolCalls),
-            operations,
+            operations: directOperations,
             parts: finalParts,
           });
         }
@@ -621,7 +1599,8 @@ function createFloatingChatEventStream({
         send({
           type: "done",
           message: finalMessage,
-          operations,
+          operations: directOperations,
+          approvalRequests: responseApprovalRequests,
           toolCalls: responseToolCalls,
           parts: finalParts,
         });
@@ -729,6 +1708,47 @@ function upsertFloatingMessageToolPart(
   return next;
 }
 
+function createApprovalRequest(
+  operation: ResumeOperation,
+  toolName: string,
+): AgentOperationApprovalRequest {
+  return {
+    id: operation.id,
+    status: "pending",
+    reason: "approval_required",
+    message: operation.changeSummary || operation.label,
+    toolCallId: operation.toolCallId || null,
+    source: { kind: "tool", name: toolName },
+    operation,
+  };
+}
+
+function upsertFloatingMessageApprovalPart(
+  parts: FloatingMessagePart[],
+  approvalRequest: AgentOperationApprovalRequest,
+): FloatingMessagePart[] {
+  const index = parts.findIndex(
+    (part) => part.type === "approval" && part.approvalRequest.id === approvalRequest.id,
+  );
+  if (index === -1) {
+    return [
+      ...parts,
+      {
+        id: `part_approval_${approvalRequest.id}`,
+        type: "approval",
+        approvalRequest,
+      },
+    ];
+  }
+  const next = [...parts];
+  next[index] = {
+    id: next[index].id,
+    type: "approval",
+    approvalRequest,
+  };
+  return next;
+}
+
 function finalizeFloatingMessageParts(
   parts: FloatingMessagePart[],
   finalText: string,
@@ -761,13 +1781,6 @@ function selectResumeContext(context: unknown, fieldPath?: string) {
   return context ?? {};
 }
 
-function defaultInsertFieldPath(section: ResumeOperation["section"], context: unknown) {
-  if (section === "summary" || section === "skills") return section;
-  const index = countContextSections(context, section);
-  if (section === "education") return `education.${index}.highlights`;
-  return `${section}.${index}.content`;
-}
-
 function countContextSections(context: unknown, section: ResumeOperation["section"]) {
   const sections = typeof context === "object" && context !== null
     ? (context as { sections?: unknown }).sections
@@ -781,6 +1794,20 @@ function countContextSections(context: unknown, section: ResumeOperation["sectio
   }).length;
 }
 
+function readContextSectionOrder(context: unknown) {
+  if (typeof context !== "object" || context === null) {
+    return null;
+  }
+  const sectionOrder = (context as { sectionOrder?: unknown }).sectionOrder;
+  if (!Array.isArray(sectionOrder)) {
+    return null;
+  }
+  const cleanOrder = sectionOrder
+    .map((key) => typeof key === "string" ? key.trim() : "")
+    .filter((key): key is string => key.length > 0);
+  return cleanOrder.length > 0 ? cleanOrder : null;
+}
+
 function stringifyError(error: unknown) {
   return error instanceof Error ? error.message : String(error ?? "工具调用失败");
 }
@@ -790,8 +1817,8 @@ function toResumeOperation(
   args: FloatingSectionToolArgs,
 ): ResumeOperation | null {
   const fieldPath = resolveFieldPath(args);
-  const afterPlainText = args.afterPlainText?.trim();
-  if (!fieldPath || !afterPlainText) return null;
+  if (!fieldPath || args.afterPlainText === undefined) return null;
+  const afterPlainText = args.afterPlainText;
   const section = args.section ?? inferSection(fieldPath);
   if (!section) return null;
 
@@ -804,9 +1831,56 @@ function toResumeOperation(
     operation: args.operation ?? "update_section",
     beforePlainText: args.beforePlainText ?? "",
     afterPlainText,
+    replacementValue: args.replacementValue,
     changeSummary: args.changeSummary?.trim() || `更新 ${fieldPath}`,
     riskFlags: [],
   };
+}
+
+function stringArg(value: unknown) {
+  return typeof value === "string" && value.trim() ? value.trim() : undefined;
+}
+
+function normalizeBlockFieldValue(value: unknown) {
+  if (Array.isArray(value)) {
+    return value.map((item) => String(item).trim()).filter(Boolean);
+  }
+  return typeof value === "string" ? value.trim() : value;
+}
+
+function pickBlockValues(record: Record<string, unknown>, fields: string[]) {
+  const values: Record<string, unknown> = {};
+  for (const field of fields) {
+    if (record[field] !== undefined) {
+      values[field] = normalizeBlockFieldValue(record[field]);
+    }
+  }
+  return values;
+}
+
+function summarizeBlockValues(values: Record<string, unknown>) {
+  const text = Object.values(values)
+    .flatMap((value) => Array.isArray(value) ? value : [value])
+    .map((value) => String(value).trim())
+    .filter(Boolean)
+    .join(" / ");
+  return text || Object.keys(values).join(" / ");
+}
+
+function sectionForModuleKey(moduleKey: string): ResumeOperation["section"] {
+  if (
+    moduleKey === "experience" ||
+    moduleKey === "education" ||
+    moduleKey === "projects" ||
+    moduleKey === "research" ||
+    moduleKey === "skills" ||
+    moduleKey === "summary" ||
+    moduleKey === "awards" ||
+    moduleKey === "portfolio"
+  ) {
+    return moduleKey;
+  }
+  return "custom";
 }
 
 function resolveFieldPath(args: FloatingSectionToolArgs) {
@@ -817,6 +1891,14 @@ function resolveFieldPath(args: FloatingSectionToolArgs) {
   const field = args.field?.trim();
   if (!field) return sectionId;
   return sectionId.endsWith(`.${field}`) ? sectionId : `${sectionId}.${field}`;
+}
+
+function customSectionFieldPath(sectionId: string, field?: "title" | "content") {
+  const base = sectionId.trim().startsWith("custom.")
+    ? sectionId.trim()
+    : `custom.${sectionId.trim()}`;
+  if (!field) return base;
+  return base.endsWith(`.${field}`) ? base : `${base}.${field}`;
 }
 
 function createToolCallId() {

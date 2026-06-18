@@ -260,7 +260,8 @@ function isResumeOperationName(value: unknown): value is ResumeOperation["operat
     value === "update_section" ||
     value === "delete_section" ||
     value === "reorder_sections" ||
-    value === "insert_section"
+    value === "insert_section" ||
+    value === "reorder_items"
   );
 }
 

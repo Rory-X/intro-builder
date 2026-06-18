@@ -1,23 +1,35 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { diffWords } from "diff";
 import { ChevronDown, ChevronUp } from "lucide-react";
 
-import type { ResumeOperation } from "@intro-builder/shared/types";
+import type {
+  AgentOperationApprovalRequest,
+  ResumeOperation,
+} from "@intro-builder/shared/types";
 import { Button } from "@/components/ui/button";
 
 export function AgentConfirmationCard({
   operation,
+  status,
   onApply,
   onReject,
 }: {
   operation: ResumeOperation;
+  status?: AgentOperationApprovalRequest["status"];
   onApply: (operation: ResumeOperation) => void;
   onReject: (operationId: string) => void;
 }) {
-  const [resolved, setResolved] = useState<"applied" | "ignored" | null>(null);
+  const [resolved, setResolved] = useState<"applied" | "ignored" | null>(
+    resolvedStateForStatus(status),
+  );
   const [showFullText, setShowFullText] = useState(false);
+
+  useEffect(() => {
+    const nextResolved = resolvedStateForStatus(status);
+    if (nextResolved) setResolved(nextResolved);
+  }, [status]);
 
   const changes = diffWords(operation.beforePlainText, operation.afterPlainText);
 
@@ -138,6 +150,12 @@ export function AgentConfirmationCard({
       ) : null}
     </div>
   );
+}
+
+function resolvedStateForStatus(status?: AgentOperationApprovalRequest["status"]) {
+  if (status === "approved") return "applied";
+  if (status === "rejected") return "ignored";
+  return null;
 }
 
 export function AgentQuestionCard({

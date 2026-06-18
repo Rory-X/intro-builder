@@ -33,7 +33,7 @@ import {
   SheetHeader,
   SheetTitle,
 } from "@/components/ui/sheet";
-import { Loader2, Share2, PanelRightClose, PanelRightOpen, MessageSquare, LayoutTemplate, ChevronLeft, PencilLine, CloudCheck, Copy, CircleAlert } from "lucide-react";
+import { Loader2, Share2, PanelLeftClose, PanelRightClose, PanelRightOpen, MessageSquare, LayoutTemplate, ChevronLeft, PencilLine, CloudCheck, Copy, CircleAlert } from "lucide-react";
 import { Popover, PopoverContent, PopoverDescription, PopoverHeader, PopoverTitle, PopoverTrigger } from "@/components/ui/popover";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import type { AllTemplatesItem, TemplateId } from "@/lib/templates/registry";
@@ -174,6 +174,7 @@ export default function EditorClient({ id, initialTitle, initialTemplate, initia
   const [activeSection, setActiveSection] = useState<string | null>("basics");
   const [showTemplatePanel, setShowTemplatePanel] = useState(false);
   const [isAgentMode, setIsAgentMode] = useState(false);
+  const [isFloatingAgentDocked, setIsFloatingAgentDocked] = useState(false);
   const [isSharePopoverOpen, setIsSharePopoverOpen] = useState(false);
   const [isTogglingShare, setIsTogglingShare] = useState(false);
   const [isPending, startTransition] = useTransition();
@@ -556,6 +557,20 @@ export default function EditorClient({ id, initialTitle, initialTemplate, initia
     : `当前自动保存状态：${saveStatusLabel}`;
   const agentCompleteness = computeCompletenessScore(form.getValues() as ResumeContent);
   const useFloatingAgent = agentSurface === "floating";
+  const showAgentInEditorColumn =
+    (!useFloatingAgent && isAgentMode) ||
+    (useFloatingAgent && isFloatingAgentDocked);
+  const floatingAgentChat = (
+    <FloatingAgentChat
+      resumeId={id}
+      title={title}
+      templateId={template}
+      getResumeContent={() => form.getValues() as ResumeContent}
+      completeness={agentCompleteness}
+      applyOperation={applyAgentOperation}
+      flushAutosave={flushAgentAutosave}
+    />
+  );
 
   return (
     <FormProvider {...form}>
@@ -581,6 +596,7 @@ export default function EditorClient({ id, initialTitle, initialTemplate, initia
             variant="ghost"
             onClick={() => {
               setIsAgentMode(false);
+              setIsFloatingAgentDocked(false);
               setShowTemplatePanel((v) => !v);
             }}
             aria-pressed={showTemplatePanel}
@@ -803,7 +819,7 @@ export default function EditorClient({ id, initialTitle, initialTemplate, initia
               ref={editorPanelRef}
               className={cn(
                 "thin-scrollbar editor-panel h-full overflow-y-auto overflow-x-hidden bg-background",
-                isAgentMode ? "p-0" : "p-3.5",
+                showAgentInEditorColumn ? "p-0" : "p-3.5",
               )}
             >
               {isAgentMode && !useFloatingAgent ? (
@@ -817,6 +833,32 @@ export default function EditorClient({ id, initialTitle, initialTemplate, initia
                   flushAutosave={flushAgentAutosave}
                   onBackToEdit={() => setIsAgentMode(false)}
                 />
+              ) : useFloatingAgent && isFloatingAgentDocked ? (
+                <section
+                  role="region"
+                  aria-label="AI 简历助手对话面板"
+                  className="flex h-full flex-col bg-background"
+                >
+                  <div className="flex h-11 shrink-0 items-center justify-between border-b px-3">
+                    <div className="flex min-w-0 items-center gap-2 text-sm font-semibold">
+                      <MessageSquare className="h-4 w-4 shrink-0 text-primary" />
+                      <span className="truncate">AI 简历助手</span>
+                    </div>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon-sm"
+                      aria-label="返回表单编辑"
+                      onClick={() => setIsFloatingAgentDocked(false)}
+                      className="h-8 w-8"
+                    >
+                      <PanelLeftClose className="h-4 w-4" />
+                    </Button>
+                  </div>
+                  <div className="min-h-0 flex-1 overflow-hidden">
+                    {floatingAgentChat}
+                  </div>
+                </section>
               ) : (
               <div className="space-y-4">
                 <div className={cn(
@@ -849,7 +891,7 @@ export default function EditorClient({ id, initialTitle, initialTemplate, initia
             {/* 模板面板：覆盖左侧表单列（右侧预览常驻可见，换模板实时看效果）。
                 表单不卸载（仅被遮住），保留编辑状态与滚动位置。
                 点击右侧预览区域(backdrop)关闭面板。 */}
-            {showTemplatePanel && !isAgentMode && (
+            {showTemplatePanel && !showAgentInEditorColumn && (
               <>
                 <TemplateSwitchPanel
                   className="absolute inset-0 z-20"
@@ -865,7 +907,7 @@ export default function EditorClient({ id, initialTitle, initialTemplate, initia
             )}
           </div>
           {/* Resize handle */}
-          {!isAgentMode && (
+          {!showAgentInEditorColumn && (
             <div
               className="group flex w-2 shrink-0 cursor-col-resize items-center justify-center"
               onMouseDown={handleMouseDown}
@@ -941,17 +983,15 @@ export default function EditorClient({ id, initialTitle, initialTemplate, initia
           ) : null}
         </div>
       )}
-      {useFloatingAgent ? (
-        <AgentBubble title="AI 简历助手">
-          <FloatingAgentChat
-            resumeId={id}
-            title={title}
-            templateId={template}
-            getResumeContent={() => form.getValues() as ResumeContent}
-            completeness={agentCompleteness}
-            applyOperation={applyAgentOperation}
-            flushAutosave={flushAgentAutosave}
-          />
+      {useFloatingAgent && !isFloatingAgentDocked ? (
+        <AgentBubble
+          title="AI 简历助手"
+          onDockToPanel={() => {
+            setShowTemplatePanel(false);
+            setIsFloatingAgentDocked(true);
+          }}
+        >
+          {floatingAgentChat}
         </AgentBubble>
       ) : null}
     </FormProvider>

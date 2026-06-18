@@ -238,6 +238,13 @@ function isAgentResumeContext(value: unknown): value is AgentResumeContext {
   if (!isRecord(value.completeness)) return false;
   if (typeof value.completeness.overall !== "number") return false;
   if (!Array.isArray(value.completeness.sections)) return false;
+  if (
+    value.sectionOrder !== undefined &&
+    (!Array.isArray(value.sectionOrder) ||
+      !value.sectionOrder.every(isNonEmptyString))
+  ) {
+    return false;
+  }
   if (!Array.isArray(value.sections)) return false;
 
   return (

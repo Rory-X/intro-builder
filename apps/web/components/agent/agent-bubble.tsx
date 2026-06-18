@@ -8,7 +8,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import { MessageSquare, Minus } from "lucide-react";
+import { MessageSquare, Minus, PanelLeftOpen } from "lucide-react";
 
 const DESKTOP_WINDOW_WIDTH = 440;
 const DESKTOP_WINDOW_HEIGHT = 620;
@@ -36,6 +36,7 @@ type WindowSize = {
 type AgentBubbleProps = {
   children: ReactNode;
   defaultOpen?: boolean;
+  onDockToPanel?: () => void;
   title?: string;
 };
 
@@ -119,6 +120,7 @@ function clampBubbleOffset(offset: BubbleOffset): BubbleOffset {
 export function AgentBubble({
   children,
   defaultOpen = false,
+  onDockToPanel,
   title = "AI 简历助手",
 }: AgentBubbleProps) {
   const [open, setOpen] = useState(defaultOpen);
@@ -301,14 +303,29 @@ export function AgentBubble({
             <MessageSquare className="h-4 w-4 shrink-0" />
             <span className="truncate text-sm font-semibold">{title}</span>
           </div>
-          <button
-            type="button"
-            aria-label="收起 AI 简历助手"
-            className="rounded p-1 text-white/85 transition hover:bg-white/20 hover:text-white"
-            onClick={() => setOpen(false)}
-          >
-            <Minus className="h-4 w-4" />
-          </button>
+          <div className="flex items-center gap-1">
+            {onDockToPanel ? (
+              <button
+                type="button"
+                aria-label="停靠到左侧编辑区"
+                className="rounded p-1 text-white/85 transition hover:bg-white/20 hover:text-white"
+                onClick={() => {
+                  setOpen(false);
+                  onDockToPanel();
+                }}
+              >
+                <PanelLeftOpen className="h-4 w-4" />
+              </button>
+            ) : null}
+            <button
+              type="button"
+              aria-label="收起 AI 简历助手"
+              className="rounded p-1 text-white/85 transition hover:bg-white/20 hover:text-white"
+              onClick={() => setOpen(false)}
+            >
+              <Minus className="h-4 w-4" />
+            </button>
+          </div>
         </div>
         <div className="min-h-0 flex-1 overflow-hidden">{children}</div>
       </section>
