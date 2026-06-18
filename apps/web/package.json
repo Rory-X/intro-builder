@@ -4,6 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
+    "migrate:on-deploy": "tsx scripts/migrate-on-deploy.ts",
     "prebuild": "fumadocs-mdx",
     "build": "next build --webpack",
     "start": "next start",

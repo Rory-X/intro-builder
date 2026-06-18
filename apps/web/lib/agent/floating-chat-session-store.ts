@@ -105,15 +105,16 @@ export async function deleteFloatingChatSession({
   sessionId: string;
   userId: string;
 }): Promise<boolean> {
-  const result = await db
+  const rows = await db
     .delete(agentFloatingChatSessions)
     .where(
       and(
         eq(agentFloatingChatSessions.id, sessionId),
         eq(agentFloatingChatSessions.userId, userId),
       ),
-    );
-  return (result.rowCount ?? 0) > 0;
+    )
+    .returning({ id: agentFloatingChatSessions.id });
+  return rows.length > 0;
 }
 
 export async function listFloatingChatMessages({
@@ -197,7 +198,7 @@ export async function renameFloatingChatSession({
   userId: string;
   title: string;
 }): Promise<boolean> {
-  const result = await db
+  const rows = await db
     .update(agentFloatingChatSessions)
     .set({ title: title.trim().slice(0, 50), updatedAt: new Date() })
     .where(
@@ -205,8 +206,9 @@ export async function renameFloatingChatSession({
         eq(agentFloatingChatSessions.id, sessionId),
         eq(agentFloatingChatSessions.userId, userId),
       ),
-    );
-  return (result.rowCount ?? 0) > 0;
+    )
+    .returning({ id: agentFloatingChatSessions.id });
+  return rows.length > 0;
 }
 
 function toSessionListItem(row: {
