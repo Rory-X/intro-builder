@@ -13,11 +13,13 @@ import {
 import {
   AlertTriangle,
   Bot,
+  Check,
   CheckCircle2,
   ChevronDown,
   ChevronRight,
   Clock,
   Copy,
+  Loader2,
   MessageSquare,
   PencilLine,
   Play,
@@ -25,9 +27,11 @@ import {
   RefreshCw,
   SendHorizonal,
   Settings,
+  ShieldCheck,
   Terminal,
   Trash2,
   User,
+  Zap,
   XCircle,
 } from "lucide-react";
 import ReactMarkdown from "react-markdown";
@@ -71,7 +75,8 @@ type FloatingAgentMessage = {
 type FloatingAgentMessagePart =
   | { id: string; type: "text"; text: string }
   | { id: string; type: "tool"; toolCall: FloatingAgentToolCall }
-  | { id: string; type: "approval"; approvalRequest: AgentOperationApprovalRequest };
+  | { id: string; type: "approval"; approvalRequest: AgentOperationApprovalRequest }
+  | { id: string; type: "question"; question: FloatingQuestionRequest };
 
 type FloatingAgentToolCall = {
   id: string;
@@ -90,6 +95,14 @@ type FloatingApprovalContinuation = {
 type FloatingApprovalDecision = {
   approvalId: string;
   approved: boolean;
+};
+
+type FloatingQuestionRequest = {
+  id: string;
+  question: string;
+  field?: string;
+  status: "pending" | "answered";
+  answer?: string;
 };
 
 type AgentModelSettingsForm = {
@@ -142,6 +155,8 @@ export function FloatingAgentChat({
   const [sessions, setSessions] = useState<FloatingChatSession[]>([]);
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
   const [sessionsLoaded, setSessionsLoaded] = useState(false);
+  const [loadingSessionId, setLoadingSessionId] = useState<string | null>(null);
+  const [isCreatingSession, setIsCreatingSession] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [editingMessageId, setEditingMessageId] = useState<string | null>(null);
@@ -154,6 +169,7 @@ export function FloatingAgentChat({
   const [writeMode, setWriteModeState] = useState<AgentWriteMode>("direct");
   const scrollRef = useRef<HTMLDivElement>(null);
   const messagesRef = useRef<FloatingAgentMessage[]>([]);
+  const creatingSessionRef = useRef(false);
   const requestAbortControllerRef = useRef<AbortController | null>(null);
   const pendingApprovalContinuationsRef = useRef(
     new Map<string, FloatingApprovalContinuation>(),
@@ -161,6 +177,10 @@ export function FloatingAgentChat({
   const modelConfig = useMemo(
     () => toAgentModelConfig(modelSettings),
     [modelSettings],
+  );
+  const activeSession = useMemo(
+    () => sessions.find((session) => session.id === activeSessionId) ?? null,
+    [activeSessionId, sessions],
   );
   const regenerableAssistantMessageId = useMemo(() => {
     for (let index = messages.length - 1; index >= 0; index -= 1) {
@@ -183,6 +203,10 @@ export function FloatingAgentChat({
       ),
     [messages, pendingApprovalMessageIds],
   );
+  const hasPendingQuestionContinuation = useMemo(
+    () => messages.some(hasPendingQuestionParts),
+    [messages],
+  );
 
   useEffect(() => {
     messagesRef.current = messages;
@@ -204,39 +228,78 @@ export function FloatingAgentChat({
   const loadSessionMessages = useCallback(async (sessionId: string) => {
     pendingApprovalContinuationsRef.current.clear();
     setPendingApprovalMessageIds(new Set());
+    setLoadingSessionId(sessionId);
     const response = await fetch(`/api/agent/floating/sessions/${sessionId}`, {
       headers: { Accept: "application/json" },
     });
-    if (!response.ok) throw new Error("读取历史对话失败");
-    const body = await response.json().catch(() => ({}));
-    const loadedMessages = Array.isArray(body.messages)
-      ? body.messages.map(toFloatingAgentMessage).filter(isFloatingAgentMessage)
-      : [];
-    setMessages(loadedMessages);
+    try {
+      if (!response.ok) throw new Error("读取历史对话失败");
+      const body = await response.json().catch(() => ({}));
+      const session = toFloatingChatSession(body.session);
+      if (session) {
+        setSessions((current) =>
+          current.map((item) => (item.id === session.id ? session : item)),
+        );
+      }
+      const loadedMessages = Array.isArray(body.messages)
+        ? body.messages.map(toFloatingAgentMessage).filter(isFloatingAgentMessage)
+        : [];
+      setMessages(loadedMessages);
+    } finally {
+      setLoadingSessionId((current) => (current === sessionId ? null : current));
+    }
   }, []);
 
   const createNewSession = useCallback(async () => {
-    const response = await fetch("/api/agent/floating/sessions", {
-      method: "POST",
-      headers: {
-        Accept: "application/json",
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({ resumeId }),
-    });
-    if (!response.ok) throw new Error("创建新对话失败");
-    const body = await response.json().catch(() => ({}));
-    const session = toFloatingChatSession(body.session);
-    if (!session) throw new Error("创建新对话失败");
-    setSessions((current) => [session, ...current.filter((item) => item.id !== session.id)]);
-    setActiveSessionId(session.id);
+    if (creatingSessionRef.current) return null;
+    creatingSessionRef.current = true;
+    const optimisticSession: FloatingChatSession = {
+      id: createMessageId("session_pending"),
+      title: "正在创建...",
+      updatedAt: new Date().toISOString(),
+    };
+    setIsCreatingSession(true);
+    setSessions((current) => [optimisticSession, ...current]);
+    setActiveSessionId(optimisticSession.id);
     setMessages([]);
     pendingApprovalContinuationsRef.current.clear();
     setPendingApprovalMessageIds(new Set());
     setInput("");
     setEditingMessageId(null);
     setHistoryOpen(false);
-    return session;
+    try {
+      const response = await fetch("/api/agent/floating/sessions", {
+        method: "POST",
+        headers: {
+          Accept: "application/json",
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ resumeId }),
+      });
+      if (!response.ok) throw new Error("创建新对话失败");
+      const body = await response.json().catch(() => ({}));
+      const session = toFloatingChatSession(body.session);
+      if (!session) throw new Error("创建新对话失败");
+      setSessions((current) => [
+        session,
+        ...current.filter(
+          (item) => item.id !== session.id && item.id !== optimisticSession.id,
+        ),
+      ]);
+      setActiveSessionId(session.id);
+      return session;
+    } catch (error) {
+      setSessions((current) =>
+        current.filter((item) => item.id !== optimisticSession.id),
+      );
+      setActiveSessionId((current) =>
+        current === optimisticSession.id ? null : current,
+      );
+      throw error;
+    } finally {
+      creatingSessionRef.current = false;
+      setIsCreatingSession(false);
+    }
   }, [resumeId]);
 
   const switchSession = useCallback(
@@ -246,6 +309,8 @@ export function FloatingAgentChat({
         return;
       }
       setActiveSessionId(sessionId);
+      setMessages([]);
+      setLoadingSessionId(sessionId);
       pendingApprovalContinuationsRef.current.clear();
       setPendingApprovalMessageIds(new Set());
       setEditingMessageId(null);
@@ -254,6 +319,7 @@ export function FloatingAgentChat({
       try {
         await loadSessionMessages(sessionId);
       } catch (error) {
+        setMessages([]);
         toast.error(error instanceof Error ? error.message : "读取历史对话失败");
       }
     },
@@ -314,6 +380,26 @@ export function FloatingAgentChat({
     [activeSessionId],
   );
 
+  const persistQuestionAnswer = useCallback(
+    async (messageId: string, questionId: string, answer: string) => {
+      if (!activeSessionId) return;
+      try {
+        const response = await fetch(`/api/agent/floating/sessions/${activeSessionId}`, {
+          method: "PATCH",
+          headers: {
+            Accept: "application/json",
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ messageId, questionId, answer }),
+        });
+        if (!response.ok) throw new Error("persist_failed");
+      } catch {
+        toast.error("回复状态保存失败");
+      }
+    },
+    [activeSessionId],
+  );
+
   const copyMessage = useCallback(async (content: string) => {
     try {
       await navigator.clipboard?.writeText(content);
@@ -325,11 +411,16 @@ export function FloatingAgentChat({
 
   const editUserMessage = useCallback(
     (message: FloatingAgentMessage) => {
-      if (isLoading || hasPendingApprovalContinuation || message.role !== "user") return;
+      if (
+        isLoading ||
+        hasPendingApprovalContinuation ||
+        hasPendingQuestionContinuation ||
+        message.role !== "user"
+      ) return;
       setEditingMessageId(message.id);
       setInput(message.content);
     },
-    [hasPendingApprovalContinuation, isLoading],
+    [hasPendingApprovalContinuation, hasPendingQuestionContinuation, isLoading],
   );
 
   const cancelEditing = useCallback(() => {
@@ -342,10 +433,14 @@ export function FloatingAgentChat({
       requestMessages,
       initialMessages,
       titleSource,
+      approvalDecisions = [],
+      persistLastUserMessage = true,
     }: {
       requestMessages: FloatingAgentMessage[];
       initialMessages: FloatingAgentMessage[];
       titleSource: string;
+      approvalDecisions?: FloatingApprovalDecision[];
+      persistLastUserMessage?: boolean;
     }) => {
       setMessages(initialMessages);
 
@@ -395,6 +490,8 @@ export function FloatingAgentChat({
             workflowId: null satisfies AgentWorkflowId | null,
             sessionId: activeSessionId,
             writeMode,
+            approvalDecisions,
+            persistLastUserMessage,
             messages: requestMessages.map((message) => ({
               role: message.role,
               content:
@@ -479,6 +576,22 @@ export function FloatingAgentChat({
               );
               scrollMessagesToBottom(scrollRef);
             },
+            onQuestionRequest: (question) => {
+              setMessages((current) =>
+                current.map((message) =>
+                  message.id === assistantMessageId
+                    ? {
+                        ...message,
+                        parts: upsertFloatingQuestionPart(
+                          message.parts ?? [],
+                          question,
+                        ),
+                      }
+                    : message,
+                ),
+              );
+              scrollMessagesToBottom(scrollRef);
+            },
             onOperations: applyStreamOperations,
           });
         } else {
@@ -492,6 +605,7 @@ export function FloatingAgentChat({
               )
             : [];
         const approvalRequests = normalizeApprovalRequests(body.approvalRequests);
+        const questions = normalizeFloatingQuestions(body.questions);
         if (writeMode === "approval" && hasPendingApprovalRequests(approvalRequests)) {
           pendingApprovalContinuationsRef.current.set(assistantMessageId, {
             titleSource,
@@ -536,6 +650,7 @@ export function FloatingAgentChat({
                           finalAssistantMessage(body, operations, approvalRequests),
                           toolCalls,
                           approvalRequests,
+                          questions,
                         ),
                       toolCalls: mergeFloatingToolCalls(
                         message.toolCalls ?? [],
@@ -557,6 +672,7 @@ export function FloatingAgentChat({
                       finalAssistantMessage(body, operations, approvalRequests),
                       toolCalls,
                       approvalRequests,
+                      questions,
                     ),
                   toolCalls,
                 },
@@ -611,15 +727,12 @@ export function FloatingAgentChat({
         next.delete(messageId);
         return next;
       });
-      const feedbackMessage: FloatingAgentMessage = {
-        id: createMessageId("approval_feedback"),
-        role: "assistant",
-        content: buildFloatingApprovalFeedbackMessage(decisions),
-      };
       void runFloatingRequest({
-        requestMessages: [...nextMessages, feedbackMessage],
+        requestMessages: nextMessages,
         initialMessages: nextMessages,
         titleSource: continuation.titleSource,
+        approvalDecisions: decisions,
+        persistLastUserMessage: false,
       });
     },
     [runFloatingRequest],
@@ -662,6 +775,37 @@ export function FloatingAgentChat({
     [continuePendingApprovalRun, persistApprovalStatus],
   );
 
+  const answerQuestionRequest = useCallback(
+    (messageId: string, questionId: string, answer: string) => {
+      const trimmedAnswer = answer.trim();
+      if (!trimmedAnswer || isLoading) return;
+      const targetMessage = messagesRef.current.find((message) => message.id === messageId);
+      const question = findQuestionInMessage(targetMessage, questionId);
+      if (!question) return;
+      const answeredMessages = updateFloatingQuestionAnswer(
+        messagesRef.current,
+        questionId,
+        trimmedAnswer,
+      );
+      const answerMessage: FloatingAgentMessage = {
+        id: createMessageId("user"),
+        role: "user",
+        content: `关于「${question.question}」：${trimmedAnswer}`,
+      };
+      const nextMessages = [...answeredMessages, answerMessage];
+      messagesRef.current = nextMessages;
+      setMessages(nextMessages);
+      scrollMessagesToBottom(scrollRef);
+      void persistQuestionAnswer(messageId, questionId, trimmedAnswer);
+      void runFloatingRequest({
+        requestMessages: nextMessages,
+        initialMessages: nextMessages,
+        titleSource: trimmedAnswer,
+      });
+    },
+    [isLoading, persistQuestionAnswer, runFloatingRequest],
+  );
+
   useEffect(() => {
     let cancelled = false;
     async function loadSessions() {
@@ -702,7 +846,7 @@ export function FloatingAgentChat({
     async (event?: FormEvent<HTMLFormElement>) => {
       event?.preventDefault();
       const text = input.trim();
-      if (!text || isLoading || hasPendingApprovalContinuation) return;
+      if (!text || isLoading || hasPendingApprovalContinuation || hasPendingQuestionContinuation) return;
       const editingIndex = editingMessageId
         ? messages.findIndex(
             (message) => message.id === editingMessageId && message.role === "user",
@@ -718,6 +862,7 @@ export function FloatingAgentChat({
       setMessages([...baseMessages, userMessage]);
       setEditingMessageId(null);
       setInput("");
+      scrollMessagesToBottom(scrollRef);
 
       await runFloatingRequest({
         requestMessages: [...baseMessages, userMessage],
@@ -728,6 +873,7 @@ export function FloatingAgentChat({
     [
       editingMessageId,
       hasPendingApprovalContinuation,
+      hasPendingQuestionContinuation,
       input,
       isLoading,
       messages,
@@ -737,7 +883,12 @@ export function FloatingAgentChat({
 
   const regenerateAssistantMessage = useCallback(
     async (message: FloatingAgentMessage) => {
-      if (isLoading || hasPendingApprovalContinuation || message.role !== "assistant") return;
+      if (
+        isLoading ||
+        hasPendingApprovalContinuation ||
+        hasPendingQuestionContinuation ||
+        message.role !== "assistant"
+      ) return;
       const assistantIndex = messages.findIndex((item) => item.id === message.id);
       if (assistantIndex <= 0) return;
       const requestMessages = messages.slice(0, assistantIndex);
@@ -753,13 +904,19 @@ export function FloatingAgentChat({
         titleSource: previousUserMessage.content.trim(),
       });
     },
-    [hasPendingApprovalContinuation, isLoading, messages, runFloatingRequest],
+    [
+      hasPendingApprovalContinuation,
+      hasPendingQuestionContinuation,
+      isLoading,
+      messages,
+      runFloatingRequest,
+    ],
   );
 
   const sendWelcomePrompt = useCallback(
     async (prompt: string) => {
       const text = prompt.trim();
-      if (!text || isLoading || hasPendingApprovalContinuation) return;
+      if (!text || isLoading || hasPendingApprovalContinuation || hasPendingQuestionContinuation) return;
       const userMessage: FloatingAgentMessage = {
         id: createMessageId("user"),
         role: "user",
@@ -768,13 +925,21 @@ export function FloatingAgentChat({
       const nextMessages = [...messages, userMessage];
       setEditingMessageId(null);
       setInput("");
+      setMessages(nextMessages);
+      scrollMessagesToBottom(scrollRef);
       await runFloatingRequest({
         requestMessages: nextMessages,
         initialMessages: nextMessages,
         titleSource: text,
       });
     },
-    [hasPendingApprovalContinuation, isLoading, messages, runFloatingRequest],
+    [
+      hasPendingApprovalContinuation,
+      hasPendingQuestionContinuation,
+      isLoading,
+      messages,
+      runFloatingRequest,
+    ],
   );
 
   const stopGeneration = useCallback(() => {
@@ -783,7 +948,19 @@ export function FloatingAgentChat({
 
   return (
     <div className="flex h-full flex-col overflow-hidden bg-background">
-      <div className="flex h-12 shrink-0 items-center justify-end border-b px-4 py-3">
+      <div className="flex h-12 shrink-0 items-center justify-between gap-3 border-b px-4 py-3">
+        <div className="min-w-0">
+          <p className="truncate text-sm font-medium text-foreground">
+            {activeSession?.title ?? (sessionsLoaded ? "新对话" : "读取对话中")}
+          </p>
+          <p className="truncate text-[11px] text-muted-foreground">
+            {loadingSessionId
+              ? "正在读取消息"
+              : isCreatingSession
+                ? "正在创建新对话"
+                : title || "当前简历"}
+          </p>
+        </div>
         <div className="flex items-center gap-1">
           <Popover open={historyOpen} onOpenChange={setHistoryOpen}>
             <PopoverTrigger
@@ -833,9 +1010,17 @@ export function FloatingAgentChat({
                         {session.title}
                       </span>
                       <span className="mt-0.5 block text-[11px] text-muted-foreground">
-                        {formatSessionTime(session.updatedAt)}
+                        {session.id === loadingSessionId
+                          ? "正在读取消息"
+                          : session.title === "正在创建..."
+                            ? "请稍候"
+                            : formatSessionTime(session.updatedAt)}
                       </span>
                     </span>
+                    {session.id === loadingSessionId ||
+                    session.title === "正在创建..." ? (
+                      <Loader2 className="mt-0.5 h-3.5 w-3.5 animate-spin text-muted-foreground" />
+                    ) : null}
                     <span
                       role="button"
                       tabIndex={0}
@@ -870,16 +1055,25 @@ export function FloatingAgentChat({
             variant="ghost"
             size="icon-sm"
             aria-label="新对话"
+            disabled={isCreatingSession}
             onClick={() => void createNewSession().catch(() => toast.error("创建新对话失败"))}
             className="h-7 w-7 rounded-md p-0"
           >
-            <Plus className="h-4 w-4" />
+            {isCreatingSession ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <Plus className="h-4 w-4" />
+            )}
           </Button>
         </div>
       </div>
 
       <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto px-4 py-4">
-        {messages.length === 0 ? (
+        {!sessionsLoaded || loadingSessionId ? (
+          <FloatingConversationLoading
+            label={!sessionsLoaded ? "正在读取历史对话" : "正在切换对话"}
+          />
+        ) : messages.length === 0 ? (
           <FloatingWelcome onPromptClick={sendWelcomePrompt} />
         ) : (
           <div className="space-y-4">
@@ -890,12 +1084,14 @@ export function FloatingAgentChat({
                 onOpenSettings={() => setSettingsOpen(true)}
                 onApplyApproval={applyApprovalRequest}
                 onRejectApproval={rejectApprovalRequest}
+                onAnswerQuestion={answerQuestionRequest}
                 onCopyMessage={copyMessage}
                 onEditMessage={editUserMessage}
                 onRegenerateMessage={regenerateAssistantMessage}
                 canRegenerate={
                   !isLoading &&
                   !hasPendingApprovalContinuation &&
+                  !hasPendingQuestionContinuation &&
                   message.id === regenerableAssistantMessageId
                 }
                 isLoading={isLoading}
@@ -911,6 +1107,7 @@ export function FloatingAgentChat({
         setInput={setInput}
         isLoading={isLoading}
         isAwaitingApproval={hasPendingApprovalContinuation}
+        isAwaitingQuestion={hasPendingQuestionContinuation}
         modelName={modelConfig?.modelName ?? null}
         editing={editingMessageId !== null}
         writeMode={writeMode}
@@ -959,6 +1156,14 @@ function hasPendingApprovalParts(message: FloatingAgentMessage) {
   );
 }
 
+function hasPendingQuestionParts(message: FloatingAgentMessage) {
+  return (
+    message.parts?.some(
+      (part) => part.type === "question" && part.question.status === "pending",
+    ) ?? false
+  );
+}
+
 function updateFloatingApprovalStatus(
   messages: FloatingAgentMessage[],
   approvalId: string,
@@ -973,6 +1178,40 @@ function updateFloatingApprovalStatus(
             approvalRequest: {
               ...part.approvalRequest,
               status,
+            },
+          }
+        : part,
+    ),
+  }));
+}
+
+function findQuestionInMessage(
+  message: FloatingAgentMessage | undefined,
+  questionId: string,
+) {
+  for (const part of message?.parts ?? []) {
+    if (part.type === "question" && part.question.id === questionId) {
+      return part.question;
+    }
+  }
+  return null;
+}
+
+function updateFloatingQuestionAnswer(
+  messages: FloatingAgentMessage[],
+  questionId: string,
+  answer: string,
+) {
+  return messages.map((message) => ({
+    ...message,
+    parts: message.parts?.map((part) =>
+      part.type === "question" && part.question.id === questionId
+        ? {
+            ...part,
+            question: {
+              ...part.question,
+              status: "answered" as const,
+              answer,
             },
           }
         : part,
@@ -1001,28 +1240,6 @@ function approvalDecisionsForMessage(
   }));
 }
 
-function buildFloatingApprovalFeedbackMessage(
-  decisions: FloatingApprovalDecision[],
-) {
-  const approvedIds = decisions
-    .filter((decision) => decision.approved)
-    .map((decision) => decision.approvalId);
-  const rejectedIds = decisions
-    .filter((decision) => !decision.approved)
-    .map((decision) => decision.approvalId);
-  const lines = ["用户已审核你的修改建议："];
-  if (approvedIds.length > 0) {
-    lines.push(`✓ 已批准并应用：${approvedIds.join(", ")}`);
-  }
-  if (rejectedIds.length > 0) {
-    lines.push(`✗ 已忽略：${rejectedIds.join(", ")}`);
-  }
-  lines.push(
-    "请基于用户的选择继续当前任务。已忽略的建议不要重复提出，已应用的内容可以继续用于后续分析。",
-  );
-  return lines.join("\n");
-}
-
 function scrollMessagesToBottom(ref: React.RefObject<HTMLDivElement | null>) {
   queueMicrotask(() => {
     if (ref.current) {
@@ -1045,11 +1262,13 @@ async function readFloatingAgentStream(
     onTextDelta,
     onToolCall,
     onApprovalRequest,
+    onQuestionRequest,
     onOperations,
   }: {
     onTextDelta: (delta: string) => void;
     onToolCall: (toolCall: FloatingAgentToolCall) => void;
     onApprovalRequest: (approvalRequest: AgentOperationApprovalRequest) => void;
+    onQuestionRequest: (question: FloatingQuestionRequest) => void;
     onOperations: (operations: ResumeOperation[]) => void;
   },
 ): Promise<Record<string, unknown>> {
@@ -1066,7 +1285,7 @@ async function readFloatingAgentStream(
     buffer = consumeFloatingStreamBuffer(buffer, (event) => {
       handleFloatingStreamEvent(
         event,
-        { onTextDelta, onToolCall, onApprovalRequest, onOperations },
+        { onTextDelta, onToolCall, onApprovalRequest, onQuestionRequest, onOperations },
         (done) => {
           doneEvent = done;
         },
@@ -1078,7 +1297,7 @@ async function readFloatingAgentStream(
   consumeFloatingStreamBuffer(`${buffer}\n\n`, (event) => {
     handleFloatingStreamEvent(
       event,
-      { onTextDelta, onToolCall, onApprovalRequest, onOperations },
+      { onTextDelta, onToolCall, onApprovalRequest, onQuestionRequest, onOperations },
       (done) => {
         doneEvent = done;
       },
@@ -1094,6 +1313,7 @@ function handleFloatingStreamEvent(
     onTextDelta: (delta: string) => void;
     onToolCall: (toolCall: FloatingAgentToolCall) => void;
     onApprovalRequest: (approvalRequest: AgentOperationApprovalRequest) => void;
+    onQuestionRequest: (question: FloatingQuestionRequest) => void;
     onOperations: (operations: ResumeOperation[]) => void;
   },
   onDone: (event: Record<string, unknown>) => void,
@@ -1116,6 +1336,11 @@ function handleFloatingStreamEvent(
   if (event.type === "approval-request") {
     const approvalRequest = normalizeApprovalRequest(event.approvalRequest);
     if (approvalRequest) handlers.onApprovalRequest(approvalRequest);
+    return;
+  }
+  if (event.type === "question-request") {
+    const question = normalizeFloatingQuestion(event.question);
+    if (question) handlers.onQuestionRequest(question);
     return;
   }
   if (event.type === "done") {
@@ -1186,11 +1411,21 @@ function FloatingWelcome({
   );
 }
 
+function FloatingConversationLoading({ label }: { label: string }) {
+  return (
+    <div className="flex min-h-[360px] flex-col items-center justify-center gap-3 text-center text-sm text-muted-foreground">
+      <Loader2 className="h-5 w-5 animate-spin" />
+      <span>{label}</span>
+    </div>
+  );
+}
+
 function FloatingMessage({
   message,
   onOpenSettings,
   onApplyApproval,
   onRejectApproval,
+  onAnswerQuestion,
   onCopyMessage,
   onEditMessage,
   onRegenerateMessage,
@@ -1201,6 +1436,7 @@ function FloatingMessage({
   onOpenSettings: () => void;
   onApplyApproval: (messageId: string, operation: ResumeOperation) => void;
   onRejectApproval: (messageId: string, operationId: string) => void;
+  onAnswerQuestion: (messageId: string, questionId: string, answer: string) => void;
   onCopyMessage: (content: string) => void;
   onEditMessage: (message: FloatingAgentMessage) => void;
   onRegenerateMessage: (message: FloatingAgentMessage) => void;
@@ -1243,13 +1479,21 @@ function FloatingMessage({
                   <FloatingMarkdown key={part.id} text={part.text} />
                 ) : part.type === "tool" ? (
                   <FloatingToolCallCard key={part.id} toolCall={part.toolCall} />
-                ) : (
+                ) : part.type === "approval" ? (
                   <AgentConfirmationCard
                     key={part.id}
                     operation={part.approvalRequest.operation}
                     status={part.approvalRequest.status}
                     onApply={(operation) => onApplyApproval(message.id, operation)}
                     onReject={(operationId) => onRejectApproval(message.id, operationId)}
+                  />
+                ) : (
+                  <FloatingQuestionCard
+                    key={part.id}
+                    question={part.question}
+                    onSubmit={(answer) =>
+                      onAnswerQuestion(message.id, part.question.id, answer)
+                    }
                   />
                 ),
               )}
@@ -1535,6 +1779,59 @@ function ModelMissingCard({ onConfigure }: { onConfigure: () => void }) {
   );
 }
 
+function FloatingQuestionCard({
+  question,
+  onSubmit,
+}: {
+  question: FloatingQuestionRequest;
+  onSubmit: (answer: string) => void;
+}) {
+  const [answer, setAnswer] = useState(question.answer ?? "");
+  const answered = question.status === "answered" && Boolean(question.answer?.trim());
+
+  return (
+    <div className="rounded-lg border border-amber-200 bg-amber-50/70 p-3 text-sm dark:border-amber-900/70 dark:bg-amber-950/20">
+      <div className="flex items-center gap-2">
+        <span className="rounded bg-amber-100 px-1.5 py-0.5 text-[11px] font-medium text-amber-700 dark:bg-amber-900 dark:text-amber-200">
+          需要补充
+        </span>
+        {question.field ? (
+          <span className="truncate font-mono text-[11px] text-muted-foreground">
+            {question.field}
+          </span>
+        ) : null}
+      </div>
+      <p className="mt-2 text-sm text-foreground">{question.question}</p>
+      {answered ? (
+        <div className="mt-3 rounded-md border border-emerald-200 bg-emerald-50 px-2.5 py-2 text-xs text-emerald-700 dark:border-emerald-900/70 dark:bg-emerald-950/20 dark:text-emerald-200">
+          <span className="font-medium">已回复：</span>
+          {question.answer}
+        </div>
+      ) : (
+        <form
+          className="mt-3 flex gap-2"
+          onSubmit={(event) => {
+            event.preventDefault();
+            if (!answer.trim()) return;
+            onSubmit(answer.trim());
+          }}
+        >
+          <input
+            type="text"
+            value={answer}
+            onChange={(event) => setAnswer(event.target.value)}
+            placeholder="输入补充信息"
+            className="min-w-0 flex-1 rounded-md border bg-background px-2.5 py-1.5 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring"
+          />
+          <Button type="submit" size="sm" disabled={!answer.trim()}>
+            回复
+          </Button>
+        </form>
+      )}
+    </div>
+  );
+}
+
 function FloatingTyping() {
   return (
     <div className="flex gap-2.5">
@@ -1557,6 +1854,7 @@ function FloatingAgentInput({
   setInput,
   isLoading,
   isAwaitingApproval,
+  isAwaitingQuestion,
   modelName,
   editing,
   writeMode,
@@ -1570,6 +1868,7 @@ function FloatingAgentInput({
   setInput: (value: string) => void;
   isLoading: boolean;
   isAwaitingApproval: boolean;
+  isAwaitingQuestion: boolean;
   modelName: string | null;
   editing: boolean;
   writeMode: AgentWriteMode;
@@ -1579,7 +1878,7 @@ function FloatingAgentInput({
   onStop: () => void;
   onSubmit: (event: FormEvent<HTMLFormElement>) => void;
 }) {
-  const disabled = isLoading || isAwaitingApproval;
+  const disabled = isLoading || isAwaitingApproval || isAwaitingQuestion;
   return (
     <form onSubmit={onSubmit} className="shrink-0 border-t p-3">
       {editing ? (
@@ -1603,7 +1902,11 @@ function FloatingAgentInput({
           value={input}
           onChange={(event) => setInput(event.target.value)}
           placeholder={
-            isAwaitingApproval ? "请先应用或忽略修改建议" : "输入消息，Enter 发送"
+            isAwaitingApproval
+              ? "请先应用或忽略修改建议"
+              : isAwaitingQuestion
+                ? "请先回复上方问题"
+                : "输入消息，Enter 发送"
           }
           rows={2}
           disabled={disabled}
@@ -1628,28 +1931,11 @@ function FloatingAgentInput({
               />
               <span className="truncate">{modelName ?? "连接模型"}</span>
             </button>
-            <div
-              role="group"
-              aria-label="修改模式"
-              className="inline-flex h-7 shrink-0 overflow-hidden rounded-full border border-zinc-200 bg-white p-0.5 text-[11px] font-medium dark:border-border dark:bg-background"
-            >
-              {(["direct", "approval"] as const).map((mode) => (
-                <button
-                  key={mode}
-                  type="button"
-                  disabled={disabled}
-                  aria-pressed={writeMode === mode}
-                  onClick={() => onWriteModeChange(mode)}
-                  className={`rounded-full px-2 transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${
-                    writeMode === mode
-                      ? "bg-zinc-900 text-white dark:bg-foreground dark:text-background"
-                      : "text-zinc-500 hover:bg-zinc-100 hover:text-zinc-800 dark:text-muted-foreground dark:hover:bg-muted dark:hover:text-foreground"
-                  }`}
-                >
-                  {mode === "direct" ? "直接修改" : "请求批准"}
-                </button>
-              ))}
-            </div>
+            <FloatingWriteModeMenu
+              writeMode={writeMode}
+              disabled={disabled}
+              onWriteModeChange={onWriteModeChange}
+            />
           </div>
           {isLoading ? (
             <button
@@ -1675,6 +1961,94 @@ function FloatingAgentInput({
     </form>
   );
 }
+
+function FloatingWriteModeMenu({
+  writeMode,
+  disabled,
+  onWriteModeChange,
+}: {
+  writeMode: AgentWriteMode;
+  disabled: boolean;
+  onWriteModeChange: (mode: AgentWriteMode) => void;
+}) {
+  const current = FLOATING_WRITE_MODE_OPTIONS.find((option) => option.value === writeMode)
+    ?? FLOATING_WRITE_MODE_OPTIONS[0];
+  const CurrentIcon = current.icon;
+
+  return (
+    <Popover>
+      <PopoverTrigger
+        render={
+          <button
+            type="button"
+            disabled={disabled}
+            aria-label={`修改模式：${current.label}`}
+            className="inline-flex h-7 max-w-[148px] shrink-0 items-center gap-1.5 rounded-full border border-zinc-200 bg-white px-2.5 text-[11px] font-medium text-zinc-600 shadow-none hover:bg-zinc-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-border dark:bg-background dark:text-muted-foreground"
+          />
+        }
+      >
+        <CurrentIcon className="h-3.5 w-3.5 text-sky-600 dark:text-sky-300" />
+        <span className="truncate">{current.shortLabel}</span>
+        <ChevronDown className="h-3.5 w-3.5" />
+      </PopoverTrigger>
+      <PopoverContent
+        side="top"
+        align="start"
+        sideOffset={8}
+        className="w-72 gap-1 rounded-xl p-1.5"
+      >
+        {FLOATING_WRITE_MODE_OPTIONS.map((option) => {
+          const Icon = option.icon;
+          const selected = option.value === writeMode;
+          return (
+            <button
+              key={option.value}
+              type="button"
+              className="flex w-full items-start gap-3 rounded-lg px-3 py-2.5 text-left transition hover:bg-muted"
+              onClick={() => onWriteModeChange(option.value)}
+            >
+              <Icon className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
+              <span className="min-w-0 flex-1">
+                <span className="block text-sm font-medium text-foreground">
+                  {option.label}
+                </span>
+                <span className="mt-0.5 block text-xs leading-snug text-muted-foreground">
+                  {option.description}
+                </span>
+              </span>
+              {selected ? (
+                <Check className="mt-1 h-4 w-4 shrink-0 text-sky-600" />
+              ) : null}
+            </button>
+          );
+        })}
+      </PopoverContent>
+    </Popover>
+  );
+}
+
+const FLOATING_WRITE_MODE_OPTIONS: Array<{
+  value: AgentWriteMode;
+  label: string;
+  shortLabel: string;
+  description: string;
+  icon: typeof Zap;
+}> = [
+  {
+    value: "direct",
+    label: "直接修改",
+    shortLabel: "直接修改",
+    description: "检测到确定可改的内容时，直接写入左侧简历并自动保存。",
+    icon: Zap,
+  },
+  {
+    value: "approval",
+    label: "请求批准",
+    shortLabel: "请求批准",
+    description: "先生成修改卡片，等你点击应用或忽略后再继续执行。",
+    icon: ShieldCheck,
+  },
+];
 
 function FloatingModelSettingsDialog({
   open,
@@ -2031,11 +2405,39 @@ function upsertFloatingApprovalPart(
   return next;
 }
 
+function upsertFloatingQuestionPart(
+  parts: FloatingAgentMessagePart[],
+  question: FloatingQuestionRequest,
+): FloatingAgentMessagePart[] {
+  const index = parts.findIndex(
+    (part) => part.type === "question" && part.question.id === question.id,
+  );
+  if (index === -1) {
+    return [
+      ...parts,
+      {
+        id: `part_question_${question.id}`,
+        type: "question",
+        question,
+      },
+    ];
+  }
+  const next = [...parts];
+  const existing = next[index];
+  next[index] = {
+    id: existing.id,
+    type: "question",
+    question,
+  };
+  return next;
+}
+
 function finalizeFloatingParts(
   parts: FloatingAgentMessagePart[],
   finalText: string,
   toolCalls: FloatingAgentToolCall[],
   approvalRequests: AgentOperationApprovalRequest[] = [],
+  questions: FloatingQuestionRequest[] = [],
 ): FloatingAgentMessagePart[] {
   let next = parts;
   for (const toolCall of toolCalls) {
@@ -2043,6 +2445,9 @@ function finalizeFloatingParts(
   }
   for (const approvalRequest of approvalRequests) {
     next = upsertFloatingApprovalPart(next, approvalRequest);
+  }
+  for (const question of questions) {
+    next = upsertFloatingQuestionPart(next, question);
   }
   const hasText = next.some((part) => part.type === "text" && part.text.trim());
   if (!hasText && finalText.trim()) {
@@ -2083,6 +2488,11 @@ function normalizeFloatingMessagePart(
     const approvalRequest = normalizeApprovalRequest(record.approvalRequest);
     if (!approvalRequest) return null;
     return { id, type: "approval", approvalRequest };
+  }
+  if (record.type === "question") {
+    const question = normalizeFloatingQuestion(record.question);
+    if (!question) return null;
+    return { id, type: "question", question };
   }
   return null;
 }
@@ -2181,6 +2591,33 @@ function normalizeApprovalRequest(
           : "floatingAgent",
     },
     operation,
+  };
+}
+
+function normalizeFloatingQuestions(value: unknown): FloatingQuestionRequest[] {
+  if (!Array.isArray(value)) return [];
+  return value.flatMap((item) => {
+    const question = normalizeFloatingQuestion(item);
+    return question ? [question] : [];
+  });
+}
+
+function normalizeFloatingQuestion(value: unknown): FloatingQuestionRequest | null {
+  if (!value || typeof value !== "object") return null;
+  const record = value as Record<string, unknown>;
+  if (typeof record.id !== "string" || !record.id.trim()) return null;
+  if (typeof record.question !== "string" || !record.question.trim()) return null;
+  const status = record.status === "answered" ? "answered" : "pending";
+  return {
+    id: record.id.trim(),
+    question: record.question.trim(),
+    ...(typeof record.field === "string" && record.field.trim()
+      ? { field: record.field.trim() }
+      : {}),
+    status,
+    ...(typeof record.answer === "string" && record.answer.trim()
+      ? { answer: record.answer.trim() }
+      : {}),
   };
 }
 

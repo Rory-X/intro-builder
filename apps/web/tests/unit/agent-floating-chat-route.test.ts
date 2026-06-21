@@ -155,7 +155,7 @@ describe("POST /api/agent/floating/chat", () => {
     );
     expect(aiMocks.stepCountIs).toHaveBeenCalledWith(25);
     const streamArgs = aiMocks.streamText.mock.calls[0][0];
-    expect(streamArgs.system).toBeUndefined();
+    expect(streamArgs.system).toContain("调用 askUser 追问");
     expect(JSON.stringify(streamArgs)).not.toContain(hiddenDefaultModel);
     const events = await readSseEvents(response);
     expect(events).toEqual(
@@ -304,6 +304,91 @@ describe("POST /api/agent/floating/chat", () => {
         expect.objectContaining({
           type: "text-delta",
           delta: "不应该在用户确认前继续生成。",
+        }),
+      ]),
+    );
+  });
+
+  it("emits question requests when the floating agent needs user input", async () => {
+    (currentUserId as unknown as Mock).mockResolvedValue("user_123");
+    aiMocks.streamText.mockImplementation((options: {
+      tools: {
+        askUser: {
+          execute: (input: unknown, options: { toolCallId: string }) => Promise<unknown>;
+        };
+      };
+    }) => ({
+      fullStream: (async function* () {
+        const output = await options.tools.askUser.execute(
+          {
+            question: "这个项目最终带来了哪些指标变化？",
+            field: "projects.0.content",
+          },
+          { toolCallId: "tool_question_1" },
+        );
+        yield {
+          type: "tool-result",
+          toolCallId: "tool_question_1",
+          toolName: "askUser",
+          input: { question: "这个项目最终带来了哪些指标变化？" },
+          output,
+        };
+        yield {
+          type: "text-delta",
+          text: "这段不应该在问题卡片后继续出现。",
+        };
+      })(),
+    }));
+
+    const response = await POST(jsonRequest(validBody()));
+
+    expect(response.status).toBe(200);
+    expect(aiMocks.streamText).toHaveBeenCalledWith(
+      expect.objectContaining({
+        tools: expect.objectContaining({
+          askUser: expect.any(Object),
+        }),
+      }),
+    );
+    const events = await readSseEvents(response);
+    expect(events).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          type: "tool-call-result",
+          toolCall: expect.objectContaining({
+            id: "tool_question_1",
+            name: "askUser",
+            status: "completed",
+          }),
+          operations: [],
+        }),
+        expect.objectContaining({
+          type: "question-request",
+          question: expect.objectContaining({
+            id: "floating_question_tool_question_1",
+            question: "这个项目最终带来了哪些指标变化？",
+            field: "projects.0.content",
+          }),
+        }),
+        expect.objectContaining({
+          type: "done",
+          operations: [],
+          approvalRequests: [],
+          questions: [
+            expect.objectContaining({
+              id: "floating_question_tool_question_1",
+              question: "这个项目最终带来了哪些指标变化？",
+              field: "projects.0.content",
+            }),
+          ],
+        }),
+      ]),
+    );
+    expect(events).not.toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          type: "text-delta",
+          delta: "这段不应该在问题卡片后继续出现。",
         }),
       ]),
     );

@@ -9,6 +9,7 @@ vi.mock("@/lib/agent/floating-chat-session-store", () => ({
   listFloatingChatMessages: vi.fn(),
   listFloatingChatSessions: vi.fn(),
   updateFloatingChatMessageApprovalStatus: vi.fn(),
+  updateFloatingChatMessageQuestionAnswer: vi.fn(),
 }));
 
 import {
@@ -28,6 +29,7 @@ import {
   listFloatingChatMessages,
   listFloatingChatSessions,
   updateFloatingChatMessageApprovalStatus,
+  updateFloatingChatMessageQuestionAnswer,
 } from "@/lib/agent/floating-chat-session-store";
 
 describe("floating agent session routes", () => {
@@ -173,6 +175,38 @@ describe("floating agent session routes", () => {
       messageId: "msg_1",
       approvalId: "floating_tool_1",
       status: "approved",
+    });
+    await expect(response.json()).resolves.toEqual({ ok: true });
+  });
+
+  it("persists a floating question card answer in an owned session message", async () => {
+    (currentUserId as unknown as Mock).mockResolvedValue("user_123");
+    (getFloatingChatSession as unknown as Mock).mockResolvedValue({
+      id: "session_1",
+      title: "优化经历",
+      resumeId: "resume_1",
+      updatedAt: new Date("2026-06-18T08:00:00.000Z"),
+    });
+    (updateFloatingChatMessageQuestionAnswer as unknown as Mock).mockResolvedValue(true);
+
+    const response = await updateSession(
+      jsonRequest(
+        {
+          messageId: "msg_1",
+          questionId: "floating_question_tool_1",
+          answer: "转化率提升 18%",
+        },
+        "https://intro.test/api/agent/floating/sessions/session_1",
+      ),
+      routeContext("session_1"),
+    );
+
+    expect(response.status).toBe(200);
+    expect(updateFloatingChatMessageQuestionAnswer).toHaveBeenCalledWith({
+      sessionId: "session_1",
+      messageId: "msg_1",
+      questionId: "floating_question_tool_1",
+      answer: "转化率提升 18%",
     });
     await expect(response.json()).resolves.toEqual({ ok: true });
   });

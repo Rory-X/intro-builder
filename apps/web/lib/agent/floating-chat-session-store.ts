@@ -270,6 +270,56 @@ export async function updateFloatingChatMessageApprovalStatus({
   return false;
 }
 
+export async function updateFloatingChatMessageQuestionAnswer({
+  sessionId,
+  messageId,
+  questionId,
+  answer,
+}: {
+  sessionId: string;
+  messageId?: string | null;
+  questionId: string;
+  answer: string;
+}): Promise<boolean> {
+  const candidates = await db.query.agentFloatingChatMessages.findMany({
+    where: messageId?.trim()
+      ? and(
+          eq(agentFloatingChatMessages.sessionId, sessionId),
+          eq(agentFloatingChatMessages.id, messageId.trim()),
+        )
+      : eq(agentFloatingChatMessages.sessionId, sessionId),
+    columns: {
+      id: true,
+      parts: true,
+    },
+  });
+
+  for (const row of candidates) {
+    const nextParts = updateQuestionAnswerInParts(
+      row.parts ?? [],
+      questionId,
+      answer,
+    );
+    if (!nextParts) continue;
+    await db
+      .update(agentFloatingChatMessages)
+      .set({ parts: nextParts })
+      .where(
+        and(
+          eq(agentFloatingChatMessages.sessionId, sessionId),
+          eq(agentFloatingChatMessages.id, row.id),
+        ),
+      );
+    await db
+      .update(agentFloatingChatSessions)
+      .set({ updatedAt: new Date() })
+      .where(eq(agentFloatingChatSessions.id, sessionId));
+    return true;
+  }
+
+  return false;
+}
+
 function updateApprovalStatusInParts(
   parts: Array<Record<string, unknown>>,
   approvalId: string,
@@ -285,6 +335,28 @@ function updateApprovalStatusInParts(
       approvalRequest: {
         ...part.approvalRequest,
         status,
+      },
+    };
+  });
+  return changed ? nextParts : null;
+}
+
+function updateQuestionAnswerInParts(
+  parts: Array<Record<string, unknown>>,
+  questionId: string,
+  answer: string,
+) {
+  let changed = false;
+  const nextParts = parts.map((part) => {
+    if (part.type !== "question" || !isRecord(part.question)) return part;
+    if (part.question.id !== questionId) return part;
+    changed = true;
+    return {
+      ...part,
+      question: {
+        ...part.question,
+        status: "answered",
+        answer,
       },
     };
   });
