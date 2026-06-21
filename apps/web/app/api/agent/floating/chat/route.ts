@@ -27,6 +27,8 @@ type FloatingChatBody = {
   context?: unknown;
   modelConfig?: AgentModelConfig;
   writeMode?: AgentWriteMode;
+  approvalDecisions?: FloatingApprovalDecision[];
+  persistLastUserMessage?: boolean;
 };
 
 type FloatingSectionToolArgs = {
@@ -57,12 +59,14 @@ type FloatingToolCall = {
 type ExecutedFloatingToolCall = {
   toolCall: FloatingToolCall;
   operation: ResumeOperation | null;
+  question?: FloatingQuestionRequest;
 };
 
 type FloatingMessagePart =
   | { id: string; type: "text"; text: string }
   | { id: string; type: "tool"; toolCall: FloatingToolCall }
-  | { id: string; type: "approval"; approvalRequest: AgentOperationApprovalRequest };
+  | { id: string; type: "approval"; approvalRequest: AgentOperationApprovalRequest }
+  | { id: string; type: "question"; question: FloatingQuestionRequest };
 
 type FloatingStreamPart = {
   type: string;
@@ -85,6 +89,24 @@ const floatingAnalyzeJobMatchArgsSchema = z.object({
 const floatingReadToolArgsSchema = z.object({
   fieldPath: z.string().optional(),
 });
+
+const floatingAskUserArgsSchema = z.object({
+  question: z.string().min(1).describe("向用户提出的具体问题"),
+  field: z.string().optional().describe("关联的简历字段路径，例如 projects.0.content"),
+});
+
+type FloatingQuestionRequest = {
+  id: string;
+  question: string;
+  field?: string;
+  status: "pending" | "answered";
+  answer?: string;
+};
+
+type FloatingApprovalDecision = {
+  approvalId: string;
+  approved: boolean;
+};
 
 const floatingCommonSemanticArgsSchema = {
   beforePlainText: z.string().optional(),
@@ -343,7 +365,10 @@ export async function POST(req: Request) {
     return Response.json({ error: "会话不属于当前简历" }, { status: 403 });
   }
   const lastUserMessage = [...userMessages].reverse().find((message) => message.role === "user");
-  if (session && lastUserMessage?.content.trim()) {
+  const approvalDecisions = normalizeFloatingApprovalDecisions(body.approvalDecisions);
+  const shouldPersistLastUserMessage =
+    body.persistLastUserMessage !== false && approvalDecisions.length === 0;
+  if (session && lastUserMessage?.content.trim() && shouldPersistLastUserMessage) {
     if (session.title === "新对话") {
       await renameFloatingChatSession({
         sessionId: session.id,
@@ -370,12 +395,14 @@ export async function POST(req: Request) {
   const result = streamText({
     model,
     temperature: 0.2,
+    system: buildFloatingSystemPrompt({ writeMode, approvalDecisions }),
     messages: [
       ...userMessages,
     ],
     stopWhen: stepCountIs(25),
     tools: {
       readResume: createReadResumeTool(executedToolCalls, body.context),
+      askUser: createAskUserTool(executedToolCalls),
       updateBasicsBlock: createBasicsBlockTool(executedToolCalls, writeMode),
       writeSkillsSection: createSingletonRichTextTool({
         executedToolCalls,
@@ -629,6 +656,51 @@ function readFloatingWriteMode(value: unknown): AgentWriteMode {
   return value === "approval" ? "approval" : "direct";
 }
 
+function buildFloatingSystemPrompt({
+  writeMode,
+  approvalDecisions,
+}: {
+  writeMode: AgentWriteMode;
+  approvalDecisions: FloatingApprovalDecision[];
+}) {
+  const lines = [
+    "你是 intro-builder 的简历优化助手，正在 floating 对话中帮助用户编辑简历。",
+    "先读取简历上下文，再决定要追问、诊断还是修改。",
+    "只依据用户提供的事实写作；缺少目标岗位、项目结果、量化指标、公司/学校等关键事实时，调用 askUser 追问，不要编造。",
+    "富文本内容工具参数使用纯文本、换行或列表符号，不要输出 HTML 标签。",
+    writeMode === "approval"
+      ? "当前为请求批准模式：提出修改建议后等待用户应用或忽略。"
+      : "当前为直接修改模式：可以直接应用确定的修改。",
+  ];
+  if (approvalDecisions.length > 0) {
+    const approved = approvalDecisions
+      .filter((decision) => decision.approved)
+      .map((decision) => decision.approvalId);
+    const rejected = approvalDecisions
+      .filter((decision) => !decision.approved)
+      .map((decision) => decision.approvalId);
+    lines.push("用户刚刚审核了上一批修改建议，请继续同一个任务。");
+    if (approved.length > 0) lines.push(`已应用：${approved.join(", ")}`);
+    if (rejected.length > 0) lines.push(`已忽略：${rejected.join(", ")}。不要重复提出已忽略的建议。`);
+  }
+  return lines.join("\n");
+}
+
+function normalizeFloatingApprovalDecisions(
+  value: unknown,
+): FloatingApprovalDecision[] {
+  if (!Array.isArray(value)) return [];
+  return value.flatMap((item) => {
+    if (!item || typeof item !== "object") return [];
+    const record = item as Record<string, unknown>;
+    if (typeof record.approvalId !== "string" || !record.approvalId.trim()) {
+      return [];
+    }
+    if (typeof record.approved !== "boolean") return [];
+    return [{ approvalId: record.approvalId.trim(), approved: record.approved }];
+  });
+}
+
 function createReadResumeTool(
   executedToolCalls: ExecutedFloatingToolCall[],
   context: unknown,
@@ -654,6 +726,45 @@ function createReadResumeTool(
           summary: args.fieldPath?.trim()
             ? `读取 ${args.fieldPath.trim()}`
             : "读取简历上下文",
+          input: args,
+          output,
+        },
+      });
+      return output;
+    },
+  });
+}
+
+function createAskUserTool(executedToolCalls: ExecutedFloatingToolCall[]) {
+  return tool({
+    description:
+      "Ask the user for missing facts, target role, preference, or approval context. Use this instead of guessing.",
+    inputSchema: floatingAskUserArgsSchema,
+    execute: async (
+      args: z.infer<typeof floatingAskUserArgsSchema>,
+      options: { toolCallId?: string },
+    ) => {
+      const toolCallId = options.toolCallId ?? createToolCallId();
+      const question: FloatingQuestionRequest = {
+        id: `floating_question_${toolCallId}`,
+        question: args.question.trim(),
+        ...(args.field?.trim() ? { field: args.field.trim() } : {}),
+        status: "pending",
+      };
+      const output = {
+        success: true,
+        questionId: question.id,
+        question: question.question,
+        field: question.field ?? null,
+      };
+      executedToolCalls.push({
+        operation: null,
+        question,
+        toolCall: {
+          id: toolCallId,
+          name: "askUser",
+          status: "completed",
+          summary: question.question,
           input: args,
           output,
         },
@@ -1462,6 +1573,7 @@ function createFloatingChatEventStream({
       let messageParts: FloatingMessagePart[] = [];
       const toolCalls = new Map<string, FloatingToolCall>();
       const approvalRequests = new Map<string, AgentOperationApprovalRequest>();
+      const questions = new Map<string, FloatingQuestionRequest>();
       const inputBuffers = new Map<string, string>();
       const send = (event: Record<string, unknown>) => {
         controller.enqueue(encoder.encode(`data: ${JSON.stringify(event)}\n\n`));
@@ -1485,9 +1597,12 @@ function createFloatingChatEventStream({
           .filter((operation): operation is ResumeOperation => operation !== null);
         const directOperations = writeMode === "approval" ? [] : operations;
         const responseApprovalRequests = [...approvalRequests.values()];
+        const responseQuestions = [...questions.values()];
         const finalMessage =
           assistantMessage.trim() ||
-          (writeMode === "approval" && responseApprovalRequests.length > 0
+          (responseQuestions.length > 0
+            ? "我需要先补充一个信息，回答后我会继续。"
+            : writeMode === "approval" && responseApprovalRequests.length > 0
             ? `我整理了 ${responseApprovalRequests.length} 条修改建议，请确认后应用。`
             : operations.length > 0
               ? `已根据你的要求修改 ${operations.length} 处简历内容。`
@@ -1496,6 +1611,7 @@ function createFloatingChatEventStream({
           messageParts,
           finalMessage,
           responseToolCalls,
+          responseQuestions,
         );
 
         if (sessionId && (finalMessage.trim() || responseToolCalls.length > 0)) {
@@ -1514,6 +1630,7 @@ function createFloatingChatEventStream({
           message: finalMessage,
           operations: directOperations,
           approvalRequests: responseApprovalRequests,
+          questions: responseQuestions,
           toolCalls: responseToolCalls,
           parts: finalParts,
         });
@@ -1581,6 +1698,17 @@ function createFloatingChatEventStream({
               input: executed?.toolCall.input ?? part.input,
               output: executed?.toolCall.output ?? part.output,
             };
+            if (executed?.question) {
+              questions.set(executed.question.id, executed.question);
+              messageParts = upsertFloatingMessageQuestionPart(
+                messageParts,
+                executed.question,
+              );
+              sendToolEvent("tool-call-result", toolCall, []);
+              send({ type: "question-request", question: executed.question });
+              await finishResponse();
+              return;
+            }
             if (executed?.operation && writeMode === "approval") {
               const approvalRequest = createApprovalRequest(
                 executed.operation,
@@ -1774,14 +1902,44 @@ function upsertFloatingMessageApprovalPart(
   return next;
 }
 
+function upsertFloatingMessageQuestionPart(
+  parts: FloatingMessagePart[],
+  question: FloatingQuestionRequest,
+): FloatingMessagePart[] {
+  const index = parts.findIndex(
+    (part) => part.type === "question" && part.question.id === question.id,
+  );
+  if (index === -1) {
+    return [
+      ...parts,
+      {
+        id: `part_question_${question.id}`,
+        type: "question",
+        question,
+      },
+    ];
+  }
+  const next = [...parts];
+  next[index] = {
+    id: next[index].id,
+    type: "question",
+    question,
+  };
+  return next;
+}
+
 function finalizeFloatingMessageParts(
   parts: FloatingMessagePart[],
   finalText: string,
   toolCalls: FloatingToolCall[],
+  questions: FloatingQuestionRequest[] = [],
 ): FloatingMessagePart[] {
   let next = parts;
   for (const toolCall of toolCalls) {
     next = upsertFloatingMessageToolPart(next, toolCall);
+  }
+  for (const question of questions) {
+    next = upsertFloatingMessageQuestionPart(next, question);
   }
   const hasText = next.some((part) => part.type === "text" && part.text.trim());
   if (!hasText && finalText.trim()) {

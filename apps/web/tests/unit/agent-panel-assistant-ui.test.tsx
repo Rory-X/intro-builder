@@ -103,7 +103,7 @@ describe("AgentPanel assistant-ui runtime", () => {
 
     expect(screen.queryByRole("button", { name: "返回编辑" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "前端工程师" })).not.toBeInTheDocument();
-    expect(screen.queryByText("前端工程师")).not.toBeInTheDocument();
+    expect(screen.getByText("前端工程师")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "历史对话" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "新对话" })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "模型设置" })).not.toBeInTheDocument();
@@ -492,11 +492,10 @@ describe("AgentPanel assistant-ui runtime", () => {
     await waitFor(() => {
       expect(findOptionalFetchCall(fetchMock, "/api/agent/floating/sessions/session_1")).toBeTruthy();
     });
-    fireEvent.click(screen.getByRole("button", { name: "请求批准" }));
+    switchFloatingWriteMode("请求批准");
     sendMessage("请优化最近经历，但先让我确认");
     await stream.ready;
-    expect(screen.getByRole("button", { name: "直接修改" })).toBeDisabled();
-    expect(screen.getByRole("button", { name: "请求批准" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "修改模式：请求批准" })).toBeDisabled();
 
     const chatCall = findFetchCall(fetchMock, "/api/agent/floating/chat");
     expect(JSON.parse(String(chatCall[1]?.body))).toEqual(
@@ -584,7 +583,7 @@ describe("AgentPanel assistant-ui runtime", () => {
     await waitFor(() => {
       expect(findOptionalFetchCall(fetchMock, "/api/agent/floating/sessions/session_1")).toBeTruthy();
     });
-    fireEvent.click(screen.getByRole("button", { name: "请求批准" }));
+    switchFloatingWriteMode("请求批准");
     sendMessage("请补充技能，但等我确认");
     await firstStream.ready;
 
@@ -617,8 +616,18 @@ describe("AgentPanel assistant-ui runtime", () => {
     const continueBody = JSON.parse(String(chatCalls[1][1]?.body));
     expect(continueBody.messages.at(-1)).toEqual({
       role: "assistant",
-      content: expect.stringContaining("已批准并应用：floating_tool_approval_continue"),
+      content: "我准备更新技能。",
     });
+    expect(continueBody.messages).not.toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          content: expect.stringContaining("已批准并应用"),
+        }),
+      ]),
+    );
+    expect(continueBody.approvalDecisions).toEqual([
+      { approvalId: "floating_tool_approval_continue", approved: true },
+    ]);
     expect(applyOperation).toHaveBeenCalledWith(operation);
     expect(flushAutosave).toHaveBeenCalledTimes(1);
 
@@ -689,7 +698,7 @@ describe("AgentPanel assistant-ui runtime", () => {
     await waitFor(() => {
       expect(findOptionalFetchCall(fetchMock, "/api/agent/floating/sessions/session_1")).toBeTruthy();
     });
-    fireEvent.click(screen.getByRole("button", { name: "请求批准" }));
+    switchFloatingWriteMode("请求批准");
     sendMessage("请补充技能，但这条我可能不要");
     await firstStream.ready;
 
@@ -718,8 +727,18 @@ describe("AgentPanel assistant-ui runtime", () => {
     const continueBody = JSON.parse(String(chatCalls[1][1]?.body));
     expect(continueBody.messages.at(-1)).toEqual({
       role: "assistant",
-      content: expect.stringContaining("已忽略：floating_tool_approval_ignore"),
+      content: "我准备更新技能。",
     });
+    expect(continueBody.messages).not.toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          content: expect.stringContaining("已忽略"),
+        }),
+      ]),
+    );
+    expect(continueBody.approvalDecisions).toEqual([
+      { approvalId: "floating_tool_approval_ignore", approved: false },
+    ]);
     expect(applyOperation).not.toHaveBeenCalled();
 
     await secondStream.ready;
@@ -1486,7 +1505,7 @@ describe("AgentPanel assistant-ui runtime", () => {
     expect(await screen.findByText("请优化项目经历")).toBeInTheDocument();
     expect(screen.getByText("已优化项目经历。")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "历史对话" }));
-    expect(screen.getByText("历史优化")).toBeInTheDocument();
+    expect(screen.getAllByText("历史优化").length).toBeGreaterThan(0);
   });
 
   it("renders floating assistant markdown as rich message content", async () => {
@@ -2950,6 +2969,13 @@ function findFetchCall(fetchMock: FetchMock, url: string) {
 
 function findOptionalFetchCall(fetchMock: FetchMock, url: string) {
   return fetchMock.mock.calls.find(([calledUrl]) => String(calledUrl) === url) ?? null;
+}
+
+function switchFloatingWriteMode(label: "直接修改" | "请求批准") {
+  fireEvent.click(screen.getByRole("button", { name: /修改模式：/ }));
+  const option = screen.getByText(label).closest("button");
+  if (!option) throw new Error(`Missing floating write mode option: ${label}`);
+  fireEvent.click(option);
 }
 
 function expectNodeBefore(first: Element, second: Element) {

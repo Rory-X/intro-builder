@@ -4,6 +4,7 @@ import {
   getFloatingChatSession,
   listFloatingChatMessages,
   updateFloatingChatMessageApprovalStatus,
+  updateFloatingChatMessageQuestionAnswer,
 } from "@/lib/agent/floating-chat-session-store";
 import type { AgentOperationApprovalRequest } from "@intro-builder/shared/types";
 
@@ -79,19 +80,41 @@ export async function PATCH(
 
   const body = await req.json().catch(() => null);
   const approvalUpdate = parseApprovalStatusUpdate(body);
-  if (!approvalUpdate) {
+  const questionAnswer = parseQuestionAnswerUpdate(body);
+  if (!approvalUpdate && !questionAnswer) {
     return Response.json({ error: "参数不完整" }, { status: 400 });
   }
 
-  const ok = await updateFloatingChatMessageApprovalStatus({
-    sessionId,
-    ...approvalUpdate,
-  });
+  const ok = approvalUpdate
+    ? await updateFloatingChatMessageApprovalStatus({
+        sessionId,
+        ...approvalUpdate,
+      })
+    : await updateFloatingChatMessageQuestionAnswer({
+        sessionId,
+        ...questionAnswer!,
+      });
   if (!ok) {
-    return Response.json({ error: "修改建议不存在" }, { status: 404 });
+    return Response.json({ error: "消息卡片不存在" }, { status: 404 });
   }
 
   return Response.json({ ok: true });
+}
+
+function parseQuestionAnswerUpdate(value: unknown): {
+  messageId: string | null;
+  questionId: string;
+  answer: string;
+} | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const record = value as Record<string, unknown>;
+  if (typeof record.questionId !== "string" || !record.questionId.trim()) return null;
+  if (typeof record.answer !== "string" || !record.answer.trim()) return null;
+  return {
+    messageId: typeof record.messageId === "string" ? record.messageId : null,
+    questionId: record.questionId.trim(),
+    answer: record.answer.trim(),
+  };
 }
 
 function parseApprovalStatusUpdate(value: unknown): {
