@@ -303,7 +303,10 @@ export function AgentBubble({
             <MessageSquare className="h-4 w-4 shrink-0" />
             <span className="truncate text-sm font-semibold">{title}</span>
           </div>
-          <div className="flex items-center gap-1">
+          <div
+            className="flex items-center gap-1"
+            onPointerDown={(event) => event.stopPropagation()}
+          >
             {onDockToPanel ? (
               <button
                 type="button"
