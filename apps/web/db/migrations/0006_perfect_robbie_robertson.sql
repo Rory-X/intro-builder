@@ -1,4 +1,4 @@
-ALTER TABLE "templates" DROP COLUMN "source";--> statement-breakpoint
-ALTER TABLE "templates" DROP COLUMN "decoration";--> statement-breakpoint
-ALTER TABLE "templates" DROP COLUMN "customHtml";--> statement-breakpoint
-ALTER TABLE "templates" DROP COLUMN "customCss";
+ALTER TABLE "templates" DROP COLUMN IF EXISTS "source";--> statement-breakpoint
+ALTER TABLE "templates" DROP COLUMN IF EXISTS "decoration";--> statement-breakpoint
+ALTER TABLE "templates" DROP COLUMN IF EXISTS "customHtml";--> statement-breakpoint
+ALTER TABLE "templates" DROP COLUMN IF EXISTS "customCss";
