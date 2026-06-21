@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { diffWords } from "diff";
 import { ChevronDown, ChevronUp } from "lucide-react";
 
@@ -21,15 +21,10 @@ export function AgentConfirmationCard({
   onApply: (operation: ResumeOperation) => void;
   onReject: (operationId: string) => void;
 }) {
-  const [resolved, setResolved] = useState<"applied" | "ignored" | null>(
-    resolvedStateForStatus(status),
-  );
+  const persistedResolved = resolvedStateForStatus(status);
+  const [localResolved, setLocalResolved] = useState<"applied" | "ignored" | null>(null);
+  const resolved = persistedResolved ?? localResolved;
   const [showFullText, setShowFullText] = useState(false);
-
-  useEffect(() => {
-    const nextResolved = resolvedStateForStatus(status);
-    if (nextResolved) setResolved(nextResolved);
-  }, [status]);
 
   const changes = diffWords(operation.beforePlainText, operation.afterPlainText);
 
@@ -124,7 +119,7 @@ export function AgentConfirmationCard({
           disabled={resolved !== null}
           onClick={() => {
             onApply(operation);
-            setResolved("applied");
+            setLocalResolved("applied");
           }}
         >
           应用
@@ -136,7 +131,7 @@ export function AgentConfirmationCard({
           disabled={resolved !== null}
           onClick={() => {
             onReject(operation.id);
-            setResolved("ignored");
+            setLocalResolved("ignored");
           }}
         >
           忽略
