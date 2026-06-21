@@ -1895,7 +1895,7 @@ function FloatingAgentInput({
       ) : null}
       <div
         data-testid="agent-assistant-ui-composer-shell"
-        className="rounded-2xl border border-zinc-200 bg-zinc-50/50 transition-colors focus-within:border-zinc-300 focus-within:bg-white dark:border-border dark:bg-muted/20 dark:focus-within:bg-background"
+        className="isolate overflow-hidden rounded-2xl bg-white ring-1 ring-inset ring-zinc-200 transition-colors focus-within:bg-white focus-within:ring-zinc-300 dark:bg-background dark:ring-border"
       >
         <textarea
           data-testid="agent-assistant-ui-composer-input"
