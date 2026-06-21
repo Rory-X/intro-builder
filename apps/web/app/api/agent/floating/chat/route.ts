@@ -1455,6 +1455,49 @@ function createFloatingChatEventStream({
         messageParts = upsertFloatingMessageToolPart(messageParts, toolCall);
         send({ type, toolCall, operations });
       };
+      const finishResponse = async () => {
+        const responseToolCalls = mergeToolCalls(
+          [...toolCalls.values()],
+          executedToolCalls.map(({ toolCall }) => toolCall),
+        );
+        const operations = executedToolCalls
+          .map(({ operation }) => operation)
+          .filter((operation): operation is ResumeOperation => operation !== null);
+        const directOperations = writeMode === "approval" ? [] : operations;
+        const responseApprovalRequests = [...approvalRequests.values()];
+        const finalMessage =
+          assistantMessage.trim() ||
+          (writeMode === "approval" && responseApprovalRequests.length > 0
+            ? `我整理了 ${responseApprovalRequests.length} 条修改建议，请确认后应用。`
+            : operations.length > 0
+              ? `已根据你的要求修改 ${operations.length} 处简历内容。`
+              : "我已经检查完这份简历。");
+        const finalParts = finalizeFloatingMessageParts(
+          messageParts,
+          finalMessage,
+          responseToolCalls,
+        );
+
+        if (sessionId && (finalMessage.trim() || responseToolCalls.length > 0)) {
+          await appendFloatingChatMessage({
+            sessionId,
+            role: "assistant",
+            content: finalMessage,
+            toolCalls: persistedToolCalls(responseToolCalls),
+            operations: directOperations,
+            parts: finalParts,
+          });
+        }
+
+        send({
+          type: "done",
+          message: finalMessage,
+          operations: directOperations,
+          approvalRequests: responseApprovalRequests,
+          toolCalls: responseToolCalls,
+          parts: finalParts,
+        });
+      };
 
       try {
         for await (const part of fullStream) {
@@ -1530,6 +1573,8 @@ function createFloatingChatEventStream({
               );
               sendToolEvent("tool-call-result", toolCall, []);
               send({ type: "approval-request", approvalRequest });
+              await finishResponse();
+              return;
             } else {
               sendToolEvent(
                 "tool-call-result",
@@ -1563,47 +1608,7 @@ function createFloatingChatEventStream({
           }
         }
 
-        const responseToolCalls = mergeToolCalls(
-          [...toolCalls.values()],
-          executedToolCalls.map(({ toolCall }) => toolCall),
-        );
-        const operations = executedToolCalls
-          .map(({ operation }) => operation)
-          .filter((operation): operation is ResumeOperation => operation !== null);
-        const directOperations = writeMode === "approval" ? [] : operations;
-        const responseApprovalRequests = [...approvalRequests.values()];
-        const finalMessage =
-          assistantMessage.trim() ||
-          (writeMode === "approval" && responseApprovalRequests.length > 0
-            ? `我整理了 ${responseApprovalRequests.length} 条修改建议，请确认后应用。`
-            : operations.length > 0
-              ? `已根据你的要求修改 ${operations.length} 处简历内容。`
-            : "我已经检查完这份简历。");
-        const finalParts = finalizeFloatingMessageParts(
-          messageParts,
-          finalMessage,
-          responseToolCalls,
-        );
-
-        if (sessionId && (finalMessage.trim() || responseToolCalls.length > 0)) {
-          await appendFloatingChatMessage({
-            sessionId,
-            role: "assistant",
-            content: finalMessage,
-            toolCalls: persistedToolCalls(responseToolCalls),
-            operations: directOperations,
-            parts: finalParts,
-          });
-        }
-
-        send({
-          type: "done",
-          message: finalMessage,
-          operations: directOperations,
-          approvalRequests: responseApprovalRequests,
-          toolCalls: responseToolCalls,
-          parts: finalParts,
-        });
+        await finishResponse();
       } catch (error) {
         send({
           type: "error",

@@ -470,9 +470,16 @@ describe("AgentPanel assistant-ui runtime", () => {
       operation,
     };
     const stream = createControlledFloatingStream();
+    let chatCount = 0;
     const fetchMock = floatingSessionFetch(async (url) => {
       if (url === "/api/agent/floating/chat") {
-        return stream.response;
+        chatCount += 1;
+        if (chatCount === 1) return stream.response;
+        return Response.json({
+          message: "收到确认，我继续处理。",
+          operations: [],
+          toolCalls: [],
+        });
       }
       return null;
     });
@@ -518,9 +525,219 @@ describe("AgentPanel assistant-ui runtime", () => {
 
     expect(applyOperation).toHaveBeenCalledWith(operation);
     expect(flushAutosave).toHaveBeenCalledTimes(1);
+    await waitFor(() => {
+      expect(
+        fetchMock.mock.calls.filter(([url]) => String(url) === "/api/agent/floating/chat"),
+      ).toHaveLength(2);
+    });
+  });
+
+  it("continues a floating approval run after the user applies the approval card", async () => {
+    window.localStorage.setItem(
+      "intro-builder.agent.model-settings.v1",
+      JSON.stringify({
+        baseUrl: "https://models.example.test/v1",
+        modelName: "gpt-4.1-mini",
+      }),
+    );
+    window.sessionStorage.setItem(
+      "intro-builder.agent.model-api-key.v1",
+      "sk-local-test",
+    );
+    const operation = {
+      id: "floating_tool_approval_continue",
+      toolCallId: "tool_approval_continue",
+      label: "更新技能",
+      section: "skills",
+      fieldPath: "skills",
+      operation: "update_section",
+      beforePlainText: "",
+      afterPlainText: "Vue、TypeScript、Node.js",
+      changeSummary: "补充前端技能栈。",
+      riskFlags: [],
+    };
+    const approvalRequest = {
+      id: operation.id,
+      status: "pending",
+      reason: "approval_required",
+      message: "补充前端技能栈。",
+      toolCallId: operation.toolCallId,
+      source: { kind: "tool", name: "suggestSkills" },
+      operation,
+    };
+    const firstStream = createControlledFloatingStream();
+    const secondStream = createControlledFloatingStream();
+    let chatCount = 0;
+    const fetchMock = floatingSessionFetch(async (url) => {
+      if (url === "/api/agent/floating/chat") {
+        chatCount += 1;
+        return chatCount === 1 ? firstStream.response : secondStream.response;
+      }
+      return null;
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const applyOperation = vi.fn();
+    const flushAutosave = vi.fn();
+
+    render(<FloatingAgentChat {...floatingProps({ applyOperation, flushAutosave })} />);
+
+    await waitFor(() => {
+      expect(findOptionalFetchCall(fetchMock, "/api/agent/floating/sessions/session_1")).toBeTruthy();
+    });
+    fireEvent.click(screen.getByRole("button", { name: "请求批准" }));
+    sendMessage("请补充技能，但等我确认");
+    await firstStream.ready;
+
+    firstStream.push({ type: "text-delta", delta: "我准备更新技能。" });
+    firstStream.push({ type: "approval-request", approvalRequest });
+    firstStream.push({
+      type: "done",
+      message: "我准备更新技能。",
+      operations: [],
+      approvalRequests: [approvalRequest],
+      toolCalls: [],
+    });
+    firstStream.close();
+
+    expect(await screen.findByText("补充前端技能栈。")).toBeInTheDocument();
     expect(
       fetchMock.mock.calls.filter(([url]) => String(url) === "/api/agent/floating/chat"),
     ).toHaveLength(1);
+
+    fireEvent.click(screen.getByRole("button", { name: "应用" }));
+
+    await waitFor(() => {
+      expect(
+        fetchMock.mock.calls.filter(([url]) => String(url) === "/api/agent/floating/chat"),
+      ).toHaveLength(2);
+    });
+    const chatCalls = fetchMock.mock.calls.filter(
+      ([url]) => String(url) === "/api/agent/floating/chat",
+    );
+    const continueBody = JSON.parse(String(chatCalls[1][1]?.body));
+    expect(continueBody.messages.at(-1)).toEqual({
+      role: "assistant",
+      content: expect.stringContaining("已批准并应用：floating_tool_approval_continue"),
+    });
+    expect(applyOperation).toHaveBeenCalledWith(operation);
+    expect(flushAutosave).toHaveBeenCalledTimes(1);
+
+    await secondStream.ready;
+    secondStream.push({
+      type: "text-delta",
+      delta: "收到确认，我继续检查其余模块。",
+    });
+    secondStream.push({
+      type: "done",
+      message: "收到确认，我继续检查其余模块。",
+      operations: [],
+      toolCalls: [],
+    });
+    secondStream.close();
+
+    expect(await screen.findByText("收到确认，我继续检查其余模块。")).toBeInTheDocument();
+  });
+
+  it("continues a floating approval run after the user ignores the approval card", async () => {
+    window.localStorage.setItem(
+      "intro-builder.agent.model-settings.v1",
+      JSON.stringify({
+        baseUrl: "https://models.example.test/v1",
+        modelName: "gpt-4.1-mini",
+      }),
+    );
+    window.sessionStorage.setItem(
+      "intro-builder.agent.model-api-key.v1",
+      "sk-local-test",
+    );
+    const operation = {
+      id: "floating_tool_approval_ignore",
+      toolCallId: "tool_approval_ignore",
+      label: "更新技能",
+      section: "skills",
+      fieldPath: "skills",
+      operation: "update_section",
+      beforePlainText: "",
+      afterPlainText: "Vue、TypeScript、Node.js",
+      changeSummary: "补充前端技能栈。",
+      riskFlags: [],
+    };
+    const approvalRequest = {
+      id: operation.id,
+      status: "pending",
+      reason: "approval_required",
+      message: "补充前端技能栈。",
+      toolCallId: operation.toolCallId,
+      source: { kind: "tool", name: "suggestSkills" },
+      operation,
+    };
+    const firstStream = createControlledFloatingStream();
+    const secondStream = createControlledFloatingStream();
+    let chatCount = 0;
+    const fetchMock = floatingSessionFetch(async (url) => {
+      if (url === "/api/agent/floating/chat") {
+        chatCount += 1;
+        return chatCount === 1 ? firstStream.response : secondStream.response;
+      }
+      return null;
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const applyOperation = vi.fn();
+
+    render(<FloatingAgentChat {...floatingProps({ applyOperation })} />);
+
+    await waitFor(() => {
+      expect(findOptionalFetchCall(fetchMock, "/api/agent/floating/sessions/session_1")).toBeTruthy();
+    });
+    fireEvent.click(screen.getByRole("button", { name: "请求批准" }));
+    sendMessage("请补充技能，但这条我可能不要");
+    await firstStream.ready;
+
+    firstStream.push({ type: "text-delta", delta: "我准备更新技能。" });
+    firstStream.push({ type: "approval-request", approvalRequest });
+    firstStream.push({
+      type: "done",
+      message: "我准备更新技能。",
+      operations: [],
+      approvalRequests: [approvalRequest],
+      toolCalls: [],
+    });
+    firstStream.close();
+
+    expect(await screen.findByText("补充前端技能栈。")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "忽略" }));
+
+    await waitFor(() => {
+      expect(
+        fetchMock.mock.calls.filter(([url]) => String(url) === "/api/agent/floating/chat"),
+      ).toHaveLength(2);
+    });
+    const chatCalls = fetchMock.mock.calls.filter(
+      ([url]) => String(url) === "/api/agent/floating/chat",
+    );
+    const continueBody = JSON.parse(String(chatCalls[1][1]?.body));
+    expect(continueBody.messages.at(-1)).toEqual({
+      role: "assistant",
+      content: expect.stringContaining("已忽略：floating_tool_approval_ignore"),
+    });
+    expect(applyOperation).not.toHaveBeenCalled();
+
+    await secondStream.ready;
+    secondStream.push({
+      type: "text-delta",
+      delta: "收到，我跳过这条建议继续看其他问题。",
+    });
+    secondStream.push({
+      type: "done",
+      message: "收到，我跳过这条建议继续看其他问题。",
+      operations: [],
+      toolCalls: [],
+    });
+    secondStream.close();
+
+    expect(
+      await screen.findByText("收到，我跳过这条建议继续看其他问题。"),
+    ).toBeInTheDocument();
   });
 
   it("streams floating assistant deltas before applying final tool operations", async () => {
