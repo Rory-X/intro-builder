@@ -246,6 +246,10 @@ describe("POST /api/agent/floating/chat", () => {
           },
           output: { success: true },
         };
+        yield {
+          type: "text-delta",
+          text: "不应该在用户确认前继续生成。",
+        };
       })(),
     }));
 
@@ -292,6 +296,14 @@ describe("POST /api/agent/floating/chat", () => {
               status: "pending",
             }),
           ],
+        }),
+      ]),
+    );
+    expect(events).not.toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          type: "text-delta",
+          delta: "不应该在用户确认前继续生成。",
         }),
       ]),
     );

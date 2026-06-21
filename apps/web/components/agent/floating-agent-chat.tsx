@@ -83,6 +83,15 @@ type FloatingAgentToolCall = {
   errorText?: string;
 };
 
+type FloatingApprovalContinuation = {
+  titleSource: string;
+};
+
+type FloatingApprovalDecision = {
+  approvalId: string;
+  approved: boolean;
+};
+
 type AgentModelSettingsForm = {
   baseUrl: string;
   apiKey: string;
@@ -136,12 +145,19 @@ export function FloatingAgentChat({
   const [historyOpen, setHistoryOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [editingMessageId, setEditingMessageId] = useState<string | null>(null);
+  const [pendingApprovalMessageIds, setPendingApprovalMessageIds] = useState<
+    Set<string>
+  >(() => new Set());
   const [modelSettings, setModelSettings] = useState<AgentModelSettingsForm>(
     () => emptyModelSettings(),
   );
   const [writeMode, setWriteModeState] = useState<AgentWriteMode>("direct");
   const scrollRef = useRef<HTMLDivElement>(null);
+  const messagesRef = useRef<FloatingAgentMessage[]>([]);
   const requestAbortControllerRef = useRef<AbortController | null>(null);
+  const pendingApprovalContinuationsRef = useRef(
+    new Map<string, FloatingApprovalContinuation>(),
+  );
   const modelConfig = useMemo(
     () => toAgentModelConfig(modelSettings),
     [modelSettings],
@@ -158,6 +174,19 @@ export function FloatingAgentChat({
     }
     return null;
   }, [messages]);
+  const hasPendingApprovalContinuation = useMemo(
+    () =>
+      messages.some(
+        (message) =>
+          pendingApprovalMessageIds.has(message.id) &&
+          hasPendingApprovalParts(message),
+      ),
+    [messages, pendingApprovalMessageIds],
+  );
+
+  useEffect(() => {
+    messagesRef.current = messages;
+  }, [messages]);
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
@@ -173,6 +202,8 @@ export function FloatingAgentChat({
   }, []);
 
   const loadSessionMessages = useCallback(async (sessionId: string) => {
+    pendingApprovalContinuationsRef.current.clear();
+    setPendingApprovalMessageIds(new Set());
     const response = await fetch(`/api/agent/floating/sessions/${sessionId}`, {
       headers: { Accept: "application/json" },
     });
@@ -200,6 +231,8 @@ export function FloatingAgentChat({
     setSessions((current) => [session, ...current.filter((item) => item.id !== session.id)]);
     setActiveSessionId(session.id);
     setMessages([]);
+    pendingApprovalContinuationsRef.current.clear();
+    setPendingApprovalMessageIds(new Set());
     setInput("");
     setEditingMessageId(null);
     setHistoryOpen(false);
@@ -213,6 +246,8 @@ export function FloatingAgentChat({
         return;
       }
       setActiveSessionId(sessionId);
+      pendingApprovalContinuationsRef.current.clear();
+      setPendingApprovalMessageIds(new Set());
       setEditingMessageId(null);
       setInput("");
       setHistoryOpen(false);
@@ -255,31 +290,6 @@ export function FloatingAgentChat({
     [activeSessionId, createNewSession, loadSessionMessages, sessions],
   );
 
-  const updateApprovalStatus = useCallback(
-    (
-      approvalId: string,
-      status: AgentOperationApprovalRequest["status"],
-    ) => {
-      setMessages((current) =>
-        current.map((message) => ({
-          ...message,
-          parts: message.parts?.map((part) =>
-            part.type === "approval" && part.approvalRequest.id === approvalId
-              ? {
-                  ...part,
-                  approvalRequest: {
-                    ...part.approvalRequest,
-                    status,
-                  },
-                }
-              : part,
-          ),
-        })),
-      );
-    },
-    [],
-  );
-
   const persistApprovalStatus = useCallback(
     async (
       messageId: string,
@@ -304,24 +314,6 @@ export function FloatingAgentChat({
     [activeSessionId],
   );
 
-  const applyApprovalRequest = useCallback(
-    (messageId: string, operation: ResumeOperation) => {
-      applyOperation(operation);
-      flushAutosave();
-      updateApprovalStatus(operation.id, "approved");
-      void persistApprovalStatus(messageId, operation.id, "approved");
-    },
-    [applyOperation, flushAutosave, persistApprovalStatus, updateApprovalStatus],
-  );
-
-  const rejectApprovalRequest = useCallback(
-    (messageId: string, operationId: string) => {
-      updateApprovalStatus(operationId, "rejected");
-      void persistApprovalStatus(messageId, operationId, "rejected");
-    },
-    [persistApprovalStatus, updateApprovalStatus],
-  );
-
   const copyMessage = useCallback(async (content: string) => {
     try {
       await navigator.clipboard?.writeText(content);
@@ -333,11 +325,11 @@ export function FloatingAgentChat({
 
   const editUserMessage = useCallback(
     (message: FloatingAgentMessage) => {
-      if (isLoading || message.role !== "user") return;
+      if (isLoading || hasPendingApprovalContinuation || message.role !== "user") return;
       setEditingMessageId(message.id);
       setInput(message.content);
     },
-    [isLoading],
+    [hasPendingApprovalContinuation, isLoading],
   );
 
   const cancelEditing = useCallback(() => {
@@ -500,6 +492,23 @@ export function FloatingAgentChat({
               )
             : [];
         const approvalRequests = normalizeApprovalRequests(body.approvalRequests);
+        if (writeMode === "approval" && hasPendingApprovalRequests(approvalRequests)) {
+          pendingApprovalContinuationsRef.current.set(assistantMessageId, {
+            titleSource,
+          });
+          setPendingApprovalMessageIds((current) => {
+            const next = new Set(current);
+            next.add(assistantMessageId);
+            return next;
+          });
+        } else {
+          pendingApprovalContinuationsRef.current.delete(assistantMessageId);
+          setPendingApprovalMessageIds((current) => {
+            const next = new Set(current);
+            next.delete(assistantMessageId);
+            return next;
+          });
+        }
         const toolCalls = normalizeToolCalls(body.toolCalls);
         const responseParts = normalizeFloatingMessageParts(body.parts);
         applyStreamOperations(operations);
@@ -587,6 +596,72 @@ export function FloatingAgentChat({
     ],
   );
 
+  const continuePendingApprovalRun = useCallback(
+    (messageId: string, nextMessages: FloatingAgentMessage[]) => {
+      const continuation = pendingApprovalContinuationsRef.current.get(messageId);
+      if (!continuation) return;
+
+      const targetMessage = nextMessages.find((message) => message.id === messageId);
+      const decisions = approvalDecisionsForMessage(targetMessage);
+      if (decisions.length === 0) return;
+
+      pendingApprovalContinuationsRef.current.delete(messageId);
+      setPendingApprovalMessageIds((current) => {
+        const next = new Set(current);
+        next.delete(messageId);
+        return next;
+      });
+      const feedbackMessage: FloatingAgentMessage = {
+        id: createMessageId("approval_feedback"),
+        role: "assistant",
+        content: buildFloatingApprovalFeedbackMessage(decisions),
+      };
+      void runFloatingRequest({
+        requestMessages: [...nextMessages, feedbackMessage],
+        initialMessages: nextMessages,
+        titleSource: continuation.titleSource,
+      });
+    },
+    [runFloatingRequest],
+  );
+
+  const applyApprovalRequest = useCallback(
+    (messageId: string, operation: ResumeOperation) => {
+      applyOperation(operation);
+      flushAutosave();
+      const nextMessages = updateFloatingApprovalStatus(
+        messagesRef.current,
+        operation.id,
+        "approved",
+      );
+      messagesRef.current = nextMessages;
+      setMessages(nextMessages);
+      void persistApprovalStatus(messageId, operation.id, "approved");
+      continuePendingApprovalRun(messageId, nextMessages);
+    },
+    [
+      applyOperation,
+      continuePendingApprovalRun,
+      flushAutosave,
+      persistApprovalStatus,
+    ],
+  );
+
+  const rejectApprovalRequest = useCallback(
+    (messageId: string, operationId: string) => {
+      const nextMessages = updateFloatingApprovalStatus(
+        messagesRef.current,
+        operationId,
+        "rejected",
+      );
+      messagesRef.current = nextMessages;
+      setMessages(nextMessages);
+      void persistApprovalStatus(messageId, operationId, "rejected");
+      continuePendingApprovalRun(messageId, nextMessages);
+    },
+    [continuePendingApprovalRun, persistApprovalStatus],
+  );
+
   useEffect(() => {
     let cancelled = false;
     async function loadSessions() {
@@ -627,7 +702,7 @@ export function FloatingAgentChat({
     async (event?: FormEvent<HTMLFormElement>) => {
       event?.preventDefault();
       const text = input.trim();
-      if (!text || isLoading) return;
+      if (!text || isLoading || hasPendingApprovalContinuation) return;
       const editingIndex = editingMessageId
         ? messages.findIndex(
             (message) => message.id === editingMessageId && message.role === "user",
@@ -652,6 +727,7 @@ export function FloatingAgentChat({
     },
     [
       editingMessageId,
+      hasPendingApprovalContinuation,
       input,
       isLoading,
       messages,
@@ -661,7 +737,7 @@ export function FloatingAgentChat({
 
   const regenerateAssistantMessage = useCallback(
     async (message: FloatingAgentMessage) => {
-      if (isLoading || message.role !== "assistant") return;
+      if (isLoading || hasPendingApprovalContinuation || message.role !== "assistant") return;
       const assistantIndex = messages.findIndex((item) => item.id === message.id);
       if (assistantIndex <= 0) return;
       const requestMessages = messages.slice(0, assistantIndex);
@@ -677,13 +753,13 @@ export function FloatingAgentChat({
         titleSource: previousUserMessage.content.trim(),
       });
     },
-    [isLoading, messages, runFloatingRequest],
+    [hasPendingApprovalContinuation, isLoading, messages, runFloatingRequest],
   );
 
   const sendWelcomePrompt = useCallback(
     async (prompt: string) => {
       const text = prompt.trim();
-      if (!text || isLoading) return;
+      if (!text || isLoading || hasPendingApprovalContinuation) return;
       const userMessage: FloatingAgentMessage = {
         id: createMessageId("user"),
         role: "user",
@@ -698,7 +774,7 @@ export function FloatingAgentChat({
         titleSource: text,
       });
     },
-    [isLoading, messages, runFloatingRequest],
+    [hasPendingApprovalContinuation, isLoading, messages, runFloatingRequest],
   );
 
   const stopGeneration = useCallback(() => {
@@ -818,7 +894,9 @@ export function FloatingAgentChat({
                 onEditMessage={editUserMessage}
                 onRegenerateMessage={regenerateAssistantMessage}
                 canRegenerate={
-                  !isLoading && message.id === regenerableAssistantMessageId
+                  !isLoading &&
+                  !hasPendingApprovalContinuation &&
+                  message.id === regenerableAssistantMessageId
                 }
                 isLoading={isLoading}
               />
@@ -832,6 +910,7 @@ export function FloatingAgentChat({
         input={input}
         setInput={setInput}
         isLoading={isLoading}
+        isAwaitingApproval={hasPendingApprovalContinuation}
         modelName={modelConfig?.modelName ?? null}
         editing={editingMessageId !== null}
         writeMode={writeMode}
@@ -863,6 +942,85 @@ function finalAssistantMessage(
       : operations.length > 0
         ? `已直接应用 ${operations.length} 条简历修改。`
         : "我看完了，可以继续告诉我你想优化的方向。";
+}
+
+function hasPendingApprovalRequests(
+  approvalRequests: AgentOperationApprovalRequest[],
+) {
+  return approvalRequests.some((request) => request.status === "pending");
+}
+
+function hasPendingApprovalParts(message: FloatingAgentMessage) {
+  return (
+    message.parts?.some(
+      (part) =>
+        part.type === "approval" && part.approvalRequest.status === "pending",
+    ) ?? false
+  );
+}
+
+function updateFloatingApprovalStatus(
+  messages: FloatingAgentMessage[],
+  approvalId: string,
+  status: Extract<AgentOperationApprovalRequest["status"], "approved" | "rejected">,
+) {
+  return messages.map((message) => ({
+    ...message,
+    parts: message.parts?.map((part) =>
+      part.type === "approval" && part.approvalRequest.id === approvalId
+        ? {
+            ...part,
+            approvalRequest: {
+              ...part.approvalRequest,
+              status,
+            },
+          }
+        : part,
+    ),
+  }));
+}
+
+function approvalDecisionsForMessage(
+  message: FloatingAgentMessage | undefined,
+): FloatingApprovalDecision[] {
+  const approvalParts =
+    message?.parts?.filter((part) => part.type === "approval") ?? [];
+  if (approvalParts.length === 0) return [];
+  if (
+    approvalParts.some(
+      (part) =>
+        part.approvalRequest.status !== "approved" &&
+        part.approvalRequest.status !== "rejected",
+    )
+  ) {
+    return [];
+  }
+  return approvalParts.map((part) => ({
+    approvalId: part.approvalRequest.id,
+    approved: part.approvalRequest.status === "approved",
+  }));
+}
+
+function buildFloatingApprovalFeedbackMessage(
+  decisions: FloatingApprovalDecision[],
+) {
+  const approvedIds = decisions
+    .filter((decision) => decision.approved)
+    .map((decision) => decision.approvalId);
+  const rejectedIds = decisions
+    .filter((decision) => !decision.approved)
+    .map((decision) => decision.approvalId);
+  const lines = ["用户已审核你的修改建议："];
+  if (approvedIds.length > 0) {
+    lines.push(`✓ 已批准并应用：${approvedIds.join(", ")}`);
+  }
+  if (rejectedIds.length > 0) {
+    lines.push(`✗ 已忽略：${rejectedIds.join(", ")}`);
+  }
+  lines.push(
+    "请基于用户的选择继续当前任务。已忽略的建议不要重复提出，已应用的内容可以继续用于后续分析。",
+  );
+  return lines.join("\n");
 }
 
 function scrollMessagesToBottom(ref: React.RefObject<HTMLDivElement | null>) {
@@ -1398,6 +1556,7 @@ function FloatingAgentInput({
   input,
   setInput,
   isLoading,
+  isAwaitingApproval,
   modelName,
   editing,
   writeMode,
@@ -1410,6 +1569,7 @@ function FloatingAgentInput({
   input: string;
   setInput: (value: string) => void;
   isLoading: boolean;
+  isAwaitingApproval: boolean;
   modelName: string | null;
   editing: boolean;
   writeMode: AgentWriteMode;
@@ -1419,6 +1579,7 @@ function FloatingAgentInput({
   onStop: () => void;
   onSubmit: (event: FormEvent<HTMLFormElement>) => void;
 }) {
+  const disabled = isLoading || isAwaitingApproval;
   return (
     <form onSubmit={onSubmit} className="shrink-0 border-t p-3">
       {editing ? (
@@ -1441,9 +1602,11 @@ function FloatingAgentInput({
           data-testid="agent-assistant-ui-composer-input"
           value={input}
           onChange={(event) => setInput(event.target.value)}
-          placeholder="输入消息，Enter 发送"
+          placeholder={
+            isAwaitingApproval ? "请先应用或忽略修改建议" : "输入消息，Enter 发送"
+          }
           rows={2}
-          disabled={isLoading}
+          disabled={disabled}
           className="w-full resize-none bg-transparent px-4 pb-2 pt-3 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none disabled:cursor-not-allowed disabled:opacity-50"
           onKeyDown={(event) => {
             if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) {
@@ -1474,7 +1637,7 @@ function FloatingAgentInput({
                 <button
                   key={mode}
                   type="button"
-                  disabled={isLoading}
+                  disabled={disabled}
                   aria-pressed={writeMode === mode}
                   onClick={() => onWriteModeChange(mode)}
                   className={`rounded-full px-2 transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${
@@ -1501,7 +1664,7 @@ function FloatingAgentInput({
             <button
               type="submit"
               aria-label="发送"
-              disabled={!input.trim()}
+              disabled={disabled || !input.trim()}
               className="flex h-8 w-8 items-center justify-center rounded-full bg-zinc-200 text-zinc-500 transition-colors hover:bg-zinc-300 disabled:cursor-not-allowed disabled:opacity-40 enabled:bg-sky-600 enabled:text-white enabled:hover:bg-sky-700"
             >
               <SendHorizonal className="h-4 w-4" />
