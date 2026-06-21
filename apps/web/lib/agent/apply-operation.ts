@@ -5,6 +5,8 @@ import {
 } from "@intro-builder/shared/schemas";
 import type { ResumeOperation } from "@intro-builder/shared/types";
 
+import { agentRichTextToTipTapDoc } from "@/lib/agent/rich-text-conversion";
+
 /**
  * Pure mapping from an agent {@link ResumeOperation} to the next resume content.
  *
@@ -66,21 +68,14 @@ const BUILTIN_ORDER_SECTIONS = new Set([
   "awards",
   "portfolio",
 ]);
+const HTML_TAG_TEXT_RE = /<\/?[a-z][a-z0-9-]*(\s|>|\/)/i;
 
 function emptyDoc(): TipTapDoc {
   return { type: "doc", content: [{ type: "paragraph" }] };
 }
 
 function textToDoc(text: string): TipTapDoc {
-  const lines = text.split(/\r?\n/).filter((line) => line.trim().length > 0);
-  if (lines.length === 0) return emptyDoc();
-  return {
-    type: "doc",
-    content: lines.map((line) => ({
-      type: "paragraph",
-      content: [{ type: "text", text: line }],
-    })),
-  };
+  return agentRichTextToTipTapDoc(text) as TipTapDoc;
 }
 
 function newId(): string {
@@ -107,9 +102,19 @@ function defaultItem(section: string): Record<string, unknown> {
 }
 
 function docFor(operation: ResumeOperation): unknown {
-  return operation.replacementTiptapJson !== undefined
+  return operation.replacementTiptapJson !== undefined &&
+    !containsHtmlTagText(operation.replacementTiptapJson)
     ? operation.replacementTiptapJson
     : textToDoc(operation.afterPlainText);
+}
+
+function containsHtmlTagText(value: unknown): boolean {
+  if (typeof value === "string") return HTML_TAG_TEXT_RE.test(value);
+  if (Array.isArray(value)) return value.some((item) => containsHtmlTagText(item));
+  if (!value || typeof value !== "object") return false;
+  return Object.values(value as Record<string, unknown>).some((item) =>
+    containsHtmlTagText(item),
+  );
 }
 
 function valueFor(operation: ResumeOperation): unknown {

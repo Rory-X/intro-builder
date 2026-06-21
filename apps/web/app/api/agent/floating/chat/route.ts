@@ -8,6 +8,7 @@ import {
   getFloatingChatSession,
   renameFloatingChatSession,
 } from "@/lib/agent/floating-chat-session-store";
+import { normalizeAgentRichTextInput } from "@/lib/agent/rich-text-conversion";
 import type {
   AgentModelConfig,
   AgentOperationApprovalRequest,
@@ -37,6 +38,7 @@ type FloatingSectionToolArgs = {
   beforePlainText?: string;
   value?: string;
   replacementValue?: unknown;
+  replacementTiptapJson?: unknown;
   afterPlainText?: string;
   label?: string;
   changeSummary?: string;
@@ -88,6 +90,9 @@ const floatingCommonSemanticArgsSchema = {
   beforePlainText: z.string().optional(),
   changeSummary: z.string().optional(),
 };
+const floatingRichTextStringSchema = z
+  .string()
+  .describe("Plain resume text. Do not include HTML tags; use line breaks or '- ' bullets for lists.");
 
 const floatingBasicsBlockArgsSchema = z.object({
   name: z.string().optional(),
@@ -121,7 +126,7 @@ const floatingAddWorkExperienceArgsSchema = z.object({
   start: z.string().optional(),
   end: z.string().optional(),
   location: z.string().optional(),
-  content: z.string(),
+  content: floatingRichTextStringSchema,
   ...floatingCommonSemanticArgsSchema,
 });
 
@@ -132,7 +137,7 @@ const floatingWorkExperienceBlockArgsSchema = z.object({
   start: z.string().optional(),
   end: z.string().optional(),
   location: z.string().optional(),
-  content: z.string().optional(),
+  content: floatingRichTextStringSchema.optional(),
   ...floatingCommonSemanticArgsSchema,
 });
 
@@ -144,7 +149,7 @@ const floatingAddEducationArgsSchema = z.object({
   start: z.string().optional(),
   end: z.string().optional(),
   gpa: z.string().optional(),
-  highlights: z.string(),
+  highlights: floatingRichTextStringSchema,
   ...floatingCommonSemanticArgsSchema,
 });
 
@@ -157,7 +162,7 @@ const floatingEducationBlockArgsSchema = z.object({
   start: z.string().optional(),
   end: z.string().optional(),
   gpa: z.string().optional(),
-  highlights: z.string().optional(),
+  highlights: floatingRichTextStringSchema.optional(),
   ...floatingCommonSemanticArgsSchema,
 });
 
@@ -169,7 +174,7 @@ const floatingAddProjectArgsSchema = z.object({
   end: z.string().optional(),
   stack: z.array(z.string()).optional(),
   link: z.string().optional(),
-  content: z.string(),
+  content: floatingRichTextStringSchema,
   ...floatingCommonSemanticArgsSchema,
 });
 
@@ -182,7 +187,7 @@ const floatingProjectBlockArgsSchema = z.object({
   end: z.string().optional(),
   stack: z.array(z.string()).optional(),
   link: z.string().optional(),
-  content: z.string().optional(),
+  content: floatingRichTextStringSchema.optional(),
   ...floatingCommonSemanticArgsSchema,
 });
 
@@ -194,7 +199,7 @@ const floatingAddResearchArgsSchema = z.object({
   end: z.string().optional(),
   paperTitle: z.string().optional(),
   link: z.string().optional(),
-  content: z.string(),
+  content: floatingRichTextStringSchema,
   ...floatingCommonSemanticArgsSchema,
 });
 
@@ -207,25 +212,25 @@ const floatingResearchBlockArgsSchema = z.object({
   end: z.string().optional(),
   paperTitle: z.string().optional(),
   link: z.string().optional(),
-  content: z.string().optional(),
+  content: floatingRichTextStringSchema.optional(),
   ...floatingCommonSemanticArgsSchema,
 });
 
 const floatingSingletonContentArgsSchema = z.object({
-  content: z.string(),
+  content: floatingRichTextStringSchema,
   ...floatingCommonSemanticArgsSchema,
 });
 
 const floatingAddCustomSectionArgsSchema = z.object({
   title: z.string().min(1),
-  content: z.string(),
+  content: floatingRichTextStringSchema,
   ...floatingCommonSemanticArgsSchema,
 });
 
 const floatingCustomSectionBlockArgsSchema = z.object({
   sectionId: z.string().min(1),
   title: z.string().optional(),
-  content: z.string().optional(),
+  content: floatingRichTextStringSchema.optional(),
   ...floatingCommonSemanticArgsSchema,
 });
 
@@ -766,6 +771,7 @@ function createSingletonRichTextTool({
       args: z.infer<typeof floatingSingletonContentArgsSchema>,
       options: { toolCallId?: string },
     ) => {
+      const richText = normalizeAgentRichTextInput(args.content);
       return executeResumeUpdateTool({
         executedToolCalls,
         toolCallId: options.toolCallId ?? createToolCallId(),
@@ -774,7 +780,8 @@ function createSingletonRichTextTool({
           fieldPath,
           section,
           beforePlainText: args.beforePlainText,
-          afterPlainText: args.content,
+          afterPlainText: richText.plainText,
+          replacementTiptapJson: richText.tiptapJson,
           label,
           changeSummary: args.changeSummary ?? `${label}。`,
         },
@@ -819,7 +826,7 @@ function createAddItemTool<TSchema extends z.ZodObject<z.ZodRawShape>>({
       for (const field of fields) {
         if (record[field] !== undefined) values[field] = record[field];
       }
-      const text = stringArg(record[contentField]) ?? "";
+      const richText = normalizeAgentRichTextInput(String(record[contentField] ?? ""));
       const toolCallId = options.toolCallId ?? createToolCallId();
       return executeResumeOperationTool({
         executedToolCalls,
@@ -833,8 +840,9 @@ function createAddItemTool<TSchema extends z.ZodObject<z.ZodRawShape>>({
           fieldPath: `${section}.${countContextSections(context, section)}`,
           operation: "insert_section",
           beforePlainText: stringArg(record.beforePlainText) ?? "",
-          afterPlainText: text,
+          afterPlainText: richText.plainText,
           replacementValue: values,
+          replacementTiptapJson: richText.tiptapJson,
           changeSummary: stringArg(record.changeSummary) ?? `${label}。`,
           riskFlags: [],
         },
@@ -859,6 +867,7 @@ function createAddCustomSectionTool(
     ) => {
       const toolCallId = options.toolCallId ?? createToolCallId();
       const label = "新增自定义模块";
+      const richText = normalizeAgentRichTextInput(args.content);
       return executeResumeOperationTool({
         executedToolCalls,
         toolCallId,
@@ -871,8 +880,9 @@ function createAddCustomSectionTool(
           fieldPath: `custom.${countContextSections(context, "custom")}`,
           operation: "insert_section",
           beforePlainText: args.beforePlainText ?? "",
-          afterPlainText: args.content,
+          afterPlainText: richText.plainText,
           replacementValue: { title: args.title },
+          replacementTiptapJson: richText.tiptapJson,
           changeSummary: args.changeSummary ?? `${label}。`,
           riskFlags: [],
         },
@@ -898,7 +908,10 @@ function createUpdateCustomSectionBlockTool(
       const label = "更新自定义模块";
       const values: Record<string, unknown> = {};
       if (args.title !== undefined) values.title = args.title;
-      if (args.content !== undefined) values.content = args.content;
+      const richText = args.content === undefined
+        ? null
+        : normalizeAgentRichTextInput(args.content);
+      if (richText) values.content = richText.plainText;
       return executeResumeOperationTool({
         executedToolCalls,
         toolCallId,
@@ -911,8 +924,9 @@ function createUpdateCustomSectionBlockTool(
           fieldPath: customSectionFieldPath(args.sectionId),
           operation: "update_section",
           beforePlainText: args.beforePlainText ?? "",
-          afterPlainText: args.content ?? args.title ?? summarizeBlockValues(values),
+          afterPlainText: richText?.plainText ?? args.title ?? summarizeBlockValues(values),
           replacementValue: values,
+          replacementTiptapJson: richText?.tiptapJson,
           changeSummary: args.changeSummary ?? `${label}。`,
           riskFlags: [],
         },
@@ -1031,9 +1045,12 @@ function createItemBlockTool<TSchema extends z.ZodObject<z.ZodRawShape>>({
         if (record[field] !== undefined) values[field] = normalizeBlockFieldValue(record[field]);
       }
       const hasContent = typeof record[contentField] === "string";
-      if (hasContent) values[contentField] = String(record[contentField]);
+      const richText = hasContent
+        ? normalizeAgentRichTextInput(String(record[contentField]))
+        : null;
+      if (richText) values[contentField] = richText.plainText;
       const afterPlainText = hasContent
-        ? String(record[contentField])
+        ? richText?.plainText ?? ""
         : summarizeBlockValues(values);
       return executeResumeUpdateTool({
         executedToolCalls,
@@ -1045,6 +1062,7 @@ function createItemBlockTool<TSchema extends z.ZodObject<z.ZodRawShape>>({
           beforePlainText: stringArg(record.beforePlainText),
           afterPlainText,
           replacementValue: values,
+          replacementTiptapJson: richText?.tiptapJson,
           label,
           changeSummary: stringArg(record.changeSummary) ?? `${label}。`,
         },
@@ -1291,6 +1309,7 @@ function createSuggestSkillsTool(
       const skillText = category
         ? `${category}\n${args.skills.join("、")}`
         : args.skills.join("、");
+      const richText = normalizeAgentRichTextInput(skillText);
       return executeResumeUpdateTool({
         executedToolCalls,
         toolCallId,
@@ -1299,7 +1318,8 @@ function createSuggestSkillsTool(
           fieldPath: "skills",
           section: "skills",
           beforePlainText: args.beforePlainText,
-          afterPlainText: skillText,
+          afterPlainText: richText.plainText,
+          replacementTiptapJson: richText.tiptapJson,
           label: "更新技能",
           changeSummary: args.changeSummary ?? "补充相关技能。",
         },
@@ -1837,6 +1857,9 @@ function toResumeOperation(
     beforePlainText: args.beforePlainText ?? "",
     afterPlainText,
     replacementValue: args.replacementValue,
+    ...(args.replacementTiptapJson === undefined
+      ? {}
+      : { replacementTiptapJson: args.replacementTiptapJson }),
     changeSummary: args.changeSummary?.trim() || `更新 ${fieldPath}`,
     riskFlags: [],
   };

@@ -1051,6 +1051,63 @@ describe("POST /api/agent/floating/chat", () => {
     );
   });
 
+  it("normalizes floating rich-text HTML tool input into TipTap operations", async () => {
+    (currentUserId as unknown as Mock).mockResolvedValue("user_123");
+    aiMocks.streamText.mockImplementation((options: {
+      tools: {
+        updateProjectBlock: {
+          execute: (input: unknown, options: { toolCallId: string }) => Promise<unknown>;
+        };
+      };
+    }) => ({
+      fullStream: (async function* () {
+        await options.tools.updateProjectBlock.execute(
+          {
+            index: 0,
+            name: "前端监控埋点平台",
+            content:
+              "<p><strong>项目描述：</strong>埋点监控系统</p><ul><li>支持 PV、UV 与错误捕获</li></ul>",
+            changeSummary: "更新项目经历。",
+          },
+          { toolCallId: "tool_project_html_1" },
+        );
+        yield {
+          type: "tool-result",
+          toolCallId: "tool_project_html_1",
+          toolName: "updateProjectBlock",
+          input: { index: 0 },
+          output: { success: true },
+        };
+      })(),
+    }));
+
+    const response = await POST(jsonRequest(validBody()));
+
+    expect(response.status).toBe(200);
+    const events = await readSseEvents(response);
+    const operations = events.flatMap((event) =>
+      Array.isArray((event as { operations?: unknown }).operations)
+        ? ((event as { operations: unknown[] }).operations)
+        : [],
+    );
+    const operation = operations.find(
+      (candidate) =>
+        (candidate as { fieldPath?: unknown }).fieldPath === "projects.0",
+    ) as {
+      afterPlainText?: string;
+      replacementValue?: { content?: string };
+      replacementTiptapJson?: unknown;
+    };
+
+    expect(operation.afterPlainText).toContain("项目描述：埋点监控系统");
+    expect(operation.afterPlainText).toContain("支持 PV、UV 与错误捕获");
+    expect(operation.afterPlainText).not.toMatch(/<\/?[a-z][^>]*>/i);
+    expect(operation.replacementValue?.content).toBe(operation.afterPlainText);
+    expect(JSON.stringify(operation.replacementTiptapJson)).toContain("bulletList");
+    expect(JSON.stringify(operation.replacementTiptapJson)).toContain("\"type\":\"bold\"");
+    expect(JSON.stringify(operation.replacementTiptapJson)).not.toMatch(/<\/?[a-z][^>]*>/i);
+  });
+
   it("exposes semantic singleton rich-text section tools", async () => {
     (currentUserId as unknown as Mock).mockResolvedValue("user_123");
     aiMocks.streamText.mockImplementation((options: {
