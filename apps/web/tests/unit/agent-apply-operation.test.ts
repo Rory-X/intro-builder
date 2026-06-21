@@ -25,6 +25,26 @@ function makeOp(partial: Partial<ResumeOperation>): ResumeOperation {
 
 const doc = { type: "doc", content: [{ type: "paragraph", content: [{ type: "text", text: "x" }] }] };
 
+function collectNodeTypes(value: unknown): string[] {
+  if (!value || typeof value !== "object") return [];
+  const record = value as Record<string, unknown>;
+  const current = typeof record.type === "string" ? [record.type] : [];
+  const children = Array.isArray(record.content)
+    ? record.content.flatMap((child) => collectNodeTypes(child))
+    : [];
+  return [...current, ...children];
+}
+
+function collectText(value: unknown): string {
+  if (!value || typeof value !== "object") return "";
+  const record = value as Record<string, unknown>;
+  const ownText = typeof record.text === "string" ? record.text : "";
+  const childText = Array.isArray(record.content)
+    ? record.content.map((child) => collectText(child)).join("")
+    : "";
+  return ownText + childText;
+}
+
 describe("applyResumeOperation", () => {
   it("allows auto-apply only for low-risk update and insert operations", () => {
     expect(
@@ -210,6 +230,51 @@ describe("applyResumeOperation", () => {
     expect(result!.content.skills).toEqual(doc);
   });
 
+  it("parses HTML agent output into TipTap for top-level rich-text fields", () => {
+    const result = applyResumeOperation(
+      emptyResumeContent(),
+      makeOp({
+        section: "skills",
+        fieldPath: "skills",
+        afterPlainText: "<ul><li><strong>前端开发</strong>：Vue、TypeScript</li></ul>",
+      }),
+    );
+
+    expect(collectNodeTypes(result!.content.skills)).toContain("bulletList");
+    expect(JSON.stringify(result!.content.skills)).toContain("\"type\":\"bold\"");
+    expect(collectText(result!.content.skills)).toBe("前端开发：Vue、TypeScript");
+    expect(collectText(result!.content.skills)).not.toMatch(/<\/?[a-z][^>]*>/i);
+  });
+
+  it("repairs TipTap replacements whose text nodes still contain HTML tags", () => {
+    const result = applyResumeOperation(
+      emptyResumeContent(),
+      makeOp({
+        section: "skills",
+        fieldPath: "skills",
+        afterPlainText: "<ul><li><strong>前端开发</strong>：Vue、TypeScript</li></ul>",
+        replacementTiptapJson: {
+          type: "doc",
+          content: [
+            {
+              type: "paragraph",
+              content: [
+                {
+                  type: "text",
+                  text: "<ul><li><strong>前端开发</strong>：Vue、TypeScript</li></ul>",
+                },
+              ],
+            },
+          ],
+        },
+      }),
+    );
+
+    expect(collectNodeTypes(result!.content.skills)).toContain("bulletList");
+    expect(collectText(result!.content.skills)).toBe("前端开发：Vue、TypeScript");
+    expect(collectText(result!.content.skills)).not.toMatch(/<\/?[a-z][^>]*>/i);
+  });
+
   it("updates an existing array item in place without adding a new one", () => {
     const base = emptyResumeContent();
     base.experience = [{ company: "蜂鸟", title: "后端", start: "2021", end: "2024", location: "", content: { type: "doc", content: [] } }];
@@ -294,6 +359,30 @@ describe("applyResumeOperation", () => {
       ],
     });
     expect(result!.changedKeys).toEqual(["experience"]);
+  });
+
+  it("parses HTML agent output inside block-level rich-text replacements", () => {
+    const result = applyResumeOperation(
+      emptyResumeContent(),
+      makeOp({
+        operation: "insert_section",
+        section: "projects",
+        fieldPath: "projects.0",
+        replacementValue: {
+          name: "前端监控埋点平台",
+          content: "<p><strong>项目描述：</strong>埋点监控系统</p><ul><li>支持 PV、UV 与错误捕获</li></ul>",
+        },
+        afterPlainText: "<p><strong>项目描述：</strong>埋点监控系统</p><ul><li>支持 PV、UV 与错误捕获</li></ul>",
+        changeSummary: "更新项目经历块。",
+      }),
+    );
+
+    const content = result!.content.projects[0].content;
+    expect(collectNodeTypes(content)).toContain("bulletList");
+    expect(JSON.stringify(content)).toContain("\"type\":\"bold\"");
+    expect(collectText(content)).toContain("项目描述：埋点监控系统");
+    expect(collectText(content)).toContain("支持 PV、UV 与错误捕获");
+    expect(collectText(content)).not.toMatch(/<\/?[a-z][^>]*>/i);
   });
 
   it("creates an array item with metadata and content from one semantic operation", () => {
