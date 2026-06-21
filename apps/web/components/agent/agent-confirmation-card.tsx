@@ -4,19 +4,26 @@ import { useState } from "react";
 import { diffWords } from "diff";
 import { ChevronDown, ChevronUp } from "lucide-react";
 
-import type { ResumeOperation } from "@intro-builder/shared/types";
+import type {
+  AgentOperationApprovalRequest,
+  ResumeOperation,
+} from "@intro-builder/shared/types";
 import { Button } from "@/components/ui/button";
 
 export function AgentConfirmationCard({
   operation,
+  status,
   onApply,
   onReject,
 }: {
   operation: ResumeOperation;
+  status?: AgentOperationApprovalRequest["status"];
   onApply: (operation: ResumeOperation) => void;
   onReject: (operationId: string) => void;
 }) {
-  const [resolved, setResolved] = useState<"applied" | "ignored" | null>(null);
+  const persistedResolved = resolvedStateForStatus(status);
+  const [localResolved, setLocalResolved] = useState<"applied" | "ignored" | null>(null);
+  const resolved = persistedResolved ?? localResolved;
   const [showFullText, setShowFullText] = useState(false);
 
   const changes = diffWords(operation.beforePlainText, operation.afterPlainText);
@@ -112,7 +119,7 @@ export function AgentConfirmationCard({
           disabled={resolved !== null}
           onClick={() => {
             onApply(operation);
-            setResolved("applied");
+            setLocalResolved("applied");
           }}
         >
           应用
@@ -124,7 +131,7 @@ export function AgentConfirmationCard({
           disabled={resolved !== null}
           onClick={() => {
             onReject(operation.id);
-            setResolved("ignored");
+            setLocalResolved("ignored");
           }}
         >
           忽略
@@ -138,6 +145,12 @@ export function AgentConfirmationCard({
       ) : null}
     </div>
   );
+}
+
+function resolvedStateForStatus(status?: AgentOperationApprovalRequest["status"]) {
+  if (status === "approved") return "applied";
+  if (status === "rejected") return "ignored";
+  return null;
 }
 
 export function AgentQuestionCard({

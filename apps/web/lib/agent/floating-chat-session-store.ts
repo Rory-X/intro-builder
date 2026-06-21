@@ -5,7 +5,10 @@ import {
   agentFloatingChatMessages,
   agentFloatingChatSessions,
 } from "@/db/schema";
-import type { ResumeOperation } from "@intro-builder/shared/types";
+import type {
+  AgentOperationApprovalRequest,
+  ResumeOperation,
+} from "@intro-builder/shared/types";
 
 export type FloatingChatSessionListItem = {
   id: string;
@@ -209,6 +212,87 @@ export async function renameFloatingChatSession({
     )
     .returning({ id: agentFloatingChatSessions.id });
   return rows.length > 0;
+}
+
+export async function updateFloatingChatMessageApprovalStatus({
+  sessionId,
+  messageId,
+  approvalId,
+  status,
+}: {
+  sessionId: string;
+  messageId?: string | null;
+  approvalId: string;
+  status: Extract<AgentOperationApprovalRequest["status"], "approved" | "rejected">;
+}): Promise<boolean> {
+  const candidates = await db.query.agentFloatingChatMessages.findMany({
+    where: messageId?.trim()
+      ? and(
+          eq(agentFloatingChatMessages.sessionId, sessionId),
+          eq(agentFloatingChatMessages.id, messageId.trim()),
+        )
+      : eq(agentFloatingChatMessages.sessionId, sessionId),
+    columns: {
+      id: true,
+      parts: true,
+    },
+  });
+
+  const fallbackCandidates = messageId?.trim() && candidates.length === 0
+    ? await db.query.agentFloatingChatMessages.findMany({
+        where: eq(agentFloatingChatMessages.sessionId, sessionId),
+        columns: {
+          id: true,
+          parts: true,
+        },
+      })
+    : [];
+
+  for (const row of [...candidates, ...fallbackCandidates]) {
+    const nextParts = updateApprovalStatusInParts(row.parts ?? [], approvalId, status);
+    if (!nextParts) continue;
+    await db
+      .update(agentFloatingChatMessages)
+      .set({ parts: nextParts })
+      .where(
+        and(
+          eq(agentFloatingChatMessages.sessionId, sessionId),
+          eq(agentFloatingChatMessages.id, row.id),
+        ),
+      );
+    await db
+      .update(agentFloatingChatSessions)
+      .set({ updatedAt: new Date() })
+      .where(eq(agentFloatingChatSessions.id, sessionId));
+    return true;
+  }
+
+  return false;
+}
+
+function updateApprovalStatusInParts(
+  parts: Array<Record<string, unknown>>,
+  approvalId: string,
+  status: Extract<AgentOperationApprovalRequest["status"], "approved" | "rejected">,
+) {
+  let changed = false;
+  const nextParts = parts.map((part) => {
+    if (part.type !== "approval" || !isRecord(part.approvalRequest)) return part;
+    if (part.approvalRequest.id !== approvalId) return part;
+    changed = true;
+    return {
+      ...part,
+      approvalRequest: {
+        ...part.approvalRequest,
+        status,
+      },
+    };
+  });
+  return changed ? nextParts : null;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 function toSessionListItem(row: {
