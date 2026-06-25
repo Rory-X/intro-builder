@@ -26,6 +26,8 @@ describe("AgentPanel", () => {
   });
 
   afterEach(() => {
+    window.localStorage.clear();
+    window.sessionStorage.clear();
     if (originalScrollTo) {
       Object.defineProperty(Element.prototype, "scrollTo", {
         configurable: true,
@@ -62,6 +64,25 @@ describe("AgentPanel", () => {
     expect(screen.getByTestId("agent-assistant-ui-thread")).toBeInTheDocument();
     expect(screen.getByTestId("agent-assistant-ui-composer-input")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "滚动到底部" })).toBeInTheDocument();
+  });
+
+  it("lets the user reveal and hide the model key", () => {
+    render(<AgentPanel {...panelProps()} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "模型设置" }));
+    const keyInput = screen.getByLabelText("访问密钥");
+
+    fireEvent.change(keyInput, {
+      target: { value: "sk-visible-local" },
+    });
+
+    expect(keyInput).toHaveAttribute("type", "password");
+    fireEvent.click(screen.getByRole("button", { name: "显示访问密钥" }));
+    expect(keyInput).toHaveAttribute("type", "text");
+    expect(keyInput).toHaveValue("sk-visible-local");
+
+    fireEvent.click(screen.getByRole("button", { name: "隐藏访问密钥" }));
+    expect(keyInput).toHaveAttribute("type", "password");
   });
 
   it("renders welcome suggestions and sends them through the thread runtime", async () => {

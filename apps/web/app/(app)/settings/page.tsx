@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import { hasPassword } from "./actions";
 import { PasswordSettings } from "./password-settings";
 import { Mail, KeyRound, Shield } from "lucide-react";
+import { AgentModelSettingsCard } from "@/components/agent/model-settings-dialog";
 import type { Metadata } from "next";
 export const metadata: Metadata = { title: "账户设置" };
 
@@ -71,6 +72,8 @@ export default async function SettingsPage() {
             </div>
           </div>
         </div>
+
+        <AgentModelSettingsCard />
       </div>
     </main>
   );

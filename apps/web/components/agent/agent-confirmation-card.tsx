@@ -18,7 +18,7 @@ export function AgentConfirmationCard({
 }: {
   operation: ResumeOperation;
   status?: AgentOperationApprovalRequest["status"];
-  onApply: (operation: ResumeOperation) => void;
+  onApply: (operation: ResumeOperation) => void | Promise<void>;
   onReject: (operationId: string) => void;
 }) {
   const persistedResolved = resolvedStateForStatus(status);
@@ -118,7 +118,15 @@ export function AgentConfirmationCard({
           size="sm"
           disabled={resolved !== null}
           onClick={() => {
-            onApply(operation);
+            const result = onApply(operation);
+            if (result && typeof result.then === "function") {
+              void result
+                .then(() => {
+                  setLocalResolved("applied");
+                })
+                .catch(() => undefined);
+              return;
+            }
             setLocalResolved("applied");
           }}
         >
