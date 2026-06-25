@@ -69,6 +69,24 @@ export const resumes = pgTable("resume", {
   slugIdx: uniqueIndex("resume_slug_idx").on(r.slug),
 }));
 
+export const resumeVersions = pgTable("resume_version", {
+  id: text("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  resumeId: text("resumeId").notNull().references(() => resumes.id, { onDelete: "cascade" }),
+  userId: text("userId").notNull().references(() => users.id, { onDelete: "cascade" }),
+  title: text("title").notNull(),
+  templateId: text("templateId").notNull(),
+  content: jsonb("content").$type<ResumeContent>().notNull(),
+  source: text("source").$type<"manual" | "agent" | "restore">().notNull(),
+  actorName: text("actorName").notNull(),
+  operationCount: integer("operationCount").notNull().default(1),
+  summary: text("summary"),
+  parentVersionId: text("parentVersionId"),
+  createdAt: timestamp("createdAt").notNull().defaultNow(),
+}, (t) => ({
+  resumeCreatedIdx: index("resume_version_resume_created_idx").on(t.resumeId, t.createdAt),
+  userIdx: index("resume_version_user_idx").on(t.userId),
+}));
+
 // ─── Agent Sessions ─────────────────────────────────────────
 
 export const agentSessions = pgTable("agent_session", {

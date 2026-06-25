@@ -53,4 +53,18 @@ describe("db migrations", () => {
       );
     }
   });
+
+  it("adds a durable resume_version table for Agent version history", () => {
+    const migrationsDir = join(process.cwd(), "db/migrations");
+    const sql = readFileSync(
+      join(migrationsDir, "0013_add_resume_versions.sql"),
+      "utf-8",
+    );
+
+    expect(sql).toContain('CREATE TABLE IF NOT EXISTS "resume_version"');
+    expect(sql).toContain('"content" jsonb NOT NULL');
+    expect(sql).toContain('"source" text NOT NULL');
+    expect(sql).toContain('"operationCount" integer NOT NULL');
+    expect(sql).toContain('CREATE INDEX IF NOT EXISTS "resume_version_resume_created_idx"');
+  });
 });
