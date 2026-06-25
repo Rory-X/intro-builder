@@ -1,4 +1,5 @@
 "use server";
+import { isDeepStrictEqual } from "node:util";
 import { and, desc, eq } from "drizzle-orm";
 import { auth } from "@/lib/auth";
 import { db } from "@/db";
@@ -249,19 +250,62 @@ export async function restoreResumeVersion(resumeId: string, versionId: string) 
   };
 }
 
-export async function saveResume(id: string, content: unknown, title?: string) {
+export type SaveResumeResult = {
+  id: string;
+  title: string;
+  content: ResumeContent;
+};
+
+export async function saveResume(
+  id: string,
+  content: unknown,
+  title?: string,
+): Promise<SaveResumeResult> {
   const userId = await actionUserId();
   const parsed = ResumeContent.safeParse(content);
   if (!parsed.success) throw new Error("invalid: " + parsed.error.message);
-  await withDbRetry("saveResume", () =>
-    db.update(resumes)
+  const updatedRows = await withDbRetry("saveResume.write", () =>
+    db
+      .update(resumes)
       .set({
         content: parsed.data,
-        ...(title ? { title } : {}),
+        ...(title !== undefined ? { title } : {}),
         updatedAt: new Date(),
       })
-      .where(and(eq(resumes.id, id), eq(resumes.userId, userId))),
+      .where(and(eq(resumes.id, id), eq(resumes.userId, userId)))
+      .returning({ id: resumes.id }),
   );
+  if (updatedRows.length === 0) throw new Error("not found");
+
+  const rows = await withDbRetry("saveResume.readback", () =>
+    db
+      .select({
+        id: resumes.id,
+        title: resumes.title,
+        content: resumes.content,
+      })
+      .from(resumes)
+      .where(and(eq(resumes.id, id), eq(resumes.userId, userId)))
+      .limit(1),
+  );
+  const row = rows[0];
+  if (!row) throw new Error("not found");
+  const savedContent = ResumeContent.safeParse(row.content);
+  if (!savedContent.success) {
+    throw new Error("save verification failed: invalid readback content");
+  }
+  if (!isDeepStrictEqual(savedContent.data, parsed.data)) {
+    throw new Error("save verification failed: content mismatch");
+  }
+  if (title !== undefined && row.title !== title) {
+    throw new Error("save verification failed: title mismatch");
+  }
+
+  return {
+    id: row.id,
+    title: row.title,
+    content: savedContent.data,
+  };
 }
 
 export async function setTemplate(

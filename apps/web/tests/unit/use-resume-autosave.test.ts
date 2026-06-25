@@ -7,7 +7,7 @@ import { emptyResumeContent } from "@intro-builder/shared/schemas";
 
 function useTestAutosave(onSave: (c: ResumeContent, t: string) => Promise<void>) {
   const form = useForm<ResumeContent>({ defaultValues: emptyResumeContent() });
-  useResumeAutosave({
+  const autosave = useResumeAutosave({
     form,
     resumeId: "r1",
     title: "My resume",
@@ -15,7 +15,23 @@ function useTestAutosave(onSave: (c: ResumeContent, t: string) => Promise<void>)
     onSave,
     onError: vi.fn(),
   });
-  return form;
+  return { form, autosave };
+}
+
+function useTestAutosaveWithErrorHandler(
+  onSave: (c: ResumeContent, t: string) => Promise<void>,
+  onError: (error: unknown) => void,
+) {
+  const form = useForm<ResumeContent>({ defaultValues: emptyResumeContent() });
+  const autosave = useResumeAutosave({
+    form,
+    resumeId: "r1",
+    title: "My resume",
+    debounceMs: 50,
+    onSave,
+    onError,
+  });
+  return { form, autosave };
 }
 
 function useTestAutosaveWithUnstableAdapter(
@@ -50,9 +66,9 @@ describe("useResumeAutosave", () => {
     const { result } = renderHook(() => useTestAutosave(onSave));
 
     await act(async () => {
-      result.current.setValue("basics.summary", "first", { shouldDirty: true });
+      result.current.form.setValue("basics.summary", "first", { shouldDirty: true });
       await vi.advanceTimersByTimeAsync(30);
-      result.current.setValue("basics.summary", "second", { shouldDirty: true });
+      result.current.form.setValue("basics.summary", "second", { shouldDirty: true });
       await vi.advanceTimersByTimeAsync(50);
     });
 
@@ -77,7 +93,7 @@ describe("useResumeAutosave", () => {
     const { result } = renderHook(() => useTestAutosave(onSave));
 
     await act(async () => {
-      result.current.setValue("basics.name", "A", { shouldDirty: true });
+      result.current.form.setValue("basics.name", "A", { shouldDirty: true });
       await vi.advanceTimersByTimeAsync(50);
     });
 
@@ -86,7 +102,7 @@ describe("useResumeAutosave", () => {
     });
 
     await act(async () => {
-      result.current.setValue("basics.name", "B", { shouldDirty: true });
+      result.current.form.setValue("basics.name", "B", { shouldDirty: true });
       await vi.advanceTimersByTimeAsync(50);
       await vi.runAllTimersAsync();
     });
@@ -101,6 +117,59 @@ describe("useResumeAutosave", () => {
 
     expect(onSave).toHaveBeenCalledTimes(2);
     expect(onSave.mock.calls[1][0].basics.name).toBe("B");
+  });
+
+  it("keeps flush pending until edits made during an in-flight save are persisted", async () => {
+    let resolveFirst: () => void = () => {};
+    const first = new Promise<void>((r) => {
+      resolveFirst = r;
+    });
+    let resolveSecond: () => void = () => {};
+    const second = new Promise<void>((r) => {
+      resolveSecond = r;
+    });
+    const onSave = vi
+      .fn()
+      .mockImplementationOnce(() => first)
+      .mockImplementationOnce(() => second);
+
+    const { result } = renderHook(() => useTestAutosave(onSave));
+
+    await act(async () => {
+      result.current.form.setValue("basics.name", "A", { shouldDirty: true });
+      await vi.advanceTimersByTimeAsync(50);
+    });
+    expect(onSave).toHaveBeenCalledTimes(1);
+
+    let flushResolved = false;
+    const flushPromise = result.current.autosave.flush().then(() => {
+      flushResolved = true;
+    });
+
+    await act(async () => {
+      result.current.form.setValue("basics.name", "B", { shouldDirty: true });
+      await Promise.resolve();
+    });
+
+    expect(flushResolved).toBe(false);
+
+    await act(async () => {
+      resolveFirst();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(onSave).toHaveBeenCalledTimes(2);
+    expect(onSave.mock.calls[1][0].basics.name).toBe("B");
+    expect(flushResolved).toBe(false);
+
+    await act(async () => {
+      resolveSecond();
+      await flushPromise;
+    });
+
+    expect(onSave).toHaveBeenCalledTimes(2);
+    expect(flushResolved).toBe(true);
   });
 
   it("does not autosave on mount or rerender without edits", async () => {
@@ -121,7 +190,7 @@ describe("useResumeAutosave", () => {
     const { result } = renderHook(() => useTestAutosave(onSave));
 
     await act(async () => {
-      result.current.setValue("projects", [{
+      result.current.form.setValue("projects", [{
         name: "P",
         role: "",
         location: "",
@@ -160,7 +229,7 @@ describe("useResumeAutosave", () => {
     const { result } = renderHook(() => useTestAutosave(onSave));
 
     await act(async () => {
-      result.current.setValue("projects", [{
+      result.current.form.setValue("projects", [{
         name: "P",
         role: "",
         location: "",
@@ -176,7 +245,7 @@ describe("useResumeAutosave", () => {
     onSave.mockClear();
 
     await act(async () => {
-      result.current.setValue("projects.0.content", {
+      result.current.form.setValue("projects.0.content", {
         type: "doc",
         content: [
           {
@@ -206,7 +275,7 @@ describe("useResumeAutosave", () => {
     const { result, unmount } = renderHook(() => useTestAutosave(onSave));
 
     await act(async () => {
-      result.current.setValue("basics.name", "Before refresh", { shouldDirty: true });
+      result.current.form.setValue("basics.name", "Before refresh", { shouldDirty: true });
       await vi.advanceTimersByTimeAsync(25);
       unmount();
       await Promise.resolve();
@@ -221,12 +290,36 @@ describe("useResumeAutosave", () => {
     const { result } = renderHook(() => useTestAutosave(onSave));
 
     await act(async () => {
-      result.current.setValue("basics.name", "Format changed", { shouldDirty: true });
+      result.current.form.setValue("basics.name", "Format changed", { shouldDirty: true });
       window.dispatchEvent(new Event("resume:flush-autosave"));
       await Promise.resolve();
     });
 
     expect(onSave).toHaveBeenCalledTimes(1);
     expect(onSave.mock.calls[0][0].basics.name).toBe("Format changed");
+  });
+
+  it("exposes a flush result that rejects when save fails", async () => {
+    const saveError = new Error("save failed");
+    const onSave = vi.fn().mockRejectedValue(saveError);
+    const onError = vi.fn();
+    const { result } = renderHook(() =>
+      useTestAutosaveWithErrorHandler(onSave, onError),
+    );
+
+    await act(async () => {
+      result.current.form.setValue("basics.name", "Needs flush", {
+        shouldDirty: true,
+      });
+    });
+
+    const flush = (
+      result.current.autosave as { flush?: () => Promise<void> }
+    ).flush;
+
+    expect(flush).toBeDefined();
+    await expect(flush?.()).rejects.toThrow("save failed");
+    expect(onSave).toHaveBeenCalledTimes(1);
+    expect(onError).toHaveBeenCalledWith(saveError);
   });
 });

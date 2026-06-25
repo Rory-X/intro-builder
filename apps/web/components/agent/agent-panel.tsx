@@ -33,7 +33,6 @@ import {
   RefreshCw,
   RotateCcw,
   Send,
-  Settings,
   Square,
   X,
   Zap,
@@ -42,21 +41,21 @@ import {
 import { AgentConfirmationCard } from "@/components/agent/agent-confirmation-card";
 import { AgentContextIndicator } from "@/components/agent/agent-context-indicator";
 import {
+  AGENT_APPLY_ERROR_MESSAGE,
+  commitAppliedOperations,
+  rollbackAppliedOperations,
+  tryApplyAgentOperation,
+  type AgentOperationApplyResult,
+  type ApplyAgentOperation,
+} from "@/components/agent/agent-operation-apply";
+import {
   AgentAgUiRuntimeProvider,
   useAgentAgUiInterruptSubmit,
   type AgentAgUiInterrupt,
 } from "@/components/agent/agent-ag-ui-runtime-provider";
+import { ModelSettingsDialog } from "@/components/agent/model-settings-dialog";
 import { AgentToolCard } from "@/components/agent/agent-tool-card";
 import { Button, buttonVariants } from "@/components/ui/button";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from "@/components/ui/dialog";
 import {
   Popover,
   PopoverContent,
@@ -69,10 +68,15 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { buildAgentResumeContext } from "@/lib/agent/chat-context";
+import {
+  emptyAgentModelSettings,
+  readStoredAgentModelSettings,
+  type AgentModelSettingsForm,
+  toAgentModelConfig,
+} from "@/lib/agent/model-settings-storage";
 import type {
   AgentMessageResponse,
   AgentContextStatusSnapshot,
-  AgentModelConfig,
   AgentResumeWorkspaceSnapshot,
   AgentResumeContext,
   AgentWorkflowId,
@@ -83,12 +87,6 @@ import type { ResumeContent } from "@intro-builder/shared/schemas";
 type AgentRetryRequest = {
   content: string;
   workflowId: AgentWorkflowId | null;
-};
-
-type AgentModelSettingsForm = {
-  baseUrl: string;
-  apiKey: string;
-  modelName: string;
 };
 
 type AgentTurnStatus =
@@ -131,10 +129,7 @@ const AGENT_WELCOME_SUGGESTIONS = [
     prompt: "请做一次导出前终检，指出格式、内容和可信度风险。",
   },
 ] as const;
-
-const AGENT_MODEL_SETTINGS_STORAGE_KEY = "intro-builder.agent.model-settings.v1";
-const AGENT_MODEL_API_KEY_SESSION_STORAGE_KEY =
-  "intro-builder.agent.model-api-key.v1";
+const AGENT_SAVE_FLUSH_ERROR_MESSAGE = "保存 Agent 修改失败，请稍后重试";
 
 export function AgentPanel({
   resumeId,
@@ -155,8 +150,8 @@ export function AgentPanel({
   templateId: string;
   getResumeContent: () => ResumeContent;
   completeness: AgentResumeContext["completeness"];
-  applyOperation: (operation: ResumeOperation) => void;
-  flushAutosave: () => void;
+  applyOperation: ApplyAgentOperation;
+  flushAutosave: () => Promise<void>;
   onBackToEdit?: () => void;
   defaultAutoApply?: boolean;
   lockAutoApply?: boolean;
@@ -170,7 +165,7 @@ export function AgentPanel({
   const [resumeWorkspace, setResumeWorkspace] =
     useState<AgentResumeWorkspaceSnapshot | null>(null);
   const [modelSettings, setModelSettings] = useState<AgentModelSettingsForm>(
-    () => emptyModelSettings(),
+    () => emptyAgentModelSettings(),
   );
   const [threadKey, setThreadKey] = useState(0);
   const [isLoading, setIsLoading] = useState(false);
@@ -185,7 +180,7 @@ export function AgentPanel({
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
-      setModelSettings(readStoredModelSettings());
+      setModelSettings(readStoredAgentModelSettings());
     }, 0);
     return () => window.clearTimeout(timer);
   }, []);
@@ -352,10 +347,24 @@ export function AgentPanel({
 
   function handleAutoAcceptOperation(operation: ResumeOperation) {
     const turnId = activeTurnIdRef.current;
-    applyOperation(operation);
-    if (turnId) {
-      markOperationApplied(turnId, operation.id);
+    setError(null);
+    const applied = tryApplyAgentOperation(applyOperation, operation, "agent-panel");
+    if (!applied.ok) {
+      setError(AGENT_APPLY_ERROR_MESSAGE);
+      return;
     }
+    void flushAutosave()
+      .then(() => {
+        commitAppliedOperations([applied], "agent-panel");
+        if (turnId) {
+          markOperationApplied(turnId, operation.id);
+        }
+      })
+      .catch((error) => {
+        console.error("[agent-panel] autosave flush failed", error);
+        rollbackAppliedOperations([applied], "agent-panel");
+        setError(AGENT_SAVE_FLUSH_ERROR_MESSAGE);
+      });
   }
 
   function startNewThread() {
@@ -470,7 +479,7 @@ export function AgentPanel({
               />
             </div>
             <div className="flex items-center gap-2">
-              <AgentModelSettingsDialog
+              <ModelSettingsDialog
                 settings={modelSettings}
                 onSave={setModelSettings}
               />
@@ -569,138 +578,11 @@ function AgentFloatingHeader({
         >
           <Plus className="h-4 w-4" />
         </Button>
-        <AgentModelSettingsDialog
+        <ModelSettingsDialog
           settings={modelSettings}
           onSave={onSaveModelSettings}
         />
       </div>
-    </div>
-  );
-}
-
-function AgentModelSettingsDialog({
-  settings,
-  onSave,
-}: {
-  settings: AgentModelSettingsForm;
-  onSave: (settings: AgentModelSettingsForm) => void;
-}) {
-  const [open, setOpen] = useState(false);
-  const [draft, setDraft] = useState<AgentModelSettingsForm>(settings);
-
-  function openDialog(nextOpen: boolean) {
-    setOpen(nextOpen);
-    if (nextOpen) {
-      setDraft(settings);
-    }
-  }
-
-  function saveSettings() {
-    const next = normalizeModelSettings(draft);
-    storeModelSettings(next);
-    onSave(next);
-    setOpen(false);
-  }
-
-  return (
-    <Dialog open={open} onOpenChange={openDialog}>
-      <DialogTrigger
-        render={
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon-sm"
-            aria-label="模型设置"
-          />
-        }
-      >
-        <Settings className="h-4 w-4" />
-      </DialogTrigger>
-      <DialogContent className="sm:max-w-md">
-        <DialogHeader>
-          <DialogTitle>模型设置</DialogTitle>
-          <DialogDescription>
-            为当前浏览器设置本地模型偏好。访问密钥只会随本次对话请求发送。
-          </DialogDescription>
-        </DialogHeader>
-        <div className="space-y-3">
-          <AgentModelSettingsField
-            id="agent-model-base-url"
-            label="模型服务地址"
-            value={draft.baseUrl}
-            placeholder="https://api.example.com/v1"
-            onChange={(value) => setDraft((current) => ({ ...current, baseUrl: value }))}
-          />
-          <AgentModelSettingsField
-            id="agent-model-api-key"
-            label="访问密钥"
-            value={draft.apiKey}
-            type="password"
-            placeholder="只保存在当前浏览器"
-            onChange={(value) => setDraft((current) => ({ ...current, apiKey: value }))}
-          />
-          <div className="space-y-1.5">
-            <div className="flex items-end gap-2">
-              <div className="flex-1">
-                <AgentModelSettingsField
-                  id="agent-model-name"
-                  label="模型名称"
-                  value={draft.modelName}
-                  placeholder="gpt-5-mini"
-                  onChange={(value) => setDraft((current) => ({ ...current, modelName: value }))}
-                />
-              </div>
-              <AgentModelFetchButton
-                baseUrl={draft.baseUrl}
-                apiKey={draft.apiKey}
-                onSelectModel={(modelId) =>
-                  setDraft((current) => ({ ...current, modelName: modelId }))
-                }
-              />
-            </div>
-          </div>
-        </div>
-        <DialogFooter className="gap-2">
-          <Button type="button" variant="ghost" onClick={() => setOpen(false)}>
-            取消
-          </Button>
-          <Button type="button" onClick={saveSettings}>
-            保存
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
-  );
-}
-
-function AgentModelSettingsField({
-  id,
-  label,
-  value,
-  type = "text",
-  placeholder,
-  onChange,
-}: {
-  id: string;
-  label: string;
-  value: string;
-  type?: "text" | "password";
-  placeholder: string;
-  onChange: (value: string) => void;
-}) {
-  return (
-    <div className="space-y-1.5">
-      <label htmlFor={id} className="text-xs font-medium text-muted-foreground">
-        {label}
-      </label>
-      <input
-        id={id}
-        type={type}
-        value={value}
-        placeholder={placeholder}
-        onChange={(event) => onChange(event.target.value)}
-        autoComplete="off" className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-      />
     </div>
   );
 }
@@ -729,8 +611,8 @@ function AgentThreadArea({
   onRetryStarted: () => void;
   onInterruptResolved: (turnId: string) => void;
   onOperationApplied: (turnId: string, operationId: string) => void;
-  applyOperation: (operation: ResumeOperation) => void;
-  flushAutosave: () => void;
+  applyOperation: ApplyAgentOperation;
+  flushAutosave: () => Promise<void>;
 }) {
   const threadMessages = useAuiState((state) => state.thread.messages);
   const { artifactByAssistantMessageId, pendingArtifacts } =
@@ -1017,11 +899,12 @@ function AgentTurnArtifactsPanel({
   turnArtifact: AgentTurnArtifacts;
   onInterruptResolved: (turnId: string) => void;
   onOperationApplied: (turnId: string, operationId: string) => void;
-  applyOperation: (operation: ResumeOperation) => void;
-  flushAutosave: () => void;
+  applyOperation: ApplyAgentOperation;
+  flushAutosave: () => Promise<void>;
 }) {
   const submitInterrupts = useAgentAgUiInterruptSubmit();
   const [decisions, setDecisions] = React.useState<Map<string, boolean>>(new Map());
+  const [writebackError, setWritebackError] = React.useState<string | null>(null);
   const approvalInterrupts = getApprovalInterrupts(turnArtifact.interrupts);
   const questionInterrupts = getQuestionInterrupts(turnArtifact.interrupts);
   const allApprovalInterruptsDecided = approvalInterrupts.every((interrupt) =>
@@ -1043,9 +926,26 @@ function AgentTurnArtifactsPanel({
   const hasApprovalInterrupts = approvalInterrupts.length > 0;
 
   async function handleApplyOperation(operation: ResumeOperation) {
-    applyOperation(operation);
-    onOperationApplied(turnArtifact.id, operation.id);
-    flushAutosave();
+    setWritebackError(null);
+    const applied = tryApplyAgentOperation(
+      applyOperation,
+      operation,
+      "agent-panel-artifacts",
+    );
+    if (!applied.ok) {
+      setWritebackError(AGENT_APPLY_ERROR_MESSAGE);
+      throw new Error(AGENT_APPLY_ERROR_MESSAGE);
+    }
+    try {
+      await flushAutosave();
+      commitAppliedOperations([applied], "agent-panel-artifacts");
+      onOperationApplied(turnArtifact.id, operation.id);
+    } catch (error) {
+      console.error("[agent-panel] autosave flush failed", error);
+      rollbackAppliedOperations([applied], "agent-panel-artifacts");
+      setWritebackError(AGENT_SAVE_FLUSH_ERROR_MESSAGE);
+      throw error;
+    }
 
     if (!hasApprovalInterrupts) return;
 
@@ -1098,11 +998,33 @@ function AgentTurnArtifactsPanel({
   }
 
   async function handleApplyAll() {
+    setWritebackError(null);
+    const appliedOperations: AgentOperationApplyResult[] = [];
     for (const operation of turnArtifact.operations) {
-      applyOperation(operation);
-      onOperationApplied(turnArtifact.id, operation.id);
+      const applied = tryApplyAgentOperation(
+        applyOperation,
+        operation,
+        "agent-panel-artifacts",
+      );
+      if (!applied.ok) {
+        rollbackAppliedOperations(appliedOperations, "agent-panel-artifacts");
+        setWritebackError(AGENT_APPLY_ERROR_MESSAGE);
+        return;
+      }
+      appliedOperations.push(applied);
     }
-    flushAutosave();
+    try {
+      await flushAutosave();
+      commitAppliedOperations(appliedOperations, "agent-panel-artifacts");
+      for (const operation of turnArtifact.operations) {
+        onOperationApplied(turnArtifact.id, operation.id);
+      }
+    } catch (error) {
+      console.error("[agent-panel] autosave flush failed", error);
+      rollbackAppliedOperations(appliedOperations, "agent-panel-artifacts");
+      setWritebackError(AGENT_SAVE_FLUSH_ERROR_MESSAGE);
+      return;
+    }
 
     if (!hasApprovalInterrupts) return;
 
@@ -1194,6 +1116,11 @@ function AgentTurnArtifactsPanel({
               onReject={handleRejectOperation}
             />
           ))}
+          {writebackError ? (
+            <p role="alert" className="text-xs text-destructive">
+              {writebackError}
+            </p>
+          ) : null}
         </div>
       ) : null}
     </div>
@@ -1384,8 +1311,8 @@ function AgentThreadMessage({
   turnArtifact: AgentTurnArtifacts | null;
   onInterruptResolved: (turnId: string) => void;
   onOperationApplied: (turnId: string, operationId: string) => void;
-  applyOperation: (operation: ResumeOperation) => void;
-  flushAutosave: () => void;
+  applyOperation: ApplyAgentOperation;
+  flushAutosave: () => Promise<void>;
 }) {
   const text = readThreadMessageText(message);
   if (message.role === "system") return null;
@@ -1904,88 +1831,6 @@ function buildApprovalInterruptResponses(
     });
 }
 
-function readStoredModelSettings(): AgentModelSettingsForm {
-  if (typeof window === "undefined") return emptyModelSettings();
-  try {
-    const raw = window.localStorage.getItem(AGENT_MODEL_SETTINGS_STORAGE_KEY);
-    const parsed = raw ? JSON.parse(raw) : null;
-    const storedApiKey = readSessionModelApiKey();
-    if (!isRecord(parsed)) {
-      return { ...emptyModelSettings(), apiKey: storedApiKey };
-    }
-    const legacyApiKey = typeof parsed.apiKey === "string" ? parsed.apiKey : "";
-    const apiKey = storedApiKey || legacyApiKey;
-    if (legacyApiKey) {
-      storeModelSettings({
-        baseUrl: typeof parsed.baseUrl === "string" ? parsed.baseUrl : "",
-        modelName: typeof parsed.modelName === "string" ? parsed.modelName : "",
-        apiKey,
-      });
-    }
-    return normalizeModelSettings({
-      baseUrl: typeof parsed.baseUrl === "string" ? parsed.baseUrl : "",
-      apiKey,
-      modelName: typeof parsed.modelName === "string" ? parsed.modelName : "",
-    });
-  } catch {
-    return emptyModelSettings();
-  }
-}
-
-function storeModelSettings(settings: AgentModelSettingsForm) {
-  if (typeof window === "undefined") return;
-  const normalized = normalizeModelSettings(settings);
-  window.localStorage.setItem(
-    AGENT_MODEL_SETTINGS_STORAGE_KEY,
-    JSON.stringify({
-      baseUrl: normalized.baseUrl,
-      modelName: normalized.modelName,
-    }),
-  );
-  if (normalized.apiKey) {
-    window.sessionStorage.setItem(
-      AGENT_MODEL_API_KEY_SESSION_STORAGE_KEY,
-      normalized.apiKey,
-    );
-  } else {
-    window.sessionStorage.removeItem(AGENT_MODEL_API_KEY_SESSION_STORAGE_KEY);
-  }
-}
-
-function readSessionModelApiKey(): string {
-  if (typeof window === "undefined") return "";
-  return window.sessionStorage.getItem(AGENT_MODEL_API_KEY_SESSION_STORAGE_KEY) ?? "";
-}
-
-function emptyModelSettings(): AgentModelSettingsForm {
-  return {
-    baseUrl: "",
-    apiKey: "",
-    modelName: "",
-  };
-}
-
-function normalizeModelSettings(
-  settings: AgentModelSettingsForm,
-): AgentModelSettingsForm {
-  return {
-    baseUrl: settings.baseUrl.trim(),
-    apiKey: settings.apiKey.trim(),
-    modelName: settings.modelName.trim(),
-  };
-}
-
-function toAgentModelConfig(
-  settings: AgentModelSettingsForm,
-): AgentModelConfig | null {
-  const normalized = normalizeModelSettings(settings);
-  if (!normalized.baseUrl || !normalized.apiKey || !normalized.modelName) {
-    return null;
-  }
-  return normalized;
-}
-
-
 function AgentThreadDropdown({
   resumeId,
   title,
@@ -2116,125 +1961,4 @@ function AgentStatusFooter({
       </div>
     </div>
   );
-}
-
-
-function AgentModelFetchButton({
-  baseUrl,
-  apiKey,
-  onSelectModel,
-}: {
-  baseUrl: string;
-  apiKey: string;
-  onSelectModel: (modelId: string) => void;
-}) {
-  const [isFetching, setIsFetching] = useState(false);
-  const [models, setModels] = useState<string[] | null>(null);
-  const [fetchError, setFetchError] = useState<string | null>(null);
-
-  async function fetchModels() {
-    if (!baseUrl || !apiKey) return;
-    setIsFetching(true);
-    setFetchError(null);
-    setModels(null);
-
-    try {
-      const response = await fetch(
-        `${baseUrl.replace(/\/+$/, "")}/models`,
-        {
-          headers: {
-            Authorization: `Bearer ${apiKey}`,
-            "Content-Type": "application/json",
-          },
-          signal: AbortSignal.timeout(10_000),
-        },
-      );
-
-      if (!response.ok) {
-        const body = await response.text().catch(() => "");
-        throw new Error(body || `HTTP ${response.status}`);
-      }
-
-      const data = await response.json();
-      const ids = extractModelIds(data);
-      if (ids.length === 0) {
-        setFetchError("未找到可用模型");
-      }
-      setModels(ids);
-    } catch (error) {
-      setFetchError(
-        error instanceof Error ? error.message : "获取模型列表失败",
-      );
-    } finally {
-      setIsFetching(false);
-    }
-  }
-
-  if (models && models.length > 0) {
-    return (
-      <DropdownMenu>
-        <DropdownMenuTrigger>
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            className="h-9 gap-1 text-xs"
-          >
-            <Check className="h-3 w-3 text-emerald-600" />
-            {models.length} 个模型
-          </Button>
-        </DropdownMenuTrigger>
-        <DropdownMenuContent align="end" className="max-h-48 overflow-y-auto">
-          {models.map((modelId) => (
-            <DropdownMenuItem
-              key={modelId}
-              onClick={() => onSelectModel(modelId)}
-              className="cursor-pointer text-xs"
-            >
-              {modelId}
-            </DropdownMenuItem>
-          ))}
-        </DropdownMenuContent>
-      </DropdownMenu>
-    );
-  }
-
-  return (
-    <div className="flex flex-col items-end gap-1">
-      <Button
-        type="button"
-        variant="outline"
-        size="sm"
-        className="h-9 gap-1 text-xs"
-        disabled={!baseUrl || !apiKey || isFetching}
-        onClick={fetchModels}
-      >
-        {isFetching ? (
-          <Loader2 className="h-3 w-3 animate-spin" />
-        ) : (
-          <RefreshCw className="h-3 w-3" />
-        )}
-        {isFetching ? "获取中…" : "获取模型"}
-      </Button>
-      {fetchError ? (
-        <p className="text-xs text-destructive">{fetchError}</p>
-      ) : null}
-    </div>
-  );
-}
-
-function extractModelIds(data: unknown): string[] {
-  if (!isRecord(data)) return [];
-  if (Array.isArray(data.data)) {
-    return data.data
-      .map((item) =>
-        isRecord(item) && typeof item.id === "string" ? item.id : null,
-      )
-      .filter((id): id is string => id !== null);
-  }
-  return [];
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
 }

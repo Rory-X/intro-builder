@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { EventType, type BaseEvent } from "@ag-ui/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -303,6 +303,64 @@ describe("AgentPanel assistant-ui runtime", () => {
     ]);
   });
 
+  it("keeps the latest floating regenerate action visible without hover", async () => {
+    const fetchMock = floatingSessionFetch(async (url) => {
+      if (url.startsWith("/api/agent/floating/sessions?")) {
+        return Response.json({
+          sessions: [
+            {
+              id: "session_regenerate_visible",
+              title: "上一轮诊断",
+              updatedAt: "2026-06-18T08:00:00.000Z",
+            },
+          ],
+        });
+      }
+      if (url === "/api/agent/floating/sessions/session_regenerate_visible") {
+        return Response.json({
+          session: {
+            id: "session_regenerate_visible",
+            title: "上一轮诊断",
+            updatedAt: "2026-06-18T08:00:00.000Z",
+          },
+          messages: [
+            {
+              id: "msg_user_regenerate",
+              role: "user",
+              content: "帮我诊断这份简历",
+              toolCalls: [],
+              operations: [],
+              createdAt: "2026-06-18T08:00:00.000Z",
+            },
+            {
+              id: "msg_assistant_regenerate",
+              role: "assistant",
+              content: "建议优先加强最近工作经历的结果表达。",
+              toolCalls: [],
+              operations: [],
+              createdAt: "2026-06-18T08:00:01.000Z",
+            },
+          ],
+          hasMore: false,
+          nextCursor: null,
+        });
+      }
+      return null;
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<FloatingAgentChat {...floatingProps()} />);
+
+    const regenerateButton = await screen.findByRole("button", {
+      name: "重新生成回答",
+    });
+    const actionBar = regenerateButton.parentElement;
+
+    expect(actionBar?.className).toContain("absolute");
+    expect(actionBar?.className).not.toContain("opacity-0");
+    expect(actionBar?.className).not.toContain("group-hover/message:opacity-100");
+  });
+
   it("aborts the active floating request when the user stops generation", async () => {
     window.localStorage.setItem(
       "intro-builder.agent.model-settings.v1",
@@ -433,7 +491,8 @@ describe("AgentPanel assistant-ui runtime", () => {
       screen.getByRole("button", { name: /更新简历内容/ }),
     ).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /updateSection/ })).not.toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /执行结果/ })).toBeInTheDocument();
+    expect(screen.getByText("强化行动与结果。")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /执行结果/ })).not.toBeInTheDocument();
   });
 
   it("renders approval cards in request-approval mode before applying floating operations", async () => {
@@ -626,7 +685,15 @@ describe("AgentPanel assistant-ui runtime", () => {
       ]),
     );
     expect(continueBody.approvalDecisions).toEqual([
-      { approvalId: "floating_tool_approval_continue", approved: true },
+      {
+        approvalId: "floating_tool_approval_continue",
+        approved: true,
+        operation: "update_section",
+        fieldPath: "skills",
+        changeSummary: "补充前端技能栈。",
+        summary: "补充前端技能栈。",
+        label: "更新技能",
+      },
     ]);
     expect(applyOperation).toHaveBeenCalledWith(operation);
     expect(flushAutosave).toHaveBeenCalledTimes(1);
@@ -737,7 +804,15 @@ describe("AgentPanel assistant-ui runtime", () => {
       ]),
     );
     expect(continueBody.approvalDecisions).toEqual([
-      { approvalId: "floating_tool_approval_ignore", approved: false },
+      {
+        approvalId: "floating_tool_approval_ignore",
+        approved: false,
+        operation: "update_section",
+        fieldPath: "skills",
+        changeSummary: "补充前端技能栈。",
+        summary: "补充前端技能栈。",
+        label: "更新技能",
+      },
     ]);
     expect(applyOperation).not.toHaveBeenCalled();
 
@@ -835,6 +910,62 @@ describe("AgentPanel assistant-ui runtime", () => {
     expect(screen.queryByRole("button", { name: /updateSection/ })).not.toBeInTheDocument();
   });
 
+  it("does not force floating scroll to bottom while the user is reading older messages", async () => {
+    window.localStorage.setItem(
+      "intro-builder.agent.model-settings.v1",
+      JSON.stringify({
+        baseUrl: "https://models.example.test/v1",
+        modelName: "gpt-4.1-mini",
+      }),
+    );
+    window.sessionStorage.setItem(
+      "intro-builder.agent.model-api-key.v1",
+      "sk-local-test",
+    );
+    const stream = createControlledFloatingStream();
+    const fetchMock = floatingSessionFetch(async (url) => {
+      if (url === "/api/agent/floating/chat") {
+        return stream.response;
+      }
+      return null;
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const { container } = render(<FloatingAgentChat {...floatingProps()} />);
+
+    await waitFor(() => {
+      expect(findOptionalFetchCall(fetchMock, "/api/agent/floating/sessions/session_1")).toBeTruthy();
+    });
+    sendMessage("请流式诊断这份简历");
+    await stream.ready;
+
+    const scrollRegion = container.querySelector(".overflow-y-auto");
+    if (!scrollRegion) throw new Error("Missing floating scroll region");
+    Object.defineProperty(scrollRegion, "scrollHeight", {
+      configurable: true,
+      value: 2000,
+    });
+    Object.defineProperty(scrollRegion, "clientHeight", {
+      configurable: true,
+      value: 360,
+    });
+    scrollRegion.scrollTop = 240;
+
+    stream.push({ type: "text-delta", delta: "新增的流式回答" });
+
+    expect(await screen.findByText("新增的流式回答")).toBeInTheDocument();
+    await Promise.resolve();
+    expect(scrollRegion.scrollTop).toBe(240);
+
+    scrollRegion.scrollTop = 1650;
+    fireEvent.scroll(scrollRegion);
+    stream.push({ type: "text-delta", delta: "，第二段" });
+
+    expect(await screen.findByText("新增的流式回答，第二段")).toBeInTheDocument();
+    await Promise.resolve();
+    expect(scrollRegion.scrollTop).toBe(2000);
+  });
+
   it("renders floating tool calls during streaming and applies update results before final text", async () => {
     window.localStorage.setItem(
       "intro-builder.agent.model-settings.v1",
@@ -906,7 +1037,8 @@ describe("AgentPanel assistant-ui runtime", () => {
       },
       operations: [],
     });
-    expect(await screen.findByRole("button", { name: /执行结果/ })).toBeInTheDocument();
+    expect(await screen.findByText("读取简历上下文")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /执行结果/ })).not.toBeInTheDocument();
 
     stream.push({ type: "text-delta", delta: "我会更新最近经历。" });
     const secondText = await screen.findByText("我会更新最近经历。");
@@ -967,6 +1099,251 @@ describe("AgentPanel assistant-ui runtime", () => {
     expectNodeBefore(updateToolButton, thirdText);
     expect(applyOperation).toHaveBeenCalledTimes(1);
     expect(flushAutosave).toHaveBeenCalledTimes(1);
+  });
+
+  it("surfaces a direct-write save failure instead of finishing the floating turn", async () => {
+    window.localStorage.setItem(
+      "intro-builder.agent.model-settings.v1",
+      JSON.stringify({
+        baseUrl: "https://models.example.test/v1",
+        modelName: "gpt-4.1-mini",
+      }),
+    );
+    window.sessionStorage.setItem(
+      "intro-builder.agent.model-api-key.v1",
+      "sk-local-test",
+    );
+    const operation = {
+      id: "floating_tool_save_fail",
+      toolCallId: "tool_save_fail",
+      label: "更新经历",
+      section: "experience",
+      fieldPath: "experience.0.content",
+      operation: "update_section",
+      beforePlainText: "负责开发。",
+      afterPlainText: "主导核心链路优化。",
+      changeSummary: "强化行动与结果。",
+      riskFlags: [],
+    };
+    const flushError = new Error("save failed");
+    const flushAutosave = vi.fn(() => Promise.reject(flushError));
+    const rollback = vi.fn();
+    const applyOperation = vi.fn(() => ({ ok: true as const, rollback }));
+    const fetchMock = floatingSessionFetch(async (url) => {
+      if (url === "/api/agent/floating/chat") {
+        return Response.json({
+          message: "已直接更新最近一段经历。",
+          operations: [operation],
+          toolCalls: [
+            {
+              id: "tool_save_fail",
+              name: "updateSection",
+              status: "completed",
+              summary: "强化行动与结果。",
+            },
+          ],
+        });
+      }
+      return null;
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<FloatingAgentChat {...floatingProps({ applyOperation, flushAutosave })} />);
+
+    await waitFor(() => {
+      expect(findOptionalFetchCall(fetchMock, "/api/agent/floating/sessions/session_1")).toBeTruthy();
+    });
+    sendMessage("请直接优化最近经历");
+
+    await waitFor(() => {
+      expect(applyOperation).toHaveBeenCalledWith(operation);
+    });
+    expect(flushAutosave).toHaveBeenCalledTimes(1);
+    expect(rollback).toHaveBeenCalledTimes(1);
+    expect(screen.queryByText("已直接更新最近一段经历。")).not.toBeInTheDocument();
+
+    await waitFor(() => {
+      expect(toastMocks.error).toHaveBeenCalledWith("保存 Agent 修改失败，请稍后重试");
+    });
+    expect(screen.getByText("请求失败：保存 Agent 修改失败，请稍后重试")).toBeInTheDocument();
+    expect(screen.queryByText(/已直接更新最近一段经历/)).not.toBeInTheDocument();
+    expect(flushError).toBeInstanceOf(Error);
+  });
+
+  it("rolls back a panel operation when the verified save fails", async () => {
+    const rollback = vi.fn();
+    const applyOperation = vi.fn(() => ({ ok: true as const, rollback }));
+    const flushAutosave = vi.fn(() => Promise.reject(new Error("save failed")));
+    const fetchMock = vi.fn<
+      (...args: [RequestInfo | URL, RequestInit?]) => Promise<Response>
+    >(async () => {
+      return agUiWorkspaceResponse(["我准备了一组修改建议。"]);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<AgentPanel {...panelProps({ applyOperation, flushAutosave })} />);
+    sendMessage("请改写最近经历");
+
+    expect(await screen.findByText("待确认 1 组修改")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "应用" }));
+
+    await waitFor(() => {
+      expect(applyOperation).toHaveBeenCalledWith(
+        expect.objectContaining({ id: "op_1" }),
+      );
+    });
+    expect(flushAutosave).toHaveBeenCalledTimes(1);
+    await waitFor(() => {
+      expect(rollback).toHaveBeenCalledTimes(1);
+    });
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "保存 Agent 修改失败，请稍后重试",
+    );
+    expect(screen.getByText("等待确认 1 条修改建议")).toBeInTheDocument();
+    expect(screen.queryByText("已应用 1 条修改")).not.toBeInTheDocument();
+    expect(screen.queryByText("已应用，等待自动保存。")).not.toBeInTheDocument();
+  });
+
+  it("surfaces a direct-write local apply failure before flushing autosave", async () => {
+    window.localStorage.setItem(
+      "intro-builder.agent.model-settings.v1",
+      JSON.stringify({
+        baseUrl: "https://models.example.test/v1",
+        modelName: "gpt-4.1-mini",
+      }),
+    );
+    window.sessionStorage.setItem(
+      "intro-builder.agent.model-api-key.v1",
+      "sk-local-test",
+    );
+    const operation = {
+      id: "floating_tool_apply_fail",
+      toolCallId: "tool_apply_fail",
+      label: "更新经历",
+      section: "experience",
+      fieldPath: "experience.0.content",
+      operation: "update_section",
+      beforePlainText: "负责开发。",
+      afterPlainText: "主导核心链路优化。",
+      changeSummary: "强化行动与结果。",
+      riskFlags: [],
+    };
+    const flushAutosave = vi.fn();
+    const applyOperation = vi.fn(() => false);
+    const fetchMock = floatingSessionFetch(async (url) => {
+      if (url === "/api/agent/floating/chat") {
+        return Response.json({
+          message: "已直接更新最近一段经历。",
+          operations: [operation],
+          toolCalls: [
+            {
+              id: "tool_apply_fail",
+              name: "updateSection",
+              status: "completed",
+              summary: "强化行动与结果。",
+            },
+          ],
+        });
+      }
+      return null;
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<FloatingAgentChat {...floatingProps({ applyOperation, flushAutosave })} />);
+
+    await waitFor(() => {
+      expect(findOptionalFetchCall(fetchMock, "/api/agent/floating/sessions/session_1")).toBeTruthy();
+    });
+    sendMessage("请直接优化最近经历");
+
+    await waitFor(() => {
+      expect(applyOperation).toHaveBeenCalledWith(operation);
+    });
+    expect(flushAutosave).not.toHaveBeenCalled();
+    expect(screen.queryByText("已直接更新最近一段经历。")).not.toBeInTheDocument();
+
+    await waitFor(() => {
+      expect(toastMocks.error).toHaveBeenCalledWith(
+        "这条 Agent 建议暂不支持自动应用",
+      );
+    });
+    expect(
+      screen.getByText("请求失败：这条 Agent 建议暂不支持自动应用"),
+    ).toBeInTheDocument();
+  });
+
+  it("renders floating tool calls as concise summaries by default", async () => {
+    const fetchMock = floatingSessionFetch(async (url) => {
+      if (url.startsWith("/api/agent/floating/sessions?")) {
+        return Response.json({
+          sessions: [
+            {
+              id: "session_tool_summary",
+              title: "工具展示",
+              updatedAt: "2026-06-18T08:00:00.000Z",
+            },
+          ],
+        });
+      }
+      if (url === "/api/agent/floating/sessions/session_tool_summary") {
+        return Response.json({
+          session: {
+            id: "session_tool_summary",
+            title: "工具展示",
+            updatedAt: "2026-06-18T08:00:00.000Z",
+          },
+          messages: [
+            {
+              id: "msg_assistant_tool_summary",
+              role: "assistant",
+              content: "我已经整理了技能区。",
+              parts: [
+                { id: "part_text_tool_summary", type: "text", text: "我已经整理了技能区。" },
+                {
+                  id: "part_tool_summary",
+                  type: "tool",
+                  toolCall: {
+                    id: "tool_summary",
+                    name: "updateSection",
+                    status: "completed",
+                    summary: "已把技术栈整理进草稿。",
+                    input: {
+                      fieldPath: "skills.0.keywords",
+                      operation: "update_section",
+                    },
+                    output: {
+                      operationIds: ["op_skills"],
+                      fieldPath: "skills.0.keywords",
+                    },
+                  },
+                },
+              ],
+              toolCalls: [],
+              operations: [],
+              createdAt: "2026-06-18T08:00:01.000Z",
+            },
+          ],
+          hasMore: false,
+          nextCursor: null,
+        });
+      }
+      return null;
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<FloatingAgentChat {...floatingProps()} />);
+
+    expect(await screen.findByText("已把技术栈整理进草稿。")).toBeInTheDocument();
+    expect(screen.getByText("更新简历内容")).toBeInTheDocument();
+    expect(screen.queryByText("调用参数")).not.toBeInTheDocument();
+    expect(screen.queryByText("执行结果")).not.toBeInTheDocument();
+    expect(screen.queryByText(/skills\.0\.keywords/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/operationIds/)).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: /查看调试信息/ }));
+
+    expect(await screen.findByText(/skills\.0\.keywords/)).toBeInTheDocument();
+    expect(screen.getByText(/operationIds/)).toBeInTheDocument();
   });
 
   it("restores persisted floating message parts in their original text and tool order", async () => {
@@ -1124,14 +1501,23 @@ describe("AgentPanel assistant-ui runtime", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "应用" }));
 
-    expect(applyOperation).toHaveBeenCalledWith(operation);
-    expect(flushAutosave).toHaveBeenCalledTimes(1);
-    const statusUpdateCall = fetchMock.mock.calls.find(
-      ([url, init]) =>
-        String(url) === "/api/agent/floating/sessions/session_approval_parts" &&
-        init?.method === "PATCH",
-    );
-    expect(statusUpdateCall).toBeTruthy();
+    await waitFor(() => {
+      expect(applyOperation).toHaveBeenCalledWith(operation);
+    });
+    await waitFor(() => {
+      expect(flushAutosave).toHaveBeenCalledTimes(1);
+    });
+    let statusUpdateCall:
+      | [(RequestInfo | URL), RequestInit?]
+      | undefined;
+    await waitFor(() => {
+      statusUpdateCall = fetchMock.mock.calls.find(
+        ([url, init]) =>
+          String(url) === "/api/agent/floating/sessions/session_approval_parts" &&
+          init?.method === "PATCH",
+      );
+      expect(statusUpdateCall).toBeTruthy();
+    });
     expect(JSON.parse(String(statusUpdateCall?.[1]?.body))).toEqual({
       messageId: "msg_assistant_approval_parts",
       approvalId: operation.id,
@@ -1414,6 +1800,7 @@ describe("AgentPanel assistant-ui runtime", () => {
     render(<FloatingAgentChat {...floatingProps()} />);
 
     fireEvent.click(screen.getByRole("button", { name: "当前模型：连接模型" }));
+    expect(screen.getByRole("dialog", { name: "模型设置" })).toBeInTheDocument();
     fireEvent.change(screen.getByLabelText("模型服务地址"), {
       target: { value: "https://models.example.test/v1" },
     });
@@ -1923,8 +2310,9 @@ describe("AgentPanel assistant-ui runtime", () => {
   });
 
   it("projects v2 resume workspace change sets into confirmable cards without exposing state keys", async () => {
-    const applyOperation = vi.fn();
-    const flushAutosave = vi.fn();
+    const applyOperation = vi.fn(() => true);
+    const flushState = deferredPromise<void>();
+    const flushAutosave = vi.fn(() => flushState.promise);
     const fetchMock = vi.fn<
       (...args: [RequestInfo | URL, RequestInit?]) => Promise<Response>
     >(async () => {
@@ -1949,10 +2337,51 @@ describe("AgentPanel assistant-ui runtime", () => {
       );
     });
     expect(flushAutosave).toHaveBeenCalledTimes(1);
+    expect(screen.getByText("等待确认 1 条修改建议")).toBeInTheDocument();
+    expect(screen.queryByText("已应用 1 条修改")).not.toBeInTheDocument();
+    await act(async () => {
+      flushState.resolve();
+      await flushState.promise;
+    });
+    expect(await screen.findByText("已应用 1 条修改")).toBeInTheDocument();
     expect(screen.queryByText(/workspace/)).not.toBeInTheDocument();
     expect(screen.queryByText(/changeset_req_agent/)).not.toBeInTheDocument();
     expect(screen.queryByText(/fieldPath/)).not.toBeInTheDocument();
     expect(screen.queryByText(/resume_update_section/)).not.toBeInTheDocument();
+  });
+
+  it("keeps a panel operation pending when local apply fails", async () => {
+    const applyOperation = vi.fn(() => false);
+    const flushAutosave = vi.fn();
+    const fetchMock = vi.fn<
+      (...args: [RequestInfo | URL, RequestInit?]) => Promise<Response>
+    >(async () => {
+      return agUiWorkspaceResponse(["我准备了一组修改建议。"]);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<AgentPanel {...panelProps({ applyOperation, flushAutosave })} />);
+    sendMessage("请改写最近经历");
+
+    expect(await screen.findByText("待确认 1 组修改")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "应用" }));
+
+    await waitFor(() => {
+      expect(applyOperation).toHaveBeenCalledWith(
+        expect.objectContaining({
+          id: "op_1",
+          fieldPath: "experience.0.content",
+          operation: "update_section",
+        }),
+      );
+    });
+    expect(flushAutosave).not.toHaveBeenCalled();
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "这条 Agent 建议暂不支持自动应用",
+    );
+    expect(screen.getByText("等待确认 1 条修改建议")).toBeInTheDocument();
+    expect(screen.queryByText("已应用 1 条修改")).not.toBeInTheDocument();
+    expect(screen.queryByText("已应用，等待自动保存。")).not.toBeInTheDocument();
   });
 
   it("shows create-from-zero draft workspace as a simple pending draft status", async () => {
@@ -2342,11 +2771,15 @@ describe("AgentPanel assistant-ui runtime", () => {
     expect(screen.getByRole("button", { name: "继续分析" })).toBeDisabled();
 
     fireEvent.click(screen.getByRole("button", { name: "应用" }));
-    expect(applyOperation).toHaveBeenCalledWith(
-      expect.objectContaining({ id: "op_skills" }),
-    );
-    expect(flushAutosave).toHaveBeenCalledTimes(1);
-    expect(screen.getByText("等待补充信息")).toBeInTheDocument();
+    await waitFor(() => {
+      expect(applyOperation).toHaveBeenCalledWith(
+        expect.objectContaining({ id: "op_skills" }),
+      );
+    });
+    await waitFor(() => {
+      expect(flushAutosave).toHaveBeenCalledTimes(1);
+    });
+    expect(await screen.findByText("等待补充信息")).toBeInTheDocument();
     expect(fetchMock).toHaveBeenCalledTimes(1);
 
     fireEvent.click(screen.getByRole("button", { name: "继续分析" }));
@@ -2894,7 +3327,7 @@ function panelProps(overrides: Partial<React.ComponentProps<typeof AgentPanel>> 
     templateId: "professional",
     getResumeContent: () => emptyResumeContent(),
     completeness: { overall: 80, sections: [] },
-    applyOperation: vi.fn(),
+    applyOperation: vi.fn(() => true),
     flushAutosave: vi.fn(),
     onBackToEdit: vi.fn(),
     ...overrides,
@@ -2908,10 +3341,20 @@ function floatingProps(overrides: Partial<React.ComponentProps<typeof FloatingAg
     templateId: "professional",
     getResumeContent: () => emptyResumeContent(),
     completeness: { overall: 80, sections: [] },
-    applyOperation: vi.fn(),
+    applyOperation: vi.fn(() => true),
     flushAutosave: vi.fn(),
     ...overrides,
   };
+}
+
+function deferredPromise<T>() {
+  let resolve: (value: T | PromiseLike<T>) => void = () => undefined;
+  let reject: (reason?: unknown) => void = () => undefined;
+  const promise = new Promise<T>((nextResolve, nextReject) => {
+    resolve = nextResolve;
+    reject = nextReject;
+  });
+  return { promise, resolve, reject };
 }
 
 type FetchMock = ReturnType<typeof floatingSessionFetch>;

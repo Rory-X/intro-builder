@@ -80,6 +80,7 @@ import { AgentModeToggle } from "@/components/agent/agent-mode-toggle";
 import { AgentPanel } from "@/components/agent/agent-panel";
 import { AgentBubble } from "@/components/agent/agent-bubble";
 import { FloatingAgentChat } from "@/components/agent/floating-agent-chat";
+import type { AgentOperationApplyResult } from "@/components/agent/agent-operation-apply";
 import type { ResumeOperation } from "@intro-builder/shared/types";
 import { applyResumeOperation } from "@/lib/agent/apply-operation";
 import { VersionHistoryPopover } from "@/components/editor/version-history-popover";
@@ -316,6 +317,7 @@ export default function EditorClient({ id, initialTitle, initialTemplate, initia
     onSave: handleAutosaveSave,
     onError: handleAutosaveError,
   });
+  const flushEditorAutosave = autosave.flush;
 
   const snapshotFromEditor = useCallback(
     (): ResumeEditorSnapshot => ({
@@ -349,10 +351,10 @@ export default function EditorClient({ id, initialTitle, initialTemplate, initia
         }
       }
       if (options.flushAutosave) {
-        window.dispatchEvent(new Event("resume:flush-autosave"));
+        await flushEditorAutosave();
       }
     },
-    [form, id, template],
+    [flushEditorAutosave, form, id, template],
   );
 
   useEffect(() => {
@@ -377,13 +379,21 @@ export default function EditorClient({ id, initialTitle, initialTemplate, initia
   const handleUndo = useCallback(() => {
     const snapshot = resumeHistory.undo();
     if (!snapshot) return;
-    void applyEditorSnapshot(snapshot, { persistTemplate: true, flushAutosave: true });
+    void applyEditorSnapshot(snapshot, { persistTemplate: true, flushAutosave: true }).catch(
+      (error) => {
+        console.error("[handleUndo] autosave flush failed", error);
+      },
+    );
   }, [applyEditorSnapshot, resumeHistory]);
 
   const handleRedo = useCallback(() => {
     const snapshot = resumeHistory.redo();
     if (!snapshot) return;
-    void applyEditorSnapshot(snapshot, { persistTemplate: true, flushAutosave: true });
+    void applyEditorSnapshot(snapshot, { persistTemplate: true, flushAutosave: true }).catch(
+      (error) => {
+        console.error("[handleRedo] autosave flush failed", error);
+      },
+    );
   }, [applyEditorSnapshot, resumeHistory]);
 
   const loadVersions = useCallback(async () => {
@@ -665,7 +675,7 @@ export default function EditorClient({ id, initialTitle, initialTemplate, initia
     form.setValue("sectionOrder", newOrder, { shouldDirty: true });
   }
 
-  function applyAgentOperation(operation: ResumeOperation) {
+  function applyAgentOperation(operation: ResumeOperation): AgentOperationApplyResult {
     // Delegate to the pure mapping so create-from-zero inserts (which may need
     // brand-new array items) and updates both apply consistently.
     const current = form.getValues() as unknown as ResumeContent;
@@ -673,73 +683,117 @@ export default function EditorClient({ id, initialTitle, initialTemplate, initia
     const result = applyResumeOperation(current, operation);
     if (!result) {
       toast.error("这条 Agent 建议暂不支持自动应用");
-      return;
+      return { ok: false };
     }
 
     type SetValueArgs = Parameters<typeof form.setValue>;
-    suppressHistoryCaptureRef.current = true;
-    for (const key of result.changedKeys) {
-      form.setValue(
-        key as SetValueArgs[0],
-        (result.content as Record<string, unknown>)[key] as SetValueArgs[1],
-        { shouldDirty: true, shouldValidate: true },
-      );
-    }
-    suppressHistoryCaptureRef.current = false;
-    if (result.changedKeys.includes("sectionOrder")) {
-      setSectionOrder(result.content.sectionOrder);
-    }
-    const snapshot: ResumeEditorSnapshot = {
-      title,
-      templateId: template,
-      content: result.content,
+    const restoreChangedKeys = (content: ResumeContent) => {
+      suppressHistoryCaptureRef.current = true;
+      try {
+        for (const key of result.changedKeys) {
+          form.setValue(
+            key as SetValueArgs[0],
+            (content as Record<string, unknown>)[key] as SetValueArgs[1],
+            { shouldDirty: true, shouldValidate: true },
+          );
+        }
+      } finally {
+        suppressHistoryCaptureRef.current = false;
+      }
+      if (result.changedKeys.includes("sectionOrder")) {
+        setSectionOrder(content.sectionOrder ?? [...DEFAULT_SECTION_ORDER]);
+      }
     };
-    const versionSummary = operation.changeSummary || operation.label || "Agent 修改简历";
-    resumeHistory.markBoundary();
-    resumeHistory.capture(snapshot, { merge: false });
-    void createResumeVersion({
-      resumeId: id,
-      title,
-      templateId: template,
-      content: beforeAgentSnapshot,
-      source: "agent",
-      operationCount: 1,
-      summary: versionSummary,
-    })
-      .then((version) => {
-        setVersions((previousVersions) => [
-          version,
-          ...previousVersions.filter((item) => item.id !== version.id),
-        ]);
-        toast.success("已生成版本，可查看对比", {
-          action: {
-            label: "查看差异",
-            onClick: () => {
-              setViewedVersion({
-                id: version.id,
-                title,
-                templateId: template,
-                content: beforeAgentSnapshot,
-                createdAt: version.createdAt,
-                listItem: version,
-              });
-              setIsVersionPopoverOpen(false);
-              setShowTemplatePanel(false);
-              setIsAgentMode(false);
-              setIsFloatingAgentDocked(false);
-            },
-          },
-        });
-        if (isVersionPopoverOpen || viewedVersion) void loadVersions();
-      })
-      .catch((error) => {
-        console.error("[applyAgentOperation] create version failed", error);
-        toast.error("Agent 修改已应用，但版本记录保存失败");
-      });
+
+    const applyChangedKeys = () => {
+      suppressHistoryCaptureRef.current = true;
+      try {
+        for (const key of result.changedKeys) {
+          form.setValue(
+            key as SetValueArgs[0],
+            (result.content as Record<string, unknown>)[key] as SetValueArgs[1],
+            { shouldDirty: true, shouldValidate: true },
+          );
+        }
+      } finally {
+        suppressHistoryCaptureRef.current = false;
+      }
+      if (result.changedKeys.includes("sectionOrder")) {
+        setSectionOrder(result.content.sectionOrder);
+      }
+    };
+
+    try {
+      applyChangedKeys();
+    } catch (error) {
+      try {
+        restoreChangedKeys(beforeAgentSnapshot);
+      } catch (rollbackError) {
+        console.error("[applyAgentOperation] rollback after local apply failed", rollbackError);
+      }
+      throw error;
+    }
+
+    return {
+      ok: true,
+      rollback: () => {
+        restoreChangedKeys(beforeAgentSnapshot);
+      },
+      commit: () => {
+        const snapshot: ResumeEditorSnapshot = {
+          title,
+          templateId: template,
+          content: result.content,
+        };
+        const versionSummary =
+          operation.changeSummary || operation.label || "Agent 修改简历";
+        resumeHistory.markBoundary();
+        resumeHistory.capture(snapshot, { merge: false });
+        void createResumeVersion({
+          resumeId: id,
+          title,
+          templateId: template,
+          content: beforeAgentSnapshot,
+          source: "agent",
+          operationCount: 1,
+          summary: versionSummary,
+        })
+          .then((version) => {
+            setVersions((previousVersions) => [
+              version,
+              ...previousVersions.filter((item) => item.id !== version.id),
+            ]);
+            toast.success("已生成版本，可查看对比", {
+              action: {
+                label: "查看差异",
+                onClick: () => {
+                  setViewedVersion({
+                    id: version.id,
+                    title,
+                    templateId: template,
+                    content: beforeAgentSnapshot,
+                    createdAt: version.createdAt,
+                    listItem: version,
+                  });
+                  setIsVersionPopoverOpen(false);
+                  setShowTemplatePanel(false);
+                  setIsAgentMode(false);
+                  setIsFloatingAgentDocked(false);
+                },
+              },
+            });
+            if (isVersionPopoverOpen || viewedVersion) void loadVersions();
+          })
+          .catch((error) => {
+            console.error("[applyAgentOperation] create version failed", error);
+            toast.error("Agent 修改已应用，但版本记录保存失败");
+          });
+      },
+    };
   }
 
   function flushAgentAutosave() {
-    window.dispatchEvent(new Event("resume:flush-autosave"));
+    return flushEditorAutosave();
   }
 
   /** Check if a section key is a custom (non-built-in) section */

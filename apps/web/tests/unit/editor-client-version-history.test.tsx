@@ -6,6 +6,7 @@ import type { AllTemplatesItem } from "@/lib/templates/registry";
 import type { SerializableResolvedTemplate } from "@/lib/templates/render";
 import type { ResumeVersionListItem } from "@/app/(app)/resume/[id]/edit/actions";
 import type { UploadedTemplate } from "@/lib/templates/uploaded/types";
+import type { AgentOperationApplyResult } from "@/components/agent/agent-operation-apply";
 import type { ResumeOperation } from "@intro-builder/shared/types";
 
 const DB_RESOLVED: SerializableResolvedTemplate = {
@@ -111,8 +112,27 @@ vi.mock("@/app/(app)/resume/[id]/edit/actions", () => ({
 }));
 
 vi.mock("@/components/agent/agent-panel", () => ({
-  AgentPanel: ({ applyOperation }: { applyOperation: (operation: ResumeOperation) => void }) => (
-    <button type="button" onClick={() => applyOperation(agentOperation)}>
+  AgentPanel: ({
+    applyOperation,
+    flushAutosave,
+  }: {
+    applyOperation: (operation: ResumeOperation) => AgentOperationApplyResult | boolean | void;
+    flushAutosave: () => Promise<void>;
+  }) => (
+    <button
+      type="button"
+      onClick={async () => {
+        const result = applyOperation(agentOperation);
+        if (result === false) return;
+        if (typeof result === "object" && result !== null && "ok" in result && !result.ok) {
+          return;
+        }
+        await flushAutosave();
+        if (typeof result === "object" && result !== null && "ok" in result && result.ok) {
+          result.commit?.();
+        }
+      }}
+    >
       模拟应用 Agent 修改
     </button>
   ),
@@ -290,7 +310,9 @@ describe("EditorClient version history and undo/redo", () => {
       expect(restoreResumeVersionMock).toHaveBeenCalledWith("r1", "v1");
     });
     expect(screen.getByRole("heading", { name: "王小明" })).toBeInTheDocument();
-    expect(screen.queryByText("正在查看历史版本，简历内容暂不可编辑")).not.toBeInTheDocument();
+    await waitFor(() => {
+      expect(screen.queryByText("正在查看历史版本，简历内容暂不可编辑")).not.toBeInTheDocument();
+    });
 
     fireEvent.click(screen.getByRole("button", { name: "撤销" }));
     expect(screen.getAllByText("增长产品经理").length).toBeGreaterThan(0);

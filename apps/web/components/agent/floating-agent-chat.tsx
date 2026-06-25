@@ -8,7 +8,6 @@ import {
   useState,
   type ComponentProps,
   type FormEvent,
-  type ReactNode,
 } from "react";
 import {
   AlertTriangle,
@@ -22,7 +21,6 @@ import {
   Loader2,
   MessageSquare,
   PencilLine,
-  Play,
   Plus,
   RefreshCw,
   SendHorizonal,
@@ -38,24 +36,30 @@ import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { toast } from "sonner";
 
+import { ModelSettingsDialog } from "@/components/agent/model-settings-dialog";
 import { Button } from "@/components/ui/button";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
 import {
   Popover,
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
 import { AgentConfirmationCard } from "@/components/agent/agent-confirmation-card";
+import {
+  AGENT_APPLY_ERROR_MESSAGE,
+  commitAppliedOperations,
+  rollbackAppliedOperations,
+  tryApplyAgentOperation,
+  type AgentOperationApplyResult,
+  type ApplyAgentOperation,
+} from "@/components/agent/agent-operation-apply";
 import { buildAgentResumeContext } from "@/lib/agent/chat-context";
+import {
+  emptyAgentModelSettings,
+  readStoredAgentModelSettings,
+  type AgentModelSettingsForm,
+  toAgentModelConfig,
+} from "@/lib/agent/model-settings-storage";
 import type {
-  AgentModelConfig,
   AgentOperationApprovalRequest,
   AgentResumeContext,
   AgentWriteMode,
@@ -95,6 +99,11 @@ type FloatingApprovalContinuation = {
 type FloatingApprovalDecision = {
   approvalId: string;
   approved: boolean;
+  operation?: ResumeOperation["operation"];
+  fieldPath?: string;
+  changeSummary?: string;
+  summary?: string;
+  label?: string;
 };
 
 type FloatingQuestionRequest = {
@@ -105,28 +114,16 @@ type FloatingQuestionRequest = {
   answer?: string;
 };
 
-type AgentModelSettingsForm = {
-  baseUrl: string;
-  apiKey: string;
-  modelName: string;
-};
-
-type FloatingModelOption = {
-  id: string;
-  label: string;
-};
-
 type FloatingChatSession = {
   id: string;
   title: string;
   updatedAt: string;
 };
 
-const MODEL_SETTINGS_STORAGE_KEY = "intro-builder.agent.model-settings.v1";
-const MODEL_API_KEY_SESSION_STORAGE_KEY = "intro-builder.agent.model-api-key.v1";
 const FLOATING_WRITE_MODE_STORAGE_KEY =
   "intro-builder.agent.floating.operation-mode.v1";
 const FLOATING_STREAM_ACCEPT_HEADER = "text/event-stream, application/json";
+const AGENT_SAVE_FLUSH_ERROR_MESSAGE = "保存 Agent 修改失败，请稍后重试";
 
 type FloatingAgentChatProps = {
   resumeId: string;
@@ -134,8 +131,8 @@ type FloatingAgentChatProps = {
   templateId: string;
   getResumeContent: () => ResumeContent;
   completeness: AgentResumeContext["completeness"];
-  applyOperation: (operation: ResumeOperation) => void;
-  flushAutosave: () => void;
+  applyOperation: ApplyAgentOperation;
+  flushAutosave: () => Promise<void>;
 };
 
 const MODEL_MISSING_MESSAGE = "__MODEL_CONFIG_MISSING__";
@@ -164,7 +161,7 @@ export function FloatingAgentChat({
     Set<string>
   >(() => new Set());
   const [modelSettings, setModelSettings] = useState<AgentModelSettingsForm>(
-    () => emptyModelSettings(),
+    () => emptyAgentModelSettings(),
   );
   const [writeMode, setWriteModeState] = useState<AgentWriteMode>("direct");
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -214,7 +211,7 @@ export function FloatingAgentChat({
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
-      setModelSettings(readStoredModelSettings());
+      setModelSettings(readStoredAgentModelSettings());
       setWriteModeState(readStoredWriteMode());
     }, 0);
     return () => window.clearTimeout(timer);
@@ -462,18 +459,47 @@ export function FloatingAgentChat({
       requestAbortControllerRef.current = abortController;
       const assistantMessageId = createMessageId("assistant");
       const appliedOperationIds = new Set<string>();
-      const applyStreamOperations = (operations: ResumeOperation[]) => {
+      const pendingOperationIds = new Set<string>();
+      const applyStreamOperations = async (operations: ResumeOperation[]) => {
         if (writeMode !== "direct") return;
         const nextOperations = operations.filter((operation) => {
           if (appliedOperationIds.has(operation.id)) return false;
-          appliedOperationIds.add(operation.id);
+          if (pendingOperationIds.has(operation.id)) return false;
+          pendingOperationIds.add(operation.id);
           return true;
         });
+        const appliedOperations: AgentOperationApplyResult[] = [];
         for (const operation of nextOperations) {
-          applyOperation(operation);
+          const applied = tryApplyAgentOperation(
+            applyOperation,
+            operation,
+            "floating-agent-chat",
+          );
+          if (!applied.ok) {
+            for (const pendingOperation of nextOperations) {
+              pendingOperationIds.delete(pendingOperation.id);
+            }
+            rollbackAppliedOperations(appliedOperations, "floating-agent-chat");
+            throw new Error(AGENT_APPLY_ERROR_MESSAGE);
+          }
+          appliedOperations.push(applied);
         }
         if (nextOperations.length > 0) {
-          flushAutosave();
+          try {
+            await flushAutosave();
+            commitAppliedOperations(appliedOperations, "floating-agent-chat");
+            for (const operation of nextOperations) {
+              appliedOperationIds.add(operation.id);
+              pendingOperationIds.delete(operation.id);
+            }
+          } catch (error) {
+            for (const operation of nextOperations) {
+              pendingOperationIds.delete(operation.id);
+            }
+            console.error("[floating-agent-chat] autosave flush failed", error);
+            rollbackAppliedOperations(appliedOperations, "floating-agent-chat");
+            throw new Error(AGENT_SAVE_FLUSH_ERROR_MESSAGE);
+          }
         }
       };
       try {
@@ -538,7 +564,7 @@ export function FloatingAgentChat({
                     : message,
                 ),
               );
-              scrollMessagesToBottom(scrollRef);
+              scrollMessagesToBottomIfNearBottom(scrollRef);
             },
             onToolCall: (toolCall) => {
               setMessages((current) =>
@@ -558,7 +584,7 @@ export function FloatingAgentChat({
                     : message,
                 ),
               );
-              scrollMessagesToBottom(scrollRef);
+              scrollMessagesToBottomIfNearBottom(scrollRef);
             },
             onApprovalRequest: (approvalRequest) => {
               setMessages((current) =>
@@ -574,7 +600,7 @@ export function FloatingAgentChat({
                     : message,
                 ),
               );
-              scrollMessagesToBottom(scrollRef);
+              scrollMessagesToBottomIfNearBottom(scrollRef);
             },
             onQuestionRequest: (question) => {
               setMessages((current) =>
@@ -590,7 +616,7 @@ export function FloatingAgentChat({
                     : message,
                 ),
               );
-              scrollMessagesToBottom(scrollRef);
+              scrollMessagesToBottomIfNearBottom(scrollRef);
             },
             onOperations: applyStreamOperations,
           });
@@ -625,7 +651,7 @@ export function FloatingAgentChat({
         }
         const toolCalls = normalizeToolCalls(body.toolCalls);
         const responseParts = normalizeFloatingMessageParts(body.parts);
-        applyStreamOperations(operations);
+        await applyStreamOperations(operations);
         if (activeSessionId) {
           const nextTitle = titleSource.slice(0, 50);
           setSessions((current) =>
@@ -696,7 +722,7 @@ export function FloatingAgentChat({
           requestAbortControllerRef.current = null;
         }
         setIsLoading(false);
-        scrollMessagesToBottom(scrollRef);
+        scrollMessagesToBottomIfNearBottom(scrollRef);
       }
     },
     [
@@ -739,9 +765,25 @@ export function FloatingAgentChat({
   );
 
   const applyApprovalRequest = useCallback(
-    (messageId: string, operation: ResumeOperation) => {
-      applyOperation(operation);
-      flushAutosave();
+    async (messageId: string, operation: ResumeOperation) => {
+      const applied = tryApplyAgentOperation(
+        applyOperation,
+        operation,
+        "floating-agent-chat",
+      );
+      if (!applied.ok) {
+        toast.error(AGENT_APPLY_ERROR_MESSAGE);
+        throw new Error(AGENT_APPLY_ERROR_MESSAGE);
+      }
+      try {
+        await flushAutosave();
+        commitAppliedOperations([applied], "floating-agent-chat");
+      } catch (error) {
+        console.error("[floating-agent-chat] autosave flush failed", error);
+        rollbackAppliedOperations([applied], "floating-agent-chat");
+        toast.error(AGENT_SAVE_FLUSH_ERROR_MESSAGE);
+        throw error;
+      }
       const nextMessages = updateFloatingApprovalStatus(
         messagesRef.current,
         operation.id,
@@ -1117,7 +1159,7 @@ export function FloatingAgentChat({
         onStop={stopGeneration}
         onSubmit={sendMessage}
       />
-      <FloatingModelSettingsDialog
+      <ModelSettingsDialog
         open={settingsOpen}
         settings={modelSettings}
         onOpenChange={setSettingsOpen}
@@ -1237,6 +1279,11 @@ function approvalDecisionsForMessage(
   return approvalParts.map((part) => ({
     approvalId: part.approvalRequest.id,
     approved: part.approvalRequest.status === "approved",
+    operation: part.approvalRequest.operation.operation,
+    fieldPath: part.approvalRequest.operation.fieldPath,
+    changeSummary: part.approvalRequest.operation.changeSummary,
+    summary: part.approvalRequest.message || part.approvalRequest.operation.changeSummary,
+    label: part.approvalRequest.operation.label,
   }));
 }
 
@@ -1246,6 +1293,20 @@ function scrollMessagesToBottom(ref: React.RefObject<HTMLDivElement | null>) {
       ref.current.scrollTop = ref.current.scrollHeight;
     }
   });
+}
+
+function scrollMessagesToBottomIfNearBottom(
+  ref: React.RefObject<HTMLDivElement | null>,
+) {
+  const element = ref.current;
+  if (element && !isNearScrollBottom(element)) return;
+  scrollMessagesToBottom(ref);
+}
+
+function isNearScrollBottom(element: HTMLElement) {
+  const distanceToBottom =
+    element.scrollHeight - element.scrollTop - element.clientHeight;
+  return distanceToBottom <= 96;
 }
 
 function isEventStreamResponse(response: Response) {
@@ -1269,7 +1330,7 @@ async function readFloatingAgentStream(
     onToolCall: (toolCall: FloatingAgentToolCall) => void;
     onApprovalRequest: (approvalRequest: AgentOperationApprovalRequest) => void;
     onQuestionRequest: (question: FloatingQuestionRequest) => void;
-    onOperations: (operations: ResumeOperation[]) => void;
+    onOperations: (operations: ResumeOperation[]) => void | Promise<void>;
   },
 ): Promise<Record<string, unknown>> {
   if (!response.body) throw new Error("AI 助手响应为空");
@@ -1282,8 +1343,8 @@ async function readFloatingAgentStream(
     const { done, value } = await reader.read();
     if (done) break;
     buffer += decoder.decode(value, { stream: true });
-    buffer = consumeFloatingStreamBuffer(buffer, (event) => {
-      handleFloatingStreamEvent(
+    buffer = await consumeFloatingStreamBuffer(buffer, async (event) => {
+      await handleFloatingStreamEvent(
         event,
         { onTextDelta, onToolCall, onApprovalRequest, onQuestionRequest, onOperations },
         (done) => {
@@ -1294,8 +1355,8 @@ async function readFloatingAgentStream(
   }
 
   buffer += decoder.decode();
-  consumeFloatingStreamBuffer(`${buffer}\n\n`, (event) => {
-    handleFloatingStreamEvent(
+  await consumeFloatingStreamBuffer(`${buffer}\n\n`, async (event) => {
+    await handleFloatingStreamEvent(
       event,
       { onTextDelta, onToolCall, onApprovalRequest, onQuestionRequest, onOperations },
       (done) => {
@@ -1307,14 +1368,14 @@ async function readFloatingAgentStream(
   return doneEvent ?? {};
 }
 
-function handleFloatingStreamEvent(
+async function handleFloatingStreamEvent(
   event: Record<string, unknown>,
   handlers: {
     onTextDelta: (delta: string) => void;
     onToolCall: (toolCall: FloatingAgentToolCall) => void;
     onApprovalRequest: (approvalRequest: AgentOperationApprovalRequest) => void;
     onQuestionRequest: (question: FloatingQuestionRequest) => void;
-    onOperations: (operations: ResumeOperation[]) => void;
+    onOperations: (operations: ResumeOperation[]) => void | Promise<void>;
   },
   onDone: (event: Record<string, unknown>) => void,
 ) {
@@ -1330,7 +1391,7 @@ function handleFloatingStreamEvent(
     const toolCall = normalizeToolCall(event.toolCall);
     if (toolCall) handlers.onToolCall(toolCall);
     const operations = normalizeResumeOperations(event.operations);
-    if (operations.length > 0) handlers.onOperations(operations);
+    if (operations.length > 0) await handlers.onOperations(operations);
     return;
   }
   if (event.type === "approval-request") {
@@ -1354,10 +1415,10 @@ function handleFloatingStreamEvent(
   }
 }
 
-function consumeFloatingStreamBuffer(
+async function consumeFloatingStreamBuffer(
   buffer: string,
-  onEvent: (event: Record<string, unknown>) => void,
-) {
+  onEvent: (event: Record<string, unknown>) => void | Promise<void>,
+): Promise<string> {
   let nextBuffer = buffer;
   while (true) {
     const separatorIndex = nextBuffer.indexOf("\n\n");
@@ -1371,7 +1432,7 @@ function consumeFloatingStreamBuffer(
       .join("\n");
     if (!data) continue;
     const event = JSON.parse(data) as Record<string, unknown>;
-    onEvent(event);
+    await onEvent(event);
   }
   return nextBuffer;
 }
@@ -1434,7 +1495,7 @@ function FloatingMessage({
 }: {
   message: FloatingAgentMessage;
   onOpenSettings: () => void;
-  onApplyApproval: (messageId: string, operation: ResumeOperation) => void;
+  onApplyApproval: (messageId: string, operation: ResumeOperation) => Promise<void>;
   onRejectApproval: (messageId: string, operationId: string) => void;
   onAnswerQuestion: (messageId: string, questionId: string, answer: string) => void;
   onCopyMessage: (content: string) => void;
@@ -1445,6 +1506,9 @@ function FloatingMessage({
 }) {
   const isUser = message.role === "user";
   const canCopy = message.content.trim().length > 0 && message.content !== MODEL_MISSING_MESSAGE;
+  const actionBarVisibilityClass = canRegenerate
+    ? "opacity-100"
+    : "opacity-0 transition-opacity group-hover/message:opacity-100 focus-within:opacity-100";
   return (
     <div className={`group/message flex gap-2.5 ${isUser ? "flex-row-reverse" : ""}`}>
       <div
@@ -1513,7 +1577,7 @@ function FloatingMessage({
         </div>
         {canCopy || isUser || canRegenerate ? (
           <div
-            className={`absolute bottom-0 z-10 flex gap-1 opacity-0 transition-opacity group-hover/message:opacity-100 focus-within:opacity-100 ${
+            className={`absolute bottom-0 z-10 flex gap-1 ${actionBarVisibilityClass} ${
               isUser ? "right-0" : "left-0"
             }`}
           >
@@ -1598,66 +1662,55 @@ function FloatingToolCallCard({
 }) {
   const isCompleted = toolCall.status === "completed";
   const isError = toolCall.status === "error";
-  const callPayload = formatToolPayload(
-    toolCall.input ?? { summary: toolCall.summary },
-  );
-  const resultPayload = formatToolPayload(
-    isError
-      ? toolCall.errorText || toolCall.summary || "工具调用失败"
-      : toolCall.output ?? { success: true, summary: toolCall.summary },
-  );
+  const isRunning = !isCompleted && !isError;
+  const title = formatToolCallTitle(toolCall);
+  const summary = formatToolCallSummary(toolCall);
+  const debugPayload = formatToolDebugPayload(toolCall);
 
   return (
-    <div className="my-2 space-y-1.5 text-xs">
-      <FloatingCollapsibleBlock
-        label={formatToolCallTitle(toolCall)}
-        icon={
-          !isCompleted && !isError ? (
-            <span className="h-3 w-3 shrink-0 animate-spin rounded-full border-[1.5px] border-zinc-300 border-t-zinc-600" />
+    <div className="my-2 rounded-md border border-zinc-200 bg-zinc-50 px-2.5 py-2 text-xs dark:border-border dark:bg-muted/30">
+      <div className="flex items-start gap-2">
+        <span className="mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center text-zinc-500 dark:text-muted-foreground">
+          {isRunning ? (
+            <span className="h-3 w-3 animate-spin rounded-full border-[1.5px] border-zinc-300 border-t-zinc-600" />
+          ) : isError ? (
+            <XCircle className="h-3.5 w-3.5 text-red-500" />
           ) : (
-            <Terminal className="h-3 w-3 shrink-0" />
-          )
-        }
-        content={callPayload}
+            <CheckCircle2 className="h-3.5 w-3.5 text-green-500" />
+          )}
+        </span>
+        <div className="min-w-0 flex-1">
+          <p className="font-medium text-zinc-700 dark:text-foreground">
+            {title}
+          </p>
+          <p className="mt-0.5 whitespace-pre-wrap text-[11px] leading-relaxed text-zinc-500 dark:text-muted-foreground">
+            {summary}
+          </p>
+        </div>
+      </div>
+      <FloatingDebugDisclosure
+        label={title}
+        content={debugPayload}
       />
-      {(isCompleted || isError) ? (
-        <FloatingCollapsibleBlock
-          label="执行结果"
-          icon={<Play className="h-3 w-3 shrink-0" />}
-          statusIcon={
-            isError ? (
-              <XCircle className="h-3 w-3 text-red-500" />
-            ) : (
-              <CheckCircle2 className="h-3 w-3 text-green-500" />
-            )
-          }
-          content={resultPayload}
-        />
-      ) : null}
     </div>
   );
 }
 
-function FloatingCollapsibleBlock({
+function FloatingDebugDisclosure({
   label,
-  icon,
-  statusIcon,
   content,
-  defaultOpen = false,
 }: {
   label: string;
-  icon: ReactNode;
-  statusIcon?: ReactNode;
   content: string;
-  defaultOpen?: boolean;
 }) {
-  const [open, setOpen] = useState(defaultOpen);
+  const [open, setOpen] = useState(false);
 
   return (
-    <div className="overflow-hidden rounded-md border border-zinc-200 bg-zinc-50 dark:border-border dark:bg-muted/30">
+    <div className="mt-2">
       <button
         type="button"
-        className="flex w-full cursor-pointer items-center gap-1.5 px-2.5 py-1.5 text-[11px] font-medium text-zinc-500 hover:bg-zinc-100 dark:text-muted-foreground dark:hover:bg-muted"
+        aria-label={`查看调试信息：${label}`}
+        className="inline-flex items-center gap-1 text-[11px] font-medium text-zinc-400 transition hover:text-zinc-700 dark:text-muted-foreground dark:hover:text-foreground"
         onClick={() => setOpen((current) => !current)}
       >
         {open ? (
@@ -1665,12 +1718,11 @@ function FloatingCollapsibleBlock({
         ) : (
           <ChevronRight className="h-3 w-3 shrink-0" />
         )}
-        {icon}
-        <span>{label}</span>
-        {statusIcon ? <span className="ml-auto">{statusIcon}</span> : null}
+        <Terminal className="h-3 w-3 shrink-0" />
+        <span>查看调试信息</span>
       </button>
       {open ? (
-        <div className="border-t border-zinc-200 bg-zinc-900 px-3 py-2 dark:border-border">
+        <div className="mt-1.5 rounded-md bg-zinc-900 px-3 py-2">
           <pre className="overflow-x-auto whitespace-pre-wrap break-all font-mono text-[11px] leading-relaxed text-zinc-300">
             {content}
           </pre>
@@ -1678,6 +1730,24 @@ function FloatingCollapsibleBlock({
       ) : null}
     </div>
   );
+}
+
+function formatToolCallSummary(toolCall: FloatingAgentToolCall) {
+  if (toolCall.status === "error") {
+    return toolCall.errorText?.trim() || toolCall.summary.trim() || "工具调用失败";
+  }
+  if (toolCall.summary.trim()) return toolCall.summary.trim();
+  return toolCall.status === "running" ? "正在执行" : "已完成";
+}
+
+function formatToolDebugPayload(toolCall: FloatingAgentToolCall) {
+  const sections = [
+    `状态\n${toolCall.status}`,
+    toolCall.input === undefined ? null : `调用参数\n${formatToolPayload(toolCall.input)}`,
+    toolCall.output === undefined ? null : `执行结果\n${formatToolPayload(toolCall.output)}`,
+    toolCall.errorText ? `错误信息\n${toolCall.errorText}` : null,
+  ].filter((section): section is string => Boolean(section));
+  return sections.join("\n\n");
 }
 
 function formatToolPayload(value: unknown) {
@@ -2049,238 +2119,6 @@ const FLOATING_WRITE_MODE_OPTIONS: Array<{
     icon: ShieldCheck,
   },
 ];
-
-function FloatingModelSettingsDialog({
-  open,
-  settings,
-  onOpenChange,
-  onSave,
-}: {
-  open: boolean;
-  settings: AgentModelSettingsForm;
-  onOpenChange: (open: boolean) => void;
-  onSave: (settings: AgentModelSettingsForm) => void;
-}) {
-  const [draft, setDraft] = useState(settings);
-  const [modelOptions, setModelOptions] = useState<FloatingModelOption[]>([]);
-  const [isFetchingModels, setIsFetchingModels] = useState(false);
-  const [modelFetchError, setModelFetchError] = useState<string | null>(null);
-  const canFetchModels = Boolean(draft.baseUrl.trim() && draft.apiKey.trim());
-
-  const fetchModels = useCallback(async () => {
-    const next = normalizeModelSettings(draft);
-    if (!next.baseUrl || !next.apiKey) {
-      setModelFetchError("请先填写模型服务地址和访问密钥");
-      return;
-    }
-
-    setIsFetchingModels(true);
-    setModelFetchError(null);
-    try {
-      const response = await fetch("/api/agent/floating/models", {
-        method: "POST",
-        headers: {
-          Accept: "application/json",
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          baseUrl: next.baseUrl,
-          apiKey: next.apiKey,
-        }),
-      });
-      const body = await response.json().catch(() => ({}));
-      if (!response.ok) {
-        throw new Error(
-          typeof body.error === "string" ? body.error : "获取模型失败",
-        );
-      }
-      const models = normalizeModelOptions(body.models);
-      if (models.length === 0) {
-        setModelOptions([]);
-        setModelFetchError("没有获取到可用模型");
-        return;
-      }
-      setModelOptions(models);
-      setDraft((current) => {
-        const currentName = current.modelName.trim();
-        const hasCurrent = models.some((model) => model.id === currentName);
-        return {
-          ...current,
-          modelName: hasCurrent ? currentName : models[0].id,
-        };
-      });
-    } catch (error) {
-      setModelOptions([]);
-      setModelFetchError(
-        error instanceof Error ? error.message : "获取模型失败",
-      );
-    } finally {
-      setIsFetchingModels(false);
-    }
-  }, [draft]);
-
-  return (
-    <Dialog
-      open={open}
-      onOpenChange={(nextOpen) => {
-        if (nextOpen) {
-          setDraft(settings);
-          setModelOptions([]);
-          setModelFetchError(null);
-        }
-        onOpenChange(nextOpen);
-      }}
-    >
-      <DialogContent className="sm:max-w-md">
-        <DialogHeader>
-          <DialogTitle>连接模型</DialogTitle>
-          <DialogDescription>
-            填写你要使用的模型服务。访问密钥只保存在当前浏览器会话中。
-          </DialogDescription>
-        </DialogHeader>
-        <div className="space-y-3">
-          <FloatingSettingsInput
-            id="floating-model-base-url"
-            label="模型服务地址"
-            value={draft.baseUrl}
-            placeholder="https://api.openai.com/v1"
-            onChange={(value) => setDraft((current) => ({ ...current, baseUrl: value }))}
-          />
-          <FloatingSettingsInput
-            id="floating-model-api-key"
-            label="访问密钥"
-            value={draft.apiKey}
-            type="password"
-            placeholder="只保存在当前浏览器"
-            onChange={(value) => setDraft((current) => ({ ...current, apiKey: value }))}
-          />
-          <div className="flex items-center justify-between gap-3">
-            <p className="text-xs text-muted-foreground">
-              填好地址和密钥后，可以直接获取模型列表。
-            </p>
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              disabled={!canFetchModels || isFetchingModels}
-              onClick={fetchModels}
-            >
-              <RefreshCw
-                className={`h-3.5 w-3.5 ${isFetchingModels ? "animate-spin" : ""}`}
-              />
-              获取模型
-            </Button>
-          </div>
-          {modelFetchError ? (
-            <p className="rounded-md bg-destructive/10 px-3 py-2 text-xs text-destructive">
-              {modelFetchError}
-            </p>
-          ) : null}
-          {modelOptions.length > 0 ? (
-            <FloatingModelSelect
-              id="floating-model-select"
-              label="选择模型"
-              value={draft.modelName}
-              options={modelOptions}
-              onChange={(value) => setDraft((current) => ({ ...current, modelName: value }))}
-            />
-          ) : (
-            <FloatingSettingsInput
-              id="floating-model-name"
-              label="模型名称"
-              value={draft.modelName}
-              placeholder="gpt-4.1-mini"
-              onChange={(value) => setDraft((current) => ({ ...current, modelName: value }))}
-            />
-          )}
-        </div>
-        <DialogFooter>
-          <Button type="button" variant="ghost" onClick={() => onOpenChange(false)}>
-            取消
-          </Button>
-          <Button
-            type="button"
-            onClick={() => {
-              const next = normalizeModelSettings(draft);
-              storeModelSettings(next);
-              onSave(next);
-              onOpenChange(false);
-            }}
-          >
-            保存
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
-  );
-}
-
-function FloatingSettingsInput({
-  id,
-  label,
-  value,
-  placeholder,
-  type = "text",
-  onChange,
-}: {
-  id: string;
-  label: string;
-  value: string;
-  placeholder: string;
-  type?: "text" | "password";
-  onChange: (value: string) => void;
-}) {
-  return (
-    <div className="space-y-1.5">
-      <label htmlFor={id} className="text-xs font-medium text-muted-foreground">
-        {label}
-      </label>
-      <input
-        id={id}
-        type={type}
-        value={value}
-        placeholder={placeholder}
-        autoComplete="off"
-        onChange={(event) => onChange(event.target.value)}
-        className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-      />
-    </div>
-  );
-}
-
-function FloatingModelSelect({
-  id,
-  label,
-  value,
-  options,
-  onChange,
-}: {
-  id: string;
-  label: string;
-  value: string;
-  options: FloatingModelOption[];
-  onChange: (value: string) => void;
-}) {
-  return (
-    <div className="space-y-1.5">
-      <label htmlFor={id} className="text-xs font-medium text-muted-foreground">
-        {label}
-      </label>
-      <select
-        id={id}
-        value={value}
-        onChange={(event) => onChange(event.target.value)}
-        className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-      >
-        {options.map((option) => (
-          <option key={option.id} value={option.id}>
-            {option.label}
-          </option>
-        ))}
-      </select>
-    </div>
-  );
-}
 
 function createMessageId(prefix: string) {
   if (typeof crypto !== "undefined" && crypto.randomUUID) {
@@ -2660,44 +2498,6 @@ function formatSessionTime(value: string) {
   return `${year}/${month}/${day} · ${hour}:${minute}`;
 }
 
-function readStoredModelSettings(): AgentModelSettingsForm {
-  if (typeof window === "undefined") return emptyModelSettings();
-  try {
-    const raw = window.localStorage.getItem(MODEL_SETTINGS_STORAGE_KEY);
-    const parsed = raw ? JSON.parse(raw) : null;
-    if (!parsed || typeof parsed !== "object") {
-      return { ...emptyModelSettings(), apiKey: readSessionModelApiKey() };
-    }
-    return normalizeModelSettings({
-      baseUrl: typeof parsed.baseUrl === "string" ? parsed.baseUrl : "",
-      apiKey: readSessionModelApiKey(),
-      modelName: typeof parsed.modelName === "string" ? parsed.modelName : "",
-    });
-  } catch {
-    return emptyModelSettings();
-  }
-}
-
-function storeModelSettings(settings: AgentModelSettingsForm) {
-  if (typeof window === "undefined") return;
-  const normalized = normalizeModelSettings(settings);
-  window.localStorage.setItem(
-    MODEL_SETTINGS_STORAGE_KEY,
-    JSON.stringify({
-      baseUrl: normalized.baseUrl,
-      modelName: normalized.modelName,
-    }),
-  );
-  if (normalized.apiKey) {
-    window.sessionStorage.setItem(
-      MODEL_API_KEY_SESSION_STORAGE_KEY,
-      normalized.apiKey,
-    );
-  } else {
-    window.sessionStorage.removeItem(MODEL_API_KEY_SESSION_STORAGE_KEY);
-  }
-}
-
 function readStoredWriteMode(): AgentWriteMode {
   if (typeof window === "undefined") return "direct";
   return window.localStorage.getItem(FLOATING_WRITE_MODE_STORAGE_KEY) === "approval"
@@ -2708,45 +2508,4 @@ function readStoredWriteMode(): AgentWriteMode {
 function storeWriteMode(mode: AgentWriteMode) {
   if (typeof window === "undefined") return;
   window.localStorage.setItem(FLOATING_WRITE_MODE_STORAGE_KEY, mode);
-}
-
-function readSessionModelApiKey() {
-  if (typeof window === "undefined") return "";
-  return window.sessionStorage.getItem(MODEL_API_KEY_SESSION_STORAGE_KEY) ?? "";
-}
-
-function emptyModelSettings(): AgentModelSettingsForm {
-  return { baseUrl: "", apiKey: "", modelName: "" };
-}
-
-function normalizeModelSettings(settings: AgentModelSettingsForm) {
-  return {
-    baseUrl: settings.baseUrl.trim(),
-    apiKey: settings.apiKey.trim(),
-    modelName: settings.modelName.trim(),
-  };
-}
-
-function toAgentModelConfig(settings: AgentModelSettingsForm): AgentModelConfig | null {
-  const normalized = normalizeModelSettings(settings);
-  if (!normalized.baseUrl || !normalized.apiKey || !normalized.modelName) return null;
-  return normalized;
-}
-
-function normalizeModelOptions(value: unknown): FloatingModelOption[] {
-  if (!Array.isArray(value)) return [];
-  const seen = new Set<string>();
-  const options: FloatingModelOption[] = [];
-  for (const item of value) {
-    if (!item || typeof item !== "object") continue;
-    const id = "id" in item && typeof item.id === "string" ? item.id.trim() : "";
-    if (!id || seen.has(id)) continue;
-    const label =
-      "label" in item && typeof item.label === "string" && item.label.trim()
-        ? item.label.trim()
-        : id;
-    seen.add(id);
-    options.push({ id, label });
-  }
-  return options;
 }
