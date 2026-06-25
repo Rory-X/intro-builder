@@ -1,8 +1,8 @@
 "use server";
-import { and, eq } from "drizzle-orm";
+import { and, desc, eq } from "drizzle-orm";
 import { auth } from "@/lib/auth";
 import { db } from "@/db";
-import { resumes } from "@/db/schema";
+import { resumeVersions, resumes } from "@/db/schema";
 import { ResumeContent } from "@intro-builder/shared/schemas";
 import { newSlug } from "@intro-builder/shared/utils";
 import { withDbRetry } from "@/lib/db-retry";
@@ -11,6 +11,31 @@ import {
   getTemplateDefaultStyleSettings,
 } from "@/lib/templates/registry-server";
 import type { TemplateId } from "@/lib/templates/registry";
+
+type ResumeVersionSource = "manual" | "agent" | "restore";
+
+export type CreateResumeVersionInput = {
+  resumeId: string;
+  title: string;
+  templateId: string;
+  content: unknown;
+  source: ResumeVersionSource;
+  operationCount: number;
+  summary?: string | null;
+  actorName?: string | null;
+  parentVersionId?: string | null;
+};
+
+export type ResumeVersionListItem = {
+  id: string;
+  resumeId: string;
+  source: ResumeVersionSource;
+  sourceLabel: string;
+  actorName: string;
+  operationCount: number;
+  summary: string | null;
+  createdAt: string;
+};
 
 /**
  * Dev bypass mirror of `requireUserId` for server actions.
@@ -33,6 +58,195 @@ async function actionUserId(): Promise<string> {
     return process.env.AUTH_DEV_USER_ID;
   }
   throw new Error("unauthorized");
+}
+
+async function actionUser(): Promise<{ id: string; name: string }> {
+  const session = await auth();
+  if (session?.user?.id) {
+    return {
+      id: session.user.id,
+      name: session.user.name || session.user.email || "我",
+    };
+  }
+  if (
+    process.env.NODE_ENV === "development" &&
+    process.env.AUTH_DEV_BYPASS === "1" &&
+    process.env.AUTH_DEV_USER_ID
+  ) {
+    return {
+      id: process.env.AUTH_DEV_USER_ID,
+      name: process.env.AUTH_DEV_USER_NAME || "我",
+    };
+  }
+  throw new Error("unauthorized");
+}
+
+function sourceLabel(source: ResumeVersionSource): string {
+  if (source === "agent") return "通过对话";
+  if (source === "restore") return "手动恢复";
+  return "手动保存";
+}
+
+async function ensureResumeOwner(resumeId: string, userId: string) {
+  const rows = await withDbRetry("resumeVersion.owner", () =>
+    db
+      .select({ id: resumes.id, userId: resumes.userId })
+      .from(resumes)
+      .where(and(eq(resumes.id, resumeId), eq(resumes.userId, userId)))
+      .limit(1),
+  );
+  if (!rows[0]) throw new Error("not found");
+}
+
+export async function createResumeVersion(input: CreateResumeVersionInput) {
+  const user = await actionUser();
+  await ensureResumeOwner(input.resumeId, user.id);
+  const parsed = ResumeContent.safeParse(input.content);
+  if (!parsed.success) throw new Error("invalid: " + parsed.error.message);
+  const versionId = crypto.randomUUID();
+  const createdAt = new Date();
+  const operationCount = Math.max(1, input.operationCount);
+  const actorName = input.actorName || user.name;
+
+  await withDbRetry("createResumeVersion", () =>
+    db.insert(resumeVersions).values({
+      id: versionId,
+      resumeId: input.resumeId,
+      userId: user.id,
+      title: input.title,
+      templateId: input.templateId,
+      content: parsed.data,
+      source: input.source,
+      actorName,
+      operationCount,
+      summary: input.summary ?? null,
+      parentVersionId: input.parentVersionId ?? null,
+      createdAt,
+    }),
+  );
+  return {
+    id: versionId,
+    resumeId: input.resumeId,
+    source: input.source,
+    sourceLabel: sourceLabel(input.source),
+    actorName,
+    operationCount,
+    summary: input.summary ?? null,
+    createdAt: createdAt.toISOString(),
+  } satisfies ResumeVersionListItem;
+}
+
+export async function listResumeVersions(resumeId: string): Promise<ResumeVersionListItem[]> {
+  const userId = await actionUserId();
+  const rows = await withDbRetry("listResumeVersions", () =>
+    db
+      .select({
+        id: resumeVersions.id,
+        resumeId: resumeVersions.resumeId,
+        source: resumeVersions.source,
+        actorName: resumeVersions.actorName,
+        operationCount: resumeVersions.operationCount,
+        summary: resumeVersions.summary,
+        createdAt: resumeVersions.createdAt,
+      })
+      .from(resumeVersions)
+      .where(and(eq(resumeVersions.resumeId, resumeId), eq(resumeVersions.userId, userId)))
+      .orderBy(desc(resumeVersions.createdAt))
+      .limit(50),
+  );
+
+  return rows.map((row) => ({
+    ...row,
+    sourceLabel: sourceLabel(row.source),
+    createdAt: row.createdAt.toISOString(),
+  }));
+}
+
+export async function getResumeVersion(resumeId: string, versionId: string) {
+  const userId = await actionUserId();
+  const rows = await withDbRetry("getResumeVersion", () =>
+    db
+      .select()
+      .from(resumeVersions)
+      .where(and(
+        eq(resumeVersions.id, versionId),
+        eq(resumeVersions.resumeId, resumeId),
+        eq(resumeVersions.userId, userId),
+      ))
+      .limit(1),
+  );
+  const row = rows[0];
+  if (!row) throw new Error("not found");
+  return {
+    ...row,
+    createdAt: row.createdAt.toISOString(),
+  };
+}
+
+export async function restoreResumeVersion(resumeId: string, versionId: string) {
+  const user = await actionUser();
+  const rows = await withDbRetry("restoreResumeVersion.read", () =>
+    db
+      .select()
+      .from(resumeVersions)
+      .where(and(
+        eq(resumeVersions.id, versionId),
+        eq(resumeVersions.resumeId, resumeId),
+        eq(resumeVersions.userId, user.id),
+      ))
+      .limit(1),
+  );
+  const version = rows[0];
+  if (!version) throw new Error("not found");
+  const parsed = ResumeContent.safeParse(version.content);
+  if (!parsed.success) throw new Error("invalid: " + parsed.error.message);
+  const currentRows = await withDbRetry("restoreResumeVersion.current", () =>
+    db
+      .select({
+        title: resumes.title,
+        templateId: resumes.templateId,
+        content: resumes.content,
+      })
+      .from(resumes)
+      .where(and(eq(resumes.id, resumeId), eq(resumes.userId, user.id)))
+      .limit(1),
+  );
+  const currentResume = currentRows[0];
+  if (!currentResume) throw new Error("not found");
+  const parsedCurrent = ResumeContent.safeParse(currentResume.content);
+  if (!parsedCurrent.success) throw new Error("invalid: " + parsedCurrent.error.message);
+
+  await withDbRetry("restoreResumeVersion.version", () =>
+    db.insert(resumeVersions).values({
+      resumeId,
+      userId: user.id,
+      title: currentResume.title,
+      templateId: currentResume.templateId,
+      content: parsedCurrent.data,
+      source: "restore",
+      actorName: user.name,
+      operationCount: 1,
+      summary: "恢复历史版本前自动备份",
+      parentVersionId: versionId,
+    }),
+  );
+  await withDbRetry("restoreResumeVersion.write", () =>
+    db
+      .update(resumes)
+      .set({
+        title: version.title,
+        templateId: version.templateId,
+        content: parsed.data,
+        updatedAt: new Date(),
+      })
+      .where(and(eq(resumes.id, resumeId), eq(resumes.userId, user.id))),
+  );
+
+  return {
+    title: version.title,
+    templateId: version.templateId,
+    content: parsed.data,
+  };
 }
 
 export async function saveResume(id: string, content: unknown, title?: string) {

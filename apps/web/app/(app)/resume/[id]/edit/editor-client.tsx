@@ -13,10 +13,21 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { toast } from "sonner";
 import { ResumeContent } from "@intro-builder/shared/schemas";
 import { computeCompletenessScore } from "@/lib/completeness-score";
-import { saveResume, setTemplate, toggleShare } from "./actions";
+import {
+  createResumeVersion,
+  getResumeVersion,
+  listResumeVersions,
+  restoreResumeVersion,
+  saveResume,
+  setTemplate,
+  toggleShare,
+  type ResumeVersionListItem,
+} from "./actions";
 import { useResumeAutosave } from "@/hooks/use-resume-autosave";
+import { useResumeHistory, type ResumeEditorSnapshot } from "@/hooks/use-resume-history";
 import { formatSaveError } from "@/lib/format-save-error";
 import { LivePreview } from "@/components/preview/live-preview";
+import { ResumeDiffPreview } from "@/components/preview/resume-diff-preview";
 import { BasicsEditor } from "@/components/editor/basics-editor";
 import { ExperienceEditor } from "@/components/editor/experience-editor";
 import { EducationEditor } from "@/components/editor/education-editor";
@@ -33,7 +44,7 @@ import {
   SheetHeader,
   SheetTitle,
 } from "@/components/ui/sheet";
-import { Loader2, Share2, PanelLeftClose, PanelRightClose, PanelRightOpen, MessageSquare, LayoutTemplate, ChevronLeft, PencilLine, CloudCheck, Copy, CircleAlert } from "lucide-react";
+import { Loader2, Share2, PanelLeftClose, PanelRightClose, PanelRightOpen, MessageSquare, LayoutTemplate, ChevronLeft, PencilLine, CloudCheck, Copy, CircleAlert, History, Undo2, Redo2 } from "lucide-react";
 import { Popover, PopoverContent, PopoverDescription, PopoverHeader, PopoverTitle, PopoverTrigger } from "@/components/ui/popover";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import type { AllTemplatesItem, TemplateId } from "@/lib/templates/registry";
@@ -71,6 +82,7 @@ import { AgentBubble } from "@/components/agent/agent-bubble";
 import { FloatingAgentChat } from "@/components/agent/floating-agent-chat";
 import type { ResumeOperation } from "@intro-builder/shared/types";
 import { applyResumeOperation } from "@/lib/agent/apply-operation";
+import { VersionHistoryPopover } from "@/components/editor/version-history-popover";
 
 type Props = {
   id: string;
@@ -107,6 +119,15 @@ type Props = {
   favoritedTemplateIds?: string[];
   agentSurface?: "panel" | "floating";
   from: string | null;
+};
+
+type ViewedVersion = {
+  id: string;
+  title: string;
+  templateId: string;
+  content: ResumeContent;
+  createdAt: string;
+  listItem: ResumeVersionListItem;
 };
 
 const DESKTOP_QUERY = "(min-width: 1024px)";
@@ -183,6 +204,17 @@ export default function EditorClient({ id, initialTitle, initialTemplate, initia
   const [sectionOrder, setSectionOrder] = useState<string[]>(
     initialContent.sectionOrder ?? [...DEFAULT_SECTION_ORDER]
   );
+  const resumeHistory = useResumeHistory({
+    title: initialTitle,
+    templateId: initialTemplate,
+    content: initialContent,
+  });
+  const suppressHistoryCaptureRef = useRef(false);
+  const [versions, setVersions] = useState<ResumeVersionListItem[]>([]);
+  const [isVersionPopoverOpen, setIsVersionPopoverOpen] = useState(false);
+  const [isLoadingVersions, setIsLoadingVersions] = useState(false);
+  const [viewedVersion, setViewedVersion] = useState<ViewedVersion | null>(null);
+  const [isRestoringVersion, setIsRestoringVersion] = useState(false);
 
   // Map of id → UploadedTemplate for instant client-side lookup when the
   // user switches template.
@@ -284,6 +316,196 @@ export default function EditorClient({ id, initialTitle, initialTemplate, initia
     onSave: handleAutosaveSave,
     onError: handleAutosaveError,
   });
+
+  const snapshotFromEditor = useCallback(
+    (): ResumeEditorSnapshot => ({
+      title,
+      templateId: template,
+      content: form.getValues() as ResumeContent,
+    }),
+    [form, template, title],
+  );
+
+  const applyEditorSnapshot = useCallback(
+    async (
+      snapshot: ResumeEditorSnapshot,
+      options: { persistTemplate?: boolean; flushAutosave?: boolean } = {},
+    ) => {
+      const nextContent = ResumeContent.parse(snapshot.content);
+      const previousTemplate = template;
+      suppressHistoryCaptureRef.current = true;
+      setTitleState(snapshot.title);
+      setTemplateState(snapshot.templateId as TemplateId);
+      form.reset(nextContent);
+      setSectionOrder(nextContent.sectionOrder ?? [...DEFAULT_SECTION_ORDER]);
+      suppressHistoryCaptureRef.current = false;
+
+      if (options.persistTemplate && previousTemplate !== snapshot.templateId) {
+        try {
+          await setTemplate(id, snapshot.templateId as TemplateId, { resetStyleSettings: false });
+        } catch (error) {
+          console.error("[applyEditorSnapshot] template persist failed", error);
+          toast.error("恢复模板状态失败，请稍后重试");
+        }
+      }
+      if (options.flushAutosave) {
+        window.dispatchEvent(new Event("resume:flush-autosave"));
+      }
+    },
+    [form, id, template],
+  );
+
+  useEffect(() => {
+    const subscription = form.watch(() => {
+      if (suppressHistoryCaptureRef.current) return;
+      const content = form.getValues() as ResumeContent;
+      resumeHistory.capture(
+        {
+          title,
+          templateId: template,
+          content,
+        },
+        { merge: true },
+      );
+      if (content.sectionOrder) {
+        setSectionOrder(content.sectionOrder);
+      }
+    });
+    return () => subscription.unsubscribe();
+  }, [form, resumeHistory, template, title]);
+
+  const handleUndo = useCallback(() => {
+    const snapshot = resumeHistory.undo();
+    if (!snapshot) return;
+    void applyEditorSnapshot(snapshot, { persistTemplate: true, flushAutosave: true });
+  }, [applyEditorSnapshot, resumeHistory]);
+
+  const handleRedo = useCallback(() => {
+    const snapshot = resumeHistory.redo();
+    if (!snapshot) return;
+    void applyEditorSnapshot(snapshot, { persistTemplate: true, flushAutosave: true });
+  }, [applyEditorSnapshot, resumeHistory]);
+
+  const loadVersions = useCallback(async () => {
+    setIsLoadingVersions(true);
+    try {
+      setVersions(await listResumeVersions(id));
+    } catch (error) {
+      console.error("[loadVersions] failed", error);
+      toast.error("加载版本历史失败，请稍后重试");
+    } finally {
+      setIsLoadingVersions(false);
+    }
+  }, [id]);
+
+  const handleSelectVersion = useCallback(
+    async (versionId: string) => {
+      try {
+        const version = await getResumeVersion(id, versionId);
+        const parsed = ResumeContent.safeParse(version.content);
+        if (!parsed.success) {
+          toast.error("历史版本内容已损坏，无法查看");
+          return;
+        }
+        const listItem =
+          versions.find((item) => item.id === versionId) ??
+          ({
+            id: version.id,
+            resumeId: id,
+            source: version.source,
+            sourceLabel: "历史版本",
+            actorName: version.actorName || "我",
+            operationCount: version.operationCount || 1,
+            summary: version.summary ?? null,
+            createdAt: version.createdAt,
+          } satisfies ResumeVersionListItem);
+        setViewedVersion({
+          id: version.id,
+          title: version.title,
+          templateId: version.templateId,
+          content: parsed.data,
+          createdAt: version.createdAt,
+          listItem,
+        });
+        setIsVersionPopoverOpen(false);
+        setShowTemplatePanel(false);
+        setIsAgentMode(false);
+        setIsFloatingAgentDocked(false);
+      } catch (error) {
+        console.error("[handleSelectVersion] failed", error);
+        toast.error("打开历史版本失败，请稍后重试");
+      }
+    },
+    [id, versions],
+  );
+
+  const handleRestoreVersion = useCallback(
+    async (versionId: string) => {
+      if (isRestoringVersion) return;
+      setIsRestoringVersion(true);
+      try {
+        const restored = await restoreResumeVersion(id, versionId);
+        const parsed = ResumeContent.safeParse(restored.content);
+        if (!parsed.success) {
+          toast.error("历史版本内容已损坏，无法恢复");
+          return;
+        }
+        const snapshot: ResumeEditorSnapshot = {
+          title: restored.title,
+          templateId: restored.templateId,
+          content: parsed.data,
+        };
+        resumeHistory.markBoundary();
+        resumeHistory.capture(snapshot, { merge: false });
+        await applyEditorSnapshot(snapshot, { flushAutosave: true });
+        setViewedVersion(null);
+        toast.success("已恢复历史版本");
+        void loadVersions();
+      } catch (error) {
+        console.error("[handleRestoreVersion] failed", error);
+        toast.error("恢复历史版本失败，请稍后重试");
+      } finally {
+        setIsRestoringVersion(false);
+      }
+    },
+    [applyEditorSnapshot, id, isRestoringVersion, loadVersions, resumeHistory],
+  );
+
+  const handleAdjacentVersion = useCallback(
+    (direction: "previous" | "next") => {
+      if (!viewedVersion) return;
+      const currentIndex = versions.findIndex((version) => version.id === viewedVersion.id);
+      if (currentIndex === -1) return;
+      const nextIndex = direction === "previous" ? currentIndex + 1 : currentIndex - 1;
+      const nextVersion = versions[nextIndex];
+      if (nextVersion) void handleSelectVersion(nextVersion.id);
+    },
+    [handleSelectVersion, versions, viewedVersion],
+  );
+
+  useEffect(() => {
+    function onKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape" && viewedVersion) {
+        event.preventDefault();
+        setViewedVersion(null);
+        return;
+      }
+      if (viewedVersion) return;
+      const isModifier = event.metaKey || event.ctrlKey;
+      if (!isModifier) return;
+      const key = event.key.toLowerCase();
+      if (key === "z" && !event.shiftKey) {
+        event.preventDefault();
+        handleUndo();
+      } else if ((key === "z" && event.shiftKey) || key === "y") {
+        event.preventDefault();
+        handleRedo();
+      }
+    }
+
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [handleRedo, handleUndo, viewedVersion]);
 
   // --- Collab state ---
   const [collabSessionId, setCollabSessionId] = useState<string | null>(null);
@@ -404,6 +626,14 @@ export default function EditorClient({ id, initialTitle, initialTemplate, initia
     setPendingTemplateId(next);
     try {
       await setTemplate(id, next);
+      resumeHistory.markBoundary();
+      resumeHistory.capture(
+        {
+          ...snapshotFromEditor(),
+          templateId: next,
+        },
+        { merge: false },
+      );
     } catch (error) {
       console.error("[changeTemplate] failed", error);
       setTemplateState(previous);
@@ -439,6 +669,7 @@ export default function EditorClient({ id, initialTitle, initialTemplate, initia
     // Delegate to the pure mapping so create-from-zero inserts (which may need
     // brand-new array items) and updates both apply consistently.
     const current = form.getValues() as unknown as ResumeContent;
+    const beforeAgentSnapshot = ResumeContent.parse(current);
     const result = applyResumeOperation(current, operation);
     if (!result) {
       toast.error("这条 Agent 建议暂不支持自动应用");
@@ -446,6 +677,7 @@ export default function EditorClient({ id, initialTitle, initialTemplate, initia
     }
 
     type SetValueArgs = Parameters<typeof form.setValue>;
+    suppressHistoryCaptureRef.current = true;
     for (const key of result.changedKeys) {
       form.setValue(
         key as SetValueArgs[0],
@@ -453,10 +685,57 @@ export default function EditorClient({ id, initialTitle, initialTemplate, initia
         { shouldDirty: true, shouldValidate: true },
       );
     }
+    suppressHistoryCaptureRef.current = false;
     if (result.changedKeys.includes("sectionOrder")) {
       setSectionOrder(result.content.sectionOrder);
     }
-    toast.success("已应用 Agent 建议");
+    const snapshot: ResumeEditorSnapshot = {
+      title,
+      templateId: template,
+      content: result.content,
+    };
+    const versionSummary = operation.changeSummary || operation.label || "Agent 修改简历";
+    resumeHistory.markBoundary();
+    resumeHistory.capture(snapshot, { merge: false });
+    void createResumeVersion({
+      resumeId: id,
+      title,
+      templateId: template,
+      content: beforeAgentSnapshot,
+      source: "agent",
+      operationCount: 1,
+      summary: versionSummary,
+    })
+      .then((version) => {
+        setVersions((previousVersions) => [
+          version,
+          ...previousVersions.filter((item) => item.id !== version.id),
+        ]);
+        toast.success("已生成版本，可查看对比", {
+          action: {
+            label: "查看差异",
+            onClick: () => {
+              setViewedVersion({
+                id: version.id,
+                title,
+                templateId: template,
+                content: beforeAgentSnapshot,
+                createdAt: version.createdAt,
+                listItem: version,
+              });
+              setIsVersionPopoverOpen(false);
+              setShowTemplatePanel(false);
+              setIsAgentMode(false);
+              setIsFloatingAgentDocked(false);
+            },
+          },
+        });
+        if (isVersionPopoverOpen || viewedVersion) void loadVersions();
+      })
+      .catch((error) => {
+        console.error("[applyAgentOperation] create version failed", error);
+        toast.error("Agent 修改已应用，但版本记录保存失败");
+      });
   }
 
   function flushAgentAutosave() {
@@ -591,36 +870,108 @@ export default function EditorClient({ id, initialTitle, initialTemplate, initia
             {backLabel}
           </a>
           <div className="h-4 w-[2px] self-center rounded-full bg-border" />
-          <Button
-            size="sm"
-            variant="ghost"
-            onClick={() => {
-              setIsAgentMode(false);
-              setIsFloatingAgentDocked(false);
-              setShowTemplatePanel((v) => !v);
-            }}
-            aria-pressed={showTemplatePanel}
-            className={cn(
-              "gap-1.5",
-              showTemplatePanel && "bg-primary/5 font-semibold text-primary hover:bg-primary/10 hover:text-primary dark:bg-primary/15 dark:hover:bg-primary/20",
-            )}
-          >
-            <LayoutTemplate className="h-3.5 w-3.5" />
-            模板
-          </Button>
-          <StyleEditor />
-          <SmartLayoutButton templateId={template} measureRef={previewRootRef} />
-          <ModuleManager sectionOrder={sectionOrder} onOrderChange={handleOrderChange} />
-          <ResumeDiagnoseButton resumeId={id} />
-          {!useFloatingAgent ? (
-            <AgentModeToggle
-              active={isAgentMode}
-              onClick={() => {
-                setShowTemplatePanel(false);
-                setIsAgentMode((value) => !value);
-              }}
-            />
-          ) : null}
+          {viewedVersion ? (
+            <>
+              <div className="rounded-md bg-primary/5 px-2.5 py-1 text-xs font-medium text-primary">
+                正在查看历史版本，编辑工具已锁定
+              </div>
+              <Button
+                type="button"
+                size="sm"
+                variant="ghost"
+                onClick={() => setViewedVersion(null)}
+                aria-label="退出版本对比"
+                className="gap-1.5"
+              >
+                退出对比
+              </Button>
+            </>
+          ) : (
+            <>
+              <Button
+                type="button"
+                size="sm"
+                variant="ghost"
+                onClick={handleUndo}
+                disabled={!resumeHistory.canUndo}
+                aria-label="撤销"
+                className="gap-1.5"
+              >
+                <Undo2 className="h-3.5 w-3.5" />
+                撤销
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                variant="ghost"
+                onClick={handleRedo}
+                disabled={!resumeHistory.canRedo}
+                aria-label="重做"
+                className="gap-1.5"
+              >
+                <Redo2 className="h-3.5 w-3.5" />
+                重做
+              </Button>
+              <div className="relative">
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="ghost"
+                  aria-label="版本"
+                  onClick={() => {
+                    const nextOpen = !isVersionPopoverOpen;
+                    setIsVersionPopoverOpen(nextOpen);
+                    if (nextOpen) void loadVersions();
+                  }}
+                  className="gap-1.5"
+                >
+                  <History className="h-3.5 w-3.5" />
+                  版本
+                </Button>
+                {isVersionPopoverOpen ? (
+                  <div className="absolute left-0 top-full z-50 mt-1">
+                    <VersionHistoryPopover
+                      versions={versions}
+                      activeVersionId={null}
+                      isLoading={isLoadingVersions}
+                      onSelectVersion={handleSelectVersion}
+                    />
+                  </div>
+                ) : null}
+              </div>
+              <div className="h-4 w-[2px] self-center rounded-full bg-border" />
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={() => {
+                  setIsAgentMode(false);
+                  setIsFloatingAgentDocked(false);
+                  setShowTemplatePanel((v) => !v);
+                }}
+                aria-pressed={showTemplatePanel}
+                className={cn(
+                  "gap-1.5",
+                  showTemplatePanel && "bg-primary/5 font-semibold text-primary hover:bg-primary/10 hover:text-primary dark:bg-primary/15 dark:hover:bg-primary/20",
+                )}
+              >
+                <LayoutTemplate className="h-3.5 w-3.5" />
+                模板
+              </Button>
+              <StyleEditor />
+              <SmartLayoutButton templateId={template} measureRef={previewRootRef} />
+              <ModuleManager sectionOrder={sectionOrder} onOrderChange={handleOrderChange} />
+              <ResumeDiagnoseButton resumeId={id} />
+              {!useFloatingAgent ? (
+                <AgentModeToggle
+                  active={isAgentMode}
+                  onClick={() => {
+                    setShowTemplatePanel(false);
+                    setIsAgentMode((value) => !value);
+                  }}
+                />
+              ) : null}
+            </>
+          )}
 
           {collabState?.isConnected && (
             <>
@@ -653,14 +1004,16 @@ export default function EditorClient({ id, initialTitle, initialTemplate, initia
                 />
               ) : (
                 <div className="flex min-w-0 animate-in fade-in slide-in-from-right-1 items-center justify-end gap-2 duration-150">
-                  <button
-                    type="button"
-                    onClick={() => setIsEditingTitle(true)}
-                    aria-label="重命名"
-                    className="rounded p-1 text-muted-foreground/70 transition-colors hover:bg-accent hover:text-muted-foreground"
-                  >
-                    <PencilLine className="h-3 w-3" />
-                  </button>
+                  {!viewedVersion ? (
+                    <button
+                      type="button"
+                      onClick={() => setIsEditingTitle(true)}
+                      aria-label="重命名"
+                      className="rounded p-1 text-muted-foreground/70 transition-colors hover:bg-accent hover:text-muted-foreground"
+                    >
+                      <PencilLine className="h-3 w-3" />
+                    </button>
+                  ) : null}
                   <span className="max-w-[200px] truncate text-[0.8rem] font-medium text-foreground">
                     {title || "未命名简历"}
                   </span>
@@ -812,7 +1165,26 @@ export default function EditorClient({ id, initialTitle, initialTemplate, initia
         </div>
       )}
 
-      {isDesktop ? (
+      {isDesktop ? viewedVersion ? (
+        <div className="h-[calc(100vh-3.5rem-4rem)] overflow-hidden">
+          <ResumeDiffPreview
+            oldContent={viewedVersion.content}
+            newContent={(form.getValues() as ResumeContent)}
+            viewedVersion={viewedVersion.listItem}
+            versions={versions}
+            onSelectVersion={handleSelectVersion}
+            onRestore={handleRestoreVersion}
+            onClose={() => setViewedVersion(null)}
+            onPreviousVersion={() => handleAdjacentVersion("previous")}
+            onNextVersion={() => handleAdjacentVersion("next")}
+            canPreviousVersion={
+              versions.findIndex((version) => version.id === viewedVersion.id) >= 0 &&
+              versions.findIndex((version) => version.id === viewedVersion.id) < versions.length - 1
+            }
+            canNextVersion={versions.findIndex((version) => version.id === viewedVersion.id) > 0}
+          />
+        </div>
+      ) : (
         <div className="flex h-[calc(100vh-3.5rem-4rem)] overflow-hidden">
           <div className="relative min-w-0 border-r" style={{ flex: `0 0 ${splitPercent}%` }}>
             <div

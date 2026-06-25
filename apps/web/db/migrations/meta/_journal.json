@@ -92,6 +92,13 @@
       "when": 1781751176000,
       "tag": "0012_add_floating_agent_chat_sessions",
       "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1782358800000,
+      "tag": "0013_add_resume_versions",
+      "breakpoints": true
     }
   ]
 }
