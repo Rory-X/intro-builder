@@ -9,14 +9,29 @@ This package provides the backend server for real-time collaborative editing usi
 ## Development
 
 ```bash
-# Start dev server
-pnpm dev
+# From the repository root
+pnpm --filter @intro-builder/partykit test
+pnpm --filter @intro-builder/partykit typecheck
+pnpm --filter @intro-builder/partykit dev
+```
 
-# Type check
-pnpm typecheck
+PartyKit does not expose an offline `build` subcommand in the pinned CLI. The
+package `build` script therefore runs `tsc --noEmit`; deployment performs the
+actual worker bundle.
 
-# Deploy
-pnpm deploy
+## Authentication
+
+Both the Web application and PartyKit deployment must use the same
+`COLLAB_JWT_SECRET`. Connections are rejected before Yjs synchronization when
+the token is missing, invalid, expired, or issued for another room.
+
+For production, configure the GitHub Actions secret `COLLAB_JWT_SECRET`. The
+PartyKit deployment workflow validates it and injects it with the CLI `--var`
+option:
+
+```bash
+COLLAB_JWT_SECRET=... pnpm exec partykit deploy \
+  --var "COLLAB_JWT_SECRET=$COLLAB_JWT_SECRET"
 ```
 
 ## Dependencies

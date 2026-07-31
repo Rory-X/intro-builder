@@ -1,5 +1,6 @@
 import type * as Party from "partykit/server";
 import { onConnect } from "y-partykit";
+import { verifyCollabToken } from "./utils/auth";
 
 type ConnectionMeta = {
   userId: string;
@@ -17,33 +18,31 @@ export default class CollabServer implements Party.Server {
   private connections = new Map<string, ConnectionMeta>();
 
   async onConnect(conn: Party.Connection, ctx: Party.ConnectionContext) {
-    // TODO: Re-enable JWT auth after debugging env var issue
-    // For now, extract display info from token payload without verifying signature
     const url = new URL(ctx.request.url);
     const token = url.searchParams.get("token");
-
-    let meta: ConnectionMeta = {
-      userId: "guest-" + conn.id,
-      displayName: "Guest",
-      role: "mentor",
-      color: MENTOR_COLORS[this.connections.size % MENTOR_COLORS.length],
-    };
-
-    // Try to decode JWT payload (without verification) for display name
-    if (token) {
-      try {
-        const payloadPart = token.split(".")[1];
-        const decoded = JSON.parse(atob(payloadPart));
-        meta = {
-          userId: decoded.userId || meta.userId,
-          displayName: decoded.displayName || meta.displayName,
-          role: decoded.role || meta.role,
-          color: decoded.role === "owner" ? OWNER_COLOR : MENTOR_COLORS[this.connections.size % MENTOR_COLORS.length],
-        };
-      } catch {
-        // Use default meta
-      }
+    const secret = this.room.env.COLLAB_JWT_SECRET;
+    if (!token || typeof secret !== "string" || secret.length === 0) {
+      conn.close(4401, "Unauthorized");
+      return;
     }
+
+    let payload;
+    try {
+      payload = await verifyCollabToken(token, secret, this.room.id);
+    } catch {
+      conn.close(4401, "Unauthorized");
+      return;
+    }
+
+    const meta: ConnectionMeta = {
+      userId: payload.userId,
+      displayName: payload.displayName,
+      role: payload.role,
+      color:
+        payload.role === "owner"
+          ? OWNER_COLOR
+          : MENTOR_COLORS[this.connections.size % MENTOR_COLORS.length],
+    };
 
     this.connections.set(conn.id, meta);
     this.broadcastPresence();

@@ -49,13 +49,17 @@ jobs:
         env:
           PARTYKIT_LOGIN: ${{ secrets.PARTYKIT_LOGIN }}
           PARTYKIT_TOKEN: ${{ secrets.PARTYKIT_TOKEN }}
+          COLLAB_JWT_SECRET: ${{ secrets.COLLAB_JWT_SECRET }}
         run: |
           set -euo pipefail
           : "${PARTYKIT_LOGIN:?Missing PARTYKIT_LOGIN secret}"
           : "${PARTYKIT_TOKEN:?Missing PARTYKIT_TOKEN secret}"
+          : "${COLLAB_JWT_SECRET:?Missing COLLAB_JWT_SECRET secret}"
 
       - name: Deploy PartyKit
+        working-directory: apps/partykit
         env:
           PARTYKIT_LOGIN: ${{ secrets.PARTYKIT_LOGIN }}
           PARTYKIT_TOKEN: ${{ secrets.PARTYKIT_TOKEN }}
-        run: pnpm --filter @intro-builder/partykit run deploy
+          COLLAB_JWT_SECRET: ${{ secrets.COLLAB_JWT_SECRET }}
+        run: pnpm exec partykit deploy --var "COLLAB_JWT_SECRET=$COLLAB_JWT_SECRET"

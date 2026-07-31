@@ -5,7 +5,8 @@
   "main": "src/server.ts",
   "scripts": {
     "dev": "partykit dev",
-    "build": "partykit build",
+    "test": "vitest run",
+    "build": "tsc --noEmit",
     "deploy": "partykit deploy",
     "typecheck": "tsc --noEmit"
   },
@@ -18,6 +19,7 @@
   },
   "devDependencies": {
     "@types/node": "^20.19.39",
-    "typescript": "^5.9.3"
+    "typescript": "^5.9.3",
+    "vitest": "^4.1.5"
   }
 }
