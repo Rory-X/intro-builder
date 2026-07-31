@@ -1,0 +1,62 @@
+version: 2
+
+updates:
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      time: "03:00"
+      timezone: Asia/Shanghai
+    open-pull-requests-limit: 10
+    groups:
+      agent-ui-patch-minor:
+        applies-to: version-updates
+        patterns:
+          - "@ag-ui/*"
+          - "@assistant-ui/*"
+          - "@ai-sdk/*"
+          - ai
+        update-types:
+          - minor
+          - patch
+      tiptap-patch-minor:
+        applies-to: version-updates
+        patterns:
+          - "@tiptap/*"
+        update-types:
+          - minor
+          - patch
+      editor-patch-minor:
+        applies-to: version-updates
+        patterns:
+          - "@atlaskit/pragmatic-drag-and-drop*"
+          - react-hook-form
+          - zod
+        update-types:
+          - minor
+          - patch
+      tooling-patch-minor:
+        applies-to: version-updates
+        dependency-type: development
+        patterns:
+          - "*"
+        update-types:
+          - minor
+          - patch
+      remaining-patch-minor:
+        applies-to: version-updates
+        patterns:
+          - "*"
+        exclude-patterns:
+          - "@ag-ui/*"
+          - "@assistant-ui/*"
+          - "@ai-sdk/*"
+          - "@tiptap/*"
+          - "@atlaskit/pragmatic-drag-and-drop*"
+          - ai
+          - react-hook-form
+          - zod
+        update-types:
+          - minor
+          - patch

@@ -31,7 +31,7 @@ Remaining notes:
 
 ## Phase 0B: Redis and Reliability Layer
 
-Status: implemented locally, pending normal merge/deploy flow.
+Status: implemented, merged, and deployed.
 
 Goal: 在模型调用前先接好 Redis、readiness、rate limit 和依赖降级。
 
@@ -88,7 +88,7 @@ Expected:
 
 ## Phase 0C: Web-to-Agent Auth and Client
 
-Status: implemented locally, pending normal merge/deploy flow.
+Status: implemented, merged, and deployed.
 
 Goal: 建立稳定的 Web -> Agent 调用层和短期 JWT 认证边界。
 
@@ -142,6 +142,8 @@ Deployment note:
 
 ## Phase 1: Rich Text Polish MVP
 
+Status: implemented, merged, and deployed.
+
 Goal: 在 Agent 微服务上实现第一个新增 AI 能力：单个富文本字段的局部润色。
 
 Not using assistant-ui.
@@ -179,7 +181,9 @@ Exit gates:
 
 ## Phase 2: Resume Helper APIs
 
-Status: Phase 2A implemented locally and verified. Phase 2B is intentionally skipped while Phase 3A Agent Mode proceeds.
+Status: Phase 2A implemented, merged, and deployed. The standalone Phase 2B
+helper expansion was deferred and later superseded by the true-loop Agent tool
+set; it is not an active implementation plan.
 
 Goal: 增量扩展到简历模块级 helper，但仍不是聊天面板。
 
@@ -292,11 +296,12 @@ Exit gates:
 
 ### Phase 3C: Realtime Streaming and SDK-Compatible Stability
 
-Status: implemented locally on `codex/agent-realtime-streaming-stability`, pending full gates and PR.
+Status: implemented and merged. The compatible run adapter and streaming fixes
+shipped before the later direct-run and floating assistant iterations.
 
 Goal: 修复用户可感知的不稳定对话流，让 Agent Mode 接近 ChatGPT 的实时吐字体验，同时为 `@ag-ui/client` / `@assistant-ui/react-ag-ui` runtime 迁移铺好 BFF adapter。
 
-Delivered locally:
+Delivered:
 
 - Agent `agent:chat` cache hit 在 `Accept: text/event-stream` 时返回 AG-UI SSE，而不是 JSON。
 - Agent SSE provider parse/throw failures 返回 `RUN_ERROR`，并保留 code/request id。
@@ -307,7 +312,11 @@ Delivered locally:
 - AgentPanel 当前仍使用 LocalRuntime/custom adapter 以保留确认卡体验，但浏览器请求已切到 `/api/agent/runs` 的 SDK-compatible body。
 - 新增依赖 `@ag-ui/client@0.0.56`、`@assistant-ui/react-ag-ui@0.0.36`，版本与 `@ag-ui/core` / `@ag-ui/encoder` 对齐。
 
-Phase 3D current slice:
+### Phase 3D: AG-UI Runtime Canary and Thread UX
+
+Status: implemented and merged. The runtime remains available, while the
+current product also includes the direct-run long-loop and floating assistant
+paths added by PRs #89 and #94 through #103.
 
 - 新增可开关 `useAgUiRuntime` canary；默认仍使用 LocalRuntime/custom adapter。
 - `HttpAgent` 通过 `/api/agent/runs` 走 Web BFF，不允许浏览器直连 Agent public URL。
@@ -321,6 +330,9 @@ Phase 3D current slice:
 - AG-UI interrupt 渲染为 `Agent 需要补充信息` question card；用户回答后通过 `resume` 继续同一轮 run。
 
 ## Phase 4: BYO Key, Credits, and Limits
+
+Status: partially implemented. Local BYO model settings and provider routing
+exist; credits, quota tiers, and audit logs require a new product plan.
 
 Goal: 在产品验证后补商业化与自助配置。
 
@@ -337,7 +349,8 @@ Rules:
 
 - 不阻塞 Phase 1 到 Phase 3。
 - 不提前污染 MVP API。
-- Provider key 不进浏览器。
+- 平台托管 provider key 不进浏览器；用户自己的 BYO key 只保存在本地设置并按
+  请求发送，不写入项目数据库。
 
 ## Always Out of Scope Unless a New Plan Says Otherwise
 

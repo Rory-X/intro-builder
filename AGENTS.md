@@ -15,15 +15,15 @@ This version has breaking changes — APIs, conventions, and file structure may 
 - **产品**：面向中文互联网求职者的在线简历排版与 AI 辅助工具。结构化编辑 /
   简历导入 → 实时分页预览 → 模板库与智能排版 → Agent 辅助诊断、润色、改写 →
   A4 PDF / 公开只读链接 `/r/[slug]` / 协作审阅。
-- **当前阶段**：v0.4.1 之后。主线已从三套内置模板扩展到模板库、上传模板
+- **当前阶段**：v0.4.2 复工稳态。主线已从三套内置模板扩展到模板库、上传模板
   Schema v2、协作批注、文档站、邮箱验证码登录，以及基于 AG-UI / assistant-ui
-  的 Agent 面板与流式对话。近期重点是 Agent 线程体验、实时流式稳定性、简历
-  模块一等公民化、富文本润色差异展示与编辑器/模板覆盖质量。
-- **远端事实**：`upstream` 指向 `https://github.com/Rory-X/intro-builder.git`，
-  是本项目真实远端。用户说“远端 / 最新 / pull / PR”时，默认查
-  `Rory-X/intro-builder`、`upstream/main` 和该仓库的 PR ref；`origin` 只是当前
-  工作区的写入与 PR 分支承载入口。不要只看 `origin/main` 就判断是否最新，也
-  不要用个人副本语义描述它。
+  的 Agent 面板、长循环、流式对话、版本 Diff 与 Undo/Redo。当前先恢复安全、
+  自动化和文档基线；下一产品切片是新用户三步成品路径。
+- **远端事实**：当前工作区的 `origin` 指向
+  `https://github.com/Rory-X/intro-builder.git`，是项目真实远端；`zoo` 指向
+  `ZOO-AiiiPM/intro-builder-zoo.git`。用户说“远端 / 最新 / pull / PR”时，默认
+  查 `Rory-X/intro-builder`、`origin/main` 和该仓库的 PR ref。不要假设存在
+  `upstream` remote；先用 `git remote -v` 核对。
 - **对 Agent 的预期**：交付小而可验证的切片。任何非平凡改动都必须走第 4 节
   的「spec → plan → 实现 → 验证 → 发布」回路。没有跑过第 6 节闸门
   之前，**不要**声称完成。
@@ -33,7 +33,7 @@ This version has breaking changes — APIs, conventions, and file structure may 
 | 维度 | 选型 | 备注 |
 |---|---|---|
 | 框架 | Next.js **16.2** App Router | 见文件顶部红字。`middleware.ts` 现在叫 `proxy.ts`。 |
-| 运行时 | React **19.2**，CI 使用 Node **22**、pnpm **10** | pnpm workspace 覆盖根应用与 `apps/agent`。 |
+| 运行时 | React **19.2**，CI 使用 Node **22**、pnpm **10** | pnpm workspace 覆盖根、三个 app 与共享 packages。 |
 | 鉴权 | Auth.js v5 + Resend 魔法链接 | `lib/auth.ts`；14 天数据库会话。 |
 | 数据库 | Drizzle ORM + Postgres | `db/schema.ts`。`*.neon.tech` 走 Neon HTTP，其它走 `postgres.js` TCP。选择器在 `db/connection.ts`。 |
 | 表单 | React Hook Form + Zod | `lib/resume-schema.ts` 是简历内容的唯一契约。 |
@@ -41,11 +41,11 @@ This version has breaking changes — APIs, conventions, and file structure may 
 | 拖拽 | `@atlaskit/pragmatic-drag-and-drop` | 分区与条目排序。 |
 | PDF | Puppeteer + `@sparticuz/chromium` | 与预览复用同一 DOM，见第 8 节。 |
 | Agent | AG-UI + assistant-ui + `apps/agent` | 前端在 `components/agent/` 与 `app/api/agent/*`，服务端包在 `apps/agent/`。 |
-| 协作 | Yjs + PartyKit | 前端在 `components/collab/`，边缘服务在 `partykit/`。 |
+| 协作 | Yjs + PartyKit | 前端在 `components/collab/`，边缘服务在 `apps/partykit/`。 |
 | 文档 | Fumadocs MDX | `app/docs`、`lib/source.ts`。 |
 | 存储 | Vercel Blob | 仅头像；`app/api/upload-photo/route.ts`。 |
 | 样式 | Tailwind v4 + shadcn 原语 | `components/ui/`；暗色模式走 `next-themes`。 |
-| 测试 | Vitest + jsdom + Testing Library | `tests/unit/` 跑根应用；`pnpm test` 还会跑 `@intro-builder/agent`。 |
+| 测试 | Vitest + jsdom + Testing Library | `pnpm test` 递归执行 Web、Agent 与 PartyKit 测试。 |
 
 ## 3. 仓库地图（只列 Agent 真正要看的）
 
@@ -182,22 +182,10 @@ PoC 标准：
 
 ## 5. Skill 索引（按需 `Read`）
 
-下列 skill 已安装在本项目 `.agents/skills/`，需要时直接用 `Read` 加载：
-
-- 选题/构思：`.agents/skills/brainstorming/SKILL.md`
-- 写 plan：  `.agents/skills/writing-plans/SKILL.md`
-- 执行 plan：`.agents/skills/executing-plans/SKILL.md`
-- TDD：      `.agents/skills/test-driven-development/SKILL.md`
-- 系统化调试：`.agents/skills/systematic-debugging/SKILL.md`
-- 完成前验证：`.agents/skills/verification-before-completion/SKILL.md`
-- 发起评审：  `.agents/skills/requesting-code-review/SKILL.md`
-- 接受评审：  `.agents/skills/receiving-code-review/SKILL.md`
-- 收尾分支：  `.agents/skills/finishing-a-development-branch/SKILL.md`
-- worktree：  `.agents/skills/using-git-worktrees/SKILL.md`
-- 并行子任务：`.agents/skills/dispatching-parallel-agents/SKILL.md` 或
-  `.agents/skills/subagent-driven-development/SKILL.md`
-- 部署：      `.agents/skills/web-deploy/SKILL.md`（Vercel / 域名 / 环境变量）
-- 保 PR 绿：  `.agents/skills/babysit-pr/SKILL.md`
+当前仓库只 vendored 了 `.agents/skills/frontend-design/SKILL.md`。第 4 节中的
+其它 skill 名称表示首选工作流；运行环境提供同名 skill 时必须先读。若当前环境
+未安装，不要伪造文件路径或因此跳过流程，应按第 4 节等价执行，并在交接中记录
+缺失情况。
 
 ## 6. 完成定义（Definition of Done）
 
@@ -245,14 +233,15 @@ pnpm build            # 生产构建（捕获 RSC / 路由错误）
 - **编辑器状态**走 React Hook Form。`LivePreview` 通过 `useWatch()` 订阅；
   **不要**把 content 当 prop 往下传，否则每次击键都会重渲编辑器。
 - **Autosave** 是 2 秒去抖串行队列（`hooks/use-resume-autosave.ts`）。
-  在途保存永不会覆盖更新的编辑。事件处理里不要 `await` 它；如需立即
-  保存，派发 `resume:flush-autosave` window 事件。
+  在途保存永不会覆盖更新的编辑。普通输入继续后台保存；需要确认已经落盘的
+  Agent / 恢复流程必须 `await requestResumeAutosaveFlush()`，只有 fire-and-forget
+  场景才直接派发 `resume:flush-autosave` window 事件。
 - **暗色模式**：新增的每个表面都要补 `dark:` 变体，用 header 里的主题切换
   按钮回归。
 - **中文是用户文案的母语**。英文只用于代码、文件名、面向开发者的日志。
 - **Commit 信息** 走 Conventional Commits（`feat:`、`fix:`、`chore:`、
   `docs:`、`test:`），可加 scope（`feat(editor): …`）。参考 `git log`。
-- **远端同步** 默认以 `upstream/main` 为基准。检查 PR 状态时用
+- **远端同步** 默认以 `origin/main` 为基准。检查 PR 状态时用
   `Rory-X/intro-builder` 的 PR 信息与 refs；需要更新 PR 分支时，再把确认后的
   本地结果推到承载该 PR 的分支。
 
@@ -279,6 +268,9 @@ pnpm build            # 生产构建（捕获 RSC / 路由错误）
   重新设计 `/r/[slug]`。
 - **拖拽用 Pragmatic D&D，不是 dnd-kit**（`d30ed01` 已迁移）。不要把
   dnd-kit 加回来。
+- **PartyKit CLI 没有 `build` 子命令**：`apps/partykit` 的 `build` 脚本用
+  `tsc --noEmit` 做离线校验。看到 CLI 帮助页不代表构建成功。协作 token 必须由
+  Web 与 PartyKit 共用 `COLLAB_JWT_SECRET`，生产部署缺失时应 fail closed。
 - **`shadcn/ui` 是生成的**：要改去 `components/editor/*` 包一层，或者
   用 shadcn CLI 重新生成。
 
