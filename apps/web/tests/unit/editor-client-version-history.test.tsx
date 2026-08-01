@@ -169,6 +169,7 @@ function renderEditor(
 ) {
   return render(
     <EditorClient
+      userId="user-a"
       id="r1"
       initialTitle="简历"
       initialTemplate="professional"

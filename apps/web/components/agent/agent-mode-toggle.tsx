@@ -15,6 +15,7 @@ export function AgentModeToggle({
   return (
     <Button
       type="button"
+      data-editor-onboarding-target="agent"
       size="sm"
       variant="outline"
       aria-pressed={active}

@@ -146,6 +146,24 @@
   }
 }
 
+.editor-onboarding-target-active {
+  position: relative;
+  z-index: 40;
+  border-radius: 0.75rem;
+  box-shadow:
+    0 0 0 2px var(--background),
+    0 0 0 5px color-mix(in oklab, var(--primary) 78%, transparent),
+    0 12px 30px color-mix(in oklab, var(--primary) 16%, transparent);
+  scroll-margin: 6rem;
+  transition: box-shadow 180ms ease;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .editor-onboarding-target-active {
+    transition: none;
+  }
+}
+
 /*
  * fumadocs docs prose color overrides — scoped to #nd-docs-layout only.
  * Maps standard prose CSS variables to fumadocs --color-fd-* tokens so

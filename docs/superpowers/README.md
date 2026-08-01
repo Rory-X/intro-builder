@@ -12,9 +12,10 @@
 
 - **发布分支版本**：`package.json` → `0.4.2`
 - **远端 `main` 已发布**：v0.1.0 → v0.1.1 → v0.2.x → v0.3.x → v0.4.1
-- **进行中**：v0.4.2 复工稳态，恢复 Agent 保存可信度、PartyKit JWT 验签、
+- **待发布**：v0.4.2 复工稳态，已恢复 Agent 保存可信度、PartyKit JWT 验签、
   安全自动化与文档基线。
-- **下一产品切片**：v0.5 新用户三步成品路径。先做交互 PoC，再进入 spec / plan。
+- **已实现待评审**：v0.5 编辑器内新手引导。已通过 PoC 选定「边做边学」，
+  先引导用户配置 Agent BYOK，再认识编辑、预览、排版安全、AI 辅助和 Agent。
 
 2026-05 之后的代码推进快于本索引维护。判断“是否已做”时，应同时核对最新
 plan 的勾选状态、`git log` 和实际代码，不能只依赖早期版本号表格。
@@ -32,6 +33,7 @@ plan 的勾选状态、`git log` 和实际代码，不能只依赖早期版本�
 | 2026-06-25 | `specs/2026-06-25-resume-version-diff-undo-redo-design.md` | 版本快照、结构化 Diff、会话 Undo/Redo | ✅ 已上线 |
 | 2026-06-25 | `specs/2026-06-25-agent-stability-ux-design.md` | 可验证 autosave、续跑上下文、Agent UX 与模型设置 | 🔧 v0.4.2 移植 |
 | 2026-07-31 | `specs/2026-07-31-v0.4.2-reactivation-baseline.md` | 复工安全与验证基线 | 🔧 进行中 |
+| 2026-07-31 | `specs/2026-07-31-editor-onboarding-byok.md` | v0.5 编辑器内 BYOK-first 新手引导 | 👀 待评审 |
 
 > ⚠️ `2026-04-29-v0.2.2-ui-overhaul.md` 实际内容是 **plan 风格**（含「File Structure」「Decisions (locked in)」），但放在 `specs/` 目录。新文档请严格区分二者；现有文件保持不动，避免破坏历史链接。
 
@@ -46,6 +48,7 @@ plan 的勾选状态、`git log` 和实际代码，不能只依赖早期版本�
 | 2026-06-25 | `plans/2026-06-25-resume-version-diff-undo-redo.md` | 版本 Diff / Undo/Redo spec | ✅ 已上线 |
 | 2026-06-25 | `plans/2026-06-25-agent-stability-ux.md` | Agent stability spec | 🔧 已移植，待 v0.4.2 闸门 |
 | 2026-07-31 | `plans/2026-07-31-v0.4.2-reactivation-baseline.md` | v0.4.2 reactivation spec | 🔧 进行中 |
+| 2026-07-31 | `plans/2026-07-31-editor-onboarding-byok.md` | 编辑器 onboarding spec | ✅ 已实现，待发布 |
 
 > v0.3（Professional 模板）有 spec 但**没有独立 plan 文件**；实现按 spec 中的「5. Architecture」直接驱动。再次施工请补一份 plan，避免无锚执行。
 

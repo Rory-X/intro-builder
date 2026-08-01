@@ -15,10 +15,12 @@ This version has breaking changes — APIs, conventions, and file structure may 
 - **产品**：面向中文互联网求职者的在线简历排版与 AI 辅助工具。结构化编辑 /
   简历导入 → 实时分页预览 → 模板库与智能排版 → Agent 辅助诊断、润色、改写 →
   A4 PDF / 公开只读链接 `/r/[slug]` / 协作审阅。
-- **当前阶段**：v0.4.2 复工稳态。主线已从三套内置模板扩展到模板库、上传模板
-  Schema v2、协作批注、文档站、邮箱验证码登录，以及基于 AG-UI / assistant-ui
-  的 Agent 面板、长循环、流式对话、版本 Diff 与 Undo/Redo。当前先恢复安全、
-  自动化和文档基线；下一产品切片是新用户三步成品路径。
+- **当前阶段**：v0.5 编辑器内新手引导（待评审）。主线已从三套内置模板扩展到
+  模板库、上传模板 Schema v2、协作批注、文档站、邮箱验证码登录，以及基于
+  AG-UI / assistant-ui 的 Agent 面板、长循环、流式对话、版本 Diff 与 Undo/Redo。
+  v0.4.2 已恢复安全、自动化和文档基线；v0.5 采用 BYOK-first「边做边学」路径，
+  直接在真实编辑器中介绍编辑、预览、排版安全、AI 辅助与 Agent，不再建设独立
+  的三步创建页。后续产品切片需另行筛选，不与依赖 major 升级混做。
 - **远端事实**：当前工作区的 `origin` 指向
   `https://github.com/Rory-X/intro-builder.git`，是项目真实远端；`zoo` 指向
   `ZOO-AiiiPM/intro-builder-zoo.git`。用户说“远端 / 最新 / pull / PR”时，默认

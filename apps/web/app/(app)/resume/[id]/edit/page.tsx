@@ -41,6 +41,7 @@ export default async function EditPage({ params, searchParams }: { params: Promi
   ]);
   return (
     <EditorClient
+      userId={userId}
       id={row.id}
       initialTitle={row.title}
       initialTemplate={initialResolved.id}

@@ -128,6 +128,7 @@ describe("EditorClient live preview", () => {
 
     const { container } = render(
       <EditorClient
+        userId="user-a"
         id="r1"
         initialTitle="简历"
         initialTemplate="classic"
@@ -153,6 +154,7 @@ describe("EditorClient live preview", () => {
 
     render(
       <EditorClient
+        userId="user-a"
         id="r1"
         initialTitle="简历"
         initialTemplate="professional"
@@ -191,6 +193,7 @@ describe("EditorClient live preview", () => {
   it("renders template and layout settings in the toolbar only", () => {
     render(
       <EditorClient
+        userId="user-a"
         id="r1"
         initialTitle="简历"
         initialTemplate="professional"
@@ -218,9 +221,10 @@ describe("EditorClient live preview", () => {
     expect(templateButton.className).not.toContain("text-primary-foreground");
   });
 
-  it("keeps the existing Agent panel entry by default", () => {
+  it("mounts first-visit onboarding and reopens it from the editor toolbar", async () => {
     render(
       <EditorClient
+        userId="user-a"
         id="r1"
         initialTitle="简历"
         initialTemplate="professional"
@@ -236,7 +240,53 @@ describe("EditorClient live preview", () => {
       />,
     );
 
-    expect(screen.getByRole("button", { name: "Agent 模式" })).toBeInTheDocument();
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(0);
+    });
+    expect(
+      screen.getByRole("region", { name: "编辑器新手引导" }),
+    ).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "以后再说" }));
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(0);
+    });
+    expect(
+      screen.queryByRole("region", { name: "编辑器新手引导" }),
+    ).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "新手引导" }));
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(0);
+    });
+    expect(
+      screen.getByRole("region", { name: "编辑器新手引导" }),
+    ).toBeInTheDocument();
+  });
+
+  it("keeps the existing Agent panel entry by default", () => {
+    render(
+      <EditorClient
+        userId="user-a"
+        id="r1"
+        initialTitle="简历"
+        initialTemplate="professional"
+        initialContent={emptyResumeContent()}
+        initialIsPublic={false}
+        initialSlug={null}
+        initialUpdatedAtIso={new Date().toISOString()}
+        initialNowIso={new Date().toISOString()}
+        initialResolvedTemplate={DB_RESOLVED}
+        uploadedTemplates={[]}
+        allTemplates={DB_TEMPLATE_ROWS}
+        from={null}
+      />,
+    );
+
+    expect(screen.getByRole("button", { name: "Agent 模式" })).toHaveAttribute(
+      "data-editor-onboarding-target",
+      "agent",
+    );
     expect(
       screen.queryByRole("button", { name: "打开 AI 简历助手" }),
     ).not.toBeInTheDocument();
@@ -247,6 +297,7 @@ describe("EditorClient live preview", () => {
 
     render(
       <EditorClient
+        userId="user-a"
         id="r1"
         initialTitle="简历"
         initialTemplate="professional"
@@ -265,7 +316,14 @@ describe("EditorClient live preview", () => {
 
     expect(screen.queryByRole("button", { name: "Agent 模式" })).not.toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole("button", { name: "打开 AI 简历助手" }));
+    const floatingAgentButton = screen.getByRole("button", {
+      name: "打开 AI 简历助手",
+    });
+    expect(floatingAgentButton).toHaveAttribute(
+      "data-editor-onboarding-target",
+      "agent",
+    );
+    fireEvent.click(floatingAgentButton);
 
     expect(screen.getByRole("dialog", { name: "AI 简历助手" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "当前模型：连接模型" })).toBeInTheDocument();
@@ -281,6 +339,7 @@ describe("EditorClient live preview", () => {
   it("docks the floating assistant conversation into the editor column", () => {
     render(
       <EditorClient
+        userId="user-a"
         id="r1"
         initialTitle="简历"
         initialTemplate="professional"
@@ -319,6 +378,7 @@ describe("EditorClient live preview", () => {
   it("uses a solid blue toolbar state when public sharing is enabled", () => {
     render(
       <EditorClient
+        userId="user-a"
         id="r1"
         initialTitle="简历"
         initialTemplate="professional"
@@ -342,6 +402,7 @@ describe("EditorClient live preview", () => {
   it("uses a light blue toolbar state while the share popover is open but not enabled", () => {
     render(
       <EditorClient
+        userId="user-a"
         id="r1"
         initialTitle="简历"
         initialTemplate="professional"
@@ -368,6 +429,7 @@ describe("EditorClient live preview", () => {
   it("animates title editing without increasing the title input font size", () => {
     render(
       <EditorClient
+        userId="user-a"
         id="r1"
         initialTitle="简历"
         initialTemplate="professional"
@@ -397,6 +459,7 @@ describe("EditorClient live preview", () => {
 
     render(
       <EditorClient
+        userId="user-a"
         id="r1"
         initialTitle="简历"
         initialTemplate="professional"
@@ -422,6 +485,7 @@ describe("EditorClient live preview", () => {
   it("exports the current live preview as a PNG image", async () => {
     render(
       <EditorClient
+        userId="user-a"
         id="r1"
         initialTitle="实习生/钱嘉豪"
         initialTemplate="professional"
@@ -466,6 +530,7 @@ describe("EditorClient live preview", () => {
     expect(() =>
       render(
         <EditorClient
+          userId="user-a"
           id="r1"
           initialTitle="简历"
           initialTemplate="professional"
@@ -489,6 +554,7 @@ describe("EditorClient live preview", () => {
 
     render(
       <EditorClient
+        userId="user-a"
         id="r1"
         initialTitle="简历"
         initialTemplate="professional"

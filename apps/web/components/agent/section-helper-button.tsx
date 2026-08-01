@@ -64,6 +64,7 @@ export function SectionHelperButton({
     <>
       <Button
         type="button"
+        data-editor-onboarding-target="ai"
         size="sm"
         variant="ghost"
         className="h-8 gap-1 rounded-full px-2 text-xs"

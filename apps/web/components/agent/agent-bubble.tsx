@@ -347,6 +347,7 @@ export function AgentBubble({
         ) : null}
         <button
           type="button"
+          data-editor-onboarding-target="agent"
           aria-label={open ? "收起 AI 简历助手" : "打开 AI 简历助手"}
           className="relative flex h-14 w-14 cursor-grab items-center justify-center rounded-full bg-gradient-to-br from-sky-600 via-teal-600 to-amber-500 text-white shadow-lg transition-transform hover:scale-105 active:cursor-grabbing active:scale-95"
           onPointerDown={handleBubblePointerDown}

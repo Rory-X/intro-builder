@@ -44,7 +44,7 @@ import {
   SheetHeader,
   SheetTitle,
 } from "@/components/ui/sheet";
-import { Loader2, Share2, PanelLeftClose, PanelRightClose, PanelRightOpen, MessageSquare, LayoutTemplate, ChevronLeft, PencilLine, CloudCheck, Copy, CircleAlert, History, Undo2, Redo2 } from "lucide-react";
+import { Loader2, Share2, PanelLeftClose, PanelRightClose, PanelRightOpen, MessageSquare, LayoutTemplate, ChevronLeft, PencilLine, CloudCheck, Copy, CircleAlert, CircleHelp, History, Undo2, Redo2 } from "lucide-react";
 import { Popover, PopoverContent, PopoverDescription, PopoverHeader, PopoverTitle, PopoverTrigger } from "@/components/ui/popover";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import type { AllTemplatesItem, TemplateId } from "@/lib/templates/registry";
@@ -84,8 +84,10 @@ import type { AgentOperationApplyResult } from "@/components/agent/agent-operati
 import type { ResumeOperation } from "@intro-builder/shared/types";
 import { applyResumeOperation } from "@/lib/agent/apply-operation";
 import { VersionHistoryPopover } from "@/components/editor/version-history-popover";
+import { EditorOnboarding } from "@/components/editor/editor-onboarding";
 
 type Props = {
+  userId: string;
   id: string;
   initialTitle: string;
   initialTemplate: TemplateId;
@@ -167,7 +169,7 @@ function parseIsoDate(value: string): Date | null {
   return Number.isNaN(date.getTime()) ? null : date;
 }
 
-export default function EditorClient({ id, initialTitle, initialTemplate, initialContent, initialIsPublic, initialSlug, initialUpdatedAtIso, initialNowIso, initialResolvedTemplate, uploadedTemplates, allTemplates, favoritedTemplateIds = [], agentSurface = "panel", from }: Props) {
+export default function EditorClient({ userId, id, initialTitle, initialTemplate, initialContent, initialIsPublic, initialSlug, initialUpdatedAtIso, initialNowIso, initialResolvedTemplate, uploadedTemplates, allTemplates, favoritedTemplateIds = [], agentSurface = "panel", from }: Props) {
   const backHref = from === "templates" ? "/templates" : "/dashboard";
   const backLabel = from === "templates" ? "模板库" : "我的简历";
   const isDesktop = useSyncExternalStore(
@@ -216,6 +218,8 @@ export default function EditorClient({ id, initialTitle, initialTemplate, initia
   const [isLoadingVersions, setIsLoadingVersions] = useState(false);
   const [viewedVersion, setViewedVersion] = useState<ViewedVersion | null>(null);
   const [isRestoringVersion, setIsRestoringVersion] = useState(false);
+  const [onboardingRestartToken, setOnboardingRestartToken] = useState(0);
+  const [onboardingVisible, setOnboardingVisible] = useState(false);
 
   // Map of id → UploadedTemplate for instant client-side lookup when the
   // user switches template.
@@ -913,6 +917,7 @@ export default function EditorClient({ id, initialTitle, initialTemplate, initia
         <TooltipProvider>
         <div
           data-testid="editor-toolbar"
+          data-editor-onboarding-target="toolbar"
           className="flex items-center gap-1.5 px-4 pb-1.5 pt-0.5"
         >
           {/* ── 左组：导航 + 工具 ── */}
@@ -1026,6 +1031,18 @@ export default function EditorClient({ id, initialTitle, initialTemplate, initia
               ) : null}
             </>
           )}
+
+          <Button
+            type="button"
+            size="sm"
+            variant="ghost"
+            aria-label="新手引导"
+            className="gap-1.5"
+            onClick={() => setOnboardingRestartToken((current) => current + 1)}
+          >
+            <CircleHelp className="h-3.5 w-3.5" />
+            新手引导
+          </Button>
 
           {collabState?.isConnected && (
             <>
@@ -1199,6 +1216,14 @@ export default function EditorClient({ id, initialTitle, initialTemplate, initia
       </div>
       )}
 
+      {isDesktop ? (
+        <EditorOnboarding
+          userId={userId}
+          restartToken={onboardingRestartToken}
+          onVisibilityChange={setOnboardingVisible}
+        />
+      ) : null}
+
       {/* Collab activity bar — shown when collab is active */}
       {isDesktop && collabSync.isSyncing && collabSync.changeLog.length > 0 && (
         <div className="border-b border-violet-200 bg-violet-50/50 px-4 py-1.5 dark:border-violet-800 dark:bg-violet-950/30">
@@ -1220,7 +1245,14 @@ export default function EditorClient({ id, initialTitle, initialTemplate, initia
       )}
 
       {isDesktop ? viewedVersion ? (
-        <div className="h-[calc(100vh-3.5rem-4rem)] overflow-hidden">
+        <div
+          className={cn(
+            "overflow-hidden",
+            onboardingVisible
+              ? "h-[calc(100vh-3.5rem-4rem-5rem)]"
+              : "h-[calc(100vh-3.5rem-4rem)]",
+          )}
+        >
           <ResumeDiffPreview
             oldContent={viewedVersion.content}
             newContent={(form.getValues() as ResumeContent)}
@@ -1239,8 +1271,19 @@ export default function EditorClient({ id, initialTitle, initialTemplate, initia
           />
         </div>
       ) : (
-        <div className="flex h-[calc(100vh-3.5rem-4rem)] overflow-hidden">
-          <div className="relative min-w-0 border-r" style={{ flex: `0 0 ${splitPercent}%` }}>
+        <div
+          className={cn(
+            "flex overflow-hidden",
+            onboardingVisible
+              ? "h-[calc(100vh-3.5rem-4rem-5rem)]"
+              : "h-[calc(100vh-3.5rem-4rem)]",
+          )}
+        >
+          <div
+            data-editor-onboarding-target="editor"
+            className="relative min-w-0 border-r"
+            style={{ flex: `0 0 ${splitPercent}%` }}
+          >
             <div
               ref={editorPanelRef}
               className={cn(
@@ -1343,6 +1386,7 @@ export default function EditorClient({ id, initialTitle, initialTemplate, initia
           )}
           <div
             data-preview-scroll-pane=""
+            data-editor-onboarding-target="preview"
             className="thin-scrollbar min-w-0 overflow-auto overscroll-contain bg-muted p-6"
             style={{ flex: `1 1 ${100 - splitPercent}%` }}
             onClick={showTemplatePanel ? () => setShowTemplatePanel(false) : undefined}
