@@ -7,17 +7,16 @@
     "dev:web": "pnpm --filter @intro-builder/web dev",
     "dev:agent": "pnpm --filter @intro-builder/agent dev",
     "dev:partykit": "pnpm --filter @intro-builder/partykit dev",
-
     "build": "pnpm --filter './apps/*' build",
     "build:web": "pnpm --filter @intro-builder/web build",
     "build:agent": "pnpm --filter @intro-builder/agent build",
-
     "test": "pnpm --recursive test",
     "lint": "pnpm --recursive lint",
     "typecheck": "pnpm --recursive typecheck",
-
     "verify": "pnpm lint && pnpm typecheck && pnpm test && pnpm build",
-
+    "notes:verify": "tsx scripts/notes/verify-agent-note-tree.ts && tsx scripts/notes/verify-agent-note-format.ts && tsx scripts/notes/verify-archived-agent-notes.ts",
+    "notes:anchors": "tsx scripts/notes/check-note-anchors.ts",
+    "notes:archive": "tsx scripts/notes/archive-agent-note.ts",
     "db:migrate": "tsx scripts/db/apply-favorites-migration.ts",
     "dev:ensure-user": "tsx scripts/dev/ensure-dev-user.ts"
   },

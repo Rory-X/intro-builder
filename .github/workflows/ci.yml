@@ -7,7 +7,7 @@ on:
 
 jobs:
   check:
-    name: lint · tsc · test
+    name: lint · tsc · test · build
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -35,3 +35,9 @@ jobs:
 
       - name: Unit tests
         run: pnpm test
+
+      # The production build is what catches RSC / route-boundary errors that
+      # lint and unit tests structurally cannot. It used to be local-only, so
+      # AGENTS.md §6 asked every agent to run a gate CI never enforced.
+      - name: Production build
+        run: pnpm build

@@ -1,0 +1,44 @@
+name: Verify Agent Notes
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    name: note tree · format · archive seals
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          # The archive seal check compares archived/manifest.json against the
+          # pre-change commit, so it needs history, not a shallow clone.
+          fetch-depth: 0
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Verify note tree, format, and archive seals
+        env:
+          # HEAD is a no-op on a clean checkout. Compare against the pre-change
+          # commit: the PR base, or the previous tip of the pushed branch. A
+          # new-branch push sends before=0000…; `git show` then fails and the
+          # script skips the append-only comparison (seal-vs-disk still runs).
+          AGENT_NOTE_ARCHIVE_BASE_REF: ${{ github.event.pull_request.base.sha || github.event.before }}
+        run: pnpm notes:verify
