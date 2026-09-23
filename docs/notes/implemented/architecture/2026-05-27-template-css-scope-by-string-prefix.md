@@ -12,6 +12,8 @@ Status: implemented
 
 实现是**简单字符串前缀替换**，不引入 PostCSS。决策依据来自 `docs/superpowers/specs/2026-05-27-skill-html-templates.md`（§5、R5、§11 的开放问题 2）：模板 CSS 通常不到 200 行，简单实现已覆盖绝大多数用例。
 
+**模板作者不需要手写前缀**：写模板 CSS 时照常写 class 名，作用域由引擎在渲染时自动加上——这正是选方案 A（引擎加前缀）而非方案 C（作者自己加）的直接收益。
+
 **已知上限（必须与实现一起记住）**：字符串替换处理不了 `@media` / `@keyframes` 等 at-rule——前缀会被加到 at-rule 本身而不是它内部的 selector 上。**触发重访的信号**：模板 CSS 开始普遍使用 at-rule，或出现 scoped 失败导致的实际样式串扰。届时升级到 PostCSS，而不是继续给字符串替换打补丁。
 
 ## Alternatives considered
