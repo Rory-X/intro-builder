@@ -79,3 +79,39 @@ screenshots/
 
 # fumadocs generated
 .source
+
+# pnpm 11 can fall back to a project-local content-addressable store when the
+# global one is unusable; it holds hardlinked package copies, never commit it.
+.pnpm-store/
+
+# Per-tool skill dirs holding machine-local symlinks into an absolute user path
+# (e.g. ~/.skillshub/*). Not portable, so never track.
+.codebuddy/
+.codewhale/
+.commandcode/
+.copaw/
+.crush/
+.factory/
+.goose/
+.iflow/
+.junie/
+.kilocode/
+.kode/
+.mcpjam/
+.moltbot/
+.mux/
+.neovate/
+.openclaude/
+.openhands/
+.pi/
+.pochi/
+.qoderwork/
+.qwen/
+.trae/
+.vibe/
+.windsurf/
+.zencoder/
+.adal/
+.augment/
+.clawdbot/
+.continue/

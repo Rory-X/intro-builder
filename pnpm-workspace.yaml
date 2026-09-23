@@ -7,3 +7,10 @@ onlyBuiltDependencies:
 ignoredBuiltDependencies:
   - sharp
   - unrs-resolver
+
+# pnpm 11+ only: skip the implicit `pnpm install` that runs before every
+# script. In a non-interactive shell that hook aborts the whole run with
+# ERR_PNPM_ABORTED_REMOVE_MODULES_DIR_NO_TTY / ERR_PNPM_IGNORED_BUILDS, so
+# `pnpm test` & co. fail before the gate ever executes. pnpm 10 ignores this
+# key, and CI still installs explicitly with --frozen-lockfile.
+verifyDepsBeforeRun: false
