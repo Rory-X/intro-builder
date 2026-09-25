@@ -262,6 +262,43 @@ describe("EditorClient version history and undo/redo", () => {
     expect(screen.getByRole("heading", { name: "新姓名" })).toBeInTheDocument();
   });
 
+  it("renders undo, redo and version history as icon-only toolbar buttons", () => {
+    renderEditor();
+
+    const toolbar = screen.getByTestId("editor-toolbar");
+
+    for (const label of ["撤销", "重做", "版本历史"]) {
+      const button = screen.getByRole("button", { name: label });
+      // Icon-only: the accessible name carries the meaning, not visible text.
+      expect(button.textContent).toBe("");
+      expect(button.querySelector("svg")).not.toBeNull();
+    }
+
+    // The old text labels must be gone from the toolbar entirely — otherwise the
+    // buttons are still consuming the horizontal space this change reclaims.
+    expect(toolbar).not.toHaveTextContent("撤销");
+    expect(toolbar).not.toHaveTextContent("重做");
+    expect(toolbar).not.toHaveTextContent("版本历史");
+  });
+
+  it("labels the icon-only toolbar buttons with a tooltip", async () => {
+    renderEditor();
+
+    const undoButton = screen.getByRole("button", { name: "撤销" });
+    expect(document.querySelector('[data-slot="tooltip-content"]')).toBeNull();
+
+    fireEvent.focus(undoButton);
+
+    // Base UI's tooltip popup exposes no ARIA role in this version, so assert
+    // on the rendered slot rather than a role query.
+    const tooltip = await waitFor(() => {
+      const node = document.querySelector('[data-slot="tooltip-content"]');
+      expect(node).not.toBeNull();
+      return node as HTMLElement;
+    });
+    expect(tooltip).toHaveTextContent("撤销");
+  });
+
   it("opens version history, enters Diff View, and restores a selected version", async () => {
     const current = emptyResumeContent();
     current.basics.name = "王小明";
@@ -296,7 +333,7 @@ describe("EditorClient version history and undo/redo", () => {
 
     renderEditor(current);
 
-    fireEvent.click(screen.getByRole("button", { name: "版本" }));
+    fireEvent.click(screen.getByRole("button", { name: "版本历史" }));
     expect(await screen.findByText("版本历史")).toBeInTheDocument();
     fireEvent.click(await screen.findByRole("button", { name: /6 月 23 日 · 上午 10:18/ }));
 
@@ -347,7 +384,7 @@ describe("EditorClient version history and undo/redo", () => {
 
     renderEditor(current);
 
-    fireEvent.click(screen.getByRole("button", { name: "版本" }));
+    fireEvent.click(screen.getByRole("button", { name: "版本历史" }));
     fireEvent.click(await screen.findByRole("button", { name: /6 月 23 日 · 上午 10:18/ }));
     expect(await screen.findByText("正在查看历史版本，简历内容暂不可编辑")).toBeInTheDocument();
 

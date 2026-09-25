@@ -947,56 +947,78 @@ export default function EditorClient({ userId, id, initialTitle, initialTemplate
             </>
           ) : (
             <>
-              <Button
-                type="button"
-                size="sm"
-                variant="ghost"
-                onClick={handleUndo}
-                disabled={!resumeHistory.canUndo}
-                aria-label="撤销"
-                className="gap-1.5"
-              >
-                <Undo2 className="h-3.5 w-3.5" />
-                撤销
-              </Button>
-              <Button
-                type="button"
-                size="sm"
-                variant="ghost"
-                onClick={handleRedo}
-                disabled={!resumeHistory.canRedo}
-                aria-label="重做"
-                className="gap-1.5"
-              >
-                <Redo2 className="h-3.5 w-3.5" />
-                重做
-              </Button>
-              <div className="relative">
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="ghost"
-                  aria-label="版本"
-                  onClick={() => {
-                    const nextOpen = !isVersionPopoverOpen;
-                    setIsVersionPopoverOpen(nextOpen);
-                    if (nextOpen) void loadVersions();
-                  }}
-                  className="gap-1.5"
-                >
-                  <History className="h-3.5 w-3.5" />
-                  版本
-                </Button>
-                {isVersionPopoverOpen ? (
-                  <div className="absolute left-0 top-full z-50 mt-1">
-                    <VersionHistoryPopover
-                      versions={versions}
-                      activeVersionId={null}
-                      isLoading={isLoadingVersions}
-                      onSelectVersion={handleSelectVersion}
-                    />
-                  </div>
-                ) : null}
+              {/* 历史操作：图标按钮，靠 tooltip 承担语义，省下顶栏横向空间 */}
+              <div className="flex shrink-0 items-center gap-0.5">
+                <Tooltip>
+                  <TooltipTrigger
+                    render={
+                      <Button
+                        type="button"
+                        size="icon-sm"
+                        variant="ghost"
+                        onClick={handleUndo}
+                        disabled={!resumeHistory.canUndo}
+                        aria-label="撤销"
+                      />
+                    }
+                  >
+                    <Undo2 className="size-3.5" />
+                  </TooltipTrigger>
+                  <TooltipContent>撤销</TooltipContent>
+                </Tooltip>
+                <Tooltip>
+                  <TooltipTrigger
+                    render={
+                      <Button
+                        type="button"
+                        size="icon-sm"
+                        variant="ghost"
+                        onClick={handleRedo}
+                        disabled={!resumeHistory.canRedo}
+                        aria-label="重做"
+                      />
+                    }
+                  >
+                    <Redo2 className="size-3.5" />
+                  </TooltipTrigger>
+                  <TooltipContent>重做</TooltipContent>
+                </Tooltip>
+                <div className="relative">
+                  <Tooltip>
+                    <TooltipTrigger
+                      render={
+                        <Button
+                          type="button"
+                          size="icon-sm"
+                          variant="ghost"
+                          aria-label="版本历史"
+                          onClick={() => {
+                            const nextOpen = !isVersionPopoverOpen;
+                            setIsVersionPopoverOpen(nextOpen);
+                            if (nextOpen) void loadVersions();
+                          }}
+                          className={cn(
+                            isVersionPopoverOpen &&
+                              "bg-primary/5 font-semibold text-primary hover:bg-primary/10 hover:text-primary dark:bg-primary/15 dark:hover:bg-primary/20",
+                          )}
+                        />
+                      }
+                    >
+                      <History className="size-3.5" />
+                    </TooltipTrigger>
+                    <TooltipContent>版本历史</TooltipContent>
+                  </Tooltip>
+                  {isVersionPopoverOpen ? (
+                    <div className="absolute left-0 top-full z-50 mt-1">
+                      <VersionHistoryPopover
+                        versions={versions}
+                        activeVersionId={null}
+                        isLoading={isLoadingVersions}
+                        onSelectVersion={handleSelectVersion}
+                      />
+                    </div>
+                  ) : null}
+                </div>
               </div>
               <div className="h-4 w-[2px] self-center rounded-full bg-border" />
               <Button
