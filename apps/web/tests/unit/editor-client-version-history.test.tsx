@@ -417,8 +417,19 @@ describe("EditorClient version history and undo/redo", () => {
 
     fireEvent.keyDown(window, { key: "Escape" });
 
-    expect(screen.queryByText("正在查看历史版本，简历内容暂不可编辑")).not.toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "王小明" })).toBeInTheDocument();
+    /*
+     * 必须用 waitFor 等待，不能立即同步断言。
+     *
+     * Escape 的处理是 `setViewedVersion(null)` —— 一个 React 状态更新，
+     * 刷新到 DOM 需要一次调度。本地机器快、断言时已经更新完，因此通过；
+     * CI 机器慢就赶不上，于是这条用例在 CI 上稳定失败而本地从不复现。
+     *
+     * （同 `settings-page-layout` 的同类问题：同步断言依赖调度时序。）
+     */
+    await waitFor(() => {
+      expect(screen.queryByText("正在查看历史版本，简历内容暂不可编辑")).not.toBeInTheDocument();
+    });
+    expect(await screen.findByRole("heading", { name: "王小明" })).toBeInTheDocument();
     expect(screen.getAllByText("增长产品经理").length).toBeGreaterThan(0);
   });
 
