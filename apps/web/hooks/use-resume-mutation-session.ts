@@ -68,6 +68,14 @@ export type SubmitAccepted = {
   versionId?: string;
   /** 服务端实际落盘的正文。缺省时调用方退回使用本地快照。 */
   nextContent?: unknown;
+  /**
+   * 本次提交的幂等键。
+   *
+   * 必须回传：撤销要用它作为 `undoOf`（条件撤销的「撤销谁」），
+   * 而它只存在于服务端回执里 —— 客户端自己生成的那个只用于本次请求，
+   * 服务端可能因幂等而复用别的值。
+   */
+  mutationId?: string;
 };
 
 export type SubmitResult =
@@ -156,6 +164,14 @@ export type MutationReceipt = {
   revision: number;
   versionId: string;
   committedAt: string;
+  /**
+   * 服务端回执里的幂等键。
+   *
+   * 撤销链路（`resume-mutations/undo.ts` 的 `buildUndoCommand`）需要它作为
+   * `undoOf`。此前这个类型只有三个字段，导致撤销**拿不到要撤销哪一次提交** ——
+   * 条件撤销链路因此断在这里。
+   */
+  mutationId: string;
 };
 
 const FLUSH_TIMEOUT_MS = 30_000;
@@ -377,6 +393,8 @@ export function useResumeMutationSession(
           revision: result.revision,
           versionId: result.versionId,
           committedAt: new Date().toISOString(),
+          // 服务端回执里的键优先；缺省时退回本次请求用的键（服务端会做幂等校验）。
+          mutationId: result.mutationId ?? mutationId,
         };
       }
 

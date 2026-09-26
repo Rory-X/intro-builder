@@ -85,12 +85,48 @@ export const resumeVersions = pgTable("resume_version", {
   title: text("title").notNull(),
   templateId: text("templateId").notNull(),
   content: jsonb("content").$type<ResumeContent>().notNull(),
-  source: text("source").$type<"manual" | "agent" | "restore">().notNull(),
+  /*
+   * 来源集合必须与 `CommitPrincipal.source` 一致（9 种）。
+   *
+   * 此前这里只声明了 3 种，而提交层会写入 `polish` / `template` / `style` /
+   * `collab` / `undo` —— TS 类型与真实数据不符，且读取层据此把未知来源
+   * 一律显示成「手动保存」，等于**谎报来源**。
+   */
+  source: text("source")
+    .$type<
+      | "manual"
+      | "agent"
+      | "polish"
+      | "restore"
+      | "template"
+      | "style"
+      | "system"
+      | "collab"
+      | "undo"
+    >()
+    .notNull(),
   actorName: text("actorName").notNull(),
   operationCount: integer("operationCount").notNull().default(1),
   summary: text("summary"),
   parentVersionId: text("parentVersionId"),
   createdAt: timestamp("createdAt").notNull().defaultNow(),
+  /*
+   * 以下 6 列由迁移 0014 添加，但**长期没被写进 schema**。
+   *
+   * 后果是真实的：数据库里一直有这些列、提交层也一直在写它们
+   * （见 `resume-mutations/store.ts` 的 `version_inserted` CTE），
+   * 但 Drizzle 的查询无法引用未声明的列 —— 因此 `listResumeVersions`
+   * 取不出 `runId`，UI 也就无法「按任务聚合」或「跳回任务」（P06 任务 5），
+   * 撤销也拿不到 `mutationId`。
+   *
+   * 补上它们之后，读取层才能取到聚合与撤销所需的全部信息。
+   */
+  revision: integer("revision"),
+  fromRevision: integer("fromRevision"),
+  changeSetId: text("changeSetId"),
+  runId: text("runId"),
+  sourceDetail: text("sourceDetail"),
+  mutationId: text("mutationId"),
 }, (t) => ({
   resumeCreatedIdx: index("resume_version_resume_created_idx").on(t.resumeId, t.createdAt),
   userIdx: index("resume_version_user_idx").on(t.userId),
