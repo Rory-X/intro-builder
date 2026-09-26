@@ -1,15 +1,21 @@
 name: Deploy PartyKit
 
+# See the header of deploy-agent.yml: `paths:` cannot express "this root file
+# matters to Web but not to PartyKit", so the monorepo-wide files used to
+# redeploy PartyKit on every edit. The job always starts and the
+# `affected-apps` gate decides whether the deploy steps run.
 on:
   push:
     branches: [main]
     paths:
-      - "apps/partykit/**"
-      - "packages/shared/**"
+      - "apps/**"
+      - "packages/**"
       - "package.json"
       - "pnpm-lock.yaml"
       - "pnpm-workspace.yaml"
+      - "scripts/ci/affected-apps.ts"
       - ".github/workflows/deploy-partykit.yml"
+      - ".github/workflows/deploy-agent.yml"
   workflow_dispatch:
 
 concurrency:
@@ -27,25 +33,48 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          # The affected-apps gate diffs the pushed range, so it needs the
+          # pre-push commit rather than a shallow clone.
+          fetch-depth: 0
+
+      - name: Decide whether PartyKit is affected
+        id: affected
+        run: |
+          set -euo pipefail
+          # An empty or all-zero `before` (new branch, manual workflow_dispatch)
+          # means there is no range to reason about; the script then fails safe
+          # and reports every app as affected.
+          node \
+            --disable-warning=ExperimentalWarning \
+            --disable-warning=MODULE_TYPELESS_PACKAGE_JSON \
+            --experimental-strip-types \
+            scripts/ci/affected-apps.ts \
+              --base "${{ github.event.before }}" --head HEAD --github-output
 
       - name: Setup pnpm
+        if: steps.affected.outputs.partykit == 'true'
         uses: pnpm/action-setup@v4
         with:
           version: 10
 
       - name: Setup Node
+        if: steps.affected.outputs.partykit == 'true'
         uses: actions/setup-node@v4
         with:
           node-version: 22
           cache: pnpm
 
       - name: Install dependencies
+        if: steps.affected.outputs.partykit == 'true'
         run: pnpm install --frozen-lockfile
 
       - name: Typecheck PartyKit
+        if: steps.affected.outputs.partykit == 'true'
         run: pnpm --filter @intro-builder/partykit typecheck
 
       - name: Check PartyKit credentials
+        if: steps.affected.outputs.partykit == 'true'
         env:
           PARTYKIT_LOGIN: ${{ secrets.PARTYKIT_LOGIN }}
           PARTYKIT_TOKEN: ${{ secrets.PARTYKIT_TOKEN }}
@@ -57,6 +86,7 @@ jobs:
           : "${COLLAB_JWT_SECRET:?Missing COLLAB_JWT_SECRET secret}"
 
       - name: Deploy PartyKit
+        if: steps.affected.outputs.partykit == 'true'
         working-directory: apps/partykit
         env:
           PARTYKIT_LOGIN: ${{ secrets.PARTYKIT_LOGIN }}

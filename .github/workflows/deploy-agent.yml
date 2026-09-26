@@ -1,15 +1,24 @@
 name: Deploy Agent
 
+# `paths:` cannot express "this root file matters to the Web app but not to
+# Agent". It used to list `package.json`, `pnpm-lock.yaml` and
+# `pnpm-workspace.yaml`, so any edit to those monorepo-wide files redeployed
+# Agent even when its own artifact could not change (971fc3f3c, f968d22b6,
+# 51be46358 on `main`). The job now always starts and an `affected-apps` gate
+# decides whether the deploy steps run.
 on:
   push:
     branches: [main]
     paths:
-      - "apps/agent/**"
+      - "apps/**"
+      - "packages/**"
       - "package.json"
       - "pnpm-lock.yaml"
       - "pnpm-workspace.yaml"
       - ".dockerignore"
+      - "scripts/ci/affected-apps.ts"
       - ".github/workflows/deploy-agent.yml"
+      - ".github/workflows/deploy-partykit.yml"
   workflow_dispatch:
 
 concurrency:
@@ -42,28 +51,52 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          # The affected-apps gate diffs the pushed range, so it needs the
+          # pre-push commit rather than a shallow clone.
+          fetch-depth: 0
+
+      - name: Decide whether Agent is affected
+        id: affected
+        run: |
+          set -euo pipefail
+          # An empty or all-zero `before` (new branch, manual workflow_dispatch)
+          # means there is no range to reason about; the script then fails safe
+          # and reports every app as affected.
+          node \
+            --disable-warning=ExperimentalWarning \
+            --disable-warning=MODULE_TYPELESS_PACKAGE_JSON \
+            --experimental-strip-types \
+            scripts/ci/affected-apps.ts \
+              --base "${{ github.event.before }}" --head HEAD --github-output
 
       - name: Setup pnpm
+        if: steps.affected.outputs.agent == 'true'
         uses: pnpm/action-setup@v4
         with:
           version: 10
 
       - name: Setup Node
+        if: steps.affected.outputs.agent == 'true'
         uses: actions/setup-node@v4
         with:
           node-version: 22
           cache: pnpm
 
       - name: Install dependencies
+        if: steps.affected.outputs.agent == 'true'
         run: pnpm install --frozen-lockfile
 
       - name: Verify repository
+        if: steps.affected.outputs.agent == 'true'
         run: pnpm verify
 
       - name: Build Agent package
+        if: steps.affected.outputs.agent == 'true'
         run: pnpm build:agent
 
       - name: Resolve Agent image tags
+        if: steps.affected.outputs.agent == 'true'
         run: |
           set -euo pipefail
           image_repo="ghcr.io/${GITHUB_REPOSITORY,,}/agent"
@@ -73,9 +106,11 @@ jobs:
           echo "AGENT_IMAGE_LATEST=${image_repo}:main" >> "$GITHUB_ENV"
 
       - name: Setup Docker Buildx
+        if: steps.affected.outputs.agent == 'true'
         uses: docker/setup-buildx-action@v3
 
       - name: Login to GHCR
+        if: steps.affected.outputs.agent == 'true'
         uses: docker/login-action@v3
         with:
           registry: ghcr.io
@@ -83,6 +118,7 @@ jobs:
           password: ${{ github.token }}
 
       - name: Build and push Agent image
+        if: steps.affected.outputs.agent == 'true'
         run: |
           set -euo pipefail
 
@@ -108,6 +144,7 @@ jobs:
           done
 
       - name: Configure SSH
+        if: steps.affected.outputs.agent == 'true'
         env:
           AGENT_SSH_KEY: ${{ secrets.AGENT_SSH_KEY }}
           AGENT_SSH_KNOWN_HOSTS: ${{ secrets.AGENT_SSH_KNOWN_HOSTS }}
@@ -125,6 +162,7 @@ jobs:
           chmod 600 ~/.ssh/known_hosts
 
       - name: Sync Agent deployment files
+        if: steps.affected.outputs.agent == 'true'
         run: |
           set -euo pipefail
           remote="${AGENT_SSH_USER}@${AGENT_SSH_HOST}"
@@ -156,6 +194,7 @@ jobs:
           rm -f "$runtime_env"
 
       - name: Login server to GHCR
+        if: steps.affected.outputs.agent == 'true'
         env:
           GHCR_TOKEN: ${{ github.token }}
         run: |
@@ -166,6 +205,7 @@ jobs:
           printf '%s' "$GHCR_TOKEN" | $ssh_cmd "$remote" "docker login ghcr.io -u '${GITHUB_ACTOR}' --password-stdin >/dev/null"
 
       - name: Rebuild and health check Agent
+        if: steps.affected.outputs.agent == 'true'
         run: |
           set -euo pipefail
           remote="${AGENT_SSH_USER}@${AGENT_SSH_HOST}"
