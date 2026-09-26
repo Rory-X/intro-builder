@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { eq } from "drizzle-orm";
+import { eq, type SQL } from "drizzle-orm";
 
 import { resumes } from "@/db/schema";
 import {
@@ -55,7 +55,12 @@ function setCompany(id: string, value: string, expected: string): SemanticOperat
 /** 生产依赖，但把 SQL 交给测试库执行。 */
 function depsFor(testDb: TestDb) {
   return {
-    execute: (statement: Parameters<TestDb["exec"]>[0]) => testDb.db.execute(statement as never),
+    /*
+     * 参数类型必须是 drizzle `SQL`（`CommitDeps.execute` 的契约），
+     * 而不是 `TestDb["exec"]` 的 `string` —— 后者是 raw SQL 入口，
+     * 两者不是同一个东西，混用会报 TS2322。
+     */
+    execute: (statement: SQL) => testDb.db.execute(statement),
   };
 }
 

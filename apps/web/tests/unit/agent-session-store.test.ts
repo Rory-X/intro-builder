@@ -157,7 +157,11 @@ function baseSessionInput() {
     userId: "user_123",
     resumeId: "resume_abc",
     mode: "optimize_existing" as const,
-    workflowId: "resume-diagnose",
+    /*
+     * `as const` 与 mode 同理：不标注时 `workflowId` 被宽化成 `string`，
+     * 赋给 `AgentWorkflowId`（字面量联合）时报 TS2345。
+     */
+    workflowId: "resume-diagnose" as const,
     resumeTitle: "前端工程师",
     now: "2026-06-12T08:30:00.000Z",
   };

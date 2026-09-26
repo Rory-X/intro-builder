@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { emptyResumeContent } from "@intro-builder/shared/schemas";
-import type { ResumeOperation } from "@intro-builder/shared/types";
+import type { ResumeOperation, TipTapJSON } from "@intro-builder/shared/types";
 
 import {
   applyResumeOperation,
@@ -23,7 +23,17 @@ function makeOp(partial: Partial<ResumeOperation>): ResumeOperation {
   };
 }
 
-const doc = { type: "doc", content: [{ type: "paragraph", content: [{ type: "text", text: "x" }] }] };
+/*
+ * 显式标注 `TipTapJSON`：不标注时 `type` 会被宽化成 `string`，
+ * 赋给需要字面量 `"doc"` 的字段时报 TS2322。
+ *
+ * 也不用 `as const` —— 它会把 content 变成 `readonly` 数组，
+ * 而 `TipTapJSON.content` 是可变数组，同样不匹配（试过，仍报错）。
+ */
+const doc: TipTapJSON = {
+  type: "doc",
+  content: [{ type: "paragraph", content: [{ type: "text", text: "x" }] }],
+};
 
 function collectNodeTypes(value: unknown): string[] {
   if (!value || typeof value !== "object") return [];
