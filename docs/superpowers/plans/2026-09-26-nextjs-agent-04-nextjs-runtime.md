@@ -87,12 +87,30 @@
 - **决策笔记**：既有 `2026-09-26-durable-ai-runs-and-provider-policy.md` 原地补第 6 节，
   并在「实测发现」补第 7 条（`as never` 污染 SDK 泛型，报错点在 `stopWhen`）。
 
+### 已完成：任务 3 的工具执行层
+
+- **落地**：`lib/ai/tools/execute.ts`（33 个工具的可执行接线）。
+- **三段接线**：① 参数先按工具名取 zod schema 校验（失败即 `invalid_args`，
+  不执行工具）；② 区块由**工具名推导**，不接受模型填的 `section`
+  （删掉 `reorderItemsArgs.section` —— 否则工具名叫 reorderProjects、
+  section 填 experience 就会静默重排错误区块）；③ 模块加载期自检
+  声明 / 参数 schema / 必需清单三者一一对应，任一缺失直接抛错。
+- **写工具只产出提案**：执行层不调用 `commitResumeMutation`，提交仍由编排层统一负责
+  （只有那里有 run fence、幂等键与 CAS 回执）。只读工具不产生提案 ——
+  特别是 `suggestSkills` 不再顺手写入 skills 区块。
+- **补齐缺失实现**：此前三个 `custom` 工具（update / delete / reorder）已声明但
+  无 builder，本次补上；新增 `moduleToggleArgs`（隐藏/显示只收模块名，
+  不收 `visible` 布尔值 —— 工具名已表达意图，同时给布尔值是又一次矛盾机会）。
+- **验证**：`tests/unit/ai-tools-execute.test.ts` 25 例（穷举 33 个工具名断言
+  每个都有执行入口；越权字段被 schema 丢弃；超长文本被拒；
+  `suggestSkills` 不产生提案）。第 25 例一开始失败并暴露了 `section` 错配缺陷。
+- **决策笔记**：`docs/notes/implemented/architecture/2026-09-26-tool-execution-layer.md`。
+
 ### 未完成（本切片剩余）
 
-任务 3 的工具**实现体**移植（把 33 个工具从旧路由搬迁到 `lib/ai/tools/` 并接上提交）、
-任务 6 的 `POST /api/ai/runs` 启动路由与 continue 路由、任务 8 验证与灰度。
-存储、能力矩阵、事件层、流适配器、provider 装配、查询/取消/决策路由均已就绪，
-但**启动路由与工具实现尚未落地，新链路未切流**。
+任务 6 的 `POST /api/ai/runs` 启动路由（Run 创建 + 租约 + SSE）与 continue 路由、
+任务 8 验证与灰度。存储、能力矩阵、事件层、流适配器、provider 装配、工具执行层、
+查询/取消/决策路由均已就绪，但**启动路由尚未落地，新链路未切流**。
 
 ### 实测发现（详见决策笔记）
 
