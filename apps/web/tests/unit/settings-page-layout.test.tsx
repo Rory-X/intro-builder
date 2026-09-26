@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import SettingsPage from "@/app/(app)/settings/page";
 
@@ -52,12 +52,22 @@ describe("SettingsPage layout", () => {
     const ui = await SettingsPage();
     render(ui);
 
+    /*
+     * 必须用 findBy* 等待，不能用同步 getBy*。
+     *
+     * `AgentModelSettingsCard` 在 useEffect 里用 `setTimeout(..., 0)` 读
+     * localStorage（首帧渲染的是空配置）。全量并发跑测试时 CPU 紧张，
+     * 那个 0ms 定时器可能还没执行，同步断言就会看到空配置而失败 ——
+     * 这正是这个用例此前偶发失败的原因（单独跑必过、全量跑时挂）。
+     *
+     * findBy* 会重试直到超时，因此不再依赖调度时序。
+     */
     expect(await screen.findByText("Agent 模型")).toBeInTheDocument();
-    expect(screen.getByText("https://models.example.test/v1")).toBeInTheDocument();
-    expect(screen.getByText("gpt-4.1-mini")).toBeInTheDocument();
-    expect(screen.getByText("访问密钥已配置")).toBeInTheDocument();
+    expect(await screen.findByText("https://models.example.test/v1")).toBeInTheDocument();
+    expect(await screen.findByText("gpt-4.1-mini")).toBeInTheDocument();
+    expect(await screen.findByText("访问密钥已配置")).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole("button", { name: "编辑模型设置" }));
+    fireEvent.click(await screen.findByRole("button", { name: "编辑模型设置" }));
     fireEvent.change(screen.getByLabelText("模型服务地址"), {
       target: { value: "https://models.next.test/v1" },
     });
@@ -69,10 +79,9 @@ describe("SettingsPage layout", () => {
     });
     fireEvent.click(screen.getByRole("button", { name: "保存" }));
 
-    await waitFor(() => {
-      expect(screen.getByText("https://models.next.test/v1")).toBeInTheDocument();
-    });
-    expect(screen.getByText("gpt-5-mini")).toBeInTheDocument();
+    // 保存后同样等待渲染（写回也是异步的）。
+    expect(await screen.findByText("https://models.next.test/v1")).toBeInTheDocument();
+    expect(await screen.findByText("gpt-5-mini")).toBeInTheDocument();
     expect(window.localStorage.getItem(MODEL_SETTINGS_KEY)).toBe(
       JSON.stringify({
         baseUrl: "https://models.next.test/v1",
