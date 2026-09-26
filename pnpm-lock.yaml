@@ -49,8 +49,8 @@ importers:
   apps/web:
     dependencies:
       '@ag-ui/client':
-        specifier: 0.0.56
-        version: 0.0.56
+        specifier: 1.0.0
+        version: 1.0.0
       '@ag-ui/core':
         specifier: 0.0.56
         version: 0.0.56
@@ -340,8 +340,8 @@ packages:
   '@ag-ui/client@0.0.55':
     resolution: {integrity: sha512-cyTY0S1UK3ynFCtLh6XPkxECQiYL6XvFcAei5FD4yYzln5agSCZ3cAmdD86mwE4UbS5teS3Nci8Q5tEAjrRRgA==}
 
-  '@ag-ui/client@0.0.56':
-    resolution: {integrity: sha512-dxen4qVnDQB1xC9x1nND9W/plidoy0qwDarUPuasHCrtlkMl1EUlc+rNJM7Lr1NtnRmGHHX8gHrSeUXP3vPVHA==}
+  '@ag-ui/client@1.0.0':
+    resolution: {integrity: sha512-Q24E4yuK35tz7ROOC0yWYltdOZK1K+5GmM2Syh/PReFE9e8lDcE8LoMoY5HZyxpQZ+0IizwpQm9LyVqAHP8mpw==}
 
   '@ag-ui/core@0.0.55':
     resolution: {integrity: sha512-Pj7Ke0NsCxbCFgI3xK5YE56LaMRxnXnyeDUgDFTYxeF6KZDcSf5E0x2gB6/37w6bE0hcn/LRNPFd8Es18eIEzA==}
@@ -349,17 +349,31 @@ packages:
   '@ag-ui/core@0.0.56':
     resolution: {integrity: sha512-PD26s7qk8dG6/TOGmOv23ByTaGwJs2Wzm53OwsM40jSjio3xmswGZzDaFpjMNP6FsASNGovCPB8xICAyWhYx8A==}
 
+  '@ag-ui/core@1.0.0':
+    resolution: {integrity: sha512-yCRhsQvb4+lmGMrDsi4TOJxqKpm/kb3H64wwL+Z90jNVrkhy17RErfzsNgybfbjNKLM0nenEDYDVJsZHJJSigQ==}
+    peerDependencies:
+      zod: ^3.25.18 || ^4.0.0
+    peerDependenciesMeta:
+      zod:
+        optional: true
+
   '@ag-ui/encoder@0.0.55':
     resolution: {integrity: sha512-co4RB8kCatQ/+sBOR+nmNMzuKKWynHD73U/MTn9yG8rdznG51KuAPlQAwTP03VChFgO5GfNqEAzcGf5dR6jyMg==}
 
   '@ag-ui/encoder@0.0.56':
     resolution: {integrity: sha512-JkR7OGby8hBUOOlrvli0bArM5qvfCoavj3ajUp8324n20wYMrfN+/TR3GUm7wW1japrV+2dS7JEVX5dylrPF1A==}
 
+  '@ag-ui/encoder@1.0.0':
+    resolution: {integrity: sha512-8w+SHIjsatOcHHe5UBqdlqOiZaQWa3rMv1cUdNFXtHmfcIOLbMd1PG3SRWHD9AMUzApDl4964BV9xs3QPZogrw==}
+
   '@ag-ui/proto@0.0.55':
     resolution: {integrity: sha512-DNavmWA/dL3u4mpB+g/NPzF7XrYLjVFgmS8CnSOsenrmO64XVoR5RrbQghzaKvP9VNkhvdFI9tllpItfE3Pryw==}
 
   '@ag-ui/proto@0.0.56':
     resolution: {integrity: sha512-D72l/Xa3vHRBJtlxa+gG3VcycrEwDCHwCTh8BGkyrnRdraYPFl92eeWSV0tnF9+i7xLyNqCdww+NgCoPlrdhZQ==}
+
+  '@ag-ui/proto@1.0.0':
+    resolution: {integrity: sha512-RXEdjD3RfZ/8fUEX+ZqN5SrZAxrOZ9oQt0FlEhN4Ie/YEOKDVv0u1g83fOhGxWJTTVAmYSM/xf+ijwixsmz2RA==}
 
   '@ai-sdk/gateway@3.0.130':
     resolution: {integrity: sha512-qenRdpoYM+2y8Ibj3Y7XngvfcG4NIpejaM+YqAKWXi3/N1qZYeIelrm19jxhIwQW0W/g7WUz0L2Agl7+FnwrQA==}
@@ -7660,11 +7674,11 @@ snapshots:
       uuid: 11.1.1
       zod: 3.25.76
 
-  '@ag-ui/client@0.0.56':
+  '@ag-ui/client@1.0.0':
     dependencies:
-      '@ag-ui/core': 0.0.56
-      '@ag-ui/encoder': 0.0.56
-      '@ag-ui/proto': 0.0.56
+      '@ag-ui/core': 1.0.0(zod@3.25.76)
+      '@ag-ui/encoder': 1.0.0(zod@3.25.76)
+      '@ag-ui/proto': 1.0.0
       '@types/uuid': 10.0.0
       compare-versions: 6.1.1
       fast-json-patch: 3.1.1
@@ -7681,6 +7695,10 @@ snapshots:
     dependencies:
       zod: 3.25.76
 
+  '@ag-ui/core@1.0.0(zod@3.25.76)':
+    optionalDependencies:
+      zod: 3.25.76
+
   '@ag-ui/encoder@0.0.55':
     dependencies:
       '@ag-ui/core': 0.0.55
@@ -7690,6 +7708,13 @@ snapshots:
     dependencies:
       '@ag-ui/core': 0.0.56
       '@ag-ui/proto': 0.0.56
+
+  '@ag-ui/encoder@1.0.0(zod@3.25.76)':
+    dependencies:
+      '@ag-ui/core': 1.0.0(zod@3.25.76)
+      '@ag-ui/proto': 1.0.0
+    transitivePeerDependencies:
+      - zod
 
   '@ag-ui/proto@0.0.55':
     dependencies:
@@ -7702,6 +7727,13 @@ snapshots:
       '@ag-ui/core': 0.0.56
       '@bufbuild/protobuf': 2.12.0
       '@protobuf-ts/protoc': 2.11.1
+
+  '@ag-ui/proto@1.0.0':
+    dependencies:
+      '@ag-ui/core': 1.0.0(zod@3.25.76)
+      '@bufbuild/protobuf': 2.12.0
+      '@protobuf-ts/protoc': 2.11.1
+      zod: 3.25.76
 
   '@ai-sdk/gateway@3.0.130(zod@4.4.3)':
     dependencies:
