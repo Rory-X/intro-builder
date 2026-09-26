@@ -83,7 +83,7 @@
     "unpdf": "^1.6.2",
     "y-partykit": "^0.0.33",
     "yjs": "^13.6.30",
-    "zod": "^4.3.6"
+    "zod": "^4.6.5"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
