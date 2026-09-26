@@ -5,12 +5,27 @@ import { FormProvider, useForm } from "react-hook-form";
 import { ResumeDiagnoseButton } from "@/components/agent/resume-diagnose-button";
 import type { ResumeContent } from "@intro-builder/shared/schemas";
 
+const MODEL_SETTINGS_KEY = "intro-builder.agent.model-settings.v1";
+const MODEL_API_KEY = "intro-builder.agent.model-api-key.v1";
+
 describe("ResumeDiagnoseButton", () => {
   afterEach(() => {
     vi.unstubAllGlobals();
+    window.localStorage.clear();
+    window.sessionStorage.clear();
   });
 
   it("requests resume-diagnose suggestions from the Web BFF", async () => {
+    /*
+     * 预置模型配置。服务端已不再回退已退役的 Agent 微服务，
+     * 缺配置会返回 model_not_configured —— 因此这个场景必须先有配置。
+     */
+    window.localStorage.setItem(
+      MODEL_SETTINGS_KEY,
+      JSON.stringify({ baseUrl: "https://models.example.test/v1", modelName: "gpt-4.1-mini" }),
+    );
+    window.sessionStorage.setItem(MODEL_API_KEY, "sk-ui-test");
+
     const fetchMock = vi.fn<
       (...args: [RequestInfo | URL, RequestInit?]) => Promise<Response>
     >(async () => {
@@ -59,6 +74,17 @@ describe("ResumeDiagnoseButton", () => {
       key: "summary",
       label: "个人总结",
       plainText: "3 年前端开发经验。",
+    });
+    /*
+     * 请求必须带上模型配置（P05 任务 5）。
+     *
+     * 服务端已不再回退已退役的 Agent 微服务：缺 modelConfig 会直接返回
+     * model_not_configured。因此这条断言是「按钮真的能用」的机械防线 ——
+     * 此前没有它，改了服务端契约后调用方漏传配置也不会被发现。
+     */
+    expect(body.modelConfig).toMatchObject({
+      baseUrl: expect.any(String),
+      modelName: expect.any(String),
     });
     expect(await screen.findByText("整体内容完整，但工作经历缺少可验证结果。")).toBeInTheDocument();
   });
