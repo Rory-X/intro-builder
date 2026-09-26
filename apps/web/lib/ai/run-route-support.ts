@@ -5,6 +5,11 @@ import { buildAllToolDeclarations } from "./tools/resume-tools";
 import { buildToolRegistry } from "./tools/registry";
 import { executeToolCall } from "./tools/execute";
 import { commitToolProposal } from "./commit-proposal";
+import {
+  buildPersistableAssistantMessage,
+  buildPersistableUserMessage,
+} from "./floating-persistence";
+import { appendFloatingChatMessage } from "@/lib/agent/floating-chat-session-store";
 import { appendEvent, finishRun, isRunWritable, releaseLease } from "./run-store";
 import { DEFAULT_RUN_BUDGET, orchestrateRun, type ToolExecutionResult } from "./run";
 import type { WorkspaceSource } from "./workspace";
@@ -119,6 +124,14 @@ export type RunAttemptInput = {
   source: WorkspaceSource;
   /** 本轮附带的对话历史（当前为结构化最小集，见各自路由的说明）。 */
   history: unknown[];
+  /**
+   * 浮窗会话 id（可空）。
+   *
+   * 非空时，本轮结束后会把用户消息与助手消息写进浮窗会话表 ——
+   * 那是**刷新后按会话恢复对话历史**的数据来源。旧路径一直在写，
+   * 而新路径此前完全不写，于是刷新后看不到新路径产生的消息。
+   */
+  sessionId?: string | null;
   /** 本轮的用户消息（开始是首条提问，继续是用户的回答）。 */
   message: string;
   streamModel: ProviderStreamModel;
@@ -145,7 +158,17 @@ export function streamRunAttempt(input: RunAttemptInput): Response {
 
   const stream = new ReadableStream<Uint8Array>({
     async start(controller) {
+      /*
+       * 累积本轮事件，供收尾时投影出**待持久化**的浮窗消息。
+       *
+       * 为什么在这里累积而不是从库里重读：重读要多一次查询，
+       * 且 `attempt.started` 之前的事件不属于本轮 —— 而本轮的边界
+       * 恰好就是这个数组的生命周期。
+       */
+      const seenEvents: RunEventEnvelope[] = [];
+
       const send = (event: RunEventEnvelope) => {
+        seenEvents.push(event);
         controller.enqueue(encoder.encode(`data: ${JSON.stringify(event)}\n\n`));
       };
 
@@ -248,6 +271,15 @@ export function streamRunAttempt(input: RunAttemptInput): Response {
          * waiting_user，却被改成 completed）。
          */
         await finishRun({ runId: input.runId, status: runStatusForEndType(result.endType) });
+
+        /*
+         * 把这一轮写进浮窗会话表（刷新后按会话恢复历史的数据来源）。
+         *
+         * **失败不冒泡**：对话内容已经推给客户端、文档已经原子落盘。
+         * 留痕写入失败只是「历史里少一条」，不该让整个响应变成错误 ——
+         * 那会让用户以为 AI 没做完，而实际改动已在。
+         */
+        await persistFloatingMessages(input, seenEvents);
       } catch (error) {
         const message = error instanceof Error ? error.message : "未知错误";
         // 执行异常：如实记为 failed，并把错误摘要交给客户端（已脱敏）。
@@ -285,6 +317,41 @@ export function streamRunAttempt(input: RunAttemptInput): Response {
       "X-Accel-Buffering": "no",
     },
   });
+}
+
+/**
+ * 把本轮的对话写进浮窗会话表。
+ *
+ * 只在 `sessionId` 非空时执行 —— 没有会话就无处归属（旧路径同样如此）。
+ *
+ * 顺序：先用户消息、再助手消息。反过来会让历史页出现「助手先说话、
+ * 用户后提问」的错位（读的是按 createdAt 排序的列表）。
+ */
+async function persistFloatingMessages(
+  input: RunAttemptInput,
+  events: readonly RunEventEnvelope[],
+): Promise<void> {
+  const sessionId = input.sessionId ?? null;
+  if (!sessionId) return;
+
+  try {
+    const userMessage = buildPersistableUserMessage(input.message);
+    if (userMessage) {
+      await appendFloatingChatMessage({ sessionId, ...userMessage });
+    }
+
+    const assistantMessage = buildPersistableAssistantMessage(events);
+    if (assistantMessage) {
+      await appendFloatingChatMessage({ sessionId, ...assistantMessage });
+    }
+  } catch (error) {
+    /*
+     * 如实记录但不冒泡 —— 见调用点的说明。
+     * 用 console.error 而不是静默吞掉：留痕缺失是可观察的故障，
+     * 排查时需要日志。
+     */
+    console.error("[run-route] 浮窗消息持久化失败", error);
+  }
 }
 
 /** 统一的 SSE 响应头（供需要提前返回流的路由复用）。 */

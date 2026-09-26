@@ -268,3 +268,27 @@ describe("**客户端 revision 必须与权威一致**（spec §6）", () => {
     expect(acquireLeaseMock).not.toHaveBeenCalled();
   });
 });
+
+describe("**会话 id 透传**（持久化的前提）", () => {
+  it("**sessionId 被传给执行层**（否则持久化是死代码）", async () => {
+    /*
+     * 新路径此前完全不写浮窗会话表，而刷新后按会话恢复的历史读的就是它 ——
+     * 于是用户用新路径聊完、刷新页面，历史里看不到那些消息。
+     *
+     * 补齐持久化后**还必须把 sessionId 传下去**：我第一版只在执行层加了
+     * `sessionId?: string | null` 字段却没在路由里传，于是那段持久化代码
+     * 永远不会执行（全量测试仍然全绿 —— 它测的是纯函数）。
+     * 这条断言把「链路上真的带上了它」钉住。
+     */
+    await callStart(body({ sessionId: "session-abc" }));
+
+    const input = streamAttemptMock.mock.calls[0][0] as { sessionId?: string | null };
+    expect(input.sessionId).toBe("session-abc");
+  });
+
+  it("未提供 sessionId 时传 null（不写入会话表）", async () => {
+    await callStart(body({ sessionId: null }));
+    const input = streamAttemptMock.mock.calls[0][0] as { sessionId?: string | null };
+    expect(input.sessionId).toBeNull();
+  });
+});
