@@ -143,15 +143,30 @@ function scanAllLegacyCalls(): Record<string, number[]> {
  * （切到 `/api/ai/runs` 或直接删除）。
  */
 const KNOWN_LEGACY_CALL_SITES: Record<string, string[]> = {
-  // 会话创建：签发 Agent JWT + 调微服务。
-  "app/api/agent/session/route.ts": ["signAgentToken", "createAgentClient"],
-  // 消息转发：同上。
-  "app/api/agent/messages/route.ts": ["signAgentToken", "createAgentClient"],
   // 直连 Run 的流式引导：签发 token（实际执行转发给微服务）。
+  //
+  // **仍有活路径**：默认 surface 是 "panel" → `AgentPanel` →
+  // `AgentAgUiRuntimeProvider` → 这条路由。因此它不能像下面两条那样
+  // 直接转 410 —— 必须先完成组件切换（P07 任务 3）。
   "app/api/agent/direct-runs/route.ts": ["signAgentToken"],
   // AG-UI runtime 桥接：调用 direct-runs 的客户端封装。
   "components/agent/agent-ag-ui-runtime-provider.tsx": ["fetchDirectAgentRunStream"],
 };
+
+/**
+ * **已退役的路由**（转 410 stub，不再调旧服务）。
+ *
+ * 与上面的清单分开记账：这些路径的「旧服务调用」已经消除，
+ * 但它们自己还留着 stub（为了给出可观察的退役信号）。
+ *
+ * 之所以能先退役这两条：它们在仓库里**零消费方**（除自己的测试）——
+ * `session` 是演练用的会话探针，`messages` 是第三条转发路径。
+ * 而 `direct-runs` 有活路径（默认 panel surface），必须等组件切换。
+ */
+const RETIRED_AGENT_ROUTES = [
+  "app/api/agent/session/route.ts",
+  "app/api/agent/messages/route.ts",
+];
 
 /**
  * **待归档的旧客户端模块**（定义处）。
@@ -233,6 +248,52 @@ describe("旧服务调用点清单（棘轮）", () => {
       // 但没有任何真实调用。
       expect(findLegacyCalls(relativePath), relativePath).toEqual([]);
     }
+  });
+});
+
+describe("已退役路由：410 stub 而非转发", () => {
+  it("**退役路由不再调用旧服务**（调用点已消除）", () => {
+    for (const relativePath of RETIRED_AGENT_ROUTES) {
+      expect(findLegacyCalls(relativePath), relativePath).toEqual([]);
+    }
+  });
+
+  it("**退役路由返回统一形状的 410**（客户端可据此分支）", async () => {
+    const { retiredAgentRouteResponse } = await import("@/lib/agent/retired-route");
+    const response = retiredAgentRouteResponse({
+      route: "/api/agent/session",
+      replacement: "某替代入口",
+    });
+    expect(response.status).toBe(410);
+    // 不该被缓存 —— 退役信号必须每次真实到达。
+    expect(response.headers.get("Cache-Control")).toBe("no-store");
+  });
+
+  it("410 响应体含机器可读码与替代入口（不靠匹配中文）", async () => {
+    const { retiredAgentRouteResponse } = await import("@/lib/agent/retired-route");
+    const body = (await retiredAgentRouteResponse({
+      route: "/api/agent/messages",
+      replacement: "统一 Run 入口",
+    }).json()) as Record<string, unknown>;
+    expect(body.code).toBe("route_retired");
+    expect(body.retiredRoute).toBe("/api/agent/messages");
+    expect(body.replacement).toBe("统一 Run 入口");
+    // 给出下一步动作，而不是只说「下线了」。
+    expect(typeof body.action).toBe("string");
+    expect(String(body.action).length).toBeGreaterThan(0);
+  });
+
+  it("**退役路由源码里没有重定向**（plan 明确禁止重定向到旧服务）", () => {
+    for (const relativePath of RETIRED_AGENT_ROUTES) {
+      const source = read(relativePath);
+      expect(source, relativePath).not.toMatch(/redirect\s*\(/);
+      expect(source, relativePath).not.toMatch(/AGENT_BASE_URL/);
+    }
+  });
+
+  it("有活路径的路由**不**在退役清单里（防止误退役）", () => {
+    // direct-runs 有活路径（默认 panel surface → AG-UI runtime）。
+    expect(RETIRED_AGENT_ROUTES).not.toContain("app/api/agent/direct-runs/route.ts");
   });
 });
 
@@ -345,6 +406,6 @@ describe("还剩多少（可读的余额）", () => {
      * 切流时这个数字会逐次下降；降到 0 时应当把旧客户端与 token 模块
      * 一起归档（P07 任务 4）。
      */
-    expect(total).toBe(6);
+    expect(total).toBe(2);
   });
 });
