@@ -22,6 +22,11 @@ import {
 } from "@/lib/rich-text-prose";
 import { TipTapJSON as TipTapJSONSchema, type TipTapJSON } from "@intro-builder/shared/types";
 import { cn } from "@/lib/utils";
+import {
+  readSessionAgentModelApiKey,
+  readStoredAgentModelSettings,
+  toAgentModelConfig,
+} from "@/lib/agent/model-settings-storage";
 
 /**
  * ProseMirror's `editor.getJSON()` returns objects whose nested `attrs`
@@ -158,6 +163,13 @@ export function RichTextEditor({ content, onChange, polish }: Props) {
           section: polish.section,
           fieldPath: polish.fieldPath,
           locale: "zh-CN",
+          /*
+           * 带上当前模型配置（P05 任务 5）：浏览器从 localStorage 取 baseUrl/modelName、
+           * 从 sessionStorage 取 apiKey，随请求传给服务端；服务端只在本次调用内使用，
+           * 不落库。缺少配置时服务端会明确返回 model_not_configured，
+           * 不会回退到已退役的 Agent 服务。
+           */
+          modelConfig: currentModelConfig(),
           content: {
             format: "tiptap_json",
             plainText,
@@ -1089,6 +1101,22 @@ function cloneOptionalProperty(
 ): Partial<TipTapNode> {
   if (!source || source[key] === undefined) return {};
   return { [key]: JSON.parse(JSON.stringify(source[key])) };
+}
+
+/**
+ * 当前模型配置（P05 任务 5）。
+ *
+ * 组装方式与浮窗一致：`readStoredAgentModelSettings()` 取 baseUrl/modelName，
+ * `readSessionAgentModelApiKey()` 取当前会话的 key（只存 sessionStorage，
+ * 关标签页即失效），`toAgentModelConfig()` 负责「三者齐全才返回对象」。
+ *
+ * 三者缺一时返回 `null` —— 让服务端返回明确的 `model_not_configured`，
+ * 而不是在这里拼一个不完整的配置去撞 provider 校验。
+ */
+function currentModelConfig(): { baseUrl: string; apiKey: string; modelName: string } | null {
+  const settings = readStoredAgentModelSettings();
+  const apiKey = readSessionAgentModelApiKey();
+  return toAgentModelConfig({ ...settings, apiKey });
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

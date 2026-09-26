@@ -1,34 +1,28 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { Mock } from "vitest";
 
+/**
+ * `POST /api/agent/resume/helpers/[helperId]` 的行为契约（P05 任务 4）。
+ *
+ * 这个路由同样从「HTTP 转发到 Agent 微服务」改为「Web 侧直连模型」，
+ * 因此测试重点随之变化：
+ *
+ * 1. **鉴权与归属不变**，helperId 白名单不变。
+ * 2. **不再依赖微服务**：旧实现会 `signAgentToken` + `createAgentClient`。
+ *    这里显式断言两者**不被调用** —— 若有人把转发加回来，这条会失败，
+ *    而「预览环境不配置 Agent URL 仍可用」正是本切片的目标。
+ * 3. **模型配置缺失时报 `model_not_configured`，不回退旧服务**。
+ * 4. **失败按来源分流**：上游问题 502，校验与地址策略 4xx。
+ * 5. **建议超限如实回报 `truncated`**，不假装全部满足。
+ */
+
 vi.mock("@/lib/auth-helpers", () => ({ currentUserId: vi.fn() }));
 vi.mock("@/lib/agent/token", () => ({ signAgentToken: vi.fn() }));
 vi.mock("@/lib/agent/client", () => ({
-  AgentClientError: class AgentClientError extends Error {
-    statusCode: number;
-    error: string;
-    requestId: string;
-    retryAfterSeconds?: number;
-
-    constructor(
-      message: string,
-      options: {
-        statusCode: number;
-        error: string;
-        requestId: string;
-        retryAfterSeconds?: number;
-      },
-    ) {
-      super(message);
-      this.name = "AgentClientError";
-      this.statusCode = options.statusCode;
-      this.error = options.error;
-      this.requestId = options.requestId;
-      this.retryAfterSeconds = options.retryAfterSeconds;
-    }
-  },
+  AgentClientError: class AgentClientError extends Error {},
   createAgentClient: vi.fn(),
 }));
+vi.mock("@/lib/ai/capabilities/resume-helper-runner", () => ({ runResumeHelper: vi.fn() }));
 vi.mock("@/db", () => ({
   db: {
     query: {
@@ -42,194 +36,199 @@ vi.mock("@/db", () => ({
 import { db } from "@/db";
 import { currentUserId } from "@/lib/auth-helpers";
 import { signAgentToken } from "@/lib/agent/token";
-import { AgentClientError, createAgentClient } from "@/lib/agent/client";
+import { createAgentClient } from "@/lib/agent/client";
+import { runResumeHelper } from "@/lib/ai/capabilities/resume-helper-runner";
 import { maxDuration, POST } from "@/app/api/agent/resume/helpers/[helperId]/route";
+
+const VALID_BODY = {
+  resumeId: "resume-1",
+  locale: "zh-CN",
+  target: { kind: "resume", section: null, fieldPath: null },
+  context: {
+    resumeTitle: "前端工程师",
+    completeness: { overall: 62, sections: [] },
+    sections: [{ key: "experience", label: "工作经历", plainText: "参与订单系统开发。" }],
+  },
+  intent: { mode: "diagnose", maxSuggestions: 3, strategy: "plain" },
+  modelConfig: { baseUrl: "https://api.example.com/v1", apiKey: "sk-x", modelName: "m" },
+};
+
+function post(helperId = "resume-diagnose", body: unknown = VALID_BODY) {
+  return POST(
+    new Request(`http://localhost/api/agent/resume/helpers/${helperId}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    }),
+    { params: Promise.resolve({ helperId }) },
+  );
+}
 
 describe("POST /api/agent/resume/helpers/[helperId]", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    (currentUserId as Mock).mockResolvedValue("user-1");
+    (db.query.resumes.findFirst as Mock).mockResolvedValue({ id: "resume-1" });
+    (runResumeHelper as Mock).mockResolvedValue({
+      ok: true,
+      result: { summary: "摘要", suggestions: [] },
+      usage: { inputTokens: 10, outputTokens: 5 },
+      truncated: 0,
+    });
   });
 
-  it("allows long-running AI generation on Vercel", () => {
+  it("允许长时生成（Vercel maxDuration）", () => {
     expect(maxDuration).toBe(120);
   });
 
-  it("requires a Web user session", async () => {
-    (currentUserId as unknown as Mock).mockResolvedValue(null);
-
-    const response = await POST(jsonRequest(validBody()), routeContext("resume-diagnose"));
-
+  it("未登录返回 401，且不读取简历", async () => {
+    (currentUserId as Mock).mockResolvedValue(null);
+    const response = await post();
     expect(response.status).toBe(401);
-    await expect(response.json()).resolves.toEqual({ error: "未登录" });
+    expect(db.query.resumes.findFirst).not.toHaveBeenCalled();
   });
 
-  it("requires the resume to belong to the Web user", async () => {
-    (currentUserId as unknown as Mock).mockResolvedValue("user_123");
-    (db.query.resumes.findFirst as unknown as Mock).mockResolvedValue(null);
-
-    const response = await POST(jsonRequest(validBody()), routeContext("resume-diagnose"));
-
+  it("不支持的 helperId 返回 404，且不查库", async () => {
+    const response = await post("no-such-helper");
     expect(response.status).toBe(404);
-    await expect(response.json()).resolves.toEqual({ error: "简历不存在" });
+    expect(db.query.resumes.findFirst).not.toHaveBeenCalled();
   });
 
-  it("signs a resume:helper token and proxies the request to Agent", async () => {
-    (currentUserId as unknown as Mock).mockResolvedValue("user_123");
-    (db.query.resumes.findFirst as unknown as Mock).mockResolvedValue({
-      id: "resume_abc",
-    });
-    (signAgentToken as unknown as Mock).mockResolvedValue({
-      token: "signed-helper-token",
-      expiresAt: new Date("2026-06-08T08:02:00.000Z"),
-    });
-    const runResumeHelper = vi.fn().mockResolvedValue({
-      requestId: "req_agent_helper",
-      data: {
-        status: "ok",
-        requestId: "req_agent_helper",
-        helperId: "resume-diagnose",
-        result: {
-          summary: "整体内容完整，但工作经历缺少可验证结果。",
-          suggestions: [],
-        },
-        usage: {
-          provider: "fake-provider",
-          model: "fake-model",
-          inputTokens: 620,
-          outputTokens: 180,
-        },
-        cached: true,
-        cachedAt: "2026-06-09T00:00:00.000Z",
-      },
-    });
-    (createAgentClient as unknown as Mock).mockReturnValue({ runResumeHelper });
+  it("简历不属于当前用户返回 404（不泄露存在性）", async () => {
+    (db.query.resumes.findFirst as Mock).mockResolvedValue(undefined);
+    const response = await post();
+    expect(response.status).toBe(404);
+    expect(runResumeHelper).not.toHaveBeenCalled();
+  });
 
-    const response = await POST(jsonRequest(validBody()), routeContext("resume-diagnose"));
+  it("请求体不是合法 JSON 返回 400", async () => {
+    const response = await POST(
+      new Request("http://localhost/api/agent/resume/helpers/resume-diagnose", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: "{bad",
+      }),
+      { params: Promise.resolve({ helperId: "resume-diagnose" }) },
+    );
+    expect(response.status).toBe(400);
+  });
 
+  it("缺 resumeId 返回 400，且不查库", async () => {
+    const response = await post("resume-diagnose", { ...VALID_BODY, resumeId: undefined });
+    expect(response.status).toBe(400);
+    expect(db.query.resumes.findFirst).not.toHaveBeenCalled();
+  });
+
+  /*
+   * 迁移的核心断言：不再依赖旧微服务。
+   * 若有人把 HTTP 转发加回来，这两条会立刻失败。
+   */
+  it("**不再**签发 Agent token", async () => {
+    await post();
+    expect(signAgentToken).not.toHaveBeenCalled();
+  });
+
+  it("**不再**创建 Agent 客户端", async () => {
+    await post();
+    expect(createAgentClient).not.toHaveBeenCalled();
+  });
+
+  it("成功时返回与旧实现一致的响应形状（前端无需改动）", async () => {
+    const response = await post();
     expect(response.status).toBe(200);
-    expect(signAgentToken).toHaveBeenCalledWith({
-      userId: "user_123",
-      resumeId: "resume_abc",
-      scope: "resume:helper",
-    });
-    expect(runResumeHelper).toHaveBeenCalledWith({
-      token: "signed-helper-token",
-      helperId: "resume-diagnose",
-      request: validBody(),
-    });
-    await expect(response.json()).resolves.toEqual({
-      status: "ok",
-      tokenExpiresAt: "2026-06-08T08:02:00.000Z",
-      requestId: "req_agent_helper",
-      helperId: "resume-diagnose",
-      result: {
-        summary: "整体内容完整，但工作经历缺少可验证结果。",
-        suggestions: [],
-      },
-      usage: {
-        provider: "fake-provider",
-        model: "fake-model",
-        inputTokens: 620,
-        outputTokens: 180,
-      },
-      cached: true,
-      cachedAt: "2026-06-09T00:00:00.000Z",
+    const body = (await response.json()) as {
+      status: string;
+      helperId: string;
+      result: { summary: string };
+      usage: { inputTokens: number };
+    };
+    expect(body.status).toBe("ok");
+    expect(body.helperId).toBe("resume-diagnose");
+    expect(body.result.summary).toBe("摘要");
+    expect(body.usage.inputTokens).toBe(10);
+  });
+
+  it("把 helperId 与模型配置一起交给 runner", async () => {
+    await post();
+    const [bodyArg, helperIdArg, configArg] = (runResumeHelper as Mock).mock.calls[0] as [
+      Record<string, unknown>,
+      string,
+      Record<string, unknown>,
+    ];
+    expect((bodyArg as { resumeId: string }).resumeId).toBe("resume-1");
+    expect(helperIdArg).toBe("resume-diagnose");
+    expect(configArg).toEqual({
+      baseUrl: "https://api.example.com/v1",
+      apiKey: "sk-x",
+      modelName: "m",
     });
   });
 
-  it("returns Agent errors without exposing provider internals", async () => {
-    (currentUserId as unknown as Mock).mockResolvedValue("user_123");
-    (db.query.resumes.findFirst as unknown as Mock).mockResolvedValue({
-      id: "resume_abc",
+  it("section-next-steps 把正确 helperId 透传给 runner", async () => {
+    await post("section-next-steps", {
+      ...VALID_BODY,
+      target: { kind: "section", section: "experience", fieldPath: null },
+      intent: { mode: "next_steps", maxSuggestions: 3, strategy: "star" },
     });
-    (signAgentToken as unknown as Mock).mockResolvedValue({
-      token: "signed-helper-token",
-      expiresAt: new Date("2026-06-08T08:02:00.000Z"),
-    });
-    const runResumeHelper = vi.fn().mockRejectedValue(
-      new AgentClientError("Too many requests", {
-        statusCode: 429,
-        error: "rate_limited",
-        requestId: "req_limited",
-        retryAfterSeconds: 30,
-      }),
-    );
-    (createAgentClient as unknown as Mock).mockReturnValue({ runResumeHelper });
-
-    const response = await POST(jsonRequest(validBody()), routeContext("resume-diagnose"));
-
-    expect(response.status).toBe(429);
-    await expect(response.json()).resolves.toEqual({
-      error: "Agent 服务暂不可用",
-      code: "rate_limited",
-      requestId: "req_limited",
-      retryAfterSeconds: 30,
-    });
+    const [, helperIdArg] = (runResumeHelper as Mock).mock.calls[0] as [unknown, string];
+    expect(helperIdArg).toBe("section-next-steps");
   });
 
-  it("returns an actionable message for Agent timeout errors", async () => {
-    (currentUserId as unknown as Mock).mockResolvedValue("user_123");
-    (db.query.resumes.findFirst as unknown as Mock).mockResolvedValue({
-      id: "resume_abc",
-    });
-    (signAgentToken as unknown as Mock).mockResolvedValue({
-      token: "signed-helper-token",
-      expiresAt: new Date("2026-06-08T08:02:00.000Z"),
-    });
-    const runResumeHelper = vi.fn().mockRejectedValue(
-      new AgentClientError("Agent request timed out", {
-        statusCode: 504,
-        error: "agent_timeout",
-        requestId: "req_agent_timeout",
-      }),
-    );
-    (createAgentClient as unknown as Mock).mockReturnValue({ runResumeHelper });
+  it("缺少模型配置返回 model_not_configured，**不**回退旧服务", async () => {
+    const response = await post("resume-diagnose", { ...VALID_BODY, modelConfig: undefined });
+    expect(response.status).toBe(400);
+    const body = (await response.json()) as { code?: string };
+    expect(body.code).toBe("model_not_configured");
+    expect(runResumeHelper).not.toHaveBeenCalled();
+    expect(createAgentClient).not.toHaveBeenCalled();
+  });
 
-    const response = await POST(jsonRequest(validBody()), routeContext("resume-diagnose"));
-
-    expect(response.status).toBe(504);
-    await expect(response.json()).resolves.toEqual({
-      error: "AI 生成超时，请稍后重试或减少简历内容后再试",
-      code: "agent_timeout",
-      requestId: "req_agent_timeout",
-      retryAfterSeconds: undefined,
+  it("上游返回不符约定 → 502（不伪装成用户的参数错误）", async () => {
+    (runResumeHelper as Mock).mockResolvedValue({
+      ok: false,
+      status: 400,
+      code: "provider_response_invalid",
+      message: "模型返回的内容不符合约定（Provider response missing summary）",
     });
+    const response = await post();
+    expect(response.status).toBe(502);
+    const body = (await response.json()) as { code: string };
+    expect(body.code).toBe("provider_response_invalid");
+  });
+
+  it("上游调用失败 → 502", async () => {
+    (runResumeHelper as Mock).mockResolvedValue({
+      ok: false,
+      status: 400,
+      code: "provider_unavailable",
+      message: "模型服务调用失败",
+    });
+    expect((await post()).status).toBe(502);
+  });
+
+  it("校验失败保持 4xx（那是用户的输入问题）", async () => {
+    (runResumeHelper as Mock).mockResolvedValue({
+      ok: false,
+      status: 413,
+      code: "payload_too_large",
+      message: "context plainText must be at most 12000 characters",
+    });
+    expect((await post()).status).toBe(413);
+  });
+
+  it("建议超限时如实回报 truncated（不假装全部满足）", async () => {
+    (runResumeHelper as Mock).mockResolvedValue({
+      ok: true,
+      result: { summary: "s", suggestions: [] },
+      usage: { inputTokens: 1, outputTokens: 1 },
+      truncated: 2,
+    });
+    const body = (await (await post()).json()) as { truncated?: number };
+    expect(body.truncated).toBe(2);
+  });
+
+  it("未超限时不返回 truncated 字段（避免前端显示无意义的 0）", async () => {
+    const body = (await (await post()).json()) as { truncated?: number };
+    expect(body.truncated).toBeUndefined();
   });
 });
-
-function validBody() {
-  return {
-    resumeId: "resume_abc",
-    locale: "zh-CN" as const,
-    target: { kind: "resume" as const, section: null, fieldPath: null },
-    context: {
-      resumeTitle: "前端开发工程师",
-      completeness: {
-        overall: 68,
-        sections: [{ key: "experience", label: "工作经历", score: 7, max: 10 }],
-      },
-      sections: [
-        {
-          key: "experience",
-          label: "工作经历",
-          plainText: "负责业务系统前端开发，优化页面性能。",
-        },
-      ],
-    },
-    intent: { mode: "diagnose" as const, maxSuggestions: 5, strategy: "star" as const },
-  };
-}
-
-function jsonRequest(body: unknown): Request {
-  return new Request("https://intro.test/api/agent/resume/helpers/resume-diagnose", {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify(body),
-  });
-}
-
-function routeContext(helperId: string) {
-  return {
-    params: Promise.resolve({ helperId }),
-  };
-}

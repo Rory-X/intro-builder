@@ -1,6 +1,7 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import { hashTargetValue } from "@intro-builder/shared/schemas";
+import type { SQL } from "drizzle-orm";
 import { initializeItemIdentities } from "@/lib/resume-mutations/identity";
 import { initializeIdentitiesInStore } from "@/lib/resume-mutations/identity-store";
 import { commitResumeMutation, type CommitPrincipal } from "@/lib/resume-mutations/commit";
@@ -49,7 +50,7 @@ afterAll(async () => {
 
 function depsFor() {
   return {
-    execute: (statement: Parameters<TestDb["exec"]>[0]) => testDb.db.execute(statement as never),
+    execute: (statement: SQL) => testDb.db.execute(statement),
   };
 }
 
@@ -143,7 +144,7 @@ describe("身份初始化 CAS", () => {
     // 立刻插入另一个 writer 的编辑，然后才轮到 CAS 写入。
     let executed = 0;
     const interleaved = {
-      execute: async (statement: Parameters<TestDb["exec"]>[0]) => {
+      execute: async (statement: SQL) => {
         const result = await testDb.db.execute(statement as never);
         executed += 1;
         if (executed === 1) {

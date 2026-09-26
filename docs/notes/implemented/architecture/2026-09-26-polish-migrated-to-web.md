@@ -1,0 +1,159 @@
+# Agent Note: 润色能力从 Agent 微服务迁到 Web
+
+Status: implemented
+
+## Problem
+
+富文本润色原本的路径是：浏览器 → Web 路由 → **HTTP 转发到 Agent 微服务** →
+微服务调模型 → 返回。Web 侧的路由只做鉴权与转发（`signAgentToken` +
+`createAgentClient`），真正的校验、提示词、TipTap 结构保持、响应解析全在微服务里。
+
+这带来三个问题：
+
+1. **退役无法完成**。P07/P08 要退役这个微服务，但只要润色还转发过去，
+   关掉它就会让润色直接不可用。规格 §3 的成功标准是「Redis / Agent URL
+   完全不可用」时新能力仍正常。
+2. **契约分散在两处**。润色请求的形状、错误码、TipTap 块的匹配规则都在微服务里，
+   Web 侧只能看到一个 `AgentClientError`。改一处要同时理解两个仓库位置。
+3. **多一跳网络**。Web 与微服务之间用签名 token 互信，而两侧其实跑在同一个
+   部署里（都是这个 Next.js 应用的一部分）。这一跳只增加了失败面。
+
+## Decision
+
+把润色的**纯逻辑**逐字移植到 `lib/ai/capabilities/`，Web 侧直连模型。
+
+### 1. 逐字移植，不重写
+
+`polish.ts` 保留了原实现的函数结构与注释。这些函数里有若干经验性细节，
+重写时极易丢失，而丢失后**不报错、只会让结果默默变差**：
+
+- `collectReplaceableTextBlocks` 只收**非空** paragraph，因此模型返回的
+  `polishedBlocks` 数量必须与它一致。数量不符时整体拒绝（`ok: false`），
+  不能按下标硬套 —— 那会在段落被合并/拆分时把内容写错位置，用户看到的是
+  「我这段怎么变成别的内容了」。
+- `createInlineContentForBlock` 专门处理「短标签 + 冒号 + 粗体」这种简历常见结构
+  （`项目描述：xxx`）：保留粗体标签节点与其 marks，只替换其后正文。
+  不做这件事的话，润色一次就把整段加粗格式抹掉。
+- `truncateStructureText` 只用于给模型看的**结构摘要**（120 字符），
+  不影响实际写入内容。
+
+**迁移正确性的判据是行为一致**，因此 Web 侧测试直接使用微服务测试里的同一份
+TipTap fixture（含粗体标签、嵌套 bulletList、`attrs`），断言同一份预期结果。
+
+### 2. core 换成新候选稿，领域规则保留
+
+旧润色提示词只有 6 条严格规则（不得新增事实、不得把「参与」改成「主导」…）。
+候选稿把通用指导换成 `prompts/core.ts`，但**保留那 6 条作为领域补充** ——
+它们是润色场景特有的硬边界，与 core 不重复；而旧版本缺的正是 core 里
+「不要只说加强量化」「区分已有证据/尚未体现」那些指导，所以旧润色容易
+「表达更顺但依然空泛」。
+
+JSON schema 说明（`developer` 段）逐字保留：润色结果是机器解析的，
+改字段名会让解析整体失败，而失败表现为「润色按钮没反应」—— 用户无从判断原因。
+
+### 3. 模型配置随请求传，不落库
+
+新增 `lib/ai/model-config-from-request.ts`。浏览器从 localStorage 取
+baseUrl / modelName、从 sessionStorage 取 apiKey，随请求带给服务端；
+服务端只在本次调用内使用。BYOK 的语义是「用户自带、用完即弃」，
+落库会让用户的密钥进入我们的存储。
+
+缺少配置时返回 `model_not_configured` 并提示用户连接模型，
+**不回退已退役的服务** —— 回退会让退役永远无法完成，也会让用户看到
+「明明没配模型却能润色」这种难以解释的行为。
+
+### 4. 失败按来源分流
+
+`provider_response_invalid`（模型没按约定输出）与 `provider_unavailable`
+（调用失败）都报 **502**；校验失败与地址策略保持 4xx。
+
+区分理由：这两类问题的**排查方向完全不同**。把「模型没按 schema 输出」
+说成用户的参数错误，会让用户反复检查自己的输入而找不到真正的原因。
+
+## Alternatives considered
+
+- **保留 HTTP 转发，只把微服务的提示词换掉** — 改动最小，一处改动就能生效。
+  否决原因：那恰恰是「退役无法完成」的根源。规格 §3 明确要求旧服务完全不可用时
+  新能力仍正常，而转发路径让这条标准无法达成。
+- **重写这些函数而不是逐字移植** — 代码更干净，可以顺手现代化。
+  否决原因：`polishedBlocks` 数量校验与粗体标签保留这两条都是**经验性**的，
+  重写时极可能丢失，而丢失后不报错、只让结果变差。逐字移植 + 用原测试的
+  fixture 验证行为一致，是这类「沉默退化」唯一可靠的防线。
+- **模型配置落库，让服务端统一管理** — 实现更简单（服务端只读一份配置），
+  且用户换设备时配置跟着走。否决原因：那是「平台托管密钥」的语义，
+  与 BYOK 冲突。用户自带 key 的前提是不经过我们的存储。
+- **缺少配置时回退到旧微服务** — 用户体验更平滑（没配也能润色）。
+  否决原因：回退会让 P07/P08 的退役永远看不到「旧服务无请求」这个信号 ——
+  永远有人没配 key，于是永远无法确认可以关掉它。
+- **上游错误也返回 4xx** — 前端处理更简单（只判一个范围）。
+  否决原因：会误导排查方向。用户看到 4xx 会去改输入，而问题在模型输出。
+  502 让「这是上游的问题」成为可观测的事实。
+
+## Consequences
+
+- **收益**：润色不再依赖待退役的微服务；契约集中在 Web 一处；
+  少一跳网络与一套签名 token 机制；模型配置不落库。
+- **代价**：Web 侧多出三个文件（`polish.ts` / `polish-prompt.ts` /
+  `polish-runner.ts`）约 800 行；微服务里那份实现暂时保留（等 P07 归档），
+  因此**短期内同一逻辑有两份**。这是迁移过程中的有意冗余，
+  P07 归档后即消除。
+- **已知上限**：
+  - 客户端的 key 放在 sessionStorage，仍是浏览器可读的 —— 这是 BYOK 的固有
+    性质（用户自己的 key 存在用户自己的浏览器里），不是本实现的缺口。
+  - Web 侧仍未实现微服务有的 Redis 缓存。多用户共享同一段文本时不会命中缓存，
+    成本略高。**这是有意的**：缓存属于待退役组件链，不应在新路径重建。
+  - 未做「润色结果落盘」——它仍返回给前端由用户决定是否应用（与旧行为一致）。
+- **什么信号发生时该重访**：若润色成本成为问题，应加**进程内**短 TTL 缓存
+  （不引入 Redis）。若出现「润色后格式丢了」的反馈，先查
+  `createInlineContentForBlock` 的标签保留分支。
+
+## Verification
+
+- `apps/web/tests/unit/ai-polish-migration.test.ts`（26 例）：TipTap 提取
+  （顺序、跳过空段落、非对象输入、结构摘要截断）、**重建保留粗体标签与
+  `attrs`、块数不符整体拒绝、空块拒绝、原 doc 不被就地修改**、
+  plain_text 模式忽略 polishedBlocks；响应解析（缺字段/非法 JSON/未知风险类型
+  各自拒绝并指明原因）；请求校验（experience/projects 默认 STAR、
+  4000 字符边界返回 413）；提示词（注入新 core + 保留 6 条规则、
+  传 textBlockCount、按 format 与 strategy 条件注入）。
+- `apps/web/tests/unit/ai-polish-runner.test.ts`（12 例）：校验前置
+  （不合法不调用模型）、非法地址不调用模型、成功路径与 token 用量、
+  TipTap 模式传块数、**失败路径保留原因**（invalid JSON vs 缺字段 vs 网络）、
+  **密钥不外泄**。
+- `apps/web/tests/unit/agent-rich-text-polish-route.test.ts`（15 例，原 4 例重写）：
+  鉴权与归属不变；**不再签发 Agent token、不再创建 Agent 客户端**；
+  响应形状与旧实现一致；缺配置报 `model_not_configured` 且不回退；
+  上游问题 502、校验问题 4xx。
+- 全量：`pnpm test` 1246 例通过、`typecheck` 四包全绿、
+  `lint` 0 error（12 warning = 基线）、`build` 通过。
+
+---
+
+## 追加：Helpers 也完成迁移（同一切片）
+
+`resume-diagnose`（全份诊断）与 `section-next-steps`（单区块下一步）走同一条改造路径：
+路由不再 HTTP 转发，改为 Web 侧直连（`capabilities/resume-helpers.ts` +
+`resume-helper-runner.ts`）。
+
+移植时保留的两条 helper 特有约束，都是从微服务版本原样带过来的：
+
+1. **两个 helper 的 target 形状不可混用**。`resume-diagnose` 要求
+   `kind: "resume"` 且 section/fieldPath 为 null；`section-next-steps` 要求
+   `kind: "section"`。`intent.mode` 也必须与之匹配（`diagnose` / `next_steps`）——
+   用错会拿「全份诊断」的提示词去跑「单区块建议」，产出结构完全不符。
+2. **12 000 字上限是跨区块累加的**（不是单块）。模型要看到全貌才能给整体建议；
+   单块 4 000 字的限制只属于 polish 那条路径。
+
+新增一条本实现特有的处理：**建议数量超出 `maxSuggestions` 不算解析失败**。
+内容本身可用，只是模型没守约束。整体拒绝会让用户「什么都没得到」，
+因此改为**截断并如实回报 `truncated`**，由前端决定是否提示。
+
+`validateTarget` / `isValidContext` / `isValidIntent` 写成**类型谓词**
+（`value is ...`）而非返回 boolean。这不只是风格：返回 boolean 时 TS 无法收窄
+`body.target`，访问 `body.target.section` 报 TS18046；写成谓词后校验通过即收窄，
+也就不需要 `as` 强转掩盖问题（实测第一版正是因此报错）。
+
+验证：`ai-resume-helper-migration.test.ts` 32 例（两个 helper 的 target/mode
+交叉拒绝、413 边界、7 个必填字段逐个缺失、四种 riskFlag、超限截断与回报）；
+`agent-resume-helper-route.test.ts` 重写为 17 例（含「不再签发 token」
+「不再创建 Agent 客户端」「缺配置不回退」三条关键断言）。

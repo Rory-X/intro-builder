@@ -1,34 +1,29 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { Mock } from "vitest";
 
+/**
+ * `POST /api/agent/rich-text/polish` 的行为契约（P05 任务 4）。
+ *
+ * 这个路由已从「HTTP 转发到 Agent 微服务」改为「Web 侧直连模型」，
+ * 因此测试重点随之变化：
+ *
+ * 1. **归属与鉴权不变**：未登录 401、简历不属于当前用户 404。
+ * 2. **不再依赖微服务**：旧实现会 `signAgentToken` + `createAgentClient`。
+ *    这里显式断言两者**不被调用** —— 若哪天有人把转发加回来，这条测试会失败，
+ *    而「预览环境不配置 Agent URL 仍可用」正是本切片要达成的目标。
+ * 3. **模型配置缺失时明确报错**：返回 `model_not_configured`，
+ *    不回退已退役的服务。
+ * 4. **失败按来源分流**：上游问题（模型返回不符约定 / 调用失败）报 502，
+ *    不与用户参数错误混为一谈 —— 否则排查方向会被误导。
+ */
+
 vi.mock("@/lib/auth-helpers", () => ({ currentUserId: vi.fn() }));
 vi.mock("@/lib/agent/token", () => ({ signAgentToken: vi.fn() }));
 vi.mock("@/lib/agent/client", () => ({
-  AgentClientError: class AgentClientError extends Error {
-    statusCode: number;
-    error: string;
-    requestId: string;
-    retryAfterSeconds?: number;
-
-    constructor(
-      message: string,
-      options: {
-        statusCode: number;
-        error: string;
-        requestId: string;
-        retryAfterSeconds?: number;
-      },
-    ) {
-      super(message);
-      this.name = "AgentClientError";
-      this.statusCode = options.statusCode;
-      this.error = options.error;
-      this.requestId = options.requestId;
-      this.retryAfterSeconds = options.retryAfterSeconds;
-    }
-  },
+  AgentClientError: class AgentClientError extends Error {},
   createAgentClient: vi.fn(),
 }));
+vi.mock("@/lib/ai/capabilities/polish-runner", () => ({ runPolish: vi.fn() }));
 vi.mock("@/db", () => ({
   db: {
     query: {
@@ -41,171 +36,180 @@ vi.mock("@/db", () => ({
 
 import { currentUserId } from "@/lib/auth-helpers";
 import { signAgentToken } from "@/lib/agent/token";
-import { AgentClientError, createAgentClient } from "@/lib/agent/client";
+import { createAgentClient } from "@/lib/agent/client";
+import { runPolish } from "@/lib/ai/capabilities/polish-runner";
 import { db } from "@/db";
 import { POST } from "@/app/api/agent/rich-text/polish/route";
+
+const VALID_BODY = {
+  resumeId: "resume-1",
+  section: "summary",
+  fieldPath: "summary",
+  locale: "zh-CN",
+  content: { format: "plain_text", plainText: "负责接口优化。" },
+  intent: { mode: "polish", tone: "professional", length: "same", strategy: "plain" },
+  modelConfig: { baseUrl: "https://api.example.com/v1", apiKey: "sk-x", modelName: "m" },
+};
+
+function post(body: unknown = VALID_BODY) {
+  return POST(
+    new Request("http://localhost/api/agent/rich-text/polish", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    }),
+  );
+}
 
 describe("POST /api/agent/rich-text/polish", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    (currentUserId as Mock).mockResolvedValue("user-1");
+    (db.query.resumes.findFirst as Mock).mockResolvedValue({ id: "resume-1" });
+    (runPolish as Mock).mockResolvedValue({
+      ok: true,
+      result: { format: "plain_text", polishedText: "润色后", changeSummary: "更顺", riskFlags: [] },
+      usage: { inputTokens: 10, outputTokens: 5 },
+    });
   });
 
-  it("requires a Web user session", async () => {
-    (currentUserId as unknown as Mock).mockResolvedValue(null);
-
-    const response = await POST(jsonRequest(validBody()));
-
+  it("未登录返回 401，且不读取简历", async () => {
+    (currentUserId as Mock).mockResolvedValue(null);
+    const response = await post();
     expect(response.status).toBe(401);
-    await expect(response.json()).resolves.toEqual({ error: "未登录" });
+    expect(db.query.resumes.findFirst).not.toHaveBeenCalled();
   });
 
-  it("requires the resume to belong to the Web user", async () => {
-    (currentUserId as unknown as Mock).mockResolvedValue("user_123");
-    (db.query.resumes.findFirst as unknown as Mock).mockResolvedValue(null);
-
-    const response = await POST(jsonRequest(validBody()));
-
+  it("简历不属于当前用户返回 404（不泄露存在性）", async () => {
+    (db.query.resumes.findFirst as Mock).mockResolvedValue(undefined);
+    const response = await post();
     expect(response.status).toBe(404);
-    await expect(response.json()).resolves.toEqual({ error: "简历不存在" });
+    expect(runPolish).not.toHaveBeenCalled();
   });
 
-  it("signs a rich_text:polish token and proxies the request to Agent", async () => {
-    (currentUserId as unknown as Mock).mockResolvedValue("user_123");
-    (db.query.resumes.findFirst as unknown as Mock).mockResolvedValue({
-      id: "resume_abc",
-    });
-    (signAgentToken as unknown as Mock).mockResolvedValue({
-      token: "signed-polish-token",
-      expiresAt: new Date("2026-06-08T08:02:00.000Z"),
-    });
-    const replacementTiptapJson = {
-      type: "doc",
-      content: [
-        {
-          type: "paragraph",
-          content: [
-            {
-              type: "text",
-              text: "负责业务系统前端开发，围绕页面性能瓶颈持续优化加载与交互体验。",
-            },
-          ],
-        },
-      ],
-    };
-    const polishRichText = vi.fn().mockResolvedValue({
-      requestId: "req_agent_polish",
-      data: {
-        status: "ok",
-        requestId: "req_agent_polish",
-        result: {
-          format: "tiptap_json",
-          polishedText: "负责业务系统前端开发，围绕页面性能瓶颈持续优化加载与交互体验。",
-          replacementTiptapJson,
-          changeSummary: "按 STAR 思路强化职责与行动表达，未新增结果数据。",
-          riskFlags: [],
-        },
-        usage: {
-          provider: "fake-provider",
-          model: "fake-model",
-          inputTokens: 120,
-          outputTokens: 36,
-        },
-        cached: true,
-        cachedAt: "2026-06-09T00:00:00.000Z",
-      },
-    });
-    (createAgentClient as unknown as Mock).mockReturnValue({ polishRichText });
-    const body = validBody();
-
-    const response = await POST(jsonRequest(body));
-
-    expect(response.status).toBe(200);
-    expect(signAgentToken).toHaveBeenCalledWith({
-      userId: "user_123",
-      resumeId: "resume_abc",
-      scope: "rich_text:polish",
-    });
-    expect(polishRichText).toHaveBeenCalledWith({
-      token: "signed-polish-token",
-      request: body,
-    });
-    await expect(response.json()).resolves.toEqual({
-      status: "ok",
-      tokenExpiresAt: "2026-06-08T08:02:00.000Z",
-      requestId: "req_agent_polish",
-      result: {
-        format: "tiptap_json",
-        polishedText: "负责业务系统前端开发，围绕页面性能瓶颈持续优化加载与交互体验。",
-        replacementTiptapJson,
-        changeSummary: "按 STAR 思路强化职责与行动表达，未新增结果数据。",
-        riskFlags: [],
-      },
-      usage: {
-        provider: "fake-provider",
-        model: "fake-model",
-        inputTokens: 120,
-        outputTokens: 36,
-      },
-      cached: true,
-      cachedAt: "2026-06-09T00:00:00.000Z",
-    });
-  });
-
-  it("returns Agent error envelopes without exposing provider internals", async () => {
-    (currentUserId as unknown as Mock).mockResolvedValue("user_123");
-    (db.query.resumes.findFirst as unknown as Mock).mockResolvedValue({
-      id: "resume_abc",
-    });
-    (signAgentToken as unknown as Mock).mockResolvedValue({
-      token: "signed-polish-token",
-      expiresAt: new Date("2026-06-08T08:02:00.000Z"),
-    });
-    const polishRichText = vi.fn().mockRejectedValue(
-      new AgentClientError("Too many requests", {
-        statusCode: 429,
-        error: "rate_limited",
-        requestId: "req_limited",
-        retryAfterSeconds: 30,
+  it("请求体不是合法 JSON 返回 400", async () => {
+    const response = await POST(
+      new Request("http://localhost/api/agent/rich-text/polish", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: "{bad",
       }),
     );
-    (createAgentClient as unknown as Mock).mockReturnValue({ polishRichText });
+    expect(response.status).toBe(400);
+  });
 
-    const response = await POST(jsonRequest(validBody()));
+  it("缺 resumeId 返回 400，且不查库", async () => {
+    const response = await post({ ...VALID_BODY, resumeId: undefined });
+    expect(response.status).toBe(400);
+    expect(db.query.resumes.findFirst).not.toHaveBeenCalled();
+  });
 
-    expect(response.status).toBe(429);
-    await expect(response.json()).resolves.toEqual({
-      error: "Agent 服务暂不可用",
-      code: "rate_limited",
-      requestId: "req_limited",
-      retryAfterSeconds: 30,
+  it("归属校验带 where 条件（越权防护的实际落点）", async () => {
+    await post();
+    const call = (db.query.resumes.findFirst as Mock).mock.calls[0][0] as { where?: unknown };
+    expect(call.where).toBeDefined();
+  });
+
+  /*
+   * 迁移的核心断言：不再依赖旧微服务。
+   * 若有人把 HTTP 转发加回来，这两条会立刻失败。
+   */
+  it("**不再**签发 Agent token", async () => {
+    await post();
+    expect(signAgentToken).not.toHaveBeenCalled();
+  });
+
+  it("**不再**创建 Agent 客户端", async () => {
+    await post();
+    expect(createAgentClient).not.toHaveBeenCalled();
+  });
+
+  it("成功时返回与旧实现一致的响应形状（前端无需改动）", async () => {
+    const response = await post();
+    expect(response.status).toBe(200);
+    const body = (await response.json()) as {
+      status: string;
+      result: { polishedText: string };
+      usage: { inputTokens: number };
+    };
+    expect(body.status).toBe("ok");
+    expect(body.result.polishedText).toBe("润色后");
+    expect(body.usage.inputTokens).toBe(10);
+  });
+
+  it("把请求体与模型配置一起交给 runner", async () => {
+    await post();
+    const [bodyArg, configArg] = (runPolish as Mock).mock.calls[0] as [
+      Record<string, unknown>,
+      Record<string, unknown>,
+    ];
+    expect((bodyArg as { resumeId: string }).resumeId).toBe("resume-1");
+    expect(configArg).toEqual({
+      baseUrl: "https://api.example.com/v1",
+      apiKey: "sk-x",
+      modelName: "m",
     });
   });
-});
 
-function validBody() {
-  return {
-    resumeId: "resume_abc",
-    section: "experience" as const,
-    fieldPath: "experience.0.content",
-    locale: "zh-CN" as const,
-    content: {
-      format: "tiptap_json" as const,
-      plainText: "负责业务系统前端开发，优化页面性能。",
-      tiptapJson: { type: "doc", content: [] },
-    },
-    intent: {
-      mode: "polish" as const,
-      tone: "professional" as const,
-      length: "same" as const,
-      strategy: "star" as const,
-    },
-  };
-}
-
-function jsonRequest(body: unknown): Request {
-  return new Request("https://intro.test/api/agent/rich-text/polish", {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify(body),
+  it("缺少模型配置返回 model_not_configured，**不**回退旧服务", async () => {
+    const response = await post({ ...VALID_BODY, modelConfig: undefined });
+    expect(response.status).toBe(400);
+    const body = (await response.json()) as { code?: string };
+    expect(body.code).toBe("model_not_configured");
+    expect(runPolish).not.toHaveBeenCalled();
+    expect(createAgentClient).not.toHaveBeenCalled();
   });
-}
+
+  it("模型配置不完整（缺 key）同样报 model_not_configured", async () => {
+    const response = await post({
+      ...VALID_BODY,
+      modelConfig: { baseUrl: "https://api.example.com/v1", modelName: "m" },
+    });
+    expect(response.status).toBe(400);
+    expect(runPolish).not.toHaveBeenCalled();
+  });
+
+  it("上游返回不符约定 → 502（不伪装成用户的参数错误）", async () => {
+    (runPolish as Mock).mockResolvedValue({
+      ok: false,
+      status: 400,
+      code: "provider_response_invalid",
+      message: "模型返回的内容不符合约定（missing polishedText）",
+    });
+    const response = await post();
+    expect(response.status).toBe(502);
+    const body = (await response.json()) as { code: string };
+    expect(body.code).toBe("provider_response_invalid");
+  });
+
+  it("上游调用失败 → 502", async () => {
+    (runPolish as Mock).mockResolvedValue({
+      ok: false,
+      status: 400,
+      code: "provider_unavailable",
+      message: "模型服务调用失败",
+    });
+    expect((await post()).status).toBe(502);
+  });
+
+  it("校验失败保持 4xx（那是用户的输入问题）", async () => {
+    (runPolish as Mock).mockResolvedValue({
+      ok: false,
+      status: 413,
+      code: "payload_too_large",
+      message: "content.plainText must be at most 4000 characters",
+    });
+    expect((await post()).status).toBe(413);
+  });
+
+  it("错误响应带 code，便于前端区分「没配模型」与「模型出错」", async () => {
+    (runPolish as Mock).mockResolvedValue({
+      ok: false,
+      status: 400,
+      code: "insecure_protocol",
+      message: "模型服务地址必须使用 https",
+    });
+    const body = (await (await post()).json()) as { code?: string };
+    expect(body.code).toBe("insecure_protocol");
+  });
+});

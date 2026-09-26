@@ -1,6 +1,69 @@
 # P05：提示词质量与全部 AI 能力迁移
 
-状态：未开始。依赖 P04。依据：[提示词与评测详案](../specs/2026-09-26-nextjs-agent-prompts.md)。
+状态：进行中（任务 1、2 已完成；任务 3–7 未开始）。依赖 P04。依据：[提示词与评测详案](../specs/2026-09-26-nextjs-agent-prompts.md)。
+
+## 完成记录（分批）
+
+### 已完成：任务 1 冻结旧稿与任务 2 模块化候选稿
+
+- **落地**：`lib/ai/prompts/` 五个模块 ——
+  `core.ts`（候选稿正文，plan §3 逐字）、`intent.ts`（六种意图约束 + 程序侧识别）、
+  `examples.ts`（最多两条演示示例）、`assemble.ts`（装配与分段）、
+  `version.ts` + `registry.ts`（版本与内容哈希）、`legacy.ts`（旧稿冻结）。
+- **旧稿逐字节冻结**：浮窗与润色旧稿的正文已用脚本与实现比对，
+  SHA-256 完全相同（`929d5f7e…`）。基线不会随微服务退役而漂移。
+- **版本可归因**：登记 `contentHash`，加载期重新哈希比对；改文本忘改哈希会立即
+  抛错。`legacy` 的哈希由真实快照算出而非硬编码。这让「回滚提示词」可验证。
+- **意图由程序决定**：模型不能自选 intent（否则等于把约束的选择权交给被约束者）；
+  UI 上下文优先于消息关键词；无法判定返回 `null` 走保守路径。
+- **材料分段隔离**：`resume_facts` / `job_description` / `user_preference` /
+  `agent_inference` / `evidence` 各自带 sourceId 与「只是引用材料」声明 ——
+  这是 Q03（JD 技术不得进入用户技能）与 Q11（材料含忽略指令）的结构性防线。
+- **实测发现并修复**：第一版意图识别用**前缀匹配**判「回答上一轮追问」，
+  把「是的，帮我改一下」判成 `fact_intake`（用户明确要求改写却被套上
+  「只追问、不改正文」的约束），且「是否…」疑问句与「是……」犹豫都被误判。
+  改为整句匹配 + 排除省略号，补 3 条回归测试。
+- **验证**：`tests/unit/ai-prompt-contract.test.ts` 47 例。
+- **决策笔记**：`docs/notes/implemented/architecture/2026-09-26-modular-prompts-and-versioning.md`。
+
+### 已完成：任务 4 的润色与 Helpers 迁移
+
+- **落地**：`lib/ai/capabilities/{polish,polish-prompt,polish-runner}.ts` 与
+  `{resume-helpers,resume-helper-runner}.ts`；`lib/ai/model-config-from-request.ts`。
+- **三条路径不再转发**：`app/api/agent/rich-text/polish` 与
+  `app/api/agent/resume/helpers/[helperId]` 中的 `signAgentToken` /
+  `createAgentClient` **已完全移除**（只剩注释里的历史说明）。
+  响应形状保持不变，前端无需改动。
+- **纯逻辑逐字移植**：这些函数有经验性细节，重写极易丢失且丢失后不报错、
+  只让结果默默变差 —— `polishedBlocks` 数量不符时整体拒绝（不按下标硬套）、
+  保留「短标签 + 冒号 + 粗体」结构的 marks、两个 helper 的 target/mode 交叉校验。
+  迁移正确性的判据是**行为一致**：测试用微服务侧同一份 fixture 验证同一预期。
+- **模型配置随请求传、不落库**（部分覆盖任务 5）：浏览器从 localStorage 取
+  baseUrl/modelName、sessionStorage 取 key；缺配置返回 `model_not_configured`
+  并提示连接模型，**不回退已退役的服务**。
+- **失败按来源分流**：上游问题（模型返回不符约定 / 调用失败）报 502，
+  校验与地址策略保持 4xx —— 把「模型没按 schema 输出」说成用户参数错误会误导排查。
+- **建议超限不算失败**（helper 特有）：截断并如实回报 `truncated`，
+  而不是让用户「什么都没得到」。
+- **验证**：`ai-polish-migration` 26 例 + `ai-polish-runner` 12 例 +
+  `agent-rich-text-polish-route` 15 例 + `ai-resume-helper-migration` 32 例 +
+  `agent-resume-helper-route` 17 例。
+- **决策笔记**：`docs/notes/implemented/architecture/2026-09-26-polish-migrated-to-web.md`
+  （含 helpers 追加章节）。
+
+### 未完成（本切片剩余）
+
+任务 3（可用建议的行为红→绿：诊断 / 润色 / 目标岗位 / 缺事实 / 拒绝后继续）、
+任务 5 的其余部分（浮窗与诊断共用同一模型配置来源；当前三条路径已统一「随请求传」，
+但浮窗仍在用旧微服务入口）、任务 6（**真实对照评测** —— 需显式可用评测配置，
+属 plan 停止条件，缺失时不假造分数）、任务 7（能力覆盖与发布）。
+
+任务 6 的离线部分（契约/越权/「无保存却称已保存」校验）可以先做；
+真实模型对照（16×2×3=96 次）需评测凭据，未跑前标 `not_run`。
+
+**已知上限**：微服务里那份 polish/helpers 实现暂时保留（等 P07 归档），
+因此短期内同一逻辑有两份；Web 侧未重建 Redis 缓存（有意为之 ——
+缓存属于待退役组件链，不应在新路径重建）。
 
 ## 文件范围
 

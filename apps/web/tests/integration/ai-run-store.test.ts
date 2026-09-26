@@ -51,8 +51,15 @@ afterAll(async () => {
 let counter = 0;
 const nextId = (prefix: string) => `${prefix}-${(counter += 1)}`;
 
-async function newRun(overrides: { resumeId?: string; userId?: string } = {}) {
-  const { userId, resumeId } = await seedResume(testDb, overrides);
+/*
+ * 起一个新 Run。
+ *
+ * 刻意**不**接受 `{resumeId, userId}` 覆盖：`seedResume` 自己生成这两个 id
+ * 并返回它们，传入的覆盖值不会生效（之前这里多了一个从不生效的 overrides 参数，
+ * 类型上还与 seedResume 的签名冲突）。
+ */
+async function newRun() {
+  const { userId, resumeId } = await seedResume(testDb);
   const started = await startRun({
     id: nextId("run"),
     userId,
