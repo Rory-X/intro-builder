@@ -64,20 +64,69 @@
 - **撤销失败说明每条都明确「你的内容未受影响」**。
 - **验证**：`tests/unit/ai-version-history.test.ts` 25 例。
 - **笔记**：`docs/notes/implemented/architecture/2026-09-26-version-history-grouping.md`。
-- **未完成（重要）**：读取层与 UI **未接线**；**条件 undo 链路未接通**
-  （`inverse` 仍无消费者，提交层还没有「按 undoOf 构造反向命令」的入口）。
+- **后续已补齐**（见下面「条件撤销链路与读取层接线」）。
+
+### 已完成：任务 5 的条件撤销链路与读取层接线
+
+- **落地**：`lib/resume-mutations/undo.ts`（`buildUndoCommand`）+
+  `CommitOutcome` 增加 `inverse` 字段。
+- **`inverse` 此前从未被消费** —— 注释写着「是条件撤销的依据」，
+  但全仓库没有消费者；`CommitPrincipal.undoOf` 与 `source: "undo"` 从未被填入。
+- **撤销语义按 plan 验收钉死**：「修改 A 后补技能，再撤销 A，技能仍保留」。
+  用 inverse 还原 **A 改过的那些字段**，不是回退整版
+  （后者是「恢复整版」的语义，走 `commitResumeRestore`）。
+- **三条静默失败被拦住**：幂等键与被撤销命令相同（会被识别为重放，
+  撤销「成功」但内容没变）、空 inverse、操作 id 复用。
+- **读取层补齐三类缺口**：① Drizzle schema 缺 6 列（迁移 0014 已加、提交层已在写，
+  但 schema 未声明 → 查询取不出来）；② `source` 类型只声明 3 种而实际写 9 种
+  （导致 AI 润色与撤销被显示成「手动保存」）；③ 回执不带 `mutationId`。
+- **验证**：`undo-command.test.ts` 15 例、`resume-version-actions.test.ts`（更新）、
+  集成 72 例。
+
+### 已完成：任务 6 刷新与错误
+
+- **落地**：`lib/ai-client/workspace-recovery.ts`。
+- **去重归 reducer**（它已有两层机制），恢复层只保证纯函数 ——
+  两处各实现一份会得出矛盾结论。
+- **服务端终态无条件优先于本地 interrupted**（我第一版写反了，测试抓出）：
+  事件流里的 `run.interrupted` 是**某次 attempt** 被中断，
+  而 Run 之后可能被别的 attempt 完成。若让本地覆盖，会虚报失败。
+- **「未确认保存」需三条件同时成立**（工具有成功 + 有提案 + 无回执）：
+  要求「有提案」是刻意的 —— 诊断类任务只读、本就不该有回执，
+  算成未保存会造成假警报。
+- **四类错误各有可操作文案**（plan 点名）：无终态 EOF、缺模型 key、
+  未确认保存、找不到条目。
+- **验证**：`ai-workspace-recovery.test.ts` 24 例。
+
+### 已完成：任务 2/3 的 UI 接线
+
+- **落地**：`components/agent/task-progress.tsx`（16 例 RTL）、
+  `resume-change-set-card.tsx`（21 例 RTL）—— 正是「文件范围」里拟新增的两个。
+- **任务卡组件不重新判断状态**：「已保存」标记只读 `hasPersistedChanges`，
+  不由 `status` 推断 —— 否则投影层的「完成 ≠ 保存」约束在 UI 层失效。
+- **折叠状态不因步骤数变化重置**（plan 要求「用户滚走时不强制拉回底部」）。
+- **提案卡踩到一个真实坑**：第一版用投影的 `card.canApply` 控制应用按钮，
+  导致**用户勾选后按钮仍禁用** —— 把「持久化决策状态」与「本地勾选」混为一谈。
+  改判据为「提案非终态 + 本地选中非空」。
+- **冲突组折叠时仍可见**（用投影的 `visibleGroups`，不自己写过滤）。
 
 ### 未完成（本切片剩余）
 
-任务 1（PoC 产品回归与人工核对）、任务 6（刷新与错误：恢复后还原已完成工具、
-已应用/已拒绝建议、等待问题；重放不重复 toast/写入；四类错误文案）、
-任务 7（RTL 验证与人工冒烟）。
+任务 1（PoC 产品回归与人工核对）、任务 7 的人工冒烟部分
+（浮窗/停靠、移动端、暗色、键盘、预览定位、冲突、撤销）。
 
-**接线的关键路径**：四个投影模块（task-projection / change-set-card /
-structured-diff / version-history）都已完成但**都未接到 UI**。
-下一步应当先把它们接进 `floating-agent-chat.tsx` 与
-`version-history-popover.tsx`，并补上读取层字段（runId/changeSetId 等），
-再补条件 undo 的提交路径。
+**接线的关键路径（已前进但未完成）**：四个投影模块现在**都有了消费方**
+（两个组件 + 恢复投影），但：
+
+- **两个组件都尚未接入 `floating-agent-chat.tsx`** —— 组件可用但没有真实调用方，
+  因此「在实际会话中看到任务卡与提案卡」尚未完成。
+- **`onLocate` 的实际定位行为未实现**：组件会回调
+  `{ section, itemId, field }`，但调用方如何滚动/高亮到正文对应位置还没有代码，
+  需要编辑器侧提供「按稳定标识聚焦」的能力。
+- **`version-history-popover.tsx` 尚未消费 `groupVersionsByTask`** ——
+  「按任务聚合」在界面上还看不到。
+- **撤销的提交入口未接线**：`buildUndoCommand` 可用，但没有路由或 action
+  把「版本记录 → 撤销提交」串起来，也没有 UI 的撤销按钮与二次确认。
 
 ## 文件范围
 
