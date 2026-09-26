@@ -73,12 +73,26 @@
   全部失败。因此**取消一个 Run 不阻止随后批准它遗留的提案**，这是有意取舍。
 - **决策笔记**：`docs/notes/implemented/architecture/2026-09-26-approval-is-not-a-save.md`。
 
+### 已完成：任务 2 的 provider 装配层
+
+- **落地**：`lib/ai/provider.ts`（`createProviderStreamer`）。
+- **三条边界**：校验在**构造 provider 之前**（不通过则不构造客户端，返回
+  `{ ok: false, code }` 而非抛异常）；错误脱敏（apiKey 与完整 baseUrl 不入日志/响应）；
+  `abortSignal` 与 `maxSteps` 真的透传（绑定为 `stopWhen: stepCountIs(...)`）。
+- **两条设计约束**：构造 `streamModel` **不等于**开始一次模型调用（调用只发生在
+  消费流时 —— 这是「打开面板就烧额度」的结构性防线）；本层**不做**协议解释，
+  SDK 片段原样透出，翻译只由 `stream-adapter` 负责。
+- **验证**：`tests/unit/ai-provider.test.ts` 10 例（红→绿），含 12 种非法输入
+  在创建 provider 前被拒、拒绝结果不含 apiKey、透传与脱敏。
+- **决策笔记**：既有 `2026-09-26-durable-ai-runs-and-provider-policy.md` 原地补第 6 节，
+  并在「实测发现」补第 7 条（`as never` 污染 SDK 泛型，报错点在 `stopWhen`）。
+
 ### 未完成（本切片剩余）
 
-任务 2 的 provider 装配（真实 AI SDK 接线）、任务 3 的工具**实现体**移植、
-任务 6 恢复与取消**路由**（continue）、任务 8 验证与灰度。
-存储、能力矩阵、事件层、流适配器、查询/取消/决策路由均已就绪，
-但 `POST /api/ai/runs` 启动路由与工具实现尚未落地，**新链路未切流**。
+任务 3 的工具**实现体**移植（把 33 个工具从旧路由搬迁到 `lib/ai/tools/` 并接上提交）、
+任务 6 的 `POST /api/ai/runs` 启动路由与 continue 路由、任务 8 验证与灰度。
+存储、能力矩阵、事件层、流适配器、provider 装配、查询/取消/决策路由均已就绪，
+但**启动路由与工具实现尚未落地，新链路未切流**。
 
 ### 实测发现（详见决策笔记）
 
