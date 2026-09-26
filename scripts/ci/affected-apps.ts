@@ -4,7 +4,7 @@
  * Why this exists: `paths:` triggers cannot express "this root file matters to
  * app X but not app Y". `pnpm-lock.yaml`, `package.json` and
  * `pnpm-workspace.yaml` are monorepo-wide, so any edit to them matched all
- * three deploy workflows — even when the edit could not change a given app's
+ * the deploy workflows — even when the edit could not change a given app's
  * artifact. Real examples from `main` history:
  *
  *   - 971fc3f3c added root `scripts` entries; rebuilt Agent and PartyKit.
@@ -22,9 +22,15 @@
 import { execFileSync } from "node:child_process";
 import { appendFileSync } from "node:fs";
 
+/**
+ * 需要部署的 app 维度。
+ *
+ * `agent` 维度已移除（P07 任务 4）：旧微服务的源码与部署流水线都已归档，
+ * 它**不再有部署目标**。留着一个永远为 false 的维度会让 `emit` 输出
+ * 一个没人消费的 `agent=...`，并让「恰好三个 app」这类断言名不副实。
+ */
 export type AffectedApps = {
   web: boolean;
-  agent: boolean;
   partykit: boolean;
 };
 
@@ -41,8 +47,8 @@ export type AffectedAppsInput = {
   lockfile?: FilePair;
 };
 
-const ALL: AffectedApps = { web: true, agent: true, partykit: true };
-const NONE: AffectedApps = { web: false, agent: false, partykit: false };
+const ALL: AffectedApps = { web: true, partykit: true };
+const NONE: AffectedApps = { web: false, partykit: false };
 
 /** Root files that are handled explicitly rather than by prefix. */
 const HANDLED_ROOT_FILES = new Set([
@@ -69,11 +75,9 @@ function appsForWorkspaceMember(member: string): (keyof AffectedApps)[] | null {
   switch (member) {
     case "web":
       return ["web"];
-    case "agent":
-      return ["agent"];
     case "partykit":
       return ["partykit"];
-    // Web and PartyKit both import @intro-builder/shared; Agent does not.
+    // Web and PartyKit both import @intro-builder/shared.
     case "shared":
       return ["web", "partykit"];
     case "config":
@@ -107,6 +111,15 @@ const INERT_PREFIXES = [
   "lessons/",
   ".agents/",
   ".playwright-mcp/",
+  /*
+   * **归档是只读历史快照**（P07 任务 4），不在任何工作区成员里，
+   * 也不参与构建 —— 改动它不可能改变任何产物。
+   *
+   * 不列它会踩 failSafe：那会把「加一条归档笔记」判成未知变更，
+   * 于是**三个 app 全部触发生产部署**。实测确认过这个行为
+   * （archive 下的任意路径 → {web:true, agent:true, partykit:true}）。
+   */
+  "archive/",
   // CI configuration cannot change a deployed artifact. The two deploy
   // workflows are matched by filename earlier in the loop, so putting the
   // whole `.github/` tree here does not make them inert.
@@ -209,8 +222,6 @@ function appsForImporter(name: string): (keyof AffectedApps)[] {
   switch (name) {
     case "apps/web":
       return ["web"];
-    case "apps/agent":
-      return ["agent"];
     case "apps/partykit":
       return ["partykit"];
     // packages/shared is imported by both Web and PartyKit.
@@ -240,12 +251,19 @@ export function resolveAffectedApps(input: AffectedAppsInput): AffectedApps {
       result.web = true;
       continue;
     }
-    if (path.startsWith("apps/agent/")) {
-      result.agent = true;
-      continue;
-    }
     if (path.startsWith("apps/partykit/")) {
       result.partykit = true;
+      continue;
+    }
+    /*
+     * `apps/agent/` 是**已退役**的旧服务（P07 任务 4 归档）。
+     *
+     * 必须显式拦下它，否则这些路径会掉进下面的 failSafe ——
+     * 而归档那个 PR 的 diff **恰好全是这些删除路径**，
+     * 于是「把旧服务归档」这件事本身会触发 web 与 partykit 的
+     * 生产部署。那既浪费又危险（为一次纯粹的删除而重新发布两个服务）。
+     */
+    if (path.startsWith("apps/agent/")) {
       continue;
     }
     // PartyKit and Web both import @intro-builder/shared; Agent does not.
@@ -271,8 +289,7 @@ export function resolveAffectedApps(input: AffectedAppsInput): AffectedApps {
     }
     // A workflow change redeploys only the service that workflow ships.
     if (path.startsWith(".github/workflows/")) {
-      if (path.endsWith("deploy-agent.yml")) result.agent = true;
-      else if (path.endsWith("deploy-partykit.yml")) result.partykit = true;
+      if (path.endsWith("deploy-partykit.yml")) result.partykit = true;
       continue;
     }
     if (HANDLED_ROOT_FILES.has(path)) continue;
@@ -379,7 +396,7 @@ function emit(affected: AffectedApps, writeGitHubOutput: boolean, reason: string
   if (writeGitHubOutput && outputFile) {
     appendFileSync(
       outputFile,
-      `web=${affected.web}\nagent=${affected.agent}\npartykit=${affected.partykit}\n`,
+      `web=${affected.web}\npartykit=${affected.partykit}\n`,
     );
   }
 
@@ -391,7 +408,6 @@ function emit(affected: AffectedApps, writeGitHubOutput: boolean, reason: string
         "| App | Deploy |",
         "| --- | --- |",
         `| web | ${affected.web ? "yes" : "skip"} |`,
-        `| agent | ${affected.agent ? "yes" : "skip"} |`,
         `| partykit | ${affected.partykit ? "yes" : "skip"} |`,
         "",
         `_${reason}_`,

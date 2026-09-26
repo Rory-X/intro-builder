@@ -2,6 +2,14 @@ packages:
   - "."
   - "apps/*"
   - "packages/*"
+# 归档目录**不是** workspace 成员。
+#
+# 它是只读历史快照（P07 任务 4）：若被当成 workspace 包，它的依赖会被安装、
+# 脚本会被 `pnpm -r` 跑到 —— 而它包含的是**已退役的部署配置与旧服务代码**，
+# 那些脚本不再是可执行的承诺。`pnpm -r list` 也不该列出它。
+#
+# `apps/*` 与 `packages/*` 都不匹配 `archive/`，因此这里无需额外排除；
+# 本注释是给「把 archive 挪进 apps/ 或 packages/ 就会静默复活」这个陷阱留的。
 onlyBuiltDependencies:
   - esbuild
 ignoredBuiltDependencies:

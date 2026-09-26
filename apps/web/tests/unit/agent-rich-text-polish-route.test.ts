@@ -1,3 +1,7 @@
+import { readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
+
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { Mock } from "vitest";
 
@@ -19,10 +23,6 @@ import type { Mock } from "vitest";
 
 vi.mock("@/lib/auth-helpers", () => ({ currentUserId: vi.fn() }));
 vi.mock("@/lib/agent/token", () => ({ signAgentToken: vi.fn() }));
-vi.mock("@/lib/agent/client", () => ({
-  AgentClientError: class AgentClientError extends Error {},
-  createAgentClient: vi.fn(),
-}));
 vi.mock("@/lib/ai/capabilities/polish-runner", () => ({ runPolish: vi.fn() }));
 vi.mock("@/db", () => ({
   db: {
@@ -36,10 +36,22 @@ vi.mock("@/db", () => ({
 
 import { currentUserId } from "@/lib/auth-helpers";
 import { signAgentToken } from "@/lib/agent/token";
-import { createAgentClient } from "@/lib/agent/client";
 import { runPolish } from "@/lib/ai/capabilities/polish-runner";
 import { db } from "@/db";
 import { POST } from "@/app/api/agent/rich-text/polish/route";
+
+/**
+ * 读取被测路由的**源码文本**。
+ *
+ * 用途：断言它不再引用旧微服务桥（`lib/agent/client` 等）。
+ * 旧客户端已在 P07 任务 4 归档移除，因此「运行时没被调用」这条断言
+ * 已无对象可断言 —— 模块不存在就不可能被调用。源码层核实更强：
+ * 连「悄悄把它 import 回来」也能拦下。
+ */
+function readRouteSource(): string {
+  const here = dirname(fileURLToPath(import.meta.url));
+  return readFileSync(join(here, "..", "..", "app/api/agent/rich-text/polish/route.ts"), "utf8");
+}
 
 const VALID_BODY = {
   resumeId: "resume-1",
@@ -121,7 +133,13 @@ describe("POST /api/agent/rich-text/polish", () => {
 
   it("**不再**创建 Agent 客户端", async () => {
     await post();
-    expect(createAgentClient).not.toHaveBeenCalled();
+    /*
+     * 旧客户端（`lib/agent/client.ts`）**已被归档移除**（P07 任务 4），
+     * 因此「运行时没有被调用」这条断言已无对象可断言 —— 模块不存在，
+     * 不可能被调用。改为**源码层核实**：这条路由不再引用旧桥。
+     * 这比运行时断言更强：它连「悄悄把它 import 回来」也能拦下。
+     */
+    expect(readRouteSource()).not.toMatch(/lib\/agent\/(client|token)/);
   });
 
   it("成功时返回与旧实现一致的响应形状（前端无需改动）", async () => {
@@ -157,7 +175,13 @@ describe("POST /api/agent/rich-text/polish", () => {
     const body = (await response.json()) as { code?: string };
     expect(body.code).toBe("model_not_configured");
     expect(runPolish).not.toHaveBeenCalled();
-    expect(createAgentClient).not.toHaveBeenCalled();
+    /*
+     * 旧客户端（`lib/agent/client.ts`）**已被归档移除**（P07 任务 4），
+     * 因此「运行时没有被调用」这条断言已无对象可断言 —— 模块不存在，
+     * 不可能被调用。改为**源码层核实**：这条路由不再引用旧桥。
+     * 这比运行时断言更强：它连「悄悄把它 import 回来」也能拦下。
+     */
+    expect(readRouteSource()).not.toMatch(/lib\/agent\/(client|token)/);
   });
 
   it("模型配置不完整（缺 key）同样报 model_not_configured", async () => {

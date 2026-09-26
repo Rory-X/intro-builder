@@ -78,6 +78,11 @@ const SOURCES: Array<{ from: string; to: string; reason: string }> = [
     reason: "微服务 HTTP 客户端（签发 token 后转发）",
   },
   {
+    from: "apps/web/tests/unit/agent-client.test.ts",
+    to: "source/apps/web/tests/unit/agent-client.test.ts",
+    reason: "旧微服务客户端的单测（随 client.ts 一起归档，否则留下测不存在模块的孤儿测试）",
+  },
+  {
     from: "apps/web/lib/agent/token.ts",
     to: "source/apps/web/lib/agent/token.ts",
     reason: "Agent JWT 签发（旧鉴权桥）",
@@ -96,6 +101,16 @@ const SOURCES: Array<{ from: string; to: string; reason: string }> = [
     from: "apps/web/lib/agent/session-store.ts",
     to: "source/apps/web/lib/agent/session-store.ts",
     reason: "会话存储（旧会话模型；新实现改用 ai_run 的 sessionId）",
+  },
+  {
+    from: "apps/web/components/agent/agent-session-selector.tsx",
+    to: "source/apps/web/components/agent/agent-session-selector.tsx",
+    reason: "旧会话选择器（唯一消费者是已退役的 /api/agent/sessions，自身从未被渲染）",
+  },
+  {
+    from: "apps/web/tests/unit/agent-session-store.test.ts",
+    to: "source/apps/web/tests/unit/agent-session-store.test.ts",
+    reason: "旧会话存储的归约逻辑测试（随 store 一起归档，否则会变成孤儿测试）",
   },
 ];
 

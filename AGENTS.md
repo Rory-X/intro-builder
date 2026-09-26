@@ -17,7 +17,8 @@ This version has breaking changes — APIs, conventions, and file structure may 
   A4 PDF / 公开只读链接 `/r/[slug]` / 协作审阅。
 - **当前阶段**：v0.5 编辑器内新手引导（待评审）。主线已从三套内置模板扩展到
   模板库、上传模板 Schema v2、协作批注、文档站、邮箱验证码登录，以及基于
-  AG-UI / assistant-ui 的 Agent 面板、长循环、流式对话、版本 Diff 与 Undo/Redo。
+  Next.js + AI SDK 的 AI 助手浮窗、长循环、流式对话、版本 Diff 与 Undo/Redo
+  （独立的 Agent 微服务已退役归档，执行收敛到 Next.js 单一路线）。
   v0.4.2 已恢复安全、自动化和文档基线；v0.5 采用 BYOK-first「边做边学」路径，
   直接在真实编辑器中介绍编辑、预览、排版安全、AI 辅助与 Agent，不再建设独立
   的三步创建页。后续产品切片需另行筛选，不与依赖 major 升级混做。
@@ -35,19 +36,19 @@ This version has breaking changes — APIs, conventions, and file structure may 
 | 维度 | 选型 | 备注 |
 |---|---|---|
 | 框架 | Next.js **16.2** App Router | 见文件顶部红字。`middleware.ts` 现在叫 `proxy.ts`。 |
-| 运行时 | React **19.2**，CI 使用 Node **22**、pnpm **10** | pnpm workspace 覆盖根、三个 app 与共享 packages。 |
+| 运行时 | React **19.2**，CI 使用 Node **22**、pnpm **10** | pnpm workspace 覆盖根、两个 app 与共享 packages（已退役的旧服务在 `archive/`，不是成员）。 |
 | 鉴权 | Auth.js v5 + Resend 魔法链接 | `lib/auth.ts`；14 天数据库会话。 |
 | 数据库 | Drizzle ORM + Postgres | `db/schema.ts`。`*.neon.tech` 走 Neon HTTP，其它走 `postgres.js` TCP。选择器在 `db/connection.ts`。 |
 | 表单 | React Hook Form + Zod | `packages/shared/src/schemas/resume-schema.ts` 是简历内容的唯一契约。 |
 | 富文本 | TipTap v3 + 扩展 | 存储是 TipTap JSON；只读渲染在 `components/preview/rich-text-renderer.tsx`；Agent 润色要走 JSON ↔ HTML 的既有转换工具。 |
 | 拖拽 | `@atlaskit/pragmatic-drag-and-drop` | 分区与条目排序。 |
 | PDF | Puppeteer + `@sparticuz/chromium` | 与预览复用同一 DOM，见第 8 节。 |
-| Agent | AG-UI + assistant-ui + `apps/agent` | 前端在 `components/agent/` 与 `app/api/agent/*`，服务端包在 `apps/agent/`。 |
+| Agent | Next.js + Vercel AI SDK | 前端在 `components/agent/` 与 `app/api/agent/*`，执行在 `lib/ai/` 与 `app/api/ai/*`（统一 Run）。旧微服务已归档，见 `archive/agent-microservice/`。 |
 | 协作 | Yjs + PartyKit | 前端在 `components/collab/`，边缘服务在 `apps/partykit/`。 |
 | 文档 | Fumadocs MDX | `app/docs`、`lib/source.ts`。 |
 | 存储 | Vercel Blob | 仅头像；`app/api/upload-photo/route.ts`。 |
 | 样式 | Tailwind v4 + shadcn 原语 | `components/ui/`；暗色模式走 `next-themes`。 |
-| 测试 | Vitest + jsdom + Testing Library | `pnpm test` 递归执行 Web、Agent 与 PartyKit 测试。 |
+| 测试 | Vitest + jsdom + Testing Library | `pnpm test` 递归执行 Web 与 PartyKit 测试（归档目录排除在外）。 |
 
 ## 3. 仓库地图（只列 Agent 真正要看的）
 
@@ -59,7 +60,7 @@ apps/
       (auth)/         # /login、/verify-request（魔法链接）
       (app)/          # 登录后：dashboard、templates、settings、/resume/[id]/edit
       api/pdf/[id]/   # Puppeteer PDF 路由（复用 /resume/[id]/preview）
-      api/agent/      # 前端到 Agent 服务的会话、消息、runs 与富文本润色桥接
+      api/agent/      # 浮窗会话、模型列表、富文本润色与简历助手；api/ai/ 是统一 Run 入口
       api/collab/     # 协作邀请、加入、owner token、session 状态
       api/import-resume/ # PDF / Word 简历导入
       api/upload-photo/  # Vercel Blob 上传
@@ -76,7 +77,7 @@ apps/
       ui/             # shadcn 原语 —— 不要手改，必要时用 shadcn CLI 重新生成
     lib/              # Web 专用工具
       auth.ts         # NextAuth v5 实例与 handlers
-      agent/          # AG-UI 消息契约、run adapter、chat context、token
+      agent/          # 浮窗会话存储、模型设置、操作应用、surface 开关（旧 AG-UI 桥已归档）
       templates/      # registry、uploaded HTML slot 渲染、共享原语
       style-presets.ts # 密度 / 行高 / 页边距预设
       client/         # 仅客户端工具（导出预览图等）
@@ -86,9 +87,6 @@ apps/
     db/               # Drizzle schema + migrations + 驱动选择器
     proxy.ts          # 鉴权拦截 /dashboard、/resume/*/edit、/resume/*/preview
     tests/unit/       # 每个单元一个文件；文件名镜像源文件路径
-  agent/              # Agent 微服务
-    src/              # Agent 服务代码（http、auth、redis、agent-messages）
-    Dockerfile        # Docker 部署
   partykit/           # WebSocket 协同服务
     src/              # PartyKit server
 packages/
@@ -102,7 +100,6 @@ docs/
   superpowers/        # specs/ 与 plans/ —— 交付流程产物（一次交付的设计与步骤）
   notes/              # 决策笔记 —— 承重决策的归属地，见 §4.6
   notes-templates/    # 笔记模板（放在 notes 根之外，否则树校验会拦）
-  agent/              # Agent 架构文档
   schema-v2/          # 上传模板的 slot 协议与数据契约
 scripts/              # monorepo 脚本
   db/                 # 数据库迁移、检查
@@ -238,21 +235,20 @@ schema-v2 模板的产出工具。
 
 声称完成或开 PR 之前，本地必须全绿。CI（`.github/workflows/ci.yml`）跑
 lint、typecheck、unit tests、**以及决策笔记门禁**；本地还要跑生产构建，
-因为构建能捕获 RSC / 路由错误（CI 目前不跑 build）。Agent 相关改动还会触发
-`.github/workflows/deploy-agent.yml`，它会跑 `pnpm verify` 和
-`pnpm build:agent`。本地通过是**必要条件，不是充分条件**。
+因为构建能捕获 RSC / 路由错误（CI 目前不跑 build）。加上
+`.github/workflows/deploy-partykit.yml` 的协同服务部署闸门。
+本地通过是**必要条件，不是充分条件**。
 
 ```bash
-pnpm test             # 递归执行 Web、Agent 与 PartyKit 的 vitest
-pnpm typecheck        # 递归 tsc --noEmit（四个包）
+pnpm test             # 递归执行 Web 与 PartyKit 的 vitest
+pnpm typecheck        # 递归 tsc --noEmit（web / partykit / shared / config）
 pnpm lint             # eslint
 pnpm build            # 生产构建（捕获 RSC / 路由错误）
 pnpm notes:verify     # 决策笔记门禁（§4.6）
 ```
 
 > **命令注意**：不要用 `pnpm tsc --noEmit`——根 `package.json` 没有 `tsc`
-> script，正确入口是 `pnpm typecheck`。同理 Agent 构建是 `pnpm build:agent`
-> （不是 `agent:build`）。`tsconfig` 的 `exclude` 含 `tests`，**测试文件不参与
+> script，正确入口是 `pnpm typecheck`。`tsconfig` 的 `exclude` 含 `tests`，**测试文件不参与
 > 类型检查**，测试里的类型错误只能靠 Vitest 运行时暴露。
 
 > **运行时版本**：CI 用 **Node 22 + pnpm 10**。更新的本地 Node（如 26）曾让
@@ -263,8 +259,8 @@ pnpm notes:verify     # 决策笔记门禁（§4.6）
 任何 UI / 数据流改动还要补一次手工冒烟：
 
 - `pnpm dev` 走一遍你动过的流程。
-- Agent 改动：根应用 `pnpm dev` + Agent 服务 `pnpm agent:dev`，至少走一遍
-  面板打开、发送消息、工具卡展示或对应富文本润色流程。
+- AI 助手改动：`pnpm dev` 走一遍浮窗打开、发送消息、工具卡展示或富文本润色流程。
+  （不再需要单独启动 Agent 服务 —— 执行已在 Next.js 进程内。）
 - 协作改动：同时跑 Next 与 PartyKit dev，确认邀请链接、在线状态、批注同步。
 - PDF / 预览改动：进 `/resume/<id>/edit` 点「下载 PDF」，对比 PDF 与实时
   预览是否一致。
@@ -322,9 +318,10 @@ pnpm notes:verify     # 决策笔记门禁（§4.6）
   `packages/shared/src/types/tiptap.ts` 和
   `packages/shared/src/utils/migrate-content.ts`。只有模板渲染器
   应该产出 HTML。
-- **Agent 消息不是普通聊天 JSON**：前端 AG-UI 适配层在 `lib/agent/` 与
-  `components/agent/`，服务端契约在 `apps/agent/src/`。改流式、工具调用或缓存
-  前先看 `docs/agent/` 对应文档和已有测试。
+- **Agent 消息不是普通聊天 JSON**：前端适配层在 `lib/agent/` 与
+  `components/agent/`，服务端契约在 `lib/ai/`（统一 Run 的事件模型）。
+  改流式、工具调用或缓存前先看 `docs/notes/` 里 AI 相关的决策笔记与已有测试。
+  旧微服务的契约在 `archive/agent-microservice/2026-09-26/source/`（只读考古）。
 - **上传模板走 HTML slot 协议**：入口在 `lib/templates/uploaded/*` 与
   `docs/schema-v2/*`。不要把上传模板退回内置 React 模板思路。
 - **头像上传是公开可读的**：因为共享简历要直接展示。要改成私有前必须
@@ -357,8 +354,8 @@ pnpm notes:verify     # 决策笔记门禁（§4.6）
 | 实时预览卡顿 | `components/preview/live-preview.tsx`（用 `useWatch`）—— **不要**改成 prop 传 content |
 | Autosave / 「保存失败」 | `hooks/use-resume-autosave.ts`、`lib/format-save-error.ts`、`app/(app)/resume/[id]/edit/actions.ts` |
 | Dashboard | `app/(app)/dashboard/page.tsx` + `actions.ts`（`duplicateResume` 等） |
-| Agent 面板 / 流式 / 工具调用 | `components/agent/*` + `lib/agent/*` + `app/api/agent/*` + `apps/agent/src/*` |
-| Agent 富文本润色 | `app/api/agent/rich-text/polish/route.ts` + `apps/agent/src/rich-text-polish.ts` + `components/editor/rich-text-editor.tsx` |
+| AI 助手 / 流式 / 工具调用 | `components/agent/*` + `lib/ai/*` + `lib/ai-client/*` + `app/api/ai/*`（统一 Run） |
+| AI 富文本润色 | `app/api/agent/rich-text/polish/route.ts` + `lib/ai/capabilities/polish*.ts` + `components/editor/rich-text-editor.tsx` |
 | 协作批注 / 导师链接 | `components/collab/*` + `hooks/use-collab-*` + `app/api/collab/*` + `partykit/src/*` |
 | 鉴权跳转 / 受保护路径 | `proxy.ts`、`lib/auth.ts`、`app/(auth)/login/*` |
 | PDF | `app/api/pdf/[id]/route.tsx` + `lib/pdf-route-helpers.ts` + `/resume/[id]/preview` 页 |

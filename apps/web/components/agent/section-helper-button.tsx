@@ -8,9 +8,14 @@ import {
 } from "@/components/agent/resume-diagnose-button";
 import { ResumeHelperDialog, type HelperState } from "@/components/agent/resume-helper-dialog";
 import { Button } from "@/components/ui/button";
-import type { ResumeHelperRequest } from "@/lib/agent/client";
+import type { ResumeHelperSection } from "@/lib/ai/capabilities/resume-helpers";
 
-type Section = Extract<ResumeHelperRequest["target"], { kind: "section" }>["section"];
+/*
+ * 直接用具名类型，而不是 `Extract<ResumeHelperRequest["target"], …>`。
+ * 后者要经过旧桥的 import，而旧桥正在归档；能力模块已经把这一节
+ * 单独抽成了具名联合类型。
+ */
+type Section = ResumeHelperSection;
 
 export type SectionHelperButtonProps = {
   resumeId: string;
