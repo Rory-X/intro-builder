@@ -117,6 +117,31 @@
   那比诚实列出更糟）。全树扫描而非只扫清单文件。
   笔记：`docs/notes/implemented/process/2026-09-26-retirement-audit-ratchet.md`。
 
+### 已完成：浮窗接入新路径（分流而不是替换）
+
+- **做法**：开关开启且调用方提供 `runBridge` 时走新路径，否则旧路径
+  （**行为完全不变**）。既有 50 例旧路径测试**一行未改即通过** ——
+  这是「旧路径未受影响」的可验证证据；回滚只需关开关。
+- **为什么不直接替换 `fetch` 目标**：既有 26 处 mock 旧路由的测试是
+  **旧路径的守护者**，直接替换会让它们改道去验证新路径，
+  于是旧路径失去覆盖（而它仍在服务未开开关的用户）。
+- **最容易做错的一处**：新路径**刻意不调用** `applyStreamOperations` ——
+  旧路径由**客户端**写库、新路径由**服务端**写库，两者都做就是**双重写库**
+  （两次提交、两条留痕、并发下 revision 互相顶掉）。服务端写完后由
+  `runBridge.applyRemoteCommit` 同步（判据来自 `commit-sync`：
+  有本地编辑时只推进基准、不覆盖表单）。
+- **`runBridge` 是可选 props**：新路径必需的三样东西组件都拿不到
+  （CAS 基准、dirty 状态、服务端内容读取/表单同步都在编辑器一侧）。
+- **另修一个 flaky 的真正根因**：`editor-client-version-history` 的 Esc 用例
+  全量跑时偶发失败、单独跑必过。上一轮我只给**断言**加了 `waitFor` 却没处理
+  **派发**的时序 —— 断言等的是「结果出现」，而问题是「输入根本没被处理」。
+  真正根因是 Escape 的 effect 依赖含 `viewedVersion`，必须先让 effect 重跑完
+  再派发 `keydown`。修法是派发前 `act` 排空微任务；
+  验证方式是**连续 3 次全量跑**（那才是暴露该 flaky 的场景）。
+- **验证**：`floating-agent-new-path.test.tsx` 9 例；
+  全量 1751 例 / 集成 72 / typecheck / lint / build / notes 全绿。
+- **笔记**：`docs/notes/implemented/architecture/2026-09-26-floating-new-path-wired.md`。
+
 ### 未完成（本切片剩余）
 
 - **任务 3 的组件切换本身**：`floating-agent-chat.tsx`（2511 行）仍走旧入口。
