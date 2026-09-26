@@ -95,17 +95,34 @@ Status: implemented
   需要维护两处的一致性；`run-route-support.ts` 这个模块的存在本身就是
   为了绕开 Next.js 的 Route 导出限制，名字不够自解释（模块注释里已写明原因）。
 - **已知上限**：
-  - 本路由的 `executeTool` 在工具产出提案时返回 `proposed` 并**不落盘** ——
-    P04 任务 4 的完整提案-审批闭环在 decisions 路由，这里只如实回报
-    「已产出提案、尚未落盘」。因此**直接模式目前不会真的写入文档**。
-    这是当前切片的已知缺口，不是缺陷：新链路尚未切流（见 P04 plan 的未完成清单）。
   - 未做 Continue 路由：`waiting_user` 的 Run 目前无法从这里恢复。
   - SSE 只推送事件，不做断线重连补齐；客户端应通过 `GET /api/ai/runs/[id]?events=1`
     续读（该路由已实现）。
+  - 审批模式（`writeMode: "approval"`）下工具只产出提案并回报「尚未落盘」，
+    用户批准走 decisions 路由。**直接模式已接上真实提交**（见下节）。
 - **什么信号发生时该重访**：若直接模式下用户报告「AI 说改了但内容没变」，
-  那就是本路由的 `proposed` 分支需要接上 decisions 逻辑（或改为直接提交）。
-  若新增了 Route 文件并导出辅助函数，`pnpm build` 会立刻失败 ——
+  先看 `mutation.committed` 事件是否存在 —— 不存在说明提交被冲突或 fence 拦下，
+  响应里会带原因。若新增了 Route 文件并导出辅助函数，`pnpm build` 会立刻失败 ——
   此时按提示把函数移到 `lib/` 下。
+
+### 6. 直接模式落盘（`lib/ai/commit-proposal.ts`）
+
+启动路由的 `executeTool` 在直接模式下**立即提交**提案，把真实回执交给编排层。
+三条不可让步的约束：
+
+1. **没有回执就不是已保存**。只有 `commitResumeMutation` 返回 `committed`
+   （带 `mutationId` + `revision`）才回 `succeeded` 且带 `mutationId`。
+   冲突回 `failed` + `revision_conflict`（并带出当前 revision 供用户重新确认），
+   **绝不带 `mutationId`** —— 带了编排层就会发出 `mutation.committed` 并推进
+   工作副本基准，产生「以为写成功了」的幻觉状态。
+2. **fence 原样透传**。取消与提交可能并发，只有数据库在写语句内核验「仍可写」，
+   才能让「取消先成功则禁止提交」成立。这一层**不**用「写之前查过一次」替代它。
+3. **幂等键复用**。`mutationId` 由 `toolCallId` 派生（`agent-${toolCallId}`），
+   而不是每次随机 —— 同一次工具调用的重试必须复用同一个键与同一份 payload，
+   否则服务端会把重试当成第二次修改。
+
+`no_change` 如实回 `saved: false`（没有写入，但也不是失败）；
+`rejected` 把 code 转成面向模型的说明（模型需要知道**为什么**被拒才能改对）。
 
 ## Verification
 
@@ -122,9 +139,19 @@ Status: implemented
     `mode` 非法值收敛为 `optimize_existing`；
   - **回归防线**（3 例）：每个交给 SDK 的工具都**没有** `execute`、
     都有 `description` + `inputSchema`；结束类型映射中断正确、等待用户非终态。
+- 新增 `apps/web/tests/unit/ai-commit-proposal.test.ts`（10 例，直接模式落盘）：
+  - `committed` → 回执带 `mutationId` + `revision`；
+  - `conflict` → `failed` + `revision_conflict`、消息含当前版本、
+    **不带 `mutationId`**（防编排层误发 `mutation.committed`）；
+  - `no_change` → 如实回 `saved: false`，不谎称已保存；
+  - `rejected` → 带出 code 与可理解的说明；
+  - **fence 原样透传**；**幂等键复用调用方给的值**（同输入两次得到同一个键）；
+    CAS 基准用调用方给的 `expectedRevision`；`source` 固定 `agent`；
+    空提案不提交也不报成功；resumeId/userId 来自上下文而非请求体。
 - 红 → 绿：路由不存在时该文件整体失败；实现后 16 例通过；
   「模型配置非法不留孤儿 Run」一例一开始失败并暴露了校验顺序缺陷，
-  修正后 19/19 通过。
-- 全量：`pnpm test` 1273 例通过、`test:integration` 72/72（真实 PostgreSQL）、
+  修正后 19/19 通过。提交器 10 例一次通过（无红阶段 —— 其约束已由
+  上游 commit 层的既有测试与契约固定）。
+- 全量：`pnpm test` 1283 例通过、`test:integration` 72/72（真实 PostgreSQL）、
   `typecheck` 四包全绿、`lint` 0 error（12 warning = 基线）、
-  `build` 通过（**正是它发现了 Route 导出问题**）、`notes:verify` 24 篇通过。
+  `build` 通过（**正是它发现了 Route 导出问题**）、`notes:verify` 25 篇通过。

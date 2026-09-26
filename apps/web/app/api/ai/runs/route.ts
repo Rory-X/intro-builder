@@ -9,6 +9,7 @@ import {
 import { createProviderStreamer } from "@/lib/ai/provider";
 import { assertServerRuntime } from "@/lib/ai/server-guard";
 import { executeToolCall } from "@/lib/ai/tools/execute";
+import { commitToolProposal } from "@/lib/ai/commit-proposal";
 import { buildSdkTools, runStatusForEndType } from "@/lib/ai/run-route-support";
 import { loadResumeSourceForRun } from "@/lib/ai/resume-source";
 import {
@@ -291,16 +292,26 @@ export async function POST(request: Request) {
           {
             loadWorkspaceSource: async () => source,
             streamModel: provider.streamModel,
-            executeTool: async ({ toolName, args, workspace: ws }) => {
+            executeTool: async ({ toolCallId, toolName, args, workspace: ws, writeMode, fence }) => {
               const outcome = executeToolCall({
                 toolName,
                 args,
                 workspace: ws,
                 newOpId: () => crypto.randomUUID(),
               });
-              if (outcome.status === "proposed") {
-                // P04 任务 4 的完整提案-审批闭环在 decisions 路由；
-                // 此处先如实回报「已产出提案、尚未落盘」。
+
+              if (outcome.status === "read") {
+                return { status: "succeeded" as const, result: outcome.result };
+              }
+              if (outcome.status === "failed") {
+                return { status: "failed" as const, code: outcome.code, message: outcome.message };
+              }
+
+              /*
+               * 提案已产出。审批模式下到此为止：用户批准走 decisions 路由，
+               * 本轮如实回报「已产出提案、尚未落盘」。
+               */
+              if (writeMode === "approval") {
                 return {
                   status: "proposed" as const,
                   changeSetId: crypto.randomUUID(),
@@ -309,10 +320,28 @@ export async function POST(request: Request) {
                   summary: outcome.summary,
                 };
               }
-              if (outcome.status === "read") {
-                return { status: "succeeded" as const, result: outcome.result };
-              }
-              return { status: "failed" as const, code: outcome.code, message: outcome.message };
+
+              /*
+               * 直接模式：**立即提交**，并把真实回执交给编排层。
+               *
+               * 幂等键由 toolCallId 派生（而不是每次随机）：同一次工具调用的
+               * 重试必须复用同一个 mutationId 与同一份 payload，服务端才能把
+               * 重试识别为幂等重放而非第二次修改。
+               *
+               * `fence` 直接透传给提交语句 —— 取消与提交可能并发，
+               * 只有数据库在写语句内核验「仍可写」，才能让「取消先成功则
+               * 禁止提交」成立。这里**不**用「写之前查过一次」替代它。
+               */
+              return commitToolProposal({
+                proposal: outcome,
+                resumeId: body.resumeId,
+                userId,
+                actorName: session.user?.name ?? "用户",
+                expectedRevision: ws.revision,
+                fence,
+                runId,
+                mutationId: `agent-${toolCallId}`,
+              });
             },
             emitEvent: async (draft) => {
               const envelope = await appendEvent({
