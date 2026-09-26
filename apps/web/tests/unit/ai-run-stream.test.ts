@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { RunEventEnvelope } from "@intro-builder/shared/types";
 
+import { AI_REQUEST_LIMITS } from "@/lib/ai/provider-policy";
 import {
   consumeRunStream,
   consumeSseBuffer,
@@ -184,7 +185,8 @@ describe("流式消费", () => {
       onProjection: () => {},
       onDone: () => {},
     });
-    expect(result).toEqual({ status: "streamed", runId: "run-42" });
+    // 结果新增 trimmedHistory（未传 history → 0 条被裁）。
+    expect(result).toEqual({ status: "streamed", runId: "run-42", trimmedHistory: 0 });
   });
 
   it("响应无 body 时报错而不是静默成功", async () => {
@@ -299,7 +301,7 @@ describe("错误处理", () => {
       onProjection: () => {},
       onDone: () => {},
     });
-    expect(result).toEqual({ status: "streamed", runId: "run-7" });
+    expect(result).toEqual({ status: "streamed", runId: "run-7", trimmedHistory: 0 });
   });
 
   it("请求体带上 modelConfig 与 requestId（BYOK，随请求传）", async () => {
@@ -396,5 +398,101 @@ describe("续读（刷新恢复）", () => {
     const result = await resumeRun({ runId: "run-1" });
     expect(result.status).toBe("ok");
     if (result.status === "ok") expect(result.events).toEqual([]);
+  });
+});
+
+describe("对话历史传参（多轮会话不失忆）", () => {
+  it("**history 被放进请求体**（这是切流后不失忆的依据）", async () => {
+    const fetchMock = vi.fn(async () => jsonResponse({ runId: "r", reused: true }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const history = [
+      { role: "user" as const, content: "帮我看看简历" },
+      { role: "assistant" as const, content: "我看到三个问题" },
+    ];
+    await streamRun({ ...BASE_OPTIONS, history }, {
+      onEvent: () => {},
+      onProjection: () => {},
+      onDone: () => {},
+    });
+
+    const init = (fetchMock.mock.calls[0] as unknown[])[1] as RequestInit;
+    const body = JSON.parse(String(init.body)) as Record<string, unknown>;
+    expect(body.history).toEqual(history);
+  });
+
+  it("不传 history 时请求体里是空数组", async () => {
+    const fetchMock = vi.fn(async () => jsonResponse({ runId: "r", reused: true }));
+    vi.stubGlobal("fetch", fetchMock);
+    await streamRun(BASE_OPTIONS, {
+      onEvent: () => {},
+      onProjection: () => {},
+      onDone: () => {},
+    });
+    const init = (fetchMock.mock.calls[0] as unknown[])[1] as RequestInit;
+    const body = JSON.parse(String(init.body)) as Record<string, unknown>;
+    expect(body.history).toEqual([]);
+  });
+
+  it("**超上限时在客户端裁掉**（服务端会整体拒绝，那会让用户连当前这轮都发不出去）", async () => {
+    const fetchMock = vi.fn(async () => sseResponse([event({ runId: "run-1" })]));
+    vi.stubGlobal("fetch", fetchMock);
+
+    // 构造 200 条（上限 100）。
+    const history = Array.from({ length: 200 }, (_, index) => ({
+      role: (index % 2 === 0 ? "user" : "assistant") as "user" | "assistant",
+      content: `m${index}`,
+    }));
+
+    const result = await streamRun({ ...BASE_OPTIONS, history }, {
+      onEvent: () => {},
+      onProjection: () => {},
+      onDone: () => {},
+    });
+
+    const init = (fetchMock.mock.calls[0] as unknown[])[1] as RequestInit;
+    const sent = (JSON.parse(String(init.body)) as { history: unknown[] }).history;
+    // 请求体里的历史不超上限。
+    expect(sent.length).toBeLessThanOrEqual(AI_REQUEST_LIMITS.maxHistoryMessages);
+    // 裁掉的数量被如实回报（调用方可据此提示用户）。
+    expect(result.status).toBe("streamed");
+    if (result.status === "streamed") {
+      expect(result.trimmedHistory).toBeGreaterThan(0);
+    }
+  });
+
+  it("未超限时 trimmedHistory 为 0", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => sseResponse([event({ runId: "run-1" })])));
+    const history = [
+      { role: "user" as const, content: "u1" },
+      { role: "assistant" as const, content: "a1" },
+    ];
+    const result = await streamRun({ ...BASE_OPTIONS, history }, {
+      onEvent: () => {},
+      onProjection: () => {},
+      onDone: () => {},
+    });
+    expect(result.status).toBe("streamed");
+    if (result.status === "streamed") expect(result.trimmedHistory).toBe(0);
+  });
+
+  it("**裁剪不改变最近几轮的顺序**（模型看到的是结尾那段对话）", async () => {
+    const fetchMock = vi.fn(async () => jsonResponse({ runId: "r", reused: true }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const history = Array.from({ length: 200 }, (_, index) => ({
+      role: (index % 2 === 0 ? "user" : "assistant") as "user" | "assistant",
+      content: `m${index}`,
+    }));
+    await streamRun({ ...BASE_OPTIONS, history }, {
+      onEvent: () => {},
+      onProjection: () => {},
+      onDone: () => {},
+    });
+
+    const init = (fetchMock.mock.calls[0] as unknown[])[1] as RequestInit;
+    const sent = (JSON.parse(String(init.body)) as { history: Array<{ content: string }> }).history;
+    // 保留的是最近的 —— 最后一条仍是原历史的最后一条。
+    expect(sent.at(-1)?.content).toBe("m199");
   });
 });
