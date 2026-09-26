@@ -1,6 +1,44 @@
 # P07：唯一入口切流、代码归档与现役文档更新
 
-状态：未开始。依赖 P06 和完整能力验收；归档根[说明](../../../archive/agent-microservice/2026-09-26/README.md)。
+状态：进行中（任务 3 的**前置能力**已完成：客户端消费器、多轮历史、
+新旧协议适配；**浮窗尚未切换**，归档未开始）。依赖 P06 和完整能力验收；
+归档根[说明](../../../archive/agent-microservice/2026-09-26/README.md)。
+
+## 完成记录（分批）
+
+### 已完成：切流的前置能力
+
+切流前核实新路由，发现它虽然服务端契约完整（P04 交付），但
+**没有任何客户端消费方** —— 浮窗仍走旧的 `/api/agent/floating/chat`，
+全仓库搜索 `/api/ai/runs` 只命中路由文件自身。因此补了三块前置：
+
+- **客户端消费器**（`lib/ai-client/run-stream.ts`，25 例）：
+  `streamRun` / `consumeRunStream` / `resumeRun`。
+  两个关键分支：`POST /api/ai/runs` 在幂等命中时返回 **JSON 而非 SSE**
+  （统一按 SSE 解析会让那条路径拿不到任何事件、界面像「模型没响应」）；
+  SSE 分帧必须同时认 `\n\n` 与 `\r\n\r\n`
+  （第一版只认前者，CRLF 流一个事件都解析不出来且不报错）。
+  笔记：`docs/notes/implemented/architecture/2026-09-26-run-stream-client.md`。
+- **多轮历史**（`lib/ai/run-history.ts` + 两处修复，30 例）：
+  路由曾**校验 `history` 长度却把它丢掉**、然后硬编码 `history: []` ——
+  切流后每轮都会失忆。同时客户端消费器也没传 history（服务端的修复不生效）。
+  笔记：`docs/notes/implemented/bug-fix/2026-09-26-run-history-was-discarded.md`、
+  `docs/notes/implemented/feature/2026-09-26-run-stream-sends-history.md`。
+- **新旧协议适配**（`lib/ai-client/floating-adapter.ts`，35 例）：
+  两套协议的**语义单位不同**（旧 `tool-call-*` 三阶段 vs 新 `tool.*` 生命周期；
+  旧 `approval-request` vs 新 `proposal.ready` + 独立决策路由；
+  旧 `done` vs 新四种终态）。适配层是纯函数，事件 → 浮窗动作。
+  实测修复两处真实泄漏（透传工具原始 result、回显未知工具名）。
+  笔记：`docs/notes/implemented/architecture/2026-09-26-floating-protocol-adapter.md`。
+
+### 未完成（本切片剩余）
+
+- **任务 3 的组件切换本身**：`floating-agent-chat.tsx`（2511 行）仍走旧入口。
+  需要用 `streamRun` 替换 `fetch` 目标、用 `adaptRunEventToAction` 替换
+  旧协议解析、用 `restoreWorkspace` 做刷新恢复。**需要人工冒烟**
+  （浮窗/停靠、移动端、暗色、键盘）。
+- **任务 1、2、4、5、6、7**：归档基线与清单、能力矩阵、移出源代码与部署配置、
+  收敛构建与依赖、更新事实文档、发布与观察。
 
 ## 文件范围
 
