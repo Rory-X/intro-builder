@@ -88,17 +88,19 @@ intro-builder 不是“填表后下载”的简历模板站，而是一个围绕
 
 ## 当前状态
 
-项目处于 v0.4.1 之后的持续迭代阶段，主线已经迁移到 pnpm workspace monorepo：`apps/web` 承载 Next.js 主站，`apps/agent` 承载独立 Agent HTTP 服务，`apps/partykit` 承载协同服务。产品侧已经覆盖模板库、上传模板 Schema v2、协作批注、文档站、邮箱验证码登录，以及基于 AG-UI / assistant-ui 的 Agent 面板与流式诊断链路。更多过程文档在 [docs/superpowers](./docs/superpowers) 与 [docs/agent](./docs/agent) 中。
+项目处于 v0.4.1 之后的持续迭代阶段，主线已经迁移到 pnpm workspace monorepo：`apps/web` 承载 Next.js 主站，`apps/partykit` 承载协同服务。产品侧已经覆盖模板库、上传模板 Schema v2、协作批注、文档站、邮箱验证码登录，以及基于 Next.js + AI SDK 的 AI 助手（浮窗形态，含流式诊断、润色、统一 Run 留痕与版本 Diff）。
+
+**AI 执行已收敛到 Next.js 单一路线**：独立的 Agent 微服务（原 `apps/agent`）与它的部署流水线已退役并归档到 [archive/agent-microservice](./archive/agent-microservice/2026-09-26/README.md)（源码仍可读，但不再参与构建、测试与部署）。更多过程文档在 [docs/superpowers](./docs/superpowers) 与 [docs/notes](./docs/notes) 中。
 
 ## 项目结构
 
 本项目采用 pnpm workspace monorepo 结构：
 
-- **apps/web/** - Next.js 主站（简历编辑器、预览、PDF 导出）
-- **apps/agent/** - Agent 微服务（AI 能力：富文本润色、简历诊断、Agent Mode）
+- **apps/web/** - Next.js 主站（简历编辑器、预览、PDF 导出、AI 助手）
 - **apps/partykit/** - WebSocket 协同服务（实时协作编辑）
 - **packages/shared/** - 共享代码（types、schemas、utils）
 - **packages/config/** - 共享配置（eslint、typescript）
+- **archive/** - 已退役实现的历史快照（**不是 workspace 成员**，不参与构建/测试/部署）
 
 ## 开发
 
@@ -108,7 +110,6 @@ intro-builder 不是“填表后下载”的简历模板站，而是一个围绕
 pnpm install          # 安装依赖
 pnpm dev              # 启动所有应用
 pnpm dev:web          # 只启动 Web
-pnpm dev:agent        # 只启动 Agent
 pnpm dev:partykit     # 只启动 PartyKit
 pnpm verify           # 运行所有检查（lint + typecheck + test + build）
 ```
@@ -122,7 +123,7 @@ pnpm typecheck        # 类型检查
 pnpm build            # 构建所有应用
 ```
 
-关键开发约定见 [AGENTS.md](./AGENTS.md)。环境变量示例见 [apps/web/.env.example](./apps/web/.env.example) 与 [apps/agent/.env.example](./apps/agent/.env.example)。Agent 微服务说明见 [docs/agent/README.md](./docs/agent/README.md)。
+关键开发约定见 [AGENTS.md](./AGENTS.md)。环境变量示例见 [apps/web/.env.example](./apps/web/.env.example)。AI 助手的架构与退役决策见 [docs/notes/](./docs/notes) 与 [归档说明](./archive/agent-microservice/2026-09-26/README.md)。
 
 ## License
 
