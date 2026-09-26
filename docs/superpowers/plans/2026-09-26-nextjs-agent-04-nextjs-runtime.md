@@ -1,0 +1,104 @@
+# P04：Next.js 统一 Run、工具与恢复
+
+状态：**进行中（任务 1、3 的能力矩阵部分、5 的事件层、7 已完成；任务 2 部分完成；任务 4、6、8 未开始）**。依赖 P03。目标是服务端真正完成工具→提交→回执，保留现有浮窗布局。
+
+## 完成记录（分批）
+
+### 已完成：任务 1 持久化运行存储
+
+- **落地**：迁移 `0015_add_ai_runs.sql`（`ai_run` / `ai_tool_execution` / `ai_run_event`
+  三张表 + floating 表格式版本，全部 additive）；`lib/ai/events.ts`（事件契约、
+  EOF 判定、attempt 单结束、lease 判定、请求哈希）；`lib/ai/run-store-sql.ts`（SQL）；
+  `lib/ai/run-store.ts`（编排层，executor 可注入）。
+- **验证**：`tests/integration/ai-run-store.test.ts` 22 例 + `harness.test.ts` 的
+  迁移约束段 6 例，全部在**真实 PostgreSQL** 上通过；含 **24 路并发追加事件**
+  无重号无缺口、租约并发竞争、终态只出现一次、取消拦截晚到提交。
+  整个 P04 累计：单元 100 例（workspace/tools/stream/reducer/run/store/policy）+ 集成 22 例。
+
+### 已完成：任务 7 的 provider 出站策略部分
+
+- **落地**：`lib/ai/provider-policy.ts` —— 默认拒绝的 URL 校验
+  （https、公网、非 metadata、非 userinfo、非私网 IPv4/IPv6 含 mapped 形式）、
+  请求规模预算、`describeProviderPolicyLimitation()` 如实报告 DNS rebinding 缺口。
+- **验证**：`tests/unit/ai-provider-policy.test.ts` 17 例（含 8 个绕过用例）。
+
+### 已完成：任务 3 的能力矩阵部分 / 任务 5 的事件层 / 任务 2 的核心部件
+
+- **`lib/ai/workspace.ts`**（工作副本，修 F02）：基准来自服务端权威内容、暂存修改叠加
+  其上（同一轮新增后能读到）、按稳定 ID 读写、条件哈希由服务端重算、
+  目标缺失不回退、完整性标注为估算。19 例测试。
+- **`lib/ai/tools/registry.ts`**（工具能力矩阵）：写工具必须声明操作种类、
+  不可用工具不注册（而不是注册后返回 unavailable）、33 个必需工具清单、
+  「工具名 → 语义操作」显式映射。16 例测试。
+- **`lib/ai/stream-adapter.ts`**（SDK fullStream → 业务事件）：参数片段仅用于展示、
+  同一 toolCallId 只开始一次、`finish` **不**产生结束事件、
+  结束判据顺序为「取消 > 错误 > 等待用户 > 完成」、中断一律 interrupted。24 例测试。
+- **`lib/ai-client/reducer.ts`**（客户端唯一投影）：按 `(runId, sequence)` 与
+  `eventId`/`mutationId` 去重、重复事件零副作用、模型完成不产生「已保存」凭据、
+  `finalizeOnEof` 与服务端判据一致。25 例测试。
+- **`lib/ai/run.ts`**（编排层，任务 2 + 4 的接线）：依赖全部注入（模型/提交/事件），
+  「工具无回执不得声称已保存」「提交前核验 fencing」「一个 attempt 一个结束事件」
+  「收尾沿用已发生事实」「超预算与失败分开」。16 例测试。
+
+### 未完成（本切片剩余）
+
+任务 2 的 provider 装配（真实 AI SDK 接线）、任务 3 的工具**实现体**移植、
+任务 4 接入提交与批准（change-set 决策路由）、任务 6 恢复与取消**路由**、
+任务 8 验证与灰度。存储、能力矩阵、事件层、流适配器均已就绪，
+但 `/api/ai/runs/*` 路由与工具实现尚未落地，**新链路未切流**。
+
+### 实测发现（详见决策笔记）
+
+1. sequence 分配试了三种做法，**前两种实测都会丢事件**：先读 MAX 再插入（并发下
+   重试耗尽）、CTE 内 MAX + `FOR UPDATE` / advisory lock（快照在加锁前已确定）。
+   最终用 `ai_run.eventSequence` 计数器列的 `UPDATE ... SET x = x+1 RETURNING x`。
+2. 部分唯一索引上的 `ON CONFLICT` 必须复述谓词，否则抛 `42P10`。
+3. `new URL()` 会把 IPv4-mapped IPv6 规范化成十六进制，按点分十进制匹配的私网检查
+   会**漏掉它**（真实绕过）。
+4. 不要把 `Date` 直接当 SQL 参数（`ERR_INVALID_ARG_TYPE`）；也不要假定驱动一定返回
+   `Date`。
+5. 编排层必须可注入 executor，否则集成测试只能 mock，证明不了并发行为。
+
+## 文件范围
+
+现有：`apps/web/app/api/agent/floating/chat/route.ts`、`lib/agent/floating-chat-session-store.ts`、`components/agent/floating-agent-chat.tsx`、`db/schema.ts`。
+拟新增：`lib/ai/{provider,run,run-store,workspace,events,tool-policy}.ts`、`lib/ai/tools/`、`lib/ai-client/{stream,reducer}.ts`、`app/api/ai/runs/` 下的启动/查询/events/cancel/continue 路由、`app/api/ai/change-sets/[id]/decisions/route.ts`、对应 migrations 与测试。导出的 server-only 模块不能进 client bundle。
+
+## 任务
+
+1. **建立运行与事件存储。** ai_run、ai_tool_execution、ai_run_event、结构化模型消息/步骤检查点；session 复用现有 floating 表并增加格式版本。Run 与 authenticated user/resume/session 绑定；idempotency key 唯一；lease+fencing、预算、取消状态入库。mutation outbox 以 sourceEventId 去重投影，恢复读取前协调遗漏提交事件。旧聊天可读但不自动执行旧操作。
+2. **抽出 SDK 执行模块。** 保留已安装 AI SDK v6；provider/工具/存储通过清晰依赖接口注入；模型调用 `abortSignal`、明确 deadline/steps/output budget。将旧 route 的网络鉴权与执行分开，删除路由层两千行的工具实现堆积，但其原始版本先按 P07 规则快照保留。
+3. **移植并修正业务工具。** 所有现有语义工具（基础信息、各经历、新增删除排序、skills/summary/awards/portfolio/custom/style、askUser、job match）有能力矩阵。工作副本从持久简历初始化，按稳定 ID 读写；同一轮新增后能读到、新增两条产生不同 ID、删除后不能再改已删目标。注册缺失能力必须报错，不能注册永远返回 unavailable 的工具。
+4. **接入提交与批准。** 写工具只产生提案或返回真实 CommitResult；直接模式授权组立即提交，批准模式持久化待确认并结束本轮。批准绑定 operation IDs+proposalVersion，拒绝不会再次执行。提交 CTE 同时核验 run fencing/cancel；任何权限/持久失败都不得返回 applied=true。
+5. **统一事件流。** SDK fullStream→业务事件→客户端唯一 reducer。工具开始实时发出，参数片段只用于展示、完整校验后才执行。文本批量渲染，消费流不等待 autosave。成功、冲突、失败、等待、取消和中断独立；attempt 结束事件缺失的 EOF 必须 interrupted。sequence 在 Run 内跨 attempts 单调递增，不依赖消息数组下标关联。
+6. **实现恢复和取消路由。** GET snapshot/events 只读，不启动模型；continue 重建结构化工具历史与草稿，已提交操作只查询回执。关闭连接触发 abort；cancel 写共享状态并令晚到提交失效；平台硬杀按 lease 过期识别 interrupted。旧 lease 持有者不能因取消写库失败而继续提交。
+7. **限流、配置与隐私。** 所有模型入口共用 ownership/限流/输入大小/并发策略；BYOK 只请求内使用。provider URL 必须拒绝非 HTTPS、userinfo、本地/私网/metadata 地址及重定向绕过；公网自定义域名解析结果要在实际出站传输验证/固定，不能只在字符串层检查。若运行平台无法实现安全出站验证，先采用服务端明确配置的 provider host 集合并报告限制，不悄悄放行。
+8. **验证和小范围发布。** route/stream/reducer/实际工具注册集成测试 + 真实 DB 幂等/取消 + 总门禁；服务端开关默认 legacy，指定预览环境先跑新链路。记录首反馈、工具完成、提交、恢复延迟，未实测不得填数。提交建议按任务拆为 `feat(ai): add durable runs`、`refactor(ai): centralize Next.js tools`、`feat(ai): recover and cancel bounded runs`。
+
+## API 的确定行为
+
+| 路由（拟新增） | 输入 | 结果 |
+| --- | --- | --- |
+| POST /api/ai/runs | requestId、sessionId、resumeId、revision、message、mode、modelConfig | 单次执行 SSE；重复请求复用 Run，不二次调用模型 |
+| GET /api/ai/runs/[id] | 已登录会话 | 当前状态、可展示检查点、最新 sequence；不返回 key |
+| GET /api/ai/runs/[id]/events?after=n | runId、游标 | 有序事件分页；只有作者可读 |
+| POST /api/ai/runs/[id]/cancel | requestId | 持久 cancel，幂等；已成功修改不回滚 |
+| POST /api/ai/runs/[id]/continue | requestId、checkpointVersion、modelConfig、回答/决定引用 | 单次新 attempt；不能接管仍有效的 lease |
+| POST /api/ai/change-sets/[id]/decisions | requestId、proposalVersion、accepted/rejected IDs | 决策与对应提交结果；冲突不标批准并应用 |
+
+不要在模型 messages 内插一段「已批准」文字就跳过以上状态校验。SDK 原生 tool approval 可作协议适配，持久审批与文档幂等仍由业务模块维护。
+
+## 测试与命令
+
+拟新增：`ai-run-route.test.ts`、`ai-run-store.test.ts`、`ai-tools.test.ts`、`ai-stream.test.ts`、`ai-run-reducer.test.ts`、`ai-provider-policy.test.ts`。必须覆盖真实注册的工具集合，不能测试一套另写的假工具代替。
+
+```bash
+pnpm --filter @intro-builder/web exec vitest run tests/unit/ai-run-route.test.ts tests/unit/ai-run-store.test.ts tests/unit/ai-tools.test.ts tests/unit/ai-stream.test.ts tests/unit/ai-run-reducer.test.ts tests/unit/ai-provider-policy.test.ts
+pnpm --filter @intro-builder/web test:integration
+```
+
+加总门禁。故障用例：工具产生提案后崩溃、commit 后发送前断线、取消与 commit 竞争、同 session 两个 start、跨用户 sessionId、审批旧版、provider 超时、没有 done 的 EOF。SDK/DB 适配器可替换，业务预期固定。
+
+## 回滚
+
+只切回兼容 revision 的旧 UI；旧存储表保留。不得重新启用旧无幂等 apply 链路。新 Run 已存在时必须先停止/完成再变更运行开关，不能让两套运行消费同一任务。

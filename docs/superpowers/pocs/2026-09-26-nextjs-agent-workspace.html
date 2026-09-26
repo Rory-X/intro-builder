@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>简历助手 · 修改与留痕交互模拟</title>
+<style>
+:root{color-scheme:light dark;--bg:#edf1f6;--paper:#fff;--ink:#20304a;--muted:#65738a;--line:#d9e1eb;--blue:#275ad8;--tint:#eef3ff;--green:#186943;--red:#a12e32}*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.7 -apple-system,BlinkMacSystemFont,"PingFang SC","Microsoft YaHei",sans-serif}header{padding:20px 5vw;background:var(--paper);border-bottom:1px solid var(--line);display:flex;gap:20px;align-items:center;justify-content:space-between}h1{font-size:20px;margin:0}h2{font-size:18px;margin:0 0 12px}p{margin:8px 0}small,.muted{color:var(--muted)}main{max-width:1180px;margin:32px auto;padding:0 24px;display:grid;grid-template-columns:380px 1fr;gap:28px}.assistant,.paper,.history{background:var(--paper);border:1px solid var(--line);padding:25px;border-radius:12px}.paper{border-radius:3px;min-height:460px;padding:40px}.history{margin-top:20px}.name{font-size:30px;font-weight:700;margin:0}.role{border-bottom:2px solid var(--ink);padding-bottom:15px;margin-bottom:28px}.badge{display:inline-block;background:var(--tint);color:var(--blue);border-radius:5px;padding:3px 9px;font-size:13px}.task{padding:16px 0;border-block:1px solid var(--line);margin:18px 0}.steps{padding-left:22px;color:var(--muted)}.steps li{margin:8px 0}.diff{border-left:3px solid var(--blue);padding:10px 15px;background:var(--tint);margin:18px 0}del{color:var(--red)}ins{color:var(--green);text-decoration:none}button{font:inherit;padding:8px 12px;border:1px solid var(--line);border-radius:7px;background:var(--paper);color:var(--ink);cursor:pointer}button.primary{background:var(--blue);color:white;border-color:var(--blue)}button:disabled{opacity:.45;cursor:default}button:focus-visible{outline:3px solid var(--blue);outline-offset:3px}.actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:18px}.lab{max-width:1132px;margin:0 auto 30px;padding:18px 24px;border:1px dashed var(--line)}#status{font-weight:600}#history{padding-left:22px}.hint{font-size:13px;margin-top:18px}.updated{outline:2px solid var(--blue);outline-offset:9px}@media(max-width:820px){main{grid-template-columns:1fr}.paper{padding:25px}header{align-items:flex-start;flex-direction:column}}@media(prefers-color-scheme:dark){:root{--bg:#172132;--paper:#222f44;--ink:#e7edf7;--muted:#acbad0;--line:#42526b;--blue:#8cabff;--tint:#283c60;--green:#8bdbb2;--red:#ffaaa9}button.primary{color:#172132}}
+</style>
+</head>
+<body>
+<header><h1>简历助手：修改看得见，结果有记录</h1><small>交互模拟 · 使用虚构内容 · 不连接任何真实服务</small></header>
+<main>
+<section class="assistant" aria-label="助手任务">
+<span class="badge">项目经历优化</span><h2 style="margin-top:16px">让招聘者看清你的具体贡献</h2>
+<p>这段经历提到了接口优化，但没有交代你做了什么。已有事实可以写得更具体，无需补造提升比例。</p>
+<div class="task"><strong id="status" aria-live="polite"></strong><ol class="steps"><li>已读取订单系统项目</li><li>已保留「缓存、慢查询排查」两项事实</li><li id="step"></li></ol></div>
+<div class="diff"><del>参与订单系统开发，负责接口优化。</del><br><ins>负责订单查询接口开发，通过缓存与慢查询排查改善接口响应。</ins></div>
+<p class="muted" id="detail"></p>
+<div class="actions"><button class="primary" id="apply">应用建议</button><button id="undo">撤销本次修改</button><button id="locate">定位项目</button></div>
+<p class="hint">建议来自现有项目事实。保存成功后才会生成版本记录；冲突时保留你后来的修改。</p>
+</section>
+<section aria-label="简历预览与修改记录"><article class="paper"><p class="name">林可</p><p class="role">后端开发工程师</p><h2>项目经历</h2><div id="project"><strong>订单系统</strong><p id="body"></p></div><h2 style="margin-top:36px">专业技能</h2><p id="skills"></p><p class="muted" style="margin-top:45px">这里只展示与本次任务相关的简历区域。</p></article><div class="history"><h2>修改记录 <span class="badge" id="revision"></span></h2><ol id="history"></ol></div></section>
+</main>
+<section class="lab"><strong>验证异常场景</strong><div class="actions"><button id="conflict">模拟用户先修改正文</button><button id="failure">模拟保存失败</button><button id="manual">模拟用户补充技能</button><button id="replay">重放同一提交回执</button><button id="reset">重置演示</button></div><p class="hint">这是状态与交互 PoC。按钮同步模拟服务端结果，不代表真实网络速度、数据库事务或模型质量。</p></section>
+<script>
+const original='参与订单系统开发，负责接口优化。';
+const proposed='负责订单查询接口开发，通过缓存与慢查询排查改善接口响应。';
+function initial(){return {status:'pending',revision:17,body:original,skills:'Go、PostgreSQL',receipt:null,history:[]};}
+function transition(state,event){
+  if(event==='reset')return initial();
+  if(event==='manual')return {...state,skills:'Go、PostgreSQL、Redis'};
+  if(event==='conflict')return {...state,body:'负责订单支付接口开发，补充了支付失败重试机制。',status:'conflict'};
+  if(event==='failure')return state.receipt?state:{...state,status:'failed'};
+  if(event==='replay'&&state.receipt)return state;
+  if(event==='apply'){
+    if(state.receipt)return state;
+    if(state.body!==original)return {...state,status:'conflict'};
+    return {...state,status:'committed',revision:18,body:proposed,receipt:'mutation-demo-1',history:[...state.history,'版本 18：应用项目描述建议；来源：助手；由你批准。']};
+  }
+  if(event==='undo'&&state.receipt&&state.status!=='reverted'){
+    if(state.body!==proposed)return {...state,status:'conflict'};
+    return {...state,status:'reverted',revision:19,body:original,history:[...state.history,'版本 19：撤销助手的项目修改；保留后来补充的技能。']};
+  }
+  return state;
+}
+globalThis.AgentPoc={initial,transition,original,proposed};
+if(typeof document!=='undefined'){
+ let state=initial(); const el=id=>document.getElementById(id);
+ const labels={pending:['1 项建议待确认','等待你的确认','正文尚未改变，可以先查看差异。'],committed:['已保存为版本 18','修改已保存','可查看来源或只撤销这次修改。'],failed:['保存失败，正文未改变','等待重试保存','建议仍保留，再次应用不会重复创建修改。'],conflict:['检测到内容变化','等待你处理冲突','保留当前正文；需要重新生成建议或人工比较。'],reverted:['已撤销本次修改','撤销已保存','只恢复这次改写，保留其他手工输入。']};
+ function render(){const [status,step,detail]=labels[state.status];el('status').textContent=status;el('step').textContent=step;el('detail').textContent=detail;el('body').textContent=state.body;el('skills').textContent=state.skills;el('revision').textContent='当前版本 '+state.revision;el('history').replaceChildren();for(const text of state.history.length?state.history:['尚未提交任何修改。']){const li=document.createElement('li');li.textContent=text;el('history').append(li);}el('apply').disabled=!!state.receipt||state.status==='conflict';el('undo').disabled=!state.receipt||state.status==='reverted';}
+ for(const action of ['apply','undo','conflict','failure','manual','replay','reset'])el(action).onclick=()=>{state=transition(state,action);render();};
+ el('locate').onclick=()=>{el('project').classList.toggle('updated');el('project').scrollIntoView({block:'center',behavior:'auto'});};render();
+}
+</script>
+</body></html>
