@@ -1,0 +1,522 @@
+{
+  "$comment": "Agent 微服务归档清单（P07 任务 1）。由 pnpm archive:agent:manifest 生成；不要手工编辑。缺一份 tracked 源文件即视为归档未完成。",
+  "baselineCommit": "050d5bb5e",
+  "retirementCommit": "df445c2bad330b6577e2d9b123dbdfca9aee77c8",
+  "generatedBy": "scripts/archive/generate-agent-manifest.ts",
+  "entryCount": 73,
+  "excludedCount": 0,
+  "entries": [
+    {
+      "originalPath": ".github/workflows/deploy-agent.yml",
+      "archivePath": "source/.github/workflows/deploy-agent.yml",
+      "gitBlob": "ef3368b29e342368a3bea0a34feb6ed2e9242e83",
+      "sha256": "92773f14cf2f299b642ddb0699d82f12e2d52ebeb23ce11aa5183daa36e54501",
+      "reason": "旧微服务的部署流水线（仅文本存档，不可自动执行）"
+    },
+    {
+      "originalPath": "apps/agent/.env.example",
+      "archivePath": "source/apps/agent/.env.example",
+      "gitBlob": "b5718a949731d24fb3f6905f4f915bbb2fd87a8f",
+      "sha256": "a9e8592691b9d26a4f184654821a2e4d8f9fdd6d03b08360948d8fc3e29a5217",
+      "reason": "旧 Agent 微服务的全部 tracked 源码、测试与部署配置"
+    },
+    {
+      "originalPath": "apps/agent/Caddyfile",
+      "archivePath": "source/apps/agent/Caddyfile",
+      "gitBlob": "d8dce00b4fdae3d2f3c93b360fc106979d0738e7",
+      "sha256": "0e9dbdf66b0a14661dfd12b38ac90110fe797c3446d59b725c3ee7ec29277d2d",
+      "reason": "旧 Agent 微服务的全部 tracked 源码、测试与部署配置"
+    },
+    {
+      "originalPath": "apps/agent/compose.yaml",
+      "archivePath": "source/apps/agent/compose.yaml",
+      "gitBlob": "3bcad3ac4e4a34279706dd0c642826e34a7a450e",
+      "sha256": "4de5ba512a80433bc742b8ce00fe30b2152a4d8bf8dd39adef323c8a5d11914c",
+      "reason": "旧 Agent 微服务的全部 tracked 源码、测试与部署配置"
+    },
+    {
+      "originalPath": "apps/agent/Dockerfile",
+      "archivePath": "source/apps/agent/Dockerfile",
+      "gitBlob": "7304bed3982d40cbffb85397a8a190b495431874",
+      "sha256": "954aba54032d3b6c679bb8b84a634c1feb75cd165c4083616bd8cd19a58a9dfd",
+      "reason": "旧 Agent 微服务的全部 tracked 源码、测试与部署配置"
+    },
+    {
+      "originalPath": "apps/agent/evals/agent-message-contract-cases.json",
+      "archivePath": "source/apps/agent/evals/agent-message-contract-cases.json",
+      "gitBlob": "ad7474899531c9fd1f9575bb38661d285d9268ce",
+      "sha256": "335308bdf5aac2346f04f8bb9a2c95a3919aee63dceaf7414ff7bc8518d07aa7",
+      "reason": "旧 Agent 微服务的全部 tracked 源码、测试与部署配置"
+    },
+    {
+      "originalPath": "apps/agent/package.json",
+      "archivePath": "source/apps/agent/package.json",
+      "gitBlob": "b3586b6147bc1ee81440293fc9c06865bb2340ad",
+      "sha256": "dccba4e9889056da89f3c607e41b5b0b907c7d7887ec1c2b3a1c64fde0008a19",
+      "reason": "旧 Agent 微服务的全部 tracked 源码、测试与部署配置"
+    },
+    {
+      "originalPath": "apps/agent/src/agent-messages.ts",
+      "archivePath": "source/apps/agent/src/agent-messages.ts",
+      "gitBlob": "1f3151ea477362362926333cfa17f5be38f76643",
+      "sha256": "b0d57672d80b25224cfe108c331873fef43f03e400ea13f92fe80607444ad0f3",
+      "reason": "旧 Agent 微服务的全部 tracked 源码、测试与部署配置"
+    },
+    {
+      "originalPath": "apps/agent/src/agent-tools.ts",
+      "archivePath": "source/apps/agent/src/agent-tools.ts",
+      "gitBlob": "aafdad0aa079ab6dc8aefa0e3113595786b0d403",
+      "sha256": "ac55d2a8f16ee0a0f32195737dbe7e84e637f5ba3afcad2480e3913f139f811d",
+      "reason": "旧 Agent 微服务的全部 tracked 源码、测试与部署配置"
+    },
+    {
+      "originalPath": "apps/agent/src/ai-cache.ts",
+      "archivePath": "source/apps/agent/src/ai-cache.ts",
+      "gitBlob": "9112f1454fa661741a4e313cbaa4d0f3f5b85fc6",
+      "sha256": "19ecfe71713069af03926f53b25694d6f3e40027ede16a24cf295ec869e0f7e2",
+      "reason": "旧 Agent 微服务的全部 tracked 源码、测试与部署配置"
+    },
+    {
+      "originalPath": "apps/agent/src/auth.ts",
+      "archivePath": "source/apps/agent/src/auth.ts",
+      "gitBlob": "f0389152e1d068a064909c446ef6913d32405076",
+      "sha256": "19cce212c0a0fb56731a9a2d248eba2671e8c68b3471969e274de989c0b72bee",
+      "reason": "旧 Agent 微服务的全部 tracked 源码、测试与部署配置"
+    },
+    {
+      "originalPath": "apps/agent/src/config.ts",
+      "archivePath": "source/apps/agent/src/config.ts",
+      "gitBlob": "417e8a1e16f92dba3a3e8aac15af11c9af05ca7b",
+      "sha256": "af2d16a8962a8826f51219ae9cb367d755ec4227ba646302d241af285ed49dd8",
+      "reason": "旧 Agent 微服务的全部 tracked 源码、测试与部署配置"
+    },
+    {
+      "originalPath": "apps/agent/src/errors.ts",
+      "archivePath": "source/apps/agent/src/errors.ts",
+      "gitBlob": "3824bbca062f63158e4dc0b29462d5629f25db88",
+      "sha256": "9ec9bfd7f30525e1db745e1423f0ed52872f440d616a2a8842da2b816390e691",
+      "reason": "旧 Agent 微服务的全部 tracked 源码、测试与部署配置"
+    },
+    {
+      "originalPath": "apps/agent/src/evals/agent-message-contract-eval.ts",
+      "archivePath": "source/apps/agent/src/evals/agent-message-contract-eval.ts",
+      "gitBlob": "3524f1bb14d6d65ebf76d7f5c7f72aa717bee24e",
+      "sha256": "0c9ac7d5ad005da5d14303f2b3b5e2cfab5aaf9f512e24132039b820baa0cfdd",
+      "reason": "旧 Agent 微服务的全部 tracked 源码、测试与部署配置"
+    },
+    {
+      "originalPath": "apps/agent/src/evals/langfuse-agent-message-experiment.ts",
+      "archivePath": "source/apps/agent/src/evals/langfuse-agent-message-experiment.ts",
+      "gitBlob": "8868a973b0b27548f62f767bd2b396918299103f",
+      "sha256": "f024cf10ee857327be66b1edd76c72d6b7725e0615d5e734547554b71ce7be08",
+      "reason": "旧 Agent 微服务的全部 tracked 源码、测试与部署配置"
+    },
+    {
+      "originalPath": "apps/agent/src/evals/run-agent-message-contract-eval.ts",
+      "archivePath": "source/apps/agent/src/evals/run-agent-message-contract-eval.ts",
+      "gitBlob": "a23c8a6d7137afb83721e16dd077cec4ed3ff73e",
+      "sha256": "40a7c94edcc70f1641bbeaa1c38ab948b8a43d685858f36881d704d95a723939",
+      "reason": "旧 Agent 微服务的全部 tracked 源码、测试与部署配置"
+    },
+    {
+      "originalPath": "apps/agent/src/evals/run-langfuse-agent-message-experiment.ts",
+      "archivePath": "source/apps/agent/src/evals/run-langfuse-agent-message-experiment.ts",
+      "gitBlob": "eba1da1fac049977d429fc969d9c735afb780ad2",
+      "sha256": "1eb5197cc7aa7e1683ac07c0d400ee34f667050bded9595b6e9b596a02d2e274",
+      "reason": "旧 Agent 微服务的全部 tracked 源码、测试与部署配置"
+    },
+    {
+      "originalPath": "apps/agent/src/http.ts",
+      "archivePath": "source/apps/agent/src/http.ts",
+      "gitBlob": "4af7053dcc99b348539fd4f5c9a9e4947aa3734d",
+      "sha256": "f8376873bb3451fbe20c6df5a586f5aeaa0ab9da0ee8a3d9eebfd8e3e1a20f48",
+      "reason": "旧 Agent 微服务的全部 tracked 源码、测试与部署配置"
+    },
+    {
+      "originalPath": "apps/agent/src/index.ts",
+      "archivePath": "source/apps/agent/src/index.ts",
+      "gitBlob": "27f3162660e5dca4c3efb724c50db221a315eaa6",
+      "sha256": "4eaa2071163b1aa85a556892dc52c5d05650b18330fffb726a99f0b434c7f8d7",
+      "reason": "旧 Agent 微服务的全部 tracked 源码、测试与部署配置"
+    },
+    {
+      "originalPath": "apps/agent/src/observability.ts",
+      "archivePath": "source/apps/agent/src/observability.ts",
+      "gitBlob": "9f48718c41077530f8a92c88184a06b2b6a2e0d9",
+      "sha256": "a2704c91e75f2daa0ee59b1feb8ebc3132a523f4fcd221cf16af31832d147636",
+      "reason": "旧 Agent 微服务的全部 tracked 源码、测试与部署配置"
+    },
+    {
+      "originalPath": "apps/agent/src/prompts/agent-message-prompt-resolver.ts",
+      "archivePath": "source/apps/agent/src/prompts/agent-message-prompt-resolver.ts",
+      "gitBlob": "2b989ce073fc20dd697c1ca3845ca915cfdcce40",
+      "sha256": "e5a6924d67b1a0533959c08d8e30a1fc5b20f5e925895e376581aac1d40a0152",
+      "reason": "旧 Agent 微服务的全部 tracked 源码、测试与部署配置"
+    },
+    {
+      "originalPath": "apps/agent/src/rate-limit.ts",
+      "archivePath": "source/apps/agent/src/rate-limit.ts",
+      "gitBlob": "bf19dcd68c040d99a5a48902580a02cb53cc53b3",
+      "sha256": "a41a1fee07f67034b201b7f16fab520d9660de1278bbf72ab70dbc6b17e4a1d8",
+      "reason": "旧 Agent 微服务的全部 tracked 源码、测试与部署配置"
+    },
+    {
+      "originalPath": "apps/agent/src/redis.ts",
+      "archivePath": "source/apps/agent/src/redis.ts",
+      "gitBlob": "c069473c5ea5cc7bb5380a7c106b2163f3f83f09",
+      "sha256": "10e07a48b45fafbb85ec13fb798dce20740c5679bf967f61a1c614d243d582e6",
+      "reason": "旧 Agent 微服务的全部 tracked 源码、测试与部署配置"
+    },
+    {
+      "originalPath": "apps/agent/src/resume-helpers.ts",
+      "archivePath": "source/apps/agent/src/resume-helpers.ts",
+      "gitBlob": "5be996801a2bb87829115a847253b862d09fd220",
+      "sha256": "51f2950b47953a4ada30849747037efb7df92556f8b106fb7bf3ed49fd0c5c09",
+      "reason": "旧 Agent 微服务的全部 tracked 源码、测试与部署配置"
+    },
+    {
+      "originalPath": "apps/agent/src/rich-text-polish.ts",
+      "archivePath": "source/apps/agent/src/rich-text-polish.ts",
+      "gitBlob": "73177b489a8c13d68150f20df4c0343e0383d9c7",
+      "sha256": "269a6bd4eee1248671cf90b9298625125ab11c2ff379b99684c3bddb130ddcfa",
+      "reason": "旧 Agent 微服务的全部 tracked 源码、测试与部署配置"
+    },
+    {
+      "originalPath": "apps/agent/src/session-store.ts",
+      "archivePath": "source/apps/agent/src/session-store.ts",
+      "gitBlob": "a7d0c40326183f4f22416ded45495d8712e417c4",
+      "sha256": "8b4bb363330a74c2df8a82e0ca7fe27f5b2492a3b6ad209665c3d965eab3877e",
+      "reason": "旧 Agent 微服务的全部 tracked 源码、测试与部署配置"
+    },
+    {
+      "originalPath": "apps/agent/src/workflows/context-status.ts",
+      "archivePath": "source/apps/agent/src/workflows/context-status.ts",
+      "gitBlob": "5e28ae3c1c6810207d7be65682ad8751877ef969",
+      "sha256": "28adf3fabd38bd19b3ccb19c645c27b1e0a04ffcbacc3dd7f8e72efd93dfb991",
+      "reason": "旧 Agent 微服务的全部 tracked 源码、测试与部署配置"
+    },
+    {
+      "originalPath": "apps/agent/src/workflows/draft.ts",
+      "archivePath": "source/apps/agent/src/workflows/draft.ts",
+      "gitBlob": "1fa92748dbea1d46572c96ebc568e4fb49697d60",
+      "sha256": "8d833aaf2ebf8445c767283d53d60bde3997330e69defd810f234f5a64562ae2",
+      "reason": "旧 Agent 微服务的全部 tracked 源码、测试与部署配置"
+    },
+    {
+      "originalPath": "apps/agent/src/workflows/loop-runtime.ts",
+      "archivePath": "source/apps/agent/src/workflows/loop-runtime.ts",
+      "gitBlob": "bf359127dc92cf540c00514911535fb70384a2c8",
+      "sha256": "fcdb5567ec4b942c73b86f5e7750b2dc5f3038af1fae4d846b0baf7df959dceb",
+      "reason": "旧 Agent 微服务的全部 tracked 源码、测试与部署配置"
+    },
+    {
+      "originalPath": "apps/agent/src/workflows/resume-workspace.ts",
+      "archivePath": "source/apps/agent/src/workflows/resume-workspace.ts",
+      "gitBlob": "45447eed16fb589209c6dc3edd11962af0385746",
+      "sha256": "44a181b04c35ce79666025b1979d8ffc96bfb47fcf09b3ad6418148f5de7be8e",
+      "reason": "旧 Agent 微服务的全部 tracked 源码、测试与部署配置"
+    },
+    {
+      "originalPath": "apps/agent/src/workflows/tools.ts",
+      "archivePath": "source/apps/agent/src/workflows/tools.ts",
+      "gitBlob": "d48ffc5eaf19493ff7a7a85363b07803be2bf55a",
+      "sha256": "ba8b0ccee17810ae2adb38d49cf1eb8a50e0d09760ad197ab62a17a8173b2c48",
+      "reason": "旧 Agent 微服务的全部 tracked 源码、测试与部署配置"
+    },
+    {
+      "originalPath": "apps/agent/src/workflows/workflow-runtime.ts",
+      "archivePath": "source/apps/agent/src/workflows/workflow-runtime.ts",
+      "gitBlob": "e0c3229ac393e685b7e28e29157f8125b46c2912",
+      "sha256": "8d256da12387b2afab3567bb6f5e9c7d2b433652057995a9c7d37365ce252603",
+      "reason": "旧 Agent 微服务的全部 tracked 源码、测试与部署配置"
+    },
+    {
+      "originalPath": "apps/agent/tests/agent-message-contract-eval.test.ts",
+      "archivePath": "source/apps/agent/tests/agent-message-contract-eval.test.ts",
+      "gitBlob": "7bec959d516db44ef2c89c5b7f5d2585ac671ffd",
+      "sha256": "f7a8c91943f51e1ca722771ff3651ba69f26a0f663150d6590782c60cd18e628",
+      "reason": "旧 Agent 微服务的全部 tracked 源码、测试与部署配置"
+    },
+    {
+      "originalPath": "apps/agent/tests/agent-message-prompt-resolver.test.ts",
+      "archivePath": "source/apps/agent/tests/agent-message-prompt-resolver.test.ts",
+      "gitBlob": "def6a82b841ddc2410316e3e51a7f7fcd49d2562",
+      "sha256": "08c66483378313e722f896f0b2364904df0fbdfc6756f5e3bf8b8f7385d9a4a9",
+      "reason": "旧 Agent 微服务的全部 tracked 源码、测试与部署配置"
+    },
+    {
+      "originalPath": "apps/agent/tests/agent-messages.test.ts",
+      "archivePath": "source/apps/agent/tests/agent-messages.test.ts",
+      "gitBlob": "e18f5a7565bed7611aab8ddafdef6a7396994d77",
+      "sha256": "3f4aeb4903a1d05c837d82b862e78527e2517f0a2955c0ceae4ca5c13f52d99f",
+      "reason": "旧 Agent 微服务的全部 tracked 源码、测试与部署配置"
+    },
+    {
+      "originalPath": "apps/agent/tests/agent-tools.test.ts",
+      "archivePath": "source/apps/agent/tests/agent-tools.test.ts",
+      "gitBlob": "6a3dae3dc1300e7faecbf73b154f84b04b23570b",
+      "sha256": "d062c9e7c4a175b64edf67a55400999f4a33a9bc8bc39798c2edea3ec99a02bb",
+      "reason": "旧 Agent 微服务的全部 tracked 源码、测试与部署配置"
+    },
+    {
+      "originalPath": "apps/agent/tests/ai-cache.test.ts",
+      "archivePath": "source/apps/agent/tests/ai-cache.test.ts",
+      "gitBlob": "9d4b2af1ad68a66b9bbb212ebb59d0efc5de2e92",
+      "sha256": "f0ed68e125c8f73a8aa62cbf1e09fe892a5c212a477ac6303b591b5149bbb62c",
+      "reason": "旧 Agent 微服务的全部 tracked 源码、测试与部署配置"
+    },
+    {
+      "originalPath": "apps/agent/tests/auth.test.ts",
+      "archivePath": "source/apps/agent/tests/auth.test.ts",
+      "gitBlob": "84c6c0f8d6043ae8a4af758335399979b5d0b265",
+      "sha256": "f13685d7830bcc7e2614fb929e75c0ee1a665867d376afc127b1f8d0c79d0ace",
+      "reason": "旧 Agent 微服务的全部 tracked 源码、测试与部署配置"
+    },
+    {
+      "originalPath": "apps/agent/tests/config.test.ts",
+      "archivePath": "source/apps/agent/tests/config.test.ts",
+      "gitBlob": "25dada5c249b58b7cc800095f0132a78308a8c32",
+      "sha256": "696aeb119ee972be7aab9590cd1a4e6ed92ac7b641f5f92d72c24970eea0f495",
+      "reason": "旧 Agent 微服务的全部 tracked 源码、测试与部署配置"
+    },
+    {
+      "originalPath": "apps/agent/tests/draft.test.ts",
+      "archivePath": "source/apps/agent/tests/draft.test.ts",
+      "gitBlob": "ecf5ec82d5886998c032230e6adacec6e15487b3",
+      "sha256": "258f3c21d61aa13dc291129cb369ac183b5a68f33a39c9f33d7177640e0cb121",
+      "reason": "旧 Agent 微服务的全部 tracked 源码、测试与部署配置"
+    },
+    {
+      "originalPath": "apps/agent/tests/http.test.ts",
+      "archivePath": "source/apps/agent/tests/http.test.ts",
+      "gitBlob": "ba9c09d7c5efa008d51332df1f56199e6cb16fce",
+      "sha256": "18a14ba3877f0f8db3717f6db67ef4964fa1d34f2cc5cc167a4145a5704a1513",
+      "reason": "旧 Agent 微服务的全部 tracked 源码、测试与部署配置"
+    },
+    {
+      "originalPath": "apps/agent/tests/langfuse-agent-message-experiment.test.ts",
+      "archivePath": "source/apps/agent/tests/langfuse-agent-message-experiment.test.ts",
+      "gitBlob": "2b0faf0663d70a5fbe32dba2759f77465a351480",
+      "sha256": "c99ff98f787abec0fcaba92e1ef106bdd61a86c19338b0e1d9779c789104cf1d",
+      "reason": "旧 Agent 微服务的全部 tracked 源码、测试与部署配置"
+    },
+    {
+      "originalPath": "apps/agent/tests/loop-runtime.test.ts",
+      "archivePath": "source/apps/agent/tests/loop-runtime.test.ts",
+      "gitBlob": "b899a629e09c17a34748bf97f047280fbcca2b99",
+      "sha256": "f6b5d88b8cc81fae784a3603e7c7f090a98f6019320da19b4a0398e1d9c98aa5",
+      "reason": "旧 Agent 微服务的全部 tracked 源码、测试与部署配置"
+    },
+    {
+      "originalPath": "apps/agent/tests/observability.test.ts",
+      "archivePath": "source/apps/agent/tests/observability.test.ts",
+      "gitBlob": "e39b6a9add0ef9e2989196cf8a55911c2d88a0ce",
+      "sha256": "ca2810289f1c9264dd2820e17e2630d6b9bd4586342d547d1f04d1f237ae229c",
+      "reason": "旧 Agent 微服务的全部 tracked 源码、测试与部署配置"
+    },
+    {
+      "originalPath": "apps/agent/tests/rate-limit.test.ts",
+      "archivePath": "source/apps/agent/tests/rate-limit.test.ts",
+      "gitBlob": "826cdb0657868086605ea6246421f8b5627b945d",
+      "sha256": "cbb420c9b3923adfc01c8242ac2582483b9b14fa12154596ad0a8e1ec13c7dd5",
+      "reason": "旧 Agent 微服务的全部 tracked 源码、测试与部署配置"
+    },
+    {
+      "originalPath": "apps/agent/tests/redis.test.ts",
+      "archivePath": "source/apps/agent/tests/redis.test.ts",
+      "gitBlob": "1385e5e504088a2b3e0a059508a46ae4d84097ba",
+      "sha256": "3831905c6e20ad1e437ecbcf7dbb37577a4cdc6c70e2ef9918e4873d77bf72f7",
+      "reason": "旧 Agent 微服务的全部 tracked 源码、测试与部署配置"
+    },
+    {
+      "originalPath": "apps/agent/tests/resume-helpers.test.ts",
+      "archivePath": "source/apps/agent/tests/resume-helpers.test.ts",
+      "gitBlob": "f6141ceca105e5360acdc0e213978a6f793d2b4a",
+      "sha256": "3612d9b06a1839c729aa5b9c1a691d0869f6197da52249af10ac63c164dad4b3",
+      "reason": "旧 Agent 微服务的全部 tracked 源码、测试与部署配置"
+    },
+    {
+      "originalPath": "apps/agent/tests/rich-text-polish.test.ts",
+      "archivePath": "source/apps/agent/tests/rich-text-polish.test.ts",
+      "gitBlob": "2fb8dd27c43dbee3f7f51ce4300c658569e41998",
+      "sha256": "e26dcfc9e4681555445c7714703b3834953b953c215a49e6629e06e329476c42",
+      "reason": "旧 Agent 微服务的全部 tracked 源码、测试与部署配置"
+    },
+    {
+      "originalPath": "apps/agent/tests/tools.test.ts",
+      "archivePath": "source/apps/agent/tests/tools.test.ts",
+      "gitBlob": "2f3fc2f8c9c7d22a7e3fa53c7cf15657402aaeac",
+      "sha256": "234ced6f94221e949e9e1ff68b33dee82c771cbcfa02b1827d0ae155a96feb38",
+      "reason": "旧 Agent 微服务的全部 tracked 源码、测试与部署配置"
+    },
+    {
+      "originalPath": "apps/agent/tests/workflow-runtime.test.ts",
+      "archivePath": "source/apps/agent/tests/workflow-runtime.test.ts",
+      "gitBlob": "5f2bff187e27502c9ddf99473951ddf2dd3e3a71",
+      "sha256": "89584ded664fce7a85ae6547f7de48c12c7f47c4c85f3b843048245608586a27",
+      "reason": "旧 Agent 微服务的全部 tracked 源码、测试与部署配置"
+    },
+    {
+      "originalPath": "apps/agent/tsconfig.json",
+      "archivePath": "source/apps/agent/tsconfig.json",
+      "gitBlob": "436c93088807d9d4cf77266298f1042a31431016",
+      "sha256": "82857291d7ed707ee19c36de12a98b12d4129afe51c8a4059d0ee111293ba0e4",
+      "reason": "旧 Agent 微服务的全部 tracked 源码、测试与部署配置"
+    },
+    {
+      "originalPath": "apps/agent/vitest.config.ts",
+      "archivePath": "source/apps/agent/vitest.config.ts",
+      "gitBlob": "855de61c1427ac60699ca22d7d84f412a64850b8",
+      "sha256": "181b28d7e658aeec74fe24a5bf7fb39824f074347943c1588aeea7b29400117f",
+      "reason": "旧 Agent 微服务的全部 tracked 源码、测试与部署配置"
+    },
+    {
+      "originalPath": "apps/web/components/agent/agent-ag-ui-runtime-provider.tsx",
+      "archivePath": "source/apps/web/components/agent/agent-ag-ui-runtime-provider.tsx",
+      "gitBlob": "70a4caa5aa8b646c951ad4dc5624a4f4a903fd74",
+      "sha256": "73520a83810fe74fc4e8317bdce67e9eb0d34792b374e78c742dd898ec21840c",
+      "reason": "AG-UI runtime 桥接（旧面板与直连执行之间的适配层）"
+    },
+    {
+      "originalPath": "apps/web/components/agent/agent-panel.tsx",
+      "archivePath": "source/apps/web/components/agent/agent-panel.tsx",
+      "gitBlob": "3d034a0a40d7dff1ef72dbcee79a59c61d5ff058",
+      "sha256": "4ed19ab65da49acceef41f59f5c7e920c243dc22732a31194b1f0b17fb73e315",
+      "reason": "旧 Agent 面板（AG-UI 路径的 UI 入口）"
+    },
+    {
+      "originalPath": "apps/web/lib/agent/client.ts",
+      "archivePath": "source/apps/web/lib/agent/client.ts",
+      "gitBlob": "a14f2006a38ca23468e9f0f9048731fcd9bca2b4",
+      "sha256": "41e6d2cedaf50134018a520a0e37dcc5b6ef2a797d87c62ac1f3e9899edb7d43",
+      "reason": "微服务 HTTP 客户端（签发 token 后转发）"
+    },
+    {
+      "originalPath": "apps/web/lib/agent/direct-run-client.ts",
+      "archivePath": "source/apps/web/lib/agent/direct-run-client.ts",
+      "gitBlob": "1583986a2207a9ee92c84767c25ed0dbedaa5137",
+      "sha256": "6e5352bf3bde118059c3fe7ba15224b6c2647d87e199db3a8bbd082a76fc2cee",
+      "reason": "直连 Run 的流式客户端（浏览器直连旧服务的路径）"
+    },
+    {
+      "originalPath": "apps/web/lib/agent/secret.ts",
+      "archivePath": "source/apps/web/lib/agent/secret.ts",
+      "gitBlob": "31ba5c60938fe1c14575ebd41d3aa71f56e2b60c",
+      "sha256": "4e4d3215352891713e11b53e17aa7dbbe854a7f817bcdd127fea75ddc6d0ef0c",
+      "reason": "Agent JWT 密钥诊断（解释旧服务需要哪些凭据）"
+    },
+    {
+      "originalPath": "apps/web/lib/agent/session-store.ts",
+      "archivePath": "source/apps/web/lib/agent/session-store.ts",
+      "gitBlob": "522635dd522fee3d49a4ae510f42e6d759cefe76",
+      "sha256": "4f2f2a5629375897fb29e82b7e274264c35a97c6e0743df2acb16c38b3bc8ede",
+      "reason": "会话存储（旧会话模型；新实现改用 ai_run 的 sessionId）"
+    },
+    {
+      "originalPath": "apps/web/lib/agent/token.ts",
+      "archivePath": "source/apps/web/lib/agent/token.ts",
+      "gitBlob": "ba9e121f3e69093d845eb06aad19ecb14f0be433",
+      "sha256": "d18dea273cbca9048901ffe778f00c967bc60479a2aced9ed62944f33a2393ba",
+      "reason": "Agent JWT 签发（旧鉴权桥）"
+    },
+    {
+      "originalPath": "docs/agent/architecture.md",
+      "archivePath": "source/docs/agent/architecture.md",
+      "gitBlob": "1c95b7e35602fa01c7b3ee225e2de8eda40e232d",
+      "sha256": "1f758a728bfb30864fae37b1258e0044372a24f5bc894d287c7062fe46a43fe3",
+      "reason": "旧路线的事实文档快照（含已失效的命令与架构）"
+    },
+    {
+      "originalPath": "docs/agent/assistant-ui-research.md",
+      "archivePath": "source/docs/agent/assistant-ui-research.md",
+      "gitBlob": "c416178943179e20e048eecb5398555cd155a605",
+      "sha256": "95ef7600513581f8ad0ff3528602ee2a368f18ff70520e77594cbfb2fd4b1277",
+      "reason": "旧路线的事实文档快照（含已失效的命令与架构）"
+    },
+    {
+      "originalPath": "docs/agent/code-map.md",
+      "archivePath": "source/docs/agent/code-map.md",
+      "gitBlob": "8a2ecfd7bfd1439a1cd256688cc48b1a67a0ae53",
+      "sha256": "914b00c3478e9a16a4b3244aed13ba35f5540c5e4158463eff9788e14f8b84ae",
+      "reason": "旧路线的事实文档快照（含已失效的命令与架构）"
+    },
+    {
+      "originalPath": "docs/agent/decision-log.md",
+      "archivePath": "source/docs/agent/decision-log.md",
+      "gitBlob": "b321d0a4e1bfa58a22e3d9778f400e6df2cec520",
+      "sha256": "dbe150f2d64a1214f5894202077a887991c282d81f93e6165e7120f5306fe736",
+      "reason": "旧路线的事实文档快照（含已失效的命令与架构）"
+    },
+    {
+      "originalPath": "docs/agent/deployment.md",
+      "archivePath": "source/docs/agent/deployment.md",
+      "gitBlob": "b6612cb380ea72d59e3335db033f7757c40cac0f",
+      "sha256": "d8f3d4fd563847fc3c88c3e6559d1fb99f8a8e2363650d2547075104c7334691",
+      "reason": "旧路线的事实文档快照（含已失效的命令与架构）"
+    },
+    {
+      "originalPath": "docs/agent/development.md",
+      "archivePath": "source/docs/agent/development.md",
+      "gitBlob": "656b7bf33ede50c7ab9c53d2441cd3460550f53e",
+      "sha256": "26696907f417e5486243c3053c03c9a71de9a15bc8729e5c426fdfe3b40ae187",
+      "reason": "旧路线的事实文档快照（含已失效的命令与架构）"
+    },
+    {
+      "originalPath": "docs/agent/fogot-inspired-long-loop-agent.md",
+      "archivePath": "source/docs/agent/fogot-inspired-long-loop-agent.md",
+      "gitBlob": "9ef737302c325913ab15d72bcdc7ce2df4945cfb",
+      "sha256": "61a89a0712514b63eedf07894d6727f6cb7526b7421c0ced06f780ec584fabe1",
+      "reason": "旧路线的事实文档快照（含已失效的命令与架构）"
+    },
+    {
+      "originalPath": "docs/agent/frontend-integration.md",
+      "archivePath": "source/docs/agent/frontend-integration.md",
+      "gitBlob": "21b53405ad0ede800897299d33acb736a56b02f9",
+      "sha256": "844719b151375f1b9490a043cb97c0b88d70bc2900935cd715b28d2dd5bfded2",
+      "reason": "旧路线的事实文档快照（含已失效的命令与架构）"
+    },
+    {
+      "originalPath": "docs/agent/implementation-roadmap.md",
+      "archivePath": "source/docs/agent/implementation-roadmap.md",
+      "gitBlob": "abc328306e38f2a8523c8f1d982143ea01265fd3",
+      "sha256": "4eedab519cf83911d4b3fd4117462798a02f7e8c12e29163b91682aea66cd896",
+      "reason": "旧路线的事实文档快照（含已失效的命令与架构）"
+    },
+    {
+      "originalPath": "docs/agent/observability-and-evals.md",
+      "archivePath": "source/docs/agent/observability-and-evals.md",
+      "gitBlob": "af713df96f2731b1b6fa9e3d769abd354c346d7f",
+      "sha256": "97b94ef5171c73415f9f45407d948ab05dda908dffe92a42ee176e7eb48b583b",
+      "reason": "旧路线的事实文档快照（含已失效的命令与架构）"
+    },
+    {
+      "originalPath": "docs/agent/proto/intro_builder_agent_v1.proto",
+      "archivePath": "source/docs/agent/proto/intro_builder_agent_v1.proto",
+      "gitBlob": "23462faa41009100260394a214b4598a20cad920",
+      "sha256": "7ca0daac5613cb25c01e06a999ca08a5b3f2957358e92ed27310a3ef05dd6c9b",
+      "reason": "旧路线的事实文档快照（含已失效的命令与架构）"
+    },
+    {
+      "originalPath": "docs/agent/README.md",
+      "archivePath": "source/docs/agent/README.md",
+      "gitBlob": "de1b9660475f65489721ecf9bd56f0a28573242c",
+      "sha256": "6623590938efa861c01d944fd5dfdc7cdfe59d5df2f4223a16a947f7c1b341e2",
+      "reason": "旧路线的事实文档快照（含已失效的命令与架构）"
+    },
+    {
+      "originalPath": "docs/agent/security-and-stability.md",
+      "archivePath": "source/docs/agent/security-and-stability.md",
+      "gitBlob": "db230c4e69d03f65e61ec7f9eac25d117b698705",
+      "sha256": "fab9f2906028f6b6ec223d8b6f09030da68c09f32675bd5265076795938cfe4c",
+      "reason": "旧路线的事实文档快照（含已失效的命令与架构）"
+    },
+    {
+      "originalPath": "docs/agent/service-contracts.md",
+      "archivePath": "source/docs/agent/service-contracts.md",
+      "gitBlob": "14f9747aae2802a07a38cf790c92cb63f907bc39",
+      "sha256": "43bcfd408874a5a0ee3e9f3cd14ed6482ea47eac9f5ba779b3267e6a71611c3f",
+      "reason": "旧路线的事实文档快照（含已失效的命令与架构）"
+    }
+  ],
+  "excluded": []
+}
