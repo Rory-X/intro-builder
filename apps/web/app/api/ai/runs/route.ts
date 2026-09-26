@@ -336,6 +336,12 @@ export async function POST(request: Request) {
   return streamRunAttempt({
     runId,
     resumeId: body.resumeId,
+    /*
+     * 浮窗会话 id（可空）。非空时本轮对话会写进浮窗会话表 ——
+     * 那是刷新后按会话恢复历史的数据来源。
+     * 新路径此前**完全不写**那张表，于是刷新后看不到新路径产生的消息。
+     */
+    sessionId: body.sessionId,
     userId,
     actorName: session.user?.name ?? "用户",
     attemptId: crypto.randomUUID(),

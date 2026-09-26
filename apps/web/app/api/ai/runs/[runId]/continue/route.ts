@@ -256,6 +256,12 @@ export async function POST(
   return streamRunAttempt({
     runId,
     resumeId: run.resumeId,
+    /*
+     * 会话 id 取自**已落库的 Run 行**（它创建时就记下了），
+     * 而不是请求体 —— 客户端换一个 sessionId 就能把这一轮
+     * 挂到别的会话历史上，那是越权写入。
+     */
+    sessionId: run.sessionId,
     userId,
     actorName: session.user?.name ?? "用户",
     attemptId: crypto.randomUUID(),
