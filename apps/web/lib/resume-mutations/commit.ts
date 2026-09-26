@@ -1,7 +1,12 @@
 import { sql, type SQL } from "drizzle-orm";
 
 import { db } from "@/db";
-import type { CommitResult, MutationCommand, ResumeContent } from "@intro-builder/shared/schemas";
+import type {
+  CommitResult,
+  MutationCommand,
+  ResumeContent,
+  SemanticOperation,
+} from "@intro-builder/shared/schemas";
 import { ResumeContent as ResumeContentSchema } from "@intro-builder/shared/schemas";
 import { MutationCommand as MutationCommandSchema, hashMutationPayload } from "@intro-builder/shared/schemas";
 import { createItemId } from "./item-id";
@@ -89,7 +94,24 @@ export type CommitDeps = {
 };
 
 export type CommitOutcome =
-  | { status: "committed"; result: Extract<CommitResult, { status: "committed" }>; nextContent: unknown; rowPatch: ResumeRowPatch }
+  | {
+      status: "committed";
+      result: Extract<CommitResult, { status: "committed" }>;
+      nextContent: unknown;
+      rowPatch: ResumeRowPatch;
+      /**
+       * 本次提交的**反操作**（条件撤销的依据）。
+       *
+       * 只在**首次提交**时返回。幂等重放（同 mutationId 再次提交）时回执表里
+       * 没有存 inverse，因此该字段为 `undefined` —— 这是如实的：
+       * 重放不产生新的反操作，撤销应当针对**原来那次**提交的 inverse
+       * （调用方拿首次提交的返回值即可）。
+       *
+       * 不放进 `CommitResult` 契约类型：那是 API 响应形状，而反向操作是
+       * **内部能力**，不该出现在面向客户端的契约里。
+       */
+      inverse?: SemanticOperation[];
+    }
   | { status: "conflict"; result: Extract<CommitResult, { status: "conflict" }> }
   | { status: "no_change"; result: Extract<CommitResult, { status: "no_change" }> }
   | { status: "rejected"; result: Extract<CommitResult, { status: "rejected" }> };
@@ -325,6 +347,15 @@ export async function commitResumeMutation(
     },
     nextContent: prepared.nextContent,
     rowPatch: prepared.rowPatch,
+    /*
+     * 首次提交带上反操作，供调用方构造条件撤销
+     * （见 `resume-mutations/undo.ts` 的 `buildUndoCommand`）。
+     *
+     * 只有这一条路径能提供它：幂等重放走上面的 `existing` 分支，
+     * 而回执表里没有存 inverse —— 重放不产生新的反操作，
+     * 撤销应当针对**原来那次**提交。
+     */
+    inverse: prepared.inverse,
   };
 }
 
