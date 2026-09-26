@@ -51,16 +51,26 @@ export type ClientRunPathDecision = {
  * 与 `resolveRunRouteDecision` 同一判定风格：
  * 显式 `NEXT_PUBLIC_AI_RUN_PATH=new` 才开启，其余一律旧路径（保守）。
  *
- * **测试环境恒开**：否则浮窗的新路径行为在单测里无法覆盖 ——
- * 那等于让开关把测试挡住，与 `resolveRunRouteDecision` 同一理由。
+ * ## 与服务端开关的**一处刻意不同**
+ *
+ * 服务端开关在测试环境**恒开** —— 因为路由测试直接调 `POST`，
+ * 若被开关挡住就测不到真实行为，那等于「用一个开关让测试失去意义」。
+ *
+ * 客户端开关**不这样做**（测试环境也默认旧路径）。理由是两者的测试对象不同：
+ *
+ * - 路由测试的对象是**一条路由**，它只有一个「开启」的正确状态；
+ * - 组件测试的对象是**一个组件**，它需要在**两条路径上都能被测**。
+ *   若测试环境恒开新路径，那么既有那批 mock 旧路径的组件测试
+ *   （`agent-panel-assistant-ui.test.tsx`，26 处旧路由 mock）会全部走新路径
+ *   而失败 —— 而那批测试正是用来守护旧路径行为的。
+ *
+ * 因此新路径的组件测试必须**显式**设置 `NEXT_PUBLIC_AI_RUN_PATH=new`
+ * （或直接注入 env 对象）。这样两条路径的覆盖都是**主动选择**的，
+ * 而不是被一个「恒开」的默认值悄悄决定。
  */
 export function resolveClientRunPath(
   env: ClientRunPathEnv = readClientEnv(),
 ): ClientRunPathDecision {
-  if (env.NODE_ENV === "test") {
-    return { useNewPath: true, reason: "测试环境：开关不生效，以便覆盖新路径行为" };
-  }
-
   const raw = env.NEXT_PUBLIC_AI_RUN_PATH?.trim().toLowerCase();
   if (raw === "new") {
     return { useNewPath: true, reason: `${CLIENT_RUN_PATH_ENV}=new` };
