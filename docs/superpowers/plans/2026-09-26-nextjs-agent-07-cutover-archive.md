@@ -1,7 +1,9 @@
 # P07：唯一入口切流、代码归档与现役文档更新
 
-状态：进行中（任务 3 的**前置能力**已完成：客户端消费器、多轮历史、
-新旧协议适配；**浮窗尚未切换**，归档未开始）。依赖 P06 和完整能力验收；
+状态：进行中（任务 1 归档基线与清单已完成；任务 3 的**全部前置能力**
+（客户端消费器、多轮历史、协议适配、内容同步、协调层）已完成，且两条
+无消费方的旧路由已转 410；**浮窗组件尚未切换、默认 surface 仍是 panel**；
+任务 2 部分完成；任务 4-7 未开始）。依赖 P06 和完整能力验收；
 归档根[说明](../../../archive/agent-microservice/2026-09-26/README.md)。
 
 ## 完成记录（分批）
@@ -31,14 +33,71 @@
   实测修复两处真实泄漏（透传工具原始 result、回显未知工具名）。
   笔记：`docs/notes/implemented/architecture/2026-09-26-floating-protocol-adapter.md`。
 
+### 已完成：切流协调层与内容同步
+
+- **协调层**（`lib/ai-client/floating-run.ts`，22 例）：把五个零件
+  （网络 / 协议翻译 / 内容同步 / 任务卡 / 投影）串成一个可注入的会话对象
+  （`createFloatingRun`）。回调命名与组件既有 `readFloatingAgentStream` 一致，
+  类型逐字段对齐 —— 因此组件改动从「重写」降为「替换数据来源」。
+  实现自查修正三个「类型通过但行为错」的缺陷（重复折叠投影、
+  `onProjection` 空实现、返回写死 `serverContent: null`）。
+  笔记：`docs/notes/implemented/architecture/2026-09-26-floating-run-coordinator.md`。
+- **内容同步**（`lib/ai-client/commit-sync.ts`，12 例）：新旧路径的**写入位置不同**
+  （旧：客户端写库；新：服务端写库）。服务端写完库后客户端必须同步表单，
+  否则显示旧内容、或本地 autosave 用旧内容**覆盖回去**。
+  关键判据：有本地编辑时**只推进基准不覆盖表单**（防抹掉用户正在输入的字）。
+  笔记：`docs/notes/implemented/architecture/2026-09-26-commit-sync-to-client.md`。
+
+### 已完成：任务 1 归档基线与清单
+
+- **清单**（`archive/agent-microservice/2026-09-26/MANIFEST.json`）：
+  由 `scripts/archive/generate-agent-manifest.ts` 生成（73 条 / 0 排除），
+  每条含 `originalPath` / `archivePath` / `gitBlob` / `sha256` / `reason`。
+  基线固定 `050d5bb5e`；核实 `apps/agent` 与 `.github/workflows/` 自基线以来
+  **零改动**，因此归档源直接取基线。
+- **校验测试**（`apps/web/tests/unit/agent-archive-manifest.test.ts`，18 例）：
+  **逐条**核对内容 sha256 与 gitBlob（不是抽查 —— 抽查会漏掉不在样本里的文件）。
+- **实测修正**：测试无条件依赖基线 commit，**本地全绿但 CI 5 例失败** ——
+  CI 是 `fetch-depth: 1` 浅克隆，基线不在对象库。改为探测可用性后如实跳过，
+  另加一组**不依赖 git 历史**的常驻校验。用 `--depth 1 --single-branch`
+  真实模拟 CI 环境验证（14 通过 / 4 跳过）。
+  **注意**：第一次「模拟」误用 `--no-single-branch`（拉全历史、基线仍存在），
+  模拟环境比目标宽松 —— 模拟本身也要先验证与目标一致。
+  笔记：`docs/notes/implemented/process/2026-09-26-archive-manifest.md`。
+
+### 已完成：任务 3 部分（无消费方的旧路由退役）
+
+- `/api/agent/session` 与 `/api/agent/messages` 转为 **410 stub**
+  （共享 `lib/agent/retired-route.ts`）：这两条**零消费方**（除自身测试），
+  而 `direct-runs` 有活路径（默认 `panel` surface）故暂不能动。
+  用 410 而非 404/503：410 语义正是「永久没有了」，且是可观察的退役信号
+  （P08 的「旧服务无请求」判据）。**不重定向**（plan 明确禁止）。
+  笔记：`docs/notes/implemented/architecture/2026-09-26-retired-routes-410.md`。
+- **退役审计棘轮**（`tests/unit/agent-retirement-audit.test.ts`，19 例）：
+  断言实际旧服务调用点**恰好等于**已知清单（而非等于零 —— 断言零会被 `skip`，
+  那比诚实列出更糟）。全树扫描而非只扫清单文件。
+  笔记：`docs/notes/implemented/process/2026-09-26-retirement-audit-ratchet.md`。
+
 ### 未完成（本切片剩余）
 
 - **任务 3 的组件切换本身**：`floating-agent-chat.tsx`（2511 行）仍走旧入口。
-  需要用 `streamRun` 替换 `fetch` 目标、用 `adaptRunEventToAction` 替换
-  旧协议解析、用 `restoreWorkspace` 做刷新恢复。**需要人工冒烟**
-  （浮窗/停靠、移动端、暗色、键盘）。
-- **任务 1、2、4、5、6、7**：归档基线与清单、能力矩阵、移出源代码与部署配置、
-  收敛构建与依赖、更新事实文档、发布与观察。
+  所有零件已就绪，剩「替换 `fetch` 目标 + 接线回调 + 翻转默认 surface」：
+  - 用 `createFloatingRun` 替换现有的 `readFloatingAgentStream` 调用；
+  - 用 `restoreWorkspace` 做刷新恢复；
+  - **翻转 `readAgentSurface()` 默认值**（现为 `"panel"` = 旧 AgentPanel →
+    AG-UI runtime → `direct-runs` → 旧微服务）。
+    `agent-retirement-audit` 里有一条断言钉住「默认是 panel」，
+    翻转后它会失败 —— 那是**预期信号**，届时同步更新。
+  - **需要人工冒烟**：浮窗/停靠、移动端、暗色、键盘。
+- **切换后的余额**：旧服务调用点从 6 降到 2（`direct-runs` 与 AG-UI runtime），
+  组件切换后应降到 0；届时棘轮清单归零，可归档旧客户端与 token 模块。
+- **任务 2 的其余部分**：能力矩阵已由棘轮覆盖（11 个 Web 自足路由 +
+  断言不引用旧配置键），但「预览环境完全不配置仍可使用」尚缺
+  **真实环境的验证**（属任务 7）。
+- **任务 4、5、6、7**：移出源代码与部署配置、收敛构建与依赖、
+  更新事实文档、发布与观察。
+  **任务 4 执行移动后**，`agent-archive-manifest.test.ts` 里两条
+  「尚未移入」断言会失败 —— 那是预期信号。
 
 ## 文件范围
 
