@@ -123,11 +123,43 @@
   其中「配置非法不留孤儿 Run」一例一开始失败并暴露了第 ① 类缺陷。
 - **决策笔记**：`docs/notes/implemented/architecture/2026-09-26-run-start-route.md`。
 
+### 已完成：任务 4 的直接模式落盘
+
+- **落地**：`lib/ai/commit-proposal.ts` —— 提案经 `commitResumeMutation` 提交并返回真实回执。
+- **三条不可让步的约束**：
+  ① **没有回执就不是已保存**：只有 `committed`（带 `mutationId` + `revision`）才回
+  `succeeded` 且带 `mutationId`；冲突回 `failed` + `revision_conflict`
+  （带出当前 revision），**绝不带 `mutationId`** —— 带了编排层就会发出
+  `mutation.committed` 并推进工作副本基准，产生幻觉状态；
+  ② **fence 原样透传**（取消与提交可能并发，只有数据库在写语句内核验才算数）；
+  ③ **幂等键复用**：`mutationId` 由 `toolCallId` 派生（`agent-${toolCallId}`），
+  重试复用同一个键与 payload。
+- `no_change` 如实回 `saved: false`；`rejected` 把 code 转成面向模型的说明；
+  未知结果用 `never` 穷举兜底。
+- **验证**：`tests/unit/ai-commit-proposal.test.ts` 10 例。
+
+### 已完成：任务 6 的 continue 路由
+
+- **落地**：`app/api/ai/runs/[runId]/continue/route.ts`，与启动路由共用
+  `lib/ai/run-route-support.ts`（启动路由由 431 行精简到 251 行）。
+- **三类危险**：① 接管仍有效的租约 → 一律 409（`held_by_other`）；
+  但租约**已过期**的放行 —— 那是平台硬杀后的恢复路径
+  （AbortSignal 在硬杀时不触发，租约过期是「进程确实死了」的唯一可靠信号）；
+  ② 对终态 Run 继续 → 409（终态只出现一次）；`waiting_user` / `interrupted`
+  **不是**终态，正是本路由存在的理由；
+  ③ 基于过期检查点继续 → 409 `stale_checkpoint`，且比对放在**申请租约之前**
+  （客户端可恢复状态，不值得白占租约阻塞其它请求）。
+- **授权模式取自已落库的 Run 行**，不取自请求体；历史从已持久化事件重建
+  且**不重放工具**（重放会让「继续」变成第二次修改）。
+- **验证**：`tests/unit/ai-run-continue-route.test.ts` 14 例。
+- **决策笔记**：`docs/notes/implemented/architecture/2026-09-26-run-continue-route.md`。
+
 ### 未完成（本切片剩余）
 
-任务 4 的**直接模式落盘**（当前工具产出提案后不写库；完整提案-审批闭环在
-decisions 路由）、任务 6 的 **continue 路由**（`waiting_user` 的 Run 无法恢复）、
-任务 8 验证与灰度。**新链路仍未切流**。
+任务 8 验证与灰度：服务端开关默认 legacy、指定预览环境先跑新链路、
+记录首反馈/工具完成/提交/恢复延迟。**新链路仍未切流** ——
+`app/api/ai/runs/*` 与客户端浮窗尚未接线，旧链路 `app/api/agent/floating/chat`
+仍是唯一在跑的执行入口。
 
 ### 实测发现（详见决策笔记）
 
