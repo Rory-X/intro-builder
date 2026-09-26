@@ -18,8 +18,19 @@ import {
   type CommitPrincipal,
 } from "@/lib/resume-mutations/commit";
 import { buildApplyTemplateOperations } from "@/lib/resume-mutations/editor-adapter";
+import {
+  sourceLabel as versionSourceLabel,
+  type VersionSource,
+} from "@/lib/ai-client/version-history";
 
-type ResumeVersionSource = "manual" | "agent" | "restore";
+/*
+ * 来源类型与标签统一从 `lib/ai-client/version-history` 取。
+ *
+ * 此前这里是本地定义，只认 3 种来源，而提交层实际会写 9 种 ——
+ * `polish` / `template` / `style` / `collab` / `undo` 全被显示成「手动保存」，
+ * 等于对用户**谎报来源**（例如 AI 润色显示成「手动保存」）。
+ */
+type ResumeVersionSource = VersionSource;
 
 export type CreateResumeVersionInput = {
   resumeId: string;
@@ -42,6 +53,18 @@ export type ResumeVersionListItem = {
   operationCount: number;
   summary: string | null;
   createdAt: string;
+  /*
+   * 以下字段是 P06 任务 5 的聚合与撤销所需。
+   *
+   * 数据库里一直有它们（迁移 0014），提交层也一直在写，
+   * 但此前既没在 Drizzle schema 里声明、也没在这里读取 ——
+   * 因此 UI 无法「按任务聚合」、无法「跳回任务」，撤销也拿不到 mutationId。
+   * 现在一并补上。
+   */
+  revision: number | null;
+  runId: string | null;
+  changeSetId: string | null;
+  mutationId: string | null;
 };
 
 /**
@@ -88,11 +111,8 @@ async function actionUser(): Promise<{ id: string; name: string }> {
   throw new Error("unauthorized");
 }
 
-function sourceLabel(source: ResumeVersionSource): string {
-  if (source === "agent") return "通过对话";
-  if (source === "restore") return "手动恢复";
-  return "手动保存";
-}
+/** 来源标签（9 种来源各有正确文案，不再是「其余都算手动保存」）。 */
+const sourceLabel = versionSourceLabel;
 
 async function ensureResumeOwner(resumeId: string, userId: string) {
   const rows = await withDbRetry("resumeVersion.owner", () =>
@@ -140,6 +160,16 @@ export async function createResumeVersion(input: CreateResumeVersionInput) {
     operationCount,
     summary: input.summary ?? null,
     createdAt: createdAt.toISOString(),
+    /*
+     * 这条辅助函数创建的是「本地新版本」，不携带聚合与撤销信息 ——
+     * 那些字段来自提交层的真实回执。显式写 null 而不是省略：
+     * 省略会让类型校验失败，而用 `as` 强转会掩盖「这个入口确实没有这些信息」
+     * 这一事实。
+     */
+    revision: null,
+    runId: null,
+    changeSetId: null,
+    mutationId: null,
   } satisfies ResumeVersionListItem;
 }
 
@@ -155,6 +185,10 @@ export async function listResumeVersions(resumeId: string): Promise<ResumeVersio
         operationCount: resumeVersions.operationCount,
         summary: resumeVersions.summary,
         createdAt: resumeVersions.createdAt,
+        revision: resumeVersions.revision,
+        runId: resumeVersions.runId,
+        changeSetId: resumeVersions.changeSetId,
+        mutationId: resumeVersions.mutationId,
       })
       .from(resumeVersions)
       .where(and(eq(resumeVersions.resumeId, resumeId), eq(resumeVersions.userId, userId)))

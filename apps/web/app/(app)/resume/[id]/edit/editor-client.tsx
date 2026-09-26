@@ -564,6 +564,14 @@ export default function EditorClient({ userId, id, initialTitle, initialTemplate
             operationCount: version.operationCount || 1,
             summary: version.summary ?? null,
             createdAt: version.createdAt,
+            /*
+             * 单条版本查询（`getResumeVersion`）未取聚合字段 —— 这条路径是
+             * 「查看某个历史版本」，不涉及按任务聚合或撤销，因此显式 null。
+             */
+            revision: null,
+            runId: null,
+            changeSetId: null,
+            mutationId: null,
           } satisfies ResumeVersionListItem);
         setViewedVersion({
           id: version.id,
@@ -996,6 +1004,15 @@ export default function EditorClient({ userId, id, initialTitle, initialTemplate
                       operationCount: 1,
                       summary: versionSummary,
                       createdAt: receipt.committedAt,
+                      /*
+                       * 这条清单项来自**真实回执**，因此带上真实字段 ——
+                       * `mutationId` 是撤销的依据，`revision` 用于留痕核对。
+                       * 不做成 null：那样会让「撤销」对 Agent 造成的修改不可用。
+                       */
+                      revision: receipt.revision,
+                      runId: null,
+                      changeSetId: null,
+                      mutationId: receipt.mutationId,
                     },
                   });
                   setIsVersionPopoverOpen(false);

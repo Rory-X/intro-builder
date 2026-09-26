@@ -57,10 +57,21 @@ export type VersionRecord = {
 
 /** 来源的中文说明。 */
 const SOURCE_LABELS: Record<VersionSource, string> = {
-  manual: "手动编辑",
-  agent: "简历助手",
+  /*
+   * 前三种的文案**必须与既有实现的原文案一致** ——
+   * 它们已经在 UI 与多处测试里固定下来（`sourceLabel` 原来只认这三种）：
+   *   agent → "通过对话"、restore → "手动恢复"、其余 → "手动保存"
+   *
+   * 我第一版把 agent 写成了「简历助手」，改了用户可见文案，
+   * 由 `resume-version-actions.test.ts` 的既有断言抓出。
+   * 这次改动的目标只是**补齐缺失的来源**，不是重写既有措辞。
+   */
+  manual: "手动保存",
+  agent: "通过对话",
+  restore: "手动恢复",
+  // 以下六种此前没有文案，会被显示成「手动保存」（谎报来源）——
+  // 提交层一直在写它们（`CommitPrincipal.source` 是 9 种），只是读取层没认。
   polish: "AI 润色",
-  restore: "恢复历史版本",
   template: "更换模板",
   style: "调整排版",
   system: "系统操作",

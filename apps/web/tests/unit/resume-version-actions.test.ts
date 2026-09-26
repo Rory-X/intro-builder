@@ -73,6 +73,15 @@ describe("resume version actions", () => {
         operationCount: 2,
         summary: "AI 修改了 2 处内容",
         createdAt: expect.any(String),
+        /*
+         * 这个入口创建的是「本地新版本」，不携带聚合与撤销信息 ——
+         * 那些字段来自提交层的真实回执。显式断言为 null，
+         * 避免将来有人用 `as` 强转把它们蒙过去。
+         */
+        revision: null,
+        runId: null,
+        changeSetId: null,
+        mutationId: null,
       }),
     );
   });
@@ -88,6 +97,15 @@ describe("resume version actions", () => {
         operationCount: 1,
         summary: "AI 修改",
         createdAt,
+        /*
+         * 这些字段由迁移 0014 加到数据库，提交层一直在写，
+         * 但此前既没在 Drizzle schema 声明、也没在查询里取 ——
+         * 因此 UI 无法按任务聚合。补上后它们必须被如实读出。
+         */
+        revision: 7,
+        runId: "run-1",
+        changeSetId: "cs-1",
+        mutationId: "m-1",
       },
     ]);
 
@@ -101,6 +119,11 @@ describe("resume version actions", () => {
         operationCount: 1,
         summary: "AI 修改",
         createdAt: createdAt.toISOString(),
+        // 聚合与撤销所需字段被读出 —— 这是 P06 任务 5 的接线点。
+        revision: 7,
+        runId: "run-1",
+        changeSetId: "cs-1",
+        mutationId: "m-1",
       },
     ]);
   });
