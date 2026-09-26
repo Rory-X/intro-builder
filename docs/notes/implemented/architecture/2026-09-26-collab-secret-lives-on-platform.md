@@ -70,5 +70,14 @@ Status: implemented
 - 工作流不再引用该 secret：对 `.github/workflows/deploy-partykit.yml` 解析后，`JSON.stringify(config)` 不含 `COLLAB_JWT_SECRET`；`Deploy PartyKit` 步骤的 env 仅含 `PARTYKIT_LOGIN` / `PARTYKIT_TOKEN`。
 - 官方路径依据：<https://docs.partykit.io/guides/managing-environment-variables/>（`partykit env add` → 裸 `partykit deploy`；`--var` 仅作单次覆盖）。
 - 相关笔记：[2026-07-31-collab-tokens-fail-closed.md](./2026-07-31-collab-tokens-fail-closed.md) 的部署侧描述已就地更新为本篇结论。
-- 生产旧版行为（部署前基线，用于对照）：对 `wss://intro-collab.rory-x.partykit.dev/parties/main/<room>` 发一个签名无效的 JWT，旧版保持 OPEN 并回显伪造的 `userId`；新版必须 `close(4401)`。同一探测在部署后重跑即可判定升级是否生效。
-- **部署后待办（本笔记未完成）**：确认 Vercel 上 `COLLAB_JWT_SECRET` 与 `partykit env pull` 的值一致；再按 `AGENTS.md` §6 走一遍双端手测（`pnpm dev:web` + `pnpm dev:partykit`，邀请链接进入、在线状态、批注同步）。
+- **部署已成功并验证（2026-09-26）**：本次改动推送后 `Deploy PartyKit` 取得自 2026-06-21 以来的首次 success（此前两次均为 `Missing COLLAB_JWT_SECRET secret`）。部署后复测：
+
+  | 探测 | 部署前 | 部署后 |
+  | --- | --- | --- |
+  | 伪造签名 JWT | OPEN，回显伪造 `userId`，存活 10s | `close(4401, "Unauthorized")` |
+  | 无 token | OPEN，接受为 `guest-<id>` | `close(4401, "Unauthorized")` |
+  | 用平台侧 secret 正确签发的 JWT | — | OPEN，收到 `presence`，`userId` 来自真实 payload |
+
+  三项合起来证明 Worker 既 fail-closed（拒绝无效）又不是 fail-always（接受合法）。
+- **平台侧值未被部署覆盖**：部署前后 `partykit env pull` 的 SHA-256 一致，确认裸 `deploy` 保留平台已存的 vars，未出现"空值覆盖"。
+- **仍未验证**：`apps/web` 一侧（Vercel）的 `COLLAB_JWT_SECRET` 是否与平台侧**逐字节一致**。CLI token 已失效（`api.vercel.com` 返回 `invalidToken`），仓库内无法读取 Vercel 环境变量。若两端不一致，表现为邀请链接能签发 token 但连接被 4401 拒绝。**排查方式**：比对 Vercel 上该变量与 `partykit env pull` 的值。
