@@ -298,20 +298,21 @@ describe("已退役路由：410 stub 而非转发", () => {
 });
 
 describe("默认 UI 路径（关键的诚实性）", () => {
-  it("**默认 surface 是 panel，也就是旧 AgentPanel 路径**", () => {
+  it("**默认 surface 是 floating**（已翻转，默认用户不再走 direct-runs）", () => {
     /*
-     * 这是当前最重要的一个事实：`readAgentSurface()` 在未配置环境变量时
-     * 返回 "panel"，而 `editor-client.tsx` 在非 floating 模式下渲染
-     * **旧的 `AgentPanel`** —— 它经 AG-UI runtime 走到 `direct-runs`
-     * 再到旧微服务。
+     * P07 任务 3 的翻转已完成。
      *
-     * 也就是说：**默认配置下，AI 助手的流量仍走待退役的服务**。
-     * 切流（P07 任务 3）的核心动作之一就是把默认值翻转为 floating。
+     * 翻转前：默认 `panel` → `AgentPanel` → AG-UI runtime →
+     * `/api/agent/direct-runs`（签发 JWT + 把 `streamUrl` 指向旧微服务）——
+     * 也就是默认用户的流量仍走待退役的服务。
      *
-     * 这条断言把这个事实钉在测试里。它失败时说明默认值变了 ——
-     * 那正是切流完成，届时应当更新这里并删除本组里「仍为 panel」的断言。
+     * 翻转后默认 `floating` → `/api/agent/floating/chat`（Web 自足，不依赖微服务）。
+     *
+     * 仍欠债的是 `direct-runs` 那条**可选**路径本身（显式配 panel 时才会走），
+     * 它留在 `KNOWN_LEGACY_CALL_SITES` 里 —— 余额从 2 处降到 2 处（不变），
+     * 但默认路径已经不再经过它。
      */
-    expect(readAgentSurface({})).toBe("panel");
+    expect(readAgentSurface({})).toBe("floating");
   });
 
   it("浮窗需要显式配置才启用（默认不启用）", () => {
@@ -319,8 +320,12 @@ describe("默认 UI 路径（关键的诚实性）", () => {
     expect(readAgentSurface({ NEXT_PUBLIC_AGENT_ASSISTANT_SURFACE: "floating" })).toBe("floating");
   });
 
-  it("环境变量取值不认识时**回落到 panel 而不是报错**（保守）", () => {
-    expect(readAgentSurface({ AGENT_ASSISTANT_SURFACE: "weird" })).toBe("panel");
+  it("**取值不认识时回落到 floating 而不是报错**（拼错不该留在退役路径上）", () => {
+    /*
+     * 与 `panel` 时代相反，而这是有意的：`panel` 会走 `direct-runs`
+     * （依赖待退役的微服务）。拼错的开关名不该把用户留在一条正在退役的路径上。
+     */
+    expect(readAgentSurface({ AGENT_ASSISTANT_SURFACE: "weird" })).toBe("floating");
   });
 
   it("editor-client 在非 floating 模式下确实渲染旧 AgentPanel", () => {
