@@ -415,17 +415,25 @@ describe("EditorClient version history and undo/redo", () => {
     fireEvent.click(await screen.findByRole("button", { name: /6 月 23 日 · 上午 10:18/ }));
     expect(await screen.findByText("正在查看历史版本，简历内容暂不可编辑")).toBeInTheDocument();
 
+    /*
+     * Escape 的处理在 `editor-client.tsx` 的一个 useEffect 里注册，
+     * 而那个 effect 的**依赖数组含 `viewedVersion`**。
+     *
+     * 因此**必须先让 effect 重跑完**，再派发 keydown —— 否则监听器闭包里的
+     * `viewedVersion` 还是旧值（null），Escape 会被忽略。
+     *
+     * `fireEvent.keyDown` 是同步派发，而 React 提交 effect 要等一次调度；
+     * 本地机器快、effect 已重跑完因此通过，CI 机器慢就赶不上 ——
+     * 这就是这条用例偶发失败（本地单独跑 3 次全过、全量并发时失败）的根因。
+     *
+     * 我上一轮只给**断言**加了 waitFor，没有处理**派发**的时序，
+     * 因此没有修彻底。这里用 act 包住一次微任务排空，确保 effect 已生效。
+     */
+    await act(async () => {
+      await Promise.resolve();
+    });
     fireEvent.keyDown(window, { key: "Escape" });
 
-    /*
-     * 必须用 waitFor 等待，不能立即同步断言。
-     *
-     * Escape 的处理是 `setViewedVersion(null)` —— 一个 React 状态更新，
-     * 刷新到 DOM 需要一次调度。本地机器快、断言时已经更新完，因此通过；
-     * CI 机器慢就赶不上，于是这条用例在 CI 上稳定失败而本地从不复现。
-     *
-     * （同 `settings-page-layout` 的同类问题：同步断言依赖调度时序。）
-     */
     await waitFor(() => {
       expect(screen.queryByText("正在查看历史版本，简历内容暂不可编辑")).not.toBeInTheDocument();
     });
