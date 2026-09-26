@@ -324,6 +324,63 @@ export function buildAttemptEndLookupStatement(params: { runId: string; attemptI
   `;
 }
 
+/**
+ * 取当前 attempt 的结束事件类型（**不限 attemptId**）。
+ *
+ * 用于「平台硬杀后识别 interrupted」：进程被杀时不写任何结束事件，
+ * 因此需要回答「这个 Run 有没有任何 attempt 给出过结束事件」。
+ * 与 `buildAttemptEndLookupStatement` 的区别是后者按 attemptId 精确查
+ * （那是给「某个具体 attempt 结束时」用的），这里要的是全局最近一条。
+ */
+export function buildLatestAttemptEndStatement(runId: string): SQL {
+  return sql`
+    SELECT type FROM "ai_run_event"
+     WHERE "runId" = ${runId}
+       AND type IN ('run.waiting_user','run.interrupted','run.completed','run.failed','run.cancelled')
+     ORDER BY "sequence" DESC
+     LIMIT 1
+  `;
+}
+
+/**
+ * 把「租约已过期、且没有结束事件」的 Run 标记为 interrupted。
+ *
+ * 条件刻意收紧，三条缺一不可：
+ *
+ * - `status NOT IN (终态)`：终态只能出现一次，绝不覆盖；
+ * - `"leaseExpiresAt" < now()`：**这是「进程确实死了」的唯一可靠信号**。
+ *   AbortSignal 在硬杀时不会触发，内存标志随进程消失，只有数据库里的租约
+ *   过期能跨越进程存活下来；
+ * - `cancelRequestedAt IS NULL`：用户主动取消走 `requestCancel` → `cancelled`，
+ *   不该被这里改写成 interrupted。
+ *
+ * 用 `FOR UPDATE` 会与并发 acquireLease 争锁，因此这里**不用**；
+ * 条件 UPDATE 本身是原子的，且即使与新的 acquireLease 竞争，两者都对
+ * 「过期」这一事实做判断，结果一致。
+ */
+export function buildMarkInterruptedOnExpiredLeaseStatement(params: {
+  runId: string;
+  status: string;
+  lastError: string | null;
+}): SQL {
+  return sql`
+    UPDATE "ai_run"
+       SET status = ${params.status},
+           "leaseOwner" = NULL,
+           "leaseExpiresAt" = NULL,
+           "finishedAt" = now(),
+           "lastError" = ${params.lastError},
+           "updatedAt" = now()
+     WHERE id = ${params.runId}
+       AND status NOT IN ('completed', 'failed', 'cancelled')
+       AND "cancelRequestedAt" IS NULL
+       AND "leaseOwner" IS NOT NULL
+       AND "leaseExpiresAt" IS NOT NULL
+       AND "leaseExpiresAt" < now()
+    RETURNING id, status
+  `;
+}
+
 /** 把 outbox 事件投影为 ai_run_event（按 sourceEventId 去重）。 */
 export function buildProjectMutationEventStatement(params: {
   eventId: string;

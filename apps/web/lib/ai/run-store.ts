@@ -9,6 +9,8 @@ import {
   buildProjectMutationEventWithSequenceStatement,
   buildAssertWritableStatement,
   buildAttemptEndLookupStatement,
+  buildLatestAttemptEndStatement,
+  buildMarkInterruptedOnExpiredLeaseStatement,
   buildFinishRunStatement,
   buildFinishToolExecutionStatement,
   buildGetRunByRequestStatement,
@@ -22,7 +24,7 @@ import {
   buildStartToolExecutionStatement,
   buildUnprojectedMutationsStatement,
 } from "./run-store-sql";
-import { buildRunEvent, isTerminalRunStatus } from "./events";
+import { buildRunEvent, isTerminalRunStatus, resolveEofOutcome } from "./events";
 
 /**
  * 运行存储的**编排层**（P04 任务 1）。
@@ -492,4 +494,68 @@ export async function reconcileMutationEvents(
     }
   }
   return projected;
+}
+
+/**
+ * 平台硬杀后的 interrupted 识别（P04 任务 6）。
+ *
+ * ## 问题
+ *
+ * 平台在超时或重启时**直接杀掉进程**：`finally` 不执行、`finishRun` 不被调用、
+ * AbortSignal 也不触发。于是 Run 会永久停留在 `running`，
+ * 而它的租约过期后没有任何代码去纠正这个状态 —— UI 会一直显示「执行中」。
+ *
+ * ## 判据
+ *
+ * 两件事必须同时成立才判定为中断：
+ *
+ * 1. **租约已过期**（`buildMarkInterruptedOnExpiredLeaseStatement` 的 SQL 条件）。
+ *    这是「进程确实死了」的**唯一可靠信号** —— 内存标志随进程消失，
+ *    AbortSignal 在硬杀时不触发，只有数据库里的租约能跨越进程存活。
+ * 2. **该 Run 没有任何 attempt 给出过结束事件**。这一条复用
+ *    `resolveEofOutcome` —— 与客户端 `finalizeOnEof` 共享同一判据，
+ *    避免两端对同一场景给出不同结论（服务端说 interrupted、客户端说 completed）。
+ *
+ * ## 为什么不用心跳/超时表
+ *
+ * 租约本身就是一个心跳：执行期间由 `renewLease` 续期，停止续期即意味着
+ * 持有者不在了。再建一层心跳是重复机制，且会引入「两个信号不一致时信谁」的问题。
+ *
+ * @returns 是否真的标记了 interrupted（`false` 表示不满足条件，属正常情况）。
+ */
+export async function markInterruptedIfLeaseExpired(runId: string): Promise<boolean> {
+  const run = await getRun(runId);
+  if (!run) return false;
+
+  /*
+   * 先做一次纯函数判定，再落库。
+   *
+   * 顺序这样安排是为了让「不该改」的情形**完全不动数据库**：
+   * 终态 Run 被 UPDATE 命中会返回 0 行（SQL 条件已拦），但先判一次能省掉
+   * 一次写尝试，也让「为什么没标记」在日志里有明确答案。
+   */
+  const latestEnd = firstRow<{ type: RunEventType }>(
+    await execute(buildLatestAttemptEndStatement(runId)),
+  );
+  const decision = resolveEofOutcome(run.status, latestEnd !== null);
+  if (decision.status !== "interrupted") return false;
+
+  /*
+   * SQL 里再核验一次「租约确实过期」。
+   *
+   * 这次核验不可省略：`getRun` 与 UPDATE 之间存在窗口，
+   * 期间可能有新持有者拿到租约并开始执行 —— 此时把 Run 改成 interrupted
+   * 就会**杀掉一个正在执行的 Run**（它的下一次提交会被 fence 拦下，
+   * 用户看到「明明在跑却报失败」）。
+   */
+  const row = firstRow<{ id: string; status: string }>(
+    await execute(
+      buildMarkInterruptedOnExpiredLeaseStatement({
+        runId,
+        status: "interrupted",
+        lastError: decision.reason,
+      }),
+    ),
+  );
+  return row !== null;
 }

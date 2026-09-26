@@ -7,6 +7,7 @@ import {
   isRunWritable,
   listEvents,
   listToolExecutions,
+  markInterruptedIfLeaseExpired,
   reconcileMutationEvents,
   requestCancel,
   type DbRun,
@@ -86,8 +87,29 @@ export async function GET(
   context: { params: Promise<{ runId: string }> },
 ) {
   const { runId } = await context.params;
-  const loaded = await loadOwnedRun(runId);
+  let loaded = await loadOwnedRun(runId);
   if (!loaded.ok) return loaded.response;
+
+  /*
+   * 平台硬杀后的 interrupted 协调（P04 任务 6）。
+   *
+   * 进程被硬杀时 `finally` 不执行，Run 会**永久停留在 running**；而它的租约
+   * 过期后没有任何代码纠正这个状态 —— UI 会一直显示「执行中」。
+   * `markInterruptedIfLeaseExpired` 用「租约过期 + 无结束事件」判定，
+   * 这是识别中断的唯一可靠时机。
+   *
+   * 放在读路径上（而不是定时任务）是有意的：中断只有在**有人来看**的时候
+   * 才有意义，而读路径天然是「有人来看」的时刻。这也避免引入调度器。
+   *
+   * 它**不启动模型**（只可能写一个终态），因此不违反「GET 只读」的约束。
+   * 协调后重新读一次，让响应反映纠正后的状态 —— 否则客户端拿到的是
+   * 纠正前的 `running`，会继续等待一个已经不可能到来的事件。
+   */
+  const marked = await markInterruptedIfLeaseExpired(runId);
+  if (marked) {
+    loaded = await loadOwnedRun(runId);
+    if (!loaded.ok) return loaded.response;
+  }
 
   const url = new URL(request.url);
   const eventsParam = url.searchParams.get("events");

@@ -17,6 +17,11 @@ const appendEventMock = vi.fn();
 const isRunWritableMock = vi.fn();
 const reconcileMock = vi.fn();
 const listToolExecutionsMock = vi.fn();
+/**
+ * 硬杀识别协调。默认返回 false（「未标记」）——多数用例关心的是查询与取消行为，
+ * 而不是这个协调步骤；需要它的用例单独设置返回值。
+ */
+const markInterruptedMock = vi.fn();
 
 vi.mock("@/lib/auth", () => ({ auth: () => authMock() }));
 vi.mock("@/lib/ai/run-store", () => ({
@@ -27,6 +32,7 @@ vi.mock("@/lib/ai/run-store", () => ({
   isRunWritable: (...args: unknown[]) => isRunWritableMock(...args),
   reconcileMutationEvents: (...args: unknown[]) => reconcileMock(...args),
   listToolExecutions: (...args: unknown[]) => listToolExecutionsMock(...args),
+  markInterruptedIfLeaseExpired: (...args: unknown[]) => markInterruptedMock(...args),
 }));
 
 function runRow(overrides: Record<string, unknown> = {}) {
@@ -84,6 +90,9 @@ beforeEach(() => {
   appendEventMock.mockResolvedValue({});
   requestCancelMock.mockResolvedValue({ runStatus: "running" });
   isRunWritableMock.mockResolvedValue(false);
+  // 默认「未标记中断」：显式设置而不是依赖 undefined 的隐式假值，
+  // 否则读起来像「这个协调步骤不存在」。
+  markInterruptedMock.mockResolvedValue(false);
 });
 
 describe("GET：查询不启动模型", () => {
