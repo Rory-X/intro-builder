@@ -99,6 +99,20 @@
       "when": 1782358800000,
       "tag": "0013_add_resume_versions",
       "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "7",
+      "when": 1786000000000,
+      "tag": "0014_add_resume_mutations",
+      "breakpoints": true
+    },
+    {
+      "idx": 15,
+      "version": "7",
+      "when": 1786100000000,
+      "tag": "0015_add_ai_runs",
+      "breakpoints": true
     }
   ]
 }
