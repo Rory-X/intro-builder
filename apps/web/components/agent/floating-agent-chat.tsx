@@ -53,6 +53,9 @@ import {
   type ApplyAgentOperation,
 } from "@/components/agent/agent-operation-apply";
 import { buildAgentResumeContext } from "@/lib/agent/chat-context";
+import { createFloatingRun } from "@/lib/ai-client/floating-run";
+import { buildHistoryFromMessages, buildRequestId } from "@/lib/ai-client/floating-history";
+import { resolveClientRunPath } from "@/lib/ai-client/run-path-flag";
 import {
   emptyAgentModelSettings,
   readStoredAgentModelSettings,
@@ -133,6 +136,40 @@ type FloatingAgentChatProps = {
   completeness: AgentResumeContext["completeness"];
   applyOperation: ApplyAgentOperation;
   flushAutosave: () => Promise<void>;
+  /**
+   * 新路径（统一 Run 路由）所需的额外能力。
+   *
+   * **全部可选**：未提供时组件行为与以前**完全一致**（走旧路径）。
+   * 这样既有的 26 处 mock 旧路由的测试继续守护旧路径行为，
+   * 而新路径的覆盖由专门的测试主动开启开关来提供。
+   *
+   * 这也让切流可以**分两步**：先把能力接进来（本提交），
+   * 再翻转默认 surface / 打开开关。
+   */
+  runBridge?: FloatingRunBridge;
+};
+
+/**
+ * 新路径需要的、组件本身拿不到的东西。
+ *
+ * 它们都在编辑器（`editor-client.tsx`）一侧 —— 组件的 props 里没有
+ * mutation session，因此 CAS 基准（`revision`）与「本地是否有未提交编辑」
+ * 必须由调用方注入。
+ */
+export type FloatingRunBridge = {
+  /**
+   * 当前 CAS 基准。
+   *
+   * **必须来自 flush 回执 / mutation session**，不能是本地推断值 ——
+   * 服务端会用它与权威 revision 比对（spec §6），错了会拿到 409。
+   */
+  getRevision: () => number;
+  /** 本地是否有未提交编辑（决定服务端写库后能否覆盖表单）。 */
+  getHasLocalEdits: () => boolean;
+  /** 读取服务端权威内容（服务端写库后同步表单用）。 */
+  loadServerContent: (resumeId: string) => Promise<ResumeContent | null>;
+  /** 服务端已落盘：推进基准并（在安全时）同步表单。 */
+  applyRemoteCommit: (next: { content: ResumeContent; revision: number }) => void;
 };
 
 const MODEL_MISSING_MESSAGE = "__MODEL_CONFIG_MISSING__";
@@ -145,6 +182,7 @@ export function FloatingAgentChat({
   completeness,
   applyOperation,
   flushAutosave,
+  runBridge,
 }: FloatingAgentChatProps) {
   const [messages, setMessages] = useState<FloatingAgentMessage[]>([]);
   const [input, setInput] = useState("");
@@ -425,6 +463,198 @@ export function FloatingAgentChat({
     setInput("");
   }, []);
 
+  /**
+   * 走新的统一 Run 路径（`/api/ai/runs`）。
+   *
+   * ## 与旧路径的关键差异
+   *
+   * | | 旧路径 | 新路径 |
+   * |---|---|---|
+   * | 谁写库 | **客户端**（applyOperation → autosave） | **服务端**（commitResumeMutation） |
+   * | 留痕 | 依赖 autosave | 提交语句内原子完成 |
+   * | 幂等/租约 | 无 | 有 |
+   *
+   * 因此新路径**不调用** `applyStreamOperations` —— 那是旧路径的写入方式。
+   * 若这里也调用，服务端写完库之后客户端再写一遍，就是**双重写库**
+   * （两次提交、两条留痕、并发下 revision 还会互相顶掉）。
+   *
+   * 服务端写完后由 `runBridge.applyRemoteCommit` 同步客户端内容。
+   */
+  const runNewPathRequest = useCallback(
+    async (input: {
+      requestMessages: FloatingAgentMessage[];
+      initialMessages: FloatingAgentMessage[];
+      assistantMessageId: string;
+      abortController: AbortController;
+    }) => {
+      if (!runBridge) throw new Error("新路径缺少 runBridge（调用方未提供所需的编辑器能力）");
+      /*
+       * `modelConfig` 在这里已由调用方校验（`runFloatingRequest` 开头：
+       * 缺失时提示配置并直接返回）。这里再收窄一次的用途是**让类型成立** ——
+       * 而不是重复运行期判断。
+       */
+      if (!modelConfig) throw new Error("尚未配置模型");
+
+      /*
+       * 历史消息要在**排除当前这一轮**之后映射。
+       *
+       * 当前这条用户消息会单独作为 `message` 传给服务端（单独校验长度、
+       * 单独做意图判断）；若它同时出现在 history 里，模型会看到同一句话两次。
+       */
+      const lastUserIndex = (() => {
+        for (let index = input.requestMessages.length - 1; index >= 0; index -= 1) {
+          if (input.requestMessages[index].role === "user") return index;
+        }
+        return -1;
+      })();
+      const currentMessage =
+        lastUserIndex >= 0 ? input.requestMessages[lastUserIndex].content.trim() : "";
+
+      const history = buildHistoryFromMessages({
+        messages: input.requestMessages.map((message) => ({
+          id: message.id,
+          role: message.role,
+          content: message.content,
+        })),
+        excludeTail: input.requestMessages.length - lastUserIndex,
+      });
+
+      const requestId = buildRequestId({
+        sessionId: activeSessionId,
+        message: currentMessage,
+        /*
+         * 序号用「消息条数」而不是自增 ref。
+         *
+         * 它的作用只是区分「同一内容在同一会话里的第几次提问」，而消息列表
+         * 长度天然满足这一点 —— 且它在**重试同一条消息**时保持不变
+         * （重试时 requestMessages 不变），正是幂等键需要的语义。
+         */
+        sequence: input.requestMessages.length,
+      });
+
+      const session = createFloatingRun(
+        {
+          onTextDelta: (delta) => {
+            setMessages((current) =>
+              current.map((message) =>
+                message.id === input.assistantMessageId
+                  ? {
+                      ...message,
+                      content: message.content + delta,
+                      parts: appendFloatingTextPart(message.parts ?? [], delta),
+                    }
+                  : message,
+              ),
+            );
+            scrollMessagesToBottomIfNearBottom(scrollRef);
+          },
+          onToolCall: (toolCall) => {
+            setMessages((current) =>
+              current.map((message) =>
+                message.id === input.assistantMessageId
+                  ? {
+                      ...message,
+                      parts: upsertFloatingToolPart(message.parts ?? [], toolCall),
+                      toolCalls: mergeFloatingToolCalls(message.toolCalls ?? [], [toolCall]),
+                    }
+                  : message,
+              ),
+            );
+            scrollMessagesToBottomIfNearBottom(scrollRef);
+          },
+          onQuestion: (question) => {
+            setMessages((current) =>
+              current.map((message) =>
+                message.id === input.assistantMessageId
+                  ? { ...message, parts: upsertFloatingQuestionPart(message.parts ?? [], question) }
+                  : message,
+              ),
+            );
+            scrollMessagesToBottomIfNearBottom(scrollRef);
+          },
+          /*
+           * 提案就绪：新路径的批准走**独立路由**（change-sets decisions），
+           * 不在流里。因此这里只提示用户去看提案，不在这里做写入。
+           */
+          onProposal: () => {
+            toast.message("我整理了修改建议，请确认后应用。");
+          },
+          onCommitted: () => {
+            /* 收尾时统一同步内容（见 onSyncNeeded）—— 逐条处理会多次拉取。 */
+          },
+          onConflict: (conflict) => {
+            toast.error(conflict.message);
+          },
+          onEnded: () => {},
+          onProjection: () => {},
+          onTaskCard: () => {},
+          onSyncNeeded: (plan) => {
+            /*
+             * 服务端写库后同步客户端内容。
+             *
+             * 三种方案都由 `planCommitSync` 决定（它在 `floating-run` 内部调用）：
+             * - `sync`：把服务端内容写进表单（本地无未提交编辑时安全）；
+             * - `advance-baseline-only`：**只推进基准**（有本地输入时，
+             *   写表单会抹掉用户刚敲的字）；
+             * - `reload`：内容取不到，等下一次操作重新拉。
+             */
+            if (plan.action === "sync") {
+              runBridge.applyRemoteCommit({ content: plan.content, revision: plan.revision });
+              return;
+            }
+            if (plan.action === "advance-baseline-only") {
+              /*
+               * 只推进基准时仍需一次「内容不变」的提交回调 ——
+               * 用当前表单内容与同一 revision 调用，效果是只更新基准。
+               */
+              runBridge.applyRemoteCommit({
+                content: getResumeContent(),
+                revision: plan.revision,
+              });
+              toast.message("服务端已更新内容，你还有未保存的修改，已保留你的输入。");
+            }
+          },
+        },
+        {
+          loadServerContent: runBridge.loadServerContent,
+          hasLocalEdits: runBridge.getHasLocalEdits,
+        },
+      );
+
+      const outcome = await session.start({
+        resumeId,
+        message: currentMessage,
+        requestId,
+        revision: runBridge.getRevision(),
+        writeMode,
+        sessionId: activeSessionId,
+        modelConfig,
+        history,
+        signal: input.abortController.signal,
+      });
+
+      if (outcome.status === "error") {
+        throw new Error(outcome.message);
+      }
+      if (outcome.status === "reused") {
+        /*
+         * 幂等命中：服务端没返回事件流，而是告知「去读事件流（GET）」。
+         *
+         * 如实提示而不是假装完成 —— 假装会让界面显示「已完成」而内容从未更新。
+         */
+        throw new Error("该请求已创建过任务，请稍后查看结果或刷新页面。");
+      }
+    },
+    [
+      activeSessionId,
+      getResumeContent,
+      modelConfig,
+      resumeId,
+      runBridge,
+      writeMode,
+    ],
+  );
+
   const runFloatingRequest = useCallback(
     async ({
       requestMessages,
@@ -502,6 +732,56 @@ export function FloatingAgentChat({
           }
         }
       };
+      /*
+       * 切流分流点。
+       *
+       * 新路径与旧路径的**写入位置不同**（服务端 vs 客户端），
+       * 因此它们不能共用同一段请求逻辑 —— 这里直接分流，各自完整执行。
+       *
+       * 开关默认旧路径（`resolveClientRunPath` 的默认值），因此**未配置时
+       * 行为与以前完全一致** —— 这也是既有 26 处 mock 旧路由的测试
+       * 仍然通过的原因。
+       */
+      if (runBridge && resolveClientRunPath().useNewPath) {
+        try {
+          setMessages((current) => [
+            ...current,
+            { id: assistantMessageId, role: "assistant", content: "", parts: [], toolCalls: [] },
+          ]);
+          await runNewPathRequest({
+            requestMessages,
+            initialMessages,
+            assistantMessageId,
+            abortController,
+          });
+          if (activeSessionId) {
+            const nextTitle = titleSource.slice(0, 50);
+            setSessions((current) =>
+              current.map((session) =>
+                session.id === activeSessionId && session.title === "新对话"
+                  ? { ...session, title: nextTitle, updatedAt: new Date().toISOString() }
+                  : session,
+              ),
+            );
+          }
+        } catch (error) {
+          if (isAbortError(error)) return;
+          const message = error instanceof Error ? error.message : "AI 助手暂时不可用";
+          toast.error(message);
+          setMessages((current) => [
+            ...current,
+            { id: createMessageId("assistant"), role: "assistant", content: `请求失败：${message}` },
+          ]);
+        } finally {
+          if (requestAbortControllerRef.current === abortController) {
+            requestAbortControllerRef.current = null;
+          }
+          setIsLoading(false);
+          scrollMessagesToBottomIfNearBottom(scrollRef);
+        }
+        return;
+      }
+
       try {
         const response = await fetch("/api/agent/floating/chat", {
           method: "POST",
@@ -733,6 +1013,8 @@ export function FloatingAgentChat({
       getResumeContent,
       modelConfig,
       resumeId,
+      runBridge,
+      runNewPathRequest,
       templateId,
       writeMode,
     ],
