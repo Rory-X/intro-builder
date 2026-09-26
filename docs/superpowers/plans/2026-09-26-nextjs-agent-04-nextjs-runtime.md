@@ -40,6 +40,23 @@
   「工具无回执不得声称已保存」「提交前核验 fencing」「一个 attempt 一个结束事件」
   「收尾沿用已发生事实」「超预算与失败分开」。16 例测试。
 
+### 已完成（复核阶段追加）：流适配器的字段名缺陷
+
+- **问题**：适配器读 `part.toolCallId` / `part.inputTextDelta`，但 AI SDK v6 的
+  `TextStreamPart`（`fullStream` 元素类型）在**增量阶段**用的是 `id` / `delta`；
+  只有定型的 `tool-call` / `tool-result` 才叫 `toolCallId`。
+- **后果**：真实流下 `part.toolCallId` 恒为 `undefined`，适配器 `return []` ——
+  `tool.started` 与参数片段**一个都不发出**，用户看不到工具在跑，且无异常无日志。
+- **为何既有测试没拦住**：`ai-stream.test.ts` 的片段是手写的，用的正是那套错误字段名。
+  测试与实现共享同一个错误假设，24 个用例因此全绿（假绿）。
+- **修复**：新增 `tests/unit/ai-stream-sdk-shape.test.ts`，按 SDK 真实字段名构造片段
+  （文件内 `RealSdkPart` 联合逐字抄自 SDK 声明，刻意不加索引签名兜底）；
+  适配器兼容两种拼写。已核对 SDK 内部确认 `id` 即 toolCallId
+  （`activeToolCallToolNames[chunk.id]`、`onInputStart({ toolCallId: chunk.id })`）。
+- **验证**：红 → 4 失败 / 1 通过；绿 → 该文件 5/5，`ai-stream.test.ts` 24/24 无回归。
+  全量：单元 11 文件 / 215 例，仓库 `pnpm test` 1209 例通过。
+- **决策笔记**：`docs/notes/implemented/bug-fix/2026-09-26-stream-adapter-read-sdk-fields.md`。
+
 ### 未完成（本切片剩余）
 
 任务 2 的 provider 装配（真实 AI SDK 接线）、任务 3 的工具**实现体**移植、
@@ -58,6 +75,10 @@
 4. 不要把 `Date` 直接当 SQL 参数（`ERR_INVALID_ARG_TYPE`）；也不要假定驱动一定返回
    `Date`。
 5. 编排层必须可注入 executor，否则集成测试只能 mock，证明不了并发行为。
+6. **手写协议片段会制造假绿**：`tool-input-*` 的真实字段是 `id` / `delta`，
+   不是 `toolCallId` / `inputTextDelta`。自造片段的测试与实现共享同一个错误假设，
+   于是「全绿」但真实流下事件全丢。协议边界必须有「按对方真实形状」的测试，
+   且该形状应逐字抄自依赖方的类型声明，而非凭印象写。
 
 ## 文件范围
 
