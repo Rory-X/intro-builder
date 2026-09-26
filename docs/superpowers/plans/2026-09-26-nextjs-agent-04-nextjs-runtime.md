@@ -106,11 +106,28 @@
   `suggestSkills` 不产生提案）。第 25 例一开始失败并暴露了 `section` 错配缺陷。
 - **决策笔记**：`docs/notes/implemented/architecture/2026-09-26-tool-execution-layer.md`。
 
+### 已完成：任务 2 + 6 的启动路由
+
+- **落地**：`app/api/ai/runs/route.ts`（唯一的执行入口）、
+  `lib/ai/run-route-support.ts`（SDK 工具集 + 结束类型映射）、
+  `lib/ai/resume-source.ts`（带 userId 过滤与读侧懒迁移的内容读取）、
+  `lib/ai/tools/arg-schemas.ts`（工具名 → schema，拆出以免单测 mock 遮蔽）。
+- **三类真实缺陷（详见决策笔记）**：
+  ① 校验顺序错误会留下持有租约的孤儿 Run，挡住后续合法请求；
+  ② SDK 与编排层**双重执行**工具（SDK 会自动执行带 `execute` 的工具），
+  产生两份提案两套事件、其中一套绕过 fencing；
+  ③ Route 文件导出辅助函数会让 `next build` 失败，而 `pnpm typecheck` **通过**
+  —— 只有 build 能发现。
+- **验证**：`tests/unit/ai-run-start-route.test.ts` 19 例（含 3 条回归防线：
+  遍历全部注册工具断言无 `execute`、工具集字段完整、结束类型映射正确）。
+  其中「配置非法不留孤儿 Run」一例一开始失败并暴露了第 ① 类缺陷。
+- **决策笔记**：`docs/notes/implemented/architecture/2026-09-26-run-start-route.md`。
+
 ### 未完成（本切片剩余）
 
-任务 6 的 `POST /api/ai/runs` 启动路由（Run 创建 + 租约 + SSE）与 continue 路由、
-任务 8 验证与灰度。存储、能力矩阵、事件层、流适配器、provider 装配、工具执行层、
-查询/取消/决策路由均已就绪，但**启动路由尚未落地，新链路未切流**。
+任务 4 的**直接模式落盘**（当前工具产出提案后不写库；完整提案-审批闭环在
+decisions 路由）、任务 6 的 **continue 路由**（`waiting_user` 的 Run 无法恢复）、
+任务 8 验证与灰度。**新链路仍未切流**。
 
 ### 实测发现（详见决策笔记）
 
