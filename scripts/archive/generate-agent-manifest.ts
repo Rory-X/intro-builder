@@ -97,6 +97,16 @@ const SOURCES: Array<{ from: string; to: string; reason: string }> = [
     to: "source/apps/web/lib/agent/session-store.ts",
     reason: "会话存储（旧会话模型；新实现改用 ai_run 的 sessionId）",
   },
+  {
+    from: "apps/web/components/agent/agent-session-selector.tsx",
+    to: "source/apps/web/components/agent/agent-session-selector.tsx",
+    reason: "旧会话选择器（唯一消费者是已退役的 /api/agent/sessions，自身从未被渲染）",
+  },
+  {
+    from: "apps/web/tests/unit/agent-session-store.test.ts",
+    to: "source/apps/web/tests/unit/agent-session-store.test.ts",
+    reason: "旧会话存储的归约逻辑测试（随 store 一起归档，否则会变成孤儿测试）",
+  },
 ];
 
 /**

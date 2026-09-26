@@ -1,9 +1,9 @@
 {
   "$comment": "Agent 微服务归档清单（P07 任务 1）。由 pnpm archive:agent:manifest 生成；不要手工编辑。缺一份 tracked 源文件即视为归档未完成。",
   "baselineCommit": "050d5bb5e",
-  "retirementCommit": "df445c2bad330b6577e2d9b123dbdfca9aee77c8",
+  "retirementCommit": "cb7c51cfb49d6fed870dadaf401931c6202ec7d2",
   "generatedBy": "scripts/archive/generate-agent-manifest.ts",
-  "entryCount": 73,
+  "entryCount": 75,
   "excludedCount": 0,
   "entries": [
     {
@@ -385,6 +385,13 @@
       "reason": "旧 Agent 面板（AG-UI 路径的 UI 入口）"
     },
     {
+      "originalPath": "apps/web/components/agent/agent-session-selector.tsx",
+      "archivePath": "source/apps/web/components/agent/agent-session-selector.tsx",
+      "gitBlob": "10232d5157c359cf352904310e0903937f6cb7fe",
+      "sha256": "72041698e78adbf87948188543fa5d7736682029204d8ae3ee558850924b3525",
+      "reason": "旧会话选择器（唯一消费者是已退役的 /api/agent/sessions，自身从未被渲染）"
+    },
+    {
       "originalPath": "apps/web/lib/agent/client.ts",
       "archivePath": "source/apps/web/lib/agent/client.ts",
       "gitBlob": "a14f2006a38ca23468e9f0f9048731fcd9bca2b4",
@@ -418,6 +425,13 @@
       "gitBlob": "ba9e121f3e69093d845eb06aad19ecb14f0be433",
       "sha256": "d18dea273cbca9048901ffe778f00c967bc60479a2aced9ed62944f33a2393ba",
       "reason": "Agent JWT 签发（旧鉴权桥）"
+    },
+    {
+      "originalPath": "apps/web/tests/unit/agent-session-store.test.ts",
+      "archivePath": "source/apps/web/tests/unit/agent-session-store.test.ts",
+      "gitBlob": "2324591737c4289a6bcba115256871d02650f70c",
+      "sha256": "c097b8397953f6f61756ee4d8f8544c7dda79303d07a7d1cb4b9ebce8772cd4d",
+      "reason": "旧会话存储的归约逻辑测试（随 store 一起归档，否则会变成孤儿测试）"
     },
     {
       "originalPath": "docs/agent/architecture.md",

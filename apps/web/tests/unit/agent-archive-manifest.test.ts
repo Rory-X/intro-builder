@@ -196,7 +196,7 @@ describe("**与基线逐字节一致**（需要基线对象可用）", () => {
     expect(mismatched).toEqual([]);
   });
 
-  it.runIf(available)("**基线下来源文件总数为 73**（数目变了就是漏收或新增）", () => {
+  it.runIf(available)("**基线下来源文件总数为 75**（数目变了就是漏收或新增）", () => {
     const manifest = loadManifest();
     let total = 0;
     for (const source of [
@@ -210,10 +210,17 @@ describe("**与基线逐字节一致**（需要基线对象可用）", () => {
       "apps/web/lib/agent/secret.ts",
       "apps/web/lib/agent/direct-run-client.ts",
       "apps/web/lib/agent/session-store.ts",
+      /*
+       * 后两项是执行移动前补收的（原清单漏了它们）：
+       * - selector 的唯一消费者是已退役的 /api/agent/sessions，且自身从未被渲染；
+       * - store 的测试必须随 store 一起走，否则会变成孤儿测试。
+       */
+      "apps/web/components/agent/agent-session-selector.tsx",
+      "apps/web/tests/unit/agent-session-store.test.ts",
     ]) {
       total += baselineFiles(manifest.baselineCommit, source).length;
     }
-    expect(total).toBe(73);
+    expect(total).toBe(75);
   });
 
   it.runIf(available)("**apps/agent 的每个 tracked 文件都在清单里**", () => {
