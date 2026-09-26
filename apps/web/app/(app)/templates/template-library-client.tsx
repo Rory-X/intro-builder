@@ -19,7 +19,7 @@ import {
   ResumePickerDialog,
   type PickerResume,
 } from "@/components/templates/resume-picker-dialog";
-import { setTemplate } from "@/app/(app)/resume/[id]/edit/actions";
+import { applyTemplateToResume } from "@/app/(app)/resume/[id]/edit/actions";
 import { createResumeWithTemplate } from "@/app/(app)/dashboard/actions";
 import { toggleTemplateFavorite } from "./actions";
 import type { TemplateCategory } from "@/lib/templates/registry";
@@ -184,7 +184,26 @@ export function TemplateLibraryClient({
     const targetName = getDisplayMeta(selected).name;
     startApplying(async () => {
       try {
-        await setTemplate(targetResumeId, targetTemplateId);
+        /*
+         * 走统一提交路径（带 revision 保护与留痕）。
+         *
+         * 旧 `setTemplate` 不带 revision、不写 mutation 留痕，且默认整体覆盖
+         * styleSettings —— 与编辑器并发时两边互相覆盖，事后无法追溯。
+         * 这里改用 `applyTemplateToResume`：服务端现读权威基准并原子提交，
+         * 冲突时明确告知而不是静默覆盖。
+         */
+        const result = await applyTemplateToResume({
+          resumeId: targetResumeId,
+          templateId: targetTemplateId,
+        });
+        if (result.status === "conflict") {
+          toast.error("内容已在别处更新，请刷新页面后重新应用模板");
+          return;
+        }
+        if (result.status === "rejected") {
+          toast.error(`应用失败：${result.code}`);
+          return;
+        }
         toast.success(`已应用模板：${targetName}`);
         setPickerOpen(false);
         setSelected(null);

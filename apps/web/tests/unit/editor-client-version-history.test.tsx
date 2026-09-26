@@ -78,11 +78,12 @@ const UPLOADED_TEMPLATES: UploadedTemplate[] = [
 ];
 
 const saveResumeMock = vi.fn();
+const submitResumeMutationMock = vi.fn();
 const setTemplateMock = vi.fn();
 const toggleShareMock = vi.fn();
 const listResumeVersionsMock = vi.fn();
 const getResumeVersionMock = vi.fn();
-const restoreResumeVersionMock = vi.fn();
+const submitResumeVersionRestoreMock = vi.fn();
 const createResumeVersionMock = vi.fn();
 const toastSuccessMock = vi.fn();
 const toastErrorMock = vi.fn();
@@ -107,8 +108,14 @@ vi.mock("@/app/(app)/resume/[id]/edit/actions", () => ({
   toggleShare: (...args: unknown[]) => toggleShareMock(...args),
   listResumeVersions: (...args: unknown[]) => listResumeVersionsMock(...args),
   getResumeVersion: (...args: unknown[]) => getResumeVersionMock(...args),
-  restoreResumeVersion: (...args: unknown[]) => restoreResumeVersionMock(...args),
+  submitResumeVersionRestore: (...args: unknown[]) => submitResumeVersionRestoreMock(...args),
   createResumeVersion: (...args: unknown[]) => createResumeVersionMock(...args),
+  /*
+   * 编辑器写入已切到提交模块；这里必须提供该导出，否则编辑器在保存时会拿到
+   * undefined（表现为「保存永远失败」）。保留 createResumeVersion 是因为
+   * Agent 应用路径尚未迁移（P03 任务 4 的剩余部分）。
+   */
+  submitResumeMutation: (...args: unknown[]) => submitResumeMutationMock(...args),
 }));
 
 vi.mock("@/components/agent/agent-panel", () => ({
@@ -174,6 +181,7 @@ function renderEditor(
       initialTitle="简历"
       initialTemplate="professional"
       initialContent={content}
+      initialRevision={0}
       initialIsPublic={false}
       initialSlug={null}
       initialUpdatedAtIso={new Date().toISOString()}
@@ -200,11 +208,23 @@ class MockObserver {
 describe("EditorClient version history and undo/redo", () => {
   beforeEach(() => {
     saveResumeMock.mockResolvedValue(undefined);
+    submitResumeMutationMock.mockReset();
+    submitResumeMutationMock.mockImplementation(
+      async (input: { expectedRevision: number }) => ({
+        status: "committed",
+        revision: input.expectedRevision + 1,
+        versionId: "v-test",
+      }),
+    );
     setTemplateMock.mockResolvedValue(undefined);
     toggleShareMock.mockResolvedValue({ slug: null });
     listResumeVersionsMock.mockResolvedValue([]);
     getResumeVersionMock.mockResolvedValue(null);
-    restoreResumeVersionMock.mockResolvedValue(null);
+    submitResumeVersionRestoreMock.mockReset();
+    submitResumeVersionRestoreMock.mockResolvedValue({
+      status: "no_change",
+      currentRevision: 0,
+    });
     createResumeVersionMock.mockResolvedValue({
       id: "v-agent",
       resumeId: "r1",
@@ -324,10 +344,11 @@ describe("EditorClient version history and undo/redo", () => {
       content: historical,
       createdAt: version.createdAt,
     });
-    restoreResumeVersionMock.mockResolvedValue({
-      title: "历史简历",
-      templateId: "professional",
-      content: historical,
+    submitResumeVersionRestoreMock.mockResolvedValue({
+      status: "committed",
+      revision: 1,
+      versionId: "v-restore",
+      nextContent: historical,
     });
     vi.spyOn(window, "confirm").mockReturnValue(true);
 
@@ -345,7 +366,13 @@ describe("EditorClient version history and undo/redo", () => {
     fireEvent.click(screen.getByRole("button", { name: "恢复此版本" }));
 
     await waitFor(() => {
-      expect(restoreResumeVersionMock).toHaveBeenCalledWith("r1", "v1");
+      // 恢复必须携带 revision（并发保护的 CAS 条件），并且只调用一次原子提交接口。
+      expect(submitResumeVersionRestoreMock).toHaveBeenCalledTimes(1);
+      expect(submitResumeVersionRestoreMock.mock.calls[0][0]).toMatchObject({
+        resumeId: "r1",
+        versionId: "v1",
+        expectedRevision: expect.any(Number),
+      });
     });
     expect(screen.getByRole("heading", { name: "王小明" })).toBeInTheDocument();
     await waitFor(() => {
@@ -403,19 +430,25 @@ describe("EditorClient version history and undo/redo", () => {
     fireEvent.click(screen.getByRole("button", { name: "Agent 模式" }));
     fireEvent.click(await screen.findByRole("button", { name: "模拟应用 Agent 修改" }));
 
+    /*
+     * Agent 应用后的落盘**只能有一次**（P03 任务 4）。
+     *
+     * 旧断言锁的是 `createResumeVersion` —— 那条路径绕过 revision、不参与幂等，
+     * 而表单变更又会触发一次统一提交，于是同一次操作写两条留痕。
+     * 现在断言两件事同时成立：
+     * 1. 这次修改确实经统一提交落盘，且携带操作内容；
+     * 2. 那条独立的旧留痕入口**不再**被调用。
+     */
     await waitFor(() => {
-      expect(createResumeVersionMock).toHaveBeenCalledWith(
-        expect.objectContaining({
-          resumeId: "r1",
-          title: "简历",
-          templateId: "professional",
-          source: "agent",
-          operationCount: 1,
-          summary: "强化岗位方向",
-        }),
-      );
+      expect(submitResumeMutationMock).toHaveBeenCalled();
     });
-    expect(createResumeVersionMock.mock.calls[0][0].content.basics.title).toBe("产品助理");
+    const agentCall = submitResumeMutationMock.mock.calls.find((call) => {
+      const operations = (call[0] as { operations: Array<{ target?: { field?: string } }> }).operations;
+      return operations.some((op) => op.target?.field === "title");
+    });
+    expect(agentCall).toBeDefined();
+    expect(createResumeVersionMock).not.toHaveBeenCalled();
+
     const successCall = toastSuccessMock.mock.calls.find(
       ([message]) => message === "已生成版本，可查看对比",
     );
@@ -443,7 +476,7 @@ describe("EditorClient version history and undo/redo", () => {
     fireEvent.click(await screen.findByRole("button", { name: "模拟应用 Agent 修改" }));
 
     await waitFor(() => {
-      expect(createResumeVersionMock).toHaveBeenCalled();
+      expect(submitResumeMutationMock).toHaveBeenCalled();
     });
 
     fireEvent.click(screen.getByRole("button", { name: "撤销" }));
@@ -463,26 +496,37 @@ describe("EditorClient version history and undo/redo", () => {
     fireEvent.click(screen.getByRole("button", { name: "模板" }));
     fireEvent.click(await screen.findByRole("button", { name: "套用模板 现代" }));
 
+    /*
+     * 断言从「调用了 setTemplate action」升级为「以 set_template 语义操作提交」。
+     *
+     * 这条更强：它同时证明了模板变化走的是**带 revision 的统一提交**，
+     * 而不是那条不带并发保护、也不写留痕的旧 action（模板换了正文没换
+     * 这类半应用状态正是由旧路径造成的）。
+     */
     await waitFor(() => {
-      expect(setTemplateMock).toHaveBeenCalledWith("r1", "modern");
+      expect(submitResumeMutationMock).toHaveBeenCalled();
     });
+    const templateOp = () =>
+      submitResumeMutationMock.mock.calls
+        .flatMap((call) => (call[0] as { operations: Array<{ kind: string; after?: string }> }).operations)
+        .filter((operation) => operation.kind === "set_template")
+        .at(-1);
+    expect(templateOp()?.after).toBe("modern");
+    // 旧的模板写入路径不得再被调用（否则会出现两套写入）。
+    expect(setTemplateMock).not.toHaveBeenCalled();
     expect(await screen.findByRole("button", { name: "现代（使用中）" })).toBeDisabled();
 
     fireEvent.click(screen.getByRole("button", { name: "撤销" }));
 
     await waitFor(() => {
-      expect(setTemplateMock).toHaveBeenCalledWith("r1", "professional", {
-        resetStyleSettings: false,
-      });
+      expect(templateOp()?.after).toBe("professional");
     });
     expect(await screen.findByRole("button", { name: "专业（使用中）" })).toBeDisabled();
 
     fireEvent.click(screen.getByRole("button", { name: "重做" }));
 
     await waitFor(() => {
-      expect(setTemplateMock).toHaveBeenCalledWith("r1", "modern", {
-        resetStyleSettings: false,
-      });
+      expect(templateOp()?.after).toBe("modern");
     });
     expect(await screen.findByRole("button", { name: "现代（使用中）" })).toBeDisabled();
   });

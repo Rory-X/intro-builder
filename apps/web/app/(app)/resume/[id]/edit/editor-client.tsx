@@ -14,16 +14,17 @@ import { toast } from "sonner";
 import { ResumeContent } from "@intro-builder/shared/schemas";
 import { computeCompletenessScore } from "@/lib/completeness-score";
 import {
-  createResumeVersion,
   getResumeVersion,
   listResumeVersions,
-  restoreResumeVersion,
-  saveResume,
-  setTemplate,
+  submitResumeVersionRestore,
   toggleShare,
   type ResumeVersionListItem,
+  submitResumeMutation,
 } from "./actions";
-import { useResumeAutosave } from "@/hooks/use-resume-autosave";
+import {
+  useResumeMutationSession,
+  MutationConflictError,
+} from "@/hooks/use-resume-mutation-session";
 import { useResumeHistory, type ResumeEditorSnapshot } from "@/hooks/use-resume-history";
 import { formatSaveError } from "@/lib/format-save-error";
 import { LivePreview } from "@/components/preview/live-preview";
@@ -92,6 +93,11 @@ type Props = {
   initialTitle: string;
   initialTemplate: TemplateId;
   initialContent: ResumeContent;
+  /**
+   * 服务端当前的文档修订号（CAS 条件）。
+   * 所有写入都必须携带它；缺失会让并发保护失效。
+   */
+  initialRevision: number;
   initialIsPublic: boolean;
   initialSlug: string | null;
   // Server passes an ISO string (NOT a Date instance) — Next 16's RSC
@@ -169,7 +175,7 @@ function parseIsoDate(value: string): Date | null {
   return Number.isNaN(date.getTime()) ? null : date;
 }
 
-export default function EditorClient({ userId, id, initialTitle, initialTemplate, initialContent, initialIsPublic, initialSlug, initialUpdatedAtIso, initialNowIso, initialResolvedTemplate, uploadedTemplates, allTemplates, favoritedTemplateIds = [], agentSurface = "panel", from }: Props) {
+export default function EditorClient({ userId, id, initialTitle, initialTemplate, initialContent, initialRevision, initialIsPublic, initialSlug, initialUpdatedAtIso, initialNowIso, initialResolvedTemplate, uploadedTemplates, allTemplates, favoritedTemplateIds = [], agentSurface = "panel", from }: Props) {
   const backHref = from === "templates" ? "/templates" : "/dashboard";
   const backLabel = from === "templates" ? "模板库" : "我的简历";
   const isDesktop = useSyncExternalStore(
@@ -184,6 +190,36 @@ export default function EditorClient({ userId, id, initialTitle, initialTemplate
   });
   const [title, setTitleState] = useState(initialTitle);
   const [template, setTemplateState] = useState<TemplateId>(initialTemplate);
+  /**
+   * getRow 在 hook 内部被调用（可能晚于本次渲染），因此必须读 ref 拿到最新值，
+   * 否则会把「提交时的标题/模板」算成旧值，产生假的 template/title 变更操作。
+   */
+  const titleRef = useRef(title);
+  const templateRef = useRef(template);
+  useEffect(() => {
+    titleRef.current = title;
+  }, [title]);
+  useEffect(() => {
+    templateRef.current = template;
+  }, [template]);
+
+  /**
+   * 标题变化必须安排一次提交。
+   *
+   * 标题是独立的 React state、**不在表单里**，所以 `form.watch` 不会因为改标题而触发。
+   * 旧实现（`use-resume-autosave`）有等价的 title effect，迁移到统一提交时漏掉了，
+   * 结果是「改了标题但永远不落盘」—— 相对旧行为的一次回归（实测提交次数 0）。
+   *
+   * `suppressHistoryCaptureRef` 用于跳过由外部应用快照（恢复历史/撤销）引起的标题
+   * 变化：那种情况下内容与 revision 已由统一提交处理，不应再触发第二次提交。
+   */
+  const previousTitleForSaveRef = useRef(title);
+  useEffect(() => {
+    if (previousTitleForSaveRef.current === title) return;
+    previousTitleForSaveRef.current = title;
+    if (suppressHistoryCaptureRef.current) return;
+    mutationSessionRef.current?.schedule();
+  }, [title]);
   const [isPublic, setIsPublic] = useState(initialIsPublic);
   const [publicSlug, setPublicSlug] = useState<string | null>(initialSlug);
   const [saveError, setSaveError] = useState<string | null>(null);
@@ -201,7 +237,7 @@ export default function EditorClient({ userId, id, initialTitle, initialTemplate
   const [isFloatingAgentDocked, setIsFloatingAgentDocked] = useState(false);
   const [isSharePopoverOpen, setIsSharePopoverOpen] = useState(false);
   const [isTogglingShare, setIsTogglingShare] = useState(false);
-  const [isPending, startTransition] = useTransition();
+  const [isPending] = useTransition();
   const previewRootRef = useRef<HTMLDivElement>(null);
   const editorPanelRef = useRef<HTMLDivElement>(null);
   const [sectionOrder, setSectionOrder] = useState<string[]>(
@@ -279,49 +315,132 @@ export default function EditorClient({ userId, id, initialTitle, initialTemplate
     return items;
   }, [allTemplates, uploadedById]);
 
-  const persistResume = useCallback(
-    async (content: ResumeContent, resumeTitle: string) => {
-      await saveResume(id, content, resumeTitle);
+  /**
+   * 统一写入会话（P03）。
+   *
+   * 所有编辑器写入（手动输入、模板切换、恢复、撤销）都经这里提交，因此每条写入
+   * 都带 `expectedRevision` 与稳定 `mutationId`。这是「不覆盖他人修改」与
+   * 「重试不重复写」的唯一保障。
+   *
+   * 回执**不会**重置表单：`useResumeMutationSession` 只推进已确认基准，
+   * 用户输入始终由 RHF 持有。
+   */
+  const mutationSession = useResumeMutationSession({
+    initial: {
+      content: initialContent,
+      revision: initialRevision,
+      title: initialTitle,
+      templateId: String(initialTemplate),
     },
-    [id],
-  );
-  const autosaveForm = useMemo(
-    () => ({
-      watch: (cb: (data: ResumeContent) => void) =>
-        form.watch((data) => cb(data as ResumeContent)),
-      getValues: () => form.getValues() as ResumeContent,
-    }),
-    [form],
-  );
-  const handleAutosaveError = useCallback((e: unknown) => {
-    const message = formatSaveError(e);
-    setSaveError(message);
-    toast.error(message);
-  }, []);
-  const handleAutosaveSave = useCallback(
-    (content: ResumeContent, resumeTitle: string) =>
-      new Promise<void>((resolve, reject) => {
-        startTransition(() => {
-          persistResume(content, resumeTitle)
-            .then(() => {
-              setSaveError(null);
-              setLastSavedAt(new Date());
-              resolve();
-            })
-            .catch(reject);
+    getContent: () => form.getValues() as ResumeContent,
+    getRow: () => ({ title: titleRef.current, templateId: String(templateRef.current) }),
+    submit: async (submission) => {
+      try {
+        const result = await submitResumeMutation({
+          resumeId: id,
+          mutationId: submission.mutationId,
+          expectedRevision: submission.expectedRevision,
+          operations: submission.operations,
+          // 来源由 session 决定：协作同步会先 setNextSource("collab")，
+          // 否则远端改动会被错误归因成「owner 手打的」。
+          source: submission.source ?? "manual",
         });
-      }),
-    [persistResume, startTransition],
-  );
-
-  const autosave = useResumeAutosave({
-    form: autosaveForm,
-    resumeId: id,
-    title,
-    onSave: handleAutosaveSave,
-    onError: handleAutosaveError,
+        return result;
+      } catch (error) {
+        // Server Action 抛错（网络/未知）：交给 hook 记为可重试错误。
+        throw error;
+      }
+    },
+    debounceMs: 2000,
   });
-  const flushEditorAutosave = autosave.flush;
+
+  /**
+   * 表单变化后安排一次去抖提交。
+   *
+   * 注意这里**不再**传内容给保存函数：提交时由 session 自己从表单取值并与已确认
+   * 基准做差量，因此回执返回不会经过任何「把内容写回表单」的路径。
+   */
+  useEffect(() => {
+    const { unsubscribe } = form.watch(() => {
+      mutationSessionRef.current?.schedule();
+    });
+    return () => unsubscribe();
+  }, [form]);
+
+  /** 供表单 watch 引用（effect 需要稳定引用，避免每次渲染重订阅）。 */
+  const mutationSessionRef = useRef(mutationSession);
+  useEffect(() => {
+    mutationSessionRef.current = mutationSession;
+  }, [mutationSession]);
+
+  /**
+   * 把「已保存」的判定接到新会话上。
+   *
+   * 这里刻意**不**再并行跑旧的 `useResumeAutosave`：两套写入同时工作会让同一次
+   * 编辑产生两条提交（还会有一条不带 revision）。旧 hook 保留给尚未迁移的路径。
+   */
+  const autosave = {
+    /**
+     * 冲突必须显示为「未保存」，绝不能因为「曾经发过一次请求」就显示成已保存。
+     * `pending` 会让 UI 继续显示「保存中」，比谎报成功安全。
+     */
+    status:
+      mutationSession.status === "saving"
+        ? ("saving" as const)
+        : mutationSession.status === "idle"
+          ? ("idle" as const)
+          : mutationSession.status === "pending"
+            ? ("pending" as const)
+            : ("error" as const),
+    flush: mutationSession.flush,
+    schedule: mutationSession.schedule,
+  };
+  const flushEditorAutosave = mutationSession.flush;
+
+  /**
+   * 提交成功次数。用它区分「从未保存过」与「刚保存完」。
+   *
+   * **不能**只看 `status === "idle"`：页面刚挂载、没有任何本地改动时 status 就是
+   * idle，那表示「没有待保存」，不表示「刚刚保存成功」。若据此更新保存时间，
+   * 用户一打开页面就会看到「刚刚保存」——一次凭空捏造的假状态。
+   * 只有在**真的完成过一次提交**之后，idle 才意味着「已保存」。
+   */
+  const committedCountRef = useRef(0);
+  const [committedCount, setCommittedCount] = useState(0);
+
+  useEffect(() => {
+    if (mutationSession.committedCount === committedCount) return;
+    committedCountRef.current = mutationSession.committedCount;
+    setCommittedCount(mutationSession.committedCount);
+  }, [mutationSession.committedCount, committedCount]);
+
+  /**
+   * 把 session 的状态映射到现有的保存提示 UI。
+   *
+   * 「已保存」只在**确实完成过一次提交**之后出现；冲突/拒绝/错误一律显示未保存文案。
+   */
+  useEffect(() => {
+    if (mutationSession.status === "conflict") {
+      setSaveError("内容已在别处更新，请刷新或比较后再保存");
+      return;
+    }
+    if (mutationSession.status === "rejected") {
+      setSaveError(formatSaveError(mutationSession.lastError));
+      return;
+    }
+    if (mutationSession.status === "error") {
+      setSaveError(formatSaveError(mutationSession.lastError));
+      return;
+    }
+    if (mutationSession.status === "idle" && committedCountRef.current > 0) {
+      setSaveError(null);
+      setLastSavedAt(new Date());
+    }
+  }, [
+    mutationSession.status,
+    mutationSession.lastError,
+    mutationSession.committedCount,
+  ]);
 
   const snapshotFromEditor = useCallback(
     (): ResumeEditorSnapshot => ({
@@ -338,7 +457,6 @@ export default function EditorClient({ userId, id, initialTitle, initialTemplate
       options: { persistTemplate?: boolean; flushAutosave?: boolean } = {},
     ) => {
       const nextContent = ResumeContent.parse(snapshot.content);
-      const previousTemplate = template;
       suppressHistoryCaptureRef.current = true;
       setTitleState(snapshot.title);
       setTemplateState(snapshot.templateId as TemplateId);
@@ -346,19 +464,33 @@ export default function EditorClient({ userId, id, initialTitle, initialTemplate
       setSectionOrder(nextContent.sectionOrder ?? [...DEFAULT_SECTION_ORDER]);
       suppressHistoryCaptureRef.current = false;
 
-      if (options.persistTemplate && previousTemplate !== snapshot.templateId) {
+      /*
+       * 恢复/撤销里的模板变化必须与正文走**同一条**提交路径。
+       *
+       * 旧实现直接调用 setTemplate action：那条路径不带 revision、不写 mutation 留痕，
+       * 于是「恢复了模板但正文没恢复」这种半应用状态无法被发现，也无法被再次撤销。
+       * 现在只更新本地状态，由 mutationSession 把「模板 + 正文」的差量作为一次提交发出。
+       */
+      templateRef.current = snapshot.templateId;
+      suppressHistoryCaptureRef.current = true;
+      if (options.flushAutosave || options.persistTemplate) {
         try {
-          await setTemplate(id, snapshot.templateId as TemplateId, { resetStyleSettings: false });
+          await flushEditorAutosave();
         } catch (error) {
-          console.error("[applyEditorSnapshot] template persist failed", error);
-          toast.error("恢复模板状态失败，请稍后重试");
+          if (error instanceof MutationConflictError) {
+            toast.error("恢复失败：内容已在别处更新，请刷新后重试");
+          } else {
+            console.error("[applyEditorSnapshot] commit failed", error);
+            toast.error("恢复模板状态失败，请稍后重试");
+          }
+        } finally {
+          suppressHistoryCaptureRef.current = false;
         }
-      }
-      if (options.flushAutosave) {
-        await flushEditorAutosave();
+      } else {
+        suppressHistoryCaptureRef.current = false;
       }
     },
-    [flushEditorAutosave, form, id, template],
+    [flushEditorAutosave, form],
   );
 
   useEffect(() => {
@@ -458,20 +590,52 @@ export default function EditorClient({ userId, id, initialTitle, initialTemplate
       if (isRestoringVersion) return;
       setIsRestoringVersion(true);
       try {
-        const restored = await restoreResumeVersion(id, versionId);
-        const parsed = ResumeContent.safeParse(restored.content);
-        if (!parsed.success) {
-          toast.error("历史版本内容已损坏，无法恢复");
+        /*
+         * 恢复必须**先提交、后改本地界面**。
+         *
+         * 旧顺序是「先 setStates/reset 表单 → 再调 action 写库」，于是一旦写库失败
+         * （冲突、网络、权限），界面已经显示成历史版本，而服务端还是旧内容 ——
+         * 用户以为恢复成功了，刷新后就会「变回去」。
+         * 现在由提交模块决定成败：只有拿到 committed 回执才更新本地状态。
+         */
+        const result = await submitResumeVersionRestore({
+          resumeId: id,
+          mutationId: `restore_${versionId}_${Date.now().toString(36)}`,
+          expectedRevision: mutationSession.getBaseline().revision,
+          versionId,
+          summary: "恢复历史版本",
+        });
+
+        if (result.status === "conflict") {
+          toast.error("恢复失败：内容已在别处更新，请刷新后重试");
           return;
         }
-        const snapshot: ResumeEditorSnapshot = {
-          title: restored.title,
-          templateId: restored.templateId,
-          content: parsed.data,
-        };
-        resumeHistory.markBoundary();
-        resumeHistory.capture(snapshot, { merge: false });
-        await applyEditorSnapshot(snapshot, { flushAutosave: true });
+        if (result.status === "rejected") {
+          toast.error("恢复失败：该历史版本无法恢复");
+          return;
+        }
+
+        // 只有拿到回执（committed / no_change）才把服务端确认的内容落到本地。
+        const parsed = ResumeContent.safeParse(result.status === "committed" ? result.nextContent : undefined);
+        const snapshot: ResumeEditorSnapshot | null = parsed.success
+          ? {
+              title: viewedVersion?.title ?? title,
+              templateId: (viewedVersion?.templateId as TemplateId) ?? template,
+              content: parsed.data,
+            }
+          : null;
+
+        if (snapshot) {
+          resumeHistory.markBoundary();
+          resumeHistory.capture(snapshot, { merge: false });
+          await applyEditorSnapshot(snapshot, {});
+          mutationSession.applyRemoteCommit({
+            content: snapshot.content,
+            revision:
+              result.status === "committed" ? result.revision : result.currentRevision,
+            applyContent: (content) => form.reset(content),
+          });
+        }
         setViewedVersion(null);
         toast.success("已恢复历史版本");
         void loadVersions();
@@ -482,7 +646,7 @@ export default function EditorClient({ userId, id, initialTitle, initialTemplate
         setIsRestoringVersion(false);
       }
     },
-    [applyEditorSnapshot, id, isRestoringVersion, loadVersions, resumeHistory],
+    [applyEditorSnapshot, form, id, isRestoringVersion, loadVersions, mutationSession, resumeHistory, template, title, viewedVersion],
   );
 
   const handleAdjacentVersion = useCallback(
@@ -594,6 +758,18 @@ export default function EditorClient({ userId, id, initialTitle, initialTemplate
     enabled: !!collabState?.isConnected,
   });
 
+  /*
+   * 协作同步把远端改动写进表单时，必须标注来源（P03 任务 6）。
+   *
+   * 否则这些改动在提交层会与「用户自己敲的字」无法区分，被记成 manual ——
+   * 留痕里就会出现错误的归因（看起来像是 owner 手动改的）。
+   * 这里观察同步活动：一旦检测到远端高亮字段，就把下一次提交标为 collab。
+   */
+  useEffect(() => {
+    if (collabSync.highlightedFields.size === 0) return;
+    mutationSessionRef.current?.setNextSource("collab");
+  }, [collabSync.highlightedFields]);
+
   // Annotations for comment mode (owner sees mentor's annotations)
   const { annotations: collabAnnotations, updateStatus: updateAnnotationStatus } = useAnnotations({
     ydoc: collabState?.ydoc ?? null,
@@ -637,9 +813,23 @@ export default function EditorClient({ userId, id, initialTitle, initialTemplate
     if (pendingTemplateId) return;
     const previous = template;
     setTemplateState(next);
+    templateRef.current = next;
     setPendingTemplateId(next);
     try {
-      await setTemplate(id, next);
+      /*
+       * 模板切换必须和正文走**同一条**提交路径。
+       *
+       * 旧实现直接调用 setTemplate action，那条路径不带 revision 也不写留痕，
+       * 于是「模板换了、正文没换」这种半应用状态既无法被发现也无法撤销。
+       * 现在它是一次普通的 `set_template` 操作，由提交模块在**同一条 SQL**里
+       * 更新行与正文快照。
+       *
+       * 必须先 `schedule()`：模板是独立的 React state、不在表单里，因此
+       * `form.watch` 不会触发，`flush()` 会因为「没有待保存改动」而直接返回，
+       * 结果就是「界面换了模板、服务端没收到」。
+       */
+      mutationSession.schedule();
+      await mutationSession.flush();
       resumeHistory.markBoundary();
       resumeHistory.capture(
         {
@@ -649,9 +839,17 @@ export default function EditorClient({ userId, id, initialTitle, initialTemplate
         { merge: false },
       );
     } catch (error) {
-      console.error("[changeTemplate] failed", error);
-      setTemplateState(previous);
-      toast.error("切换模板失败，请稍后重试");
+      // 冲突/失败：把本地模板选择回退到服务端已确认的值，避免 UI 与服务端不一致。
+      const baseline = mutationSession.getBaseline();
+      setTemplateState(baseline.templateId as TemplateId);
+      templateRef.current = baseline.templateId;
+      if (error instanceof MutationConflictError) {
+        toast.error("模板未保存：内容已在别处更新，请刷新后重试");
+      } else {
+        console.error("[changeTemplate] failed", error);
+        toast.error("切换模板失败，请稍后重试");
+      }
+      void previous;
     } finally {
       setPendingTemplateId(null);
     }
@@ -744,40 +942,61 @@ export default function EditorClient({ userId, id, initialTitle, initialTemplate
         restoreChangedKeys(beforeAgentSnapshot);
       },
       commit: () => {
+        /*
+         * Agent 应用后的持久化**只经统一提交**（P03 任务 4）。
+         *
+         * 旧实现在这里额外调用一次 `createResumeVersion`，而上面对表单的
+         * `setValue` 已经会触发提交。结果是**同一次操作两次写入**：
+         * 一条是带 revision 的正规提交，另一条是绕过 revision、不参与幂等的
+         * 独立留痕；两者互不知晓，历史里会出现重复条目，并发下还会产生
+         * 「正文 revision 与留痕版本对不上」的错位。
+         *
+         * 现在这里只做两件不写库的事：标记历史边界、把 Agent 的内容写进历史栈。
+         * 落盘、修订快照与 outbox 事件由 commitResumeMutation 的 CTE 一次性完成，
+         * 因此这次修改天然出现在版本历史里（source=agent）。
+         */
         const snapshot: ResumeEditorSnapshot = {
           title,
           templateId: template,
           content: result.content,
         };
-        const versionSummary =
-          operation.changeSummary || operation.label || "Agent 修改简历";
         resumeHistory.markBoundary();
         resumeHistory.capture(snapshot, { merge: false });
-        void createResumeVersion({
-          resumeId: id,
-          title,
-          templateId: template,
-          content: beforeAgentSnapshot,
-          source: "agent",
-          operationCount: 1,
-          summary: versionSummary,
-        })
-          .then((version) => {
-            setVersions((previousVersions) => [
-              version,
-              ...previousVersions.filter((item) => item.id !== version.id),
-            ]);
+        const versionSummary = operation.changeSummary || operation.label || "Agent 修改简历";
+        // 触发一次显式提交：Agent 的改动必须立刻落盘，而不是等 2 秒去抖。
+        mutationSession.schedule();
+        void mutationSession
+          .flush()
+          .then(() => {
+            /*
+             * 用**提交回执**驱动「查看差异」，而不是自己再造一条版本记录。
+             *
+             * 回执里的 versionId 就是这次提交在服务端留下的修订快照，因此
+             * 差异视图展示的正是服务端真实保存下来的那一版 —— 与历史列表同源。
+             * 若没有回执（提交被拒/冲突），这里不发成功提示，也不伪造版本 id。
+             */
+            const receipt = mutationSessionRef.current?.getLastReceipt();
+            if (!receipt) return;
             toast.success("已生成版本，可查看对比", {
               action: {
                 label: "查看差异",
                 onClick: () => {
                   setViewedVersion({
-                    id: version.id,
+                    id: receipt.versionId,
                     title,
                     templateId: template,
                     content: beforeAgentSnapshot,
-                    createdAt: version.createdAt,
-                    listItem: version,
+                    createdAt: receipt.committedAt,
+                    listItem: {
+                      id: receipt.versionId,
+                      resumeId: id,
+                      source: "agent",
+                      sourceLabel: "通过对话",
+                      actorName: "我",
+                      operationCount: 1,
+                      summary: versionSummary,
+                      createdAt: receipt.committedAt,
+                    },
                   });
                   setIsVersionPopoverOpen(false);
                   setShowTemplatePanel(false);
@@ -786,11 +1005,15 @@ export default function EditorClient({ userId, id, initialTitle, initialTemplate
                 },
               },
             });
-            if (isVersionPopoverOpen || viewedVersion) void loadVersions();
+            void loadVersions();
           })
           .catch((error) => {
-            console.error("[applyAgentOperation] create version failed", error);
-            toast.error("Agent 修改已应用，但版本记录保存失败");
+            if (error instanceof MutationConflictError) {
+              toast.error("Agent 修改未保存：内容已在别处更新，请刷新后重试");
+            } else {
+              console.error("[applyAgentOperation] commit failed", error);
+              toast.error("Agent 修改未能保存，请稍后重试");
+            }
           });
       },
     };
