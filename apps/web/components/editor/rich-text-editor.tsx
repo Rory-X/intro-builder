@@ -13,6 +13,7 @@ import {
   getActiveRichTextFontSize,
 } from "@/lib/rich-text-font-size";
 import { tiptapExtensions } from "@/lib/tiptap-extensions";
+import { decidePolishApply } from "@/lib/resume-mutations/polish-guard";
 import {
   DEFAULT_RICH_TEXT_FONT_SIZE,
   RICH_TEXT_EDITOR_PROSE_CLASS,
@@ -210,12 +211,32 @@ export function RichTextEditor({ content, onChange, polish }: Props) {
   }
 
   function applyPolishCandidate(candidate: PolishCandidate) {
+    /*
+     * 应用前必须确认「候选所依据的原文」仍等于「当前内容」（P03 任务 5）。
+     *
+     * 润色是异步的：生成候选与点击应用之间用户可以自己改这段文字。旧实现直接
+     * 把候选写进去，等于用 AI 的旧文本覆盖用户刚敲的字，且没有任何提示。
+     * 这里改为先校验，冲突时保留用户输入并明确告知需要重新生成。
+     */
+    const currentJson = toPlainJson(activeEditor.getJSON());
+    const decision = decidePolishApply(
+      {
+        originalText: candidate.originalText,
+        originalTiptapJson: candidate.originalTiptapJson,
+        polishedText: candidate.polishedText,
+        replacementTiptapJson: candidate.replacementTiptapJson,
+      },
+      currentJson,
+    );
+
+    if (!decision.ok) {
+      setPolishState({ status: "error", message: decision.message });
+      return;
+    }
+
     const nextContent =
-      candidate.replacementTiptapJson ??
-      applyPolishedTextToExistingDoc(
-        toPlainJson(activeEditor.getJSON()),
-        candidate.polishedText,
-      );
+      (decision.nextContent as TipTapJSON | undefined) ??
+      applyPolishedTextToExistingDoc(currentJson, candidate.polishedText);
     activeEditor.commands.setContent(nextContent, { emitUpdate: false });
     lastSyncedContentRef.current = JSON.stringify(nextContent);
     onChangeRef.current(nextContent);

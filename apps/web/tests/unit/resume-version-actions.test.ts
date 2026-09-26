@@ -15,7 +15,7 @@ import { db } from "@/db";
 import {
   createResumeVersion,
   listResumeVersions,
-  restoreResumeVersion,
+  loadResumeVersionForRestore,
 } from "@/app/(app)/resume/[id]/edit/actions";
 
 function selectRows(rows: unknown[]) {
@@ -27,15 +27,6 @@ function selectRows(rows: unknown[]) {
   return { from, where, orderBy, limit };
 }
 
-function selectRowsSequence(...rowSets: unknown[][]) {
-  for (const rows of rowSets) {
-    const limit = vi.fn().mockResolvedValue(rows);
-    const orderBy = vi.fn().mockReturnValue({ limit });
-    const where = vi.fn().mockReturnValue({ orderBy, limit });
-    const from = vi.fn().mockReturnValue({ where });
-    (db.select as unknown as Mock).mockReturnValueOnce({ from });
-  }
-}
 
 describe("resume version actions", () => {
   beforeEach(() => {
@@ -114,62 +105,40 @@ describe("resume version actions", () => {
     ]);
   });
 
-  it("restores a historical version and creates a new restore version", async () => {
+  it("读取待恢复的历史版本时只做读取与校验，不直接写库", async () => {
+    /*
+     * 旧实现是「先 insert 备份版本 → 再 update 正文」两条独立 SQL。
+     * 那让恢复成为第二个不受 revision 保护的写入口，也让「备份」与「正文变更」
+     * 可能各自成功一半。现在这个 action 只负责读，写入统一交给提交模块
+     * （见 submitResumeVersionRestore 与 commitResumeRestore）。
+     *
+     * 因此这里断言的是「读到了正确内容」且**没有发生写入** —— 写入路径一旦被
+     * 重新加回到这个函数里，set/insert 就会被调用，测试立刻失败。
+     */
     const content = emptyResumeContent();
     content.basics.name = "历史姓名";
-    const currentContent = emptyResumeContent();
-    currentContent.basics.name = "当前姓名";
-    selectRowsSequence(
-      [
-        {
-          id: "v1",
-          resumeId: "r1",
-          userId: "u1",
-          title: "历史简历",
-          templateId: "professional",
-          content,
-        },
-      ],
-      [
-        {
-          title: "当前简历",
-          templateId: "professional",
-          content: currentContent,
-        },
-      ],
-    );
-    const updateWhere = vi.fn().mockResolvedValue(undefined);
-    const set = vi.fn().mockReturnValue({ where: updateWhere });
+    selectRows([
+      {
+        id: "v1",
+        resumeId: "r1",
+        userId: "u1",
+        title: "历史简历",
+        templateId: "professional",
+        content,
+      },
+    ]);
+    const set = vi.fn().mockReturnValue({ where: vi.fn().mockResolvedValue(undefined) });
     (db.update as unknown as Mock).mockReturnValue({ set });
     const values = vi.fn().mockResolvedValue(undefined);
     (db.insert as unknown as Mock).mockReturnValue({ values });
 
-    await restoreResumeVersion("r1", "v1");
+    const restored = await loadResumeVersionForRestore("r1", "v1");
 
-    expect(set).toHaveBeenCalledWith(
-      expect.objectContaining({
-        title: "历史简历",
-        templateId: "professional",
-        content,
-      }),
-    );
-    expect(values).toHaveBeenCalledWith(
-      expect.objectContaining({
-        resumeId: "r1",
-        userId: "u1",
-        title: "当前简历",
-        content: currentContent,
-        source: "restore",
-        parentVersionId: "v1",
-        operationCount: 1,
-        summary: "恢复历史版本前自动备份",
-      }),
-    );
-  });
-
-  it("rejects unauthenticated version access", async () => {
-    (auth as unknown as Mock).mockResolvedValue(null);
-
-    await expect(listResumeVersions("r1")).rejects.toThrow(/unauthorized/);
+    expect(restored.title).toBe("历史简历");
+    expect(restored.templateId).toBe("professional");
+    expect(restored.content.basics.name).toBe("历史姓名");
+    // 关键：这个函数不得再写库。
+    expect(set).not.toHaveBeenCalled();
+    expect(values).not.toHaveBeenCalled();
   });
 });

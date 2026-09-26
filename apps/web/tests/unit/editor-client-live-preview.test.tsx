@@ -45,12 +45,15 @@ const DB_TEMPLATE_ROWS: AllTemplatesItem[] = [
 ];
 
 const saveResumeMock = vi.fn();
+const submitResumeMutationMock = vi.fn();
 const exportPreviewImageMock = vi.fn();
 const toastErrorMock = vi.fn();
 const toastSuccessMock = vi.fn();
 
 vi.mock("@/app/(app)/resume/[id]/edit/actions", () => ({
   saveResume: (...args: unknown[]) => saveResumeMock(...args),
+  // 编辑器写入现在统一走提交模块：旧 saveResume 仍在导出，但不再被编辑器调用。
+  submitResumeMutation: (...args: unknown[]) => submitResumeMutationMock(...args),
   setTemplate: vi.fn(),
   toggleShare: vi.fn(),
 }));
@@ -81,6 +84,13 @@ describe("EditorClient live preview", () => {
     vi.useFakeTimers();
     saveResumeMock.mockReset();
     saveResumeMock.mockResolvedValue(undefined);
+    submitResumeMutationMock.mockReset();
+    // 模拟服务端回执：revision 前进一位，回传服务端内容。
+    submitResumeMutationMock.mockImplementation(async (input: { expectedRevision: number }) => ({
+      status: "committed",
+      revision: input.expectedRevision + 1,
+      versionId: "v-test",
+    }));
     exportPreviewImageMock.mockReset();
     exportPreviewImageMock.mockResolvedValue(undefined);
     toastErrorMock.mockReset();
@@ -133,6 +143,7 @@ describe("EditorClient live preview", () => {
         initialTitle="简历"
         initialTemplate="classic"
         initialContent={content}
+        initialRevision={0}
         initialIsPublic={false}
         initialSlug={null}
         initialUpdatedAtIso={new Date().toISOString()}
@@ -159,6 +170,7 @@ describe("EditorClient live preview", () => {
         initialTitle="简历"
         initialTemplate="professional"
         initialContent={content}
+        initialRevision={0}
         initialIsPublic={false}
         initialSlug={null}
         initialUpdatedAtIso={new Date().toISOString()}
@@ -186,8 +198,30 @@ describe("EditorClient live preview", () => {
       await Promise.resolve();
     });
 
-    expect(saveResumeMock).toHaveBeenCalled();
-    expect(saveResumeMock.mock.calls.at(-1)?.[1].basics.name).toBe("新姓名");
+    /*
+     * 断言升级为「语义操作」而不是「整份内容被保存」：
+     * 我们要证明的是「用户输入的字段值，以针对该字段的操作形式抵达了服务端」，
+     * 这比「某个大对象里有新值」更强 —— 它同时证明了目标定位正确。
+     */
+    expect(submitResumeMutationMock).toHaveBeenCalled();
+    const lastCall = submitResumeMutationMock.mock.calls.at(-1)?.[0] as {
+      expectedRevision: number;
+      mutationId: string;
+      operations: Array<{ kind: string; target?: { section?: string; field?: string }; value?: unknown }>;
+    };
+    const nameOp = lastCall.operations.find(
+      (operation) =>
+        operation.kind === "set_field" &&
+        operation.target?.section === "basics" &&
+        operation.target?.field === "name",
+    );
+    expect(nameOp).toBeDefined();
+    expect(nameOp?.value).toBe("新姓名");
+    // 必须携带 revision 与稳定 mutationId，否则并发保护失效。
+    expect(lastCall.expectedRevision).toBe(0);
+    expect(typeof lastCall.mutationId).toBe("string");
+    // 旧的无 revision 覆盖写路径不得再被编辑器调用。
+    expect(saveResumeMock).not.toHaveBeenCalled();
   });
 
   it("renders template and layout settings in the toolbar only", () => {
@@ -198,6 +232,7 @@ describe("EditorClient live preview", () => {
         initialTitle="简历"
         initialTemplate="professional"
         initialContent={emptyResumeContent()}
+        initialRevision={0}
         initialIsPublic={false}
         initialSlug={null}
         initialUpdatedAtIso={new Date().toISOString()}
@@ -229,6 +264,7 @@ describe("EditorClient live preview", () => {
         initialTitle="简历"
         initialTemplate="professional"
         initialContent={emptyResumeContent()}
+        initialRevision={0}
         initialIsPublic={false}
         initialSlug={null}
         initialUpdatedAtIso={new Date().toISOString()}
@@ -272,6 +308,7 @@ describe("EditorClient live preview", () => {
         initialTitle="简历"
         initialTemplate="professional"
         initialContent={emptyResumeContent()}
+        initialRevision={0}
         initialIsPublic={false}
         initialSlug={null}
         initialUpdatedAtIso={new Date().toISOString()}
@@ -302,6 +339,7 @@ describe("EditorClient live preview", () => {
         initialTitle="简历"
         initialTemplate="professional"
         initialContent={emptyResumeContent()}
+        initialRevision={0}
         initialIsPublic={false}
         initialSlug={null}
         initialUpdatedAtIso={new Date().toISOString()}
@@ -344,6 +382,7 @@ describe("EditorClient live preview", () => {
         initialTitle="简历"
         initialTemplate="professional"
         initialContent={emptyResumeContent()}
+        initialRevision={0}
         initialIsPublic={false}
         initialSlug={null}
         initialUpdatedAtIso={new Date().toISOString()}
@@ -383,6 +422,7 @@ describe("EditorClient live preview", () => {
         initialTitle="简历"
         initialTemplate="professional"
         initialContent={emptyResumeContent()}
+        initialRevision={0}
         initialIsPublic
         initialSlug="public-slug"
         initialUpdatedAtIso={new Date().toISOString()}
@@ -407,6 +447,7 @@ describe("EditorClient live preview", () => {
         initialTitle="简历"
         initialTemplate="professional"
         initialContent={emptyResumeContent()}
+        initialRevision={0}
         initialIsPublic={false}
         initialSlug={null}
         initialUpdatedAtIso={new Date().toISOString()}
@@ -434,6 +475,7 @@ describe("EditorClient live preview", () => {
         initialTitle="简历"
         initialTemplate="professional"
         initialContent={emptyResumeContent()}
+        initialRevision={0}
         initialIsPublic={false}
         initialSlug={null}
         initialUpdatedAtIso={new Date().toISOString()}
@@ -454,6 +496,52 @@ describe("EditorClient live preview", () => {
     expect(input.className).toContain("focus-visible:ring-0");
   });
 
+  it("【复核发现】改标题会触发一次提交（标题不在表单里，需独立 effect）", async () => {
+    /*
+     * 真实缺陷：标题是独立的 React state，**不在表单里**，所以 `form.watch` 不会
+     * 因为改标题而触发。旧 `use-resume-autosave` 有等价的 title effect，
+     * 迁移到统一提交时漏掉了 —— 结果是「改了标题但永远不落盘」（相对旧行为的回归，
+     * 实测提交次数 0）。这条测试锁住那个 effect 存在。
+     */
+    const content = emptyResumeContent();
+    render(
+      <EditorClient
+        userId="user-a"
+        id="r1"
+        initialTitle="简历"
+        initialTemplate="professional"
+        initialContent={content}
+        initialRevision={0}
+        initialIsPublic={false}
+        initialSlug={null}
+        initialUpdatedAtIso={new Date().toISOString()}
+        initialNowIso={new Date().toISOString()}
+        initialResolvedTemplate={DB_RESOLVED}
+        uploadedTemplates={[]}
+        allTemplates={DB_TEMPLATE_ROWS}
+        from={null}
+      />,
+    );
+
+    // 进入标题编辑态（铅笔按钮 aria-label="重命名"），改标题，再去抖超时。
+    fireEvent.click(screen.getByRole("button", { name: "重命名" }));
+    const input = screen.getByLabelText("简历名称");
+    fireEvent.change(input, { target: { value: "新简历名" } });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(2_500);
+      await Promise.resolve();
+    });
+
+    expect(submitResumeMutationMock).toHaveBeenCalled();
+    // 提交里必须带 set_title 操作。
+    const hasTitleOp = submitResumeMutationMock.mock.calls.some((call) =>
+      ((call[0] as { operations: Array<{ kind: string }> }).operations ?? []).some(
+        (op) => op.kind === "set_title",
+      ),
+    );
+    expect(hasTitleOp).toBe(true);
+  });
+
   it("shows autosave status details on the save badge", () => {
     vi.setSystemTime(new Date("2026-05-19T11:26:00.000Z"));
 
@@ -464,6 +552,7 @@ describe("EditorClient live preview", () => {
         initialTitle="简历"
         initialTemplate="professional"
         initialContent={emptyResumeContent()}
+        initialRevision={0}
         initialIsPublic={false}
         initialSlug={null}
         initialUpdatedAtIso="2026-05-19T11:21:00.000Z"
@@ -490,6 +579,7 @@ describe("EditorClient live preview", () => {
         initialTitle="实习生/钱嘉豪"
         initialTemplate="professional"
         initialContent={emptyResumeContent()}
+        initialRevision={0}
         initialIsPublic={false}
         initialSlug={null}
         initialUpdatedAtIso={new Date().toISOString()}
@@ -535,6 +625,7 @@ describe("EditorClient live preview", () => {
           initialTitle="简历"
           initialTemplate="professional"
           initialContent={emptyResumeContent()}
+          initialRevision={0}
           initialIsPublic={false}
           initialSlug={null}
           initialUpdatedAtIso={iso}
@@ -559,6 +650,7 @@ describe("EditorClient live preview", () => {
         initialTitle="简历"
         initialTemplate="professional"
         initialContent={emptyResumeContent()}
+        initialRevision={0}
         initialIsPublic={false}
         initialSlug={null}
         initialUpdatedAtIso={new Date().toISOString()}

@@ -2,12 +2,14 @@ import {
   pgTable, text, timestamp, jsonb, primaryKey, integer, boolean,
   uniqueIndex, index,
 } from "drizzle-orm/pg-core";
+import { sql } from "drizzle-orm";
 import type { AdapterAccountType } from "next-auth/adapters";
 import type { ResumeContent } from "@intro-builder/shared/schemas";
 import type {
   AgentResumeSessionMode,
   AgentSessionSnapshot,
   AgentSessionStatus,
+  ProposalStatus,
 } from "@intro-builder/shared/types";
 
 export const users = pgTable("user", {
@@ -60,6 +62,13 @@ export const resumes = pgTable("resume", {
   // 兜底成某套写死的模板。
   templateId: text("templateId").notNull(),
   content: jsonb("content").$type<ResumeContent>().notNull(),
+  /**
+   * 文档修订号。每次通过提交模块成功写入 +1；旧行从 0 起。
+   *
+   * 它是**并发保护的 CAS 条件**：提交语句带 `WHERE revision = expectedRevision`。
+   * 浏览器不得决定新值 —— 服务端在一条 SQL 里 `revision = expectedRevision + 1`。
+   */
+  revision: integer("revision").notNull().default(0),
   slug: text("slug"),
   isPublic: boolean("isPublic").notNull().default(false),
   createdAt: timestamp("createdAt").notNull().defaultNow(),
@@ -126,6 +135,8 @@ export const agentSessionEvents = pgTable("agent_session_event", {
 
 export const agentFloatingChatSessions = pgTable("agent_floating_chat_session", {
   id: text("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  /** 聊天记录的格式版本。迁移 0015 新增；读侧 adapter 据此兼容旧 parts。 */
+  formatVersion: integer("formatVersion").notNull().default(1),
   userId: text("userId").notNull().references(() => users.id, { onDelete: "cascade" }),
   resumeId: text("resumeId").notNull().references(() => resumes.id, { onDelete: "cascade" }),
   title: text("title").notNull().default("新对话"),
@@ -138,6 +149,9 @@ export const agentFloatingChatSessions = pgTable("agent_floating_chat_session", 
 
 export const agentFloatingChatMessages = pgTable("agent_floating_chat_message", {
   id: text("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  formatVersion: integer("formatVersion").notNull().default(1),
+  /** 该消息所属的 Run（可空：旧消息与手动消息没有 Run）。 */
+  runId: text("runId"),
   sessionId: text("sessionId").notNull().references(() => agentFloatingChatSessions.id, { onDelete: "cascade" }),
   role: text("role").$type<"user" | "assistant">().notNull(),
   content: text("content").notNull(),
@@ -232,3 +246,171 @@ export const templateFavorites = pgTable("template_favorite", {
 
 export type DbTemplateFavorite = typeof templateFavorites.$inferSelect;
 export type NewDbTemplateFavorite = typeof templateFavorites.$inferInsert;
+
+// ─── AI Runs (P04) ───────────────────────────────────────────
+
+/**
+ * 一次用户任务的执行记录。
+ *
+ * 与「一次 HTTP 连接」不是一回事：一个 Run 可以有多个 attempt（续做/重试），
+ * 连接断开不等于任务结束。`sequence` 在同 Run 内跨 attempts 单调递增。
+ */
+export const aiRuns = pgTable("ai_run", {
+  id: text("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  userId: text("userId").notNull().references(() => users.id, { onDelete: "cascade" }),
+  resumeId: text("resumeId").notNull().references(() => resumes.id, { onDelete: "cascade" }),
+  sessionId: text("sessionId"),
+  /** 客户端幂等键：重复 start 复用同一个 Run，不二次调用模型。 */
+  requestId: text("requestId").notNull(),
+  status: text("status")
+    .$type<"running" | "waiting_user" | "completed" | "failed" | "cancelled" | "interrupted">()
+    .notNull()
+    .default("running"),
+  mode: text("mode").notNull().default("optimize_existing"),
+  writeMode: text("writeMode").$type<"direct" | "approval">().notNull().default("direct"),
+  /**
+   * 同一简历同一时刻只允许一个写 Run。
+   * `leaseOwner` + `leaseExpiresAt` 提供租约，`fenceToken` 递增以作废旧持有者 ——
+   * 平台硬杀后旧持有者可能晚到，fencing 才能拦住它的写入。
+   */
+  leaseOwner: text("leaseOwner"),
+  leaseExpiresAt: timestamp("leaseExpiresAt", { mode: "date" }),
+  fenceToken: integer("fenceToken").notNull().default(0),
+  cancelRequestedAt: timestamp("cancelRequestedAt", { mode: "date" }),
+  deadlineAt: timestamp("deadlineAt", { mode: "date" }),
+  startedAt: timestamp("startedAt").notNull().defaultNow(),
+  finishedAt: timestamp("finishedAt", { mode: "date" }),
+  checkpointVersion: integer("checkpointVersion").notNull().default(0),
+  checkpoint: jsonb("checkpoint").$type<Record<string, unknown>>(),
+  promptVersion: text("promptVersion"),
+  modelId: text("modelId"),
+  usage: jsonb("usage").$type<Record<string, unknown>>(),
+  parentRunId: text("parentRunId"),
+  lastError: text("lastError"),
+  /**
+   * 事件序号分配器。
+   *
+   * 用 `UPDATE ... SET x = x + 1 RETURNING x` 原子取号：行级锁 + 重新读取能真正
+   * 串行化。CTE 里 `MAX("sequence") + 1` 不行 —— 语句快照在加锁前就已确定，
+   * 并发语句会算出同一个序号并撞唯一键（实测）。
+   */
+  eventSequence: integer("eventSequence").notNull().default(0),
+  createdAt: timestamp("createdAt").notNull().defaultNow(),
+  updatedAt: timestamp("updatedAt").notNull().defaultNow(),
+}, (t) => ({
+  userRequestIdx: uniqueIndex("ai_run_user_request_id_idx").on(t.userId, t.requestId),
+  resumeStatusIdx: index("ai_run_resume_status_idx").on(t.resumeId, t.status),
+  sessionIdx: index("ai_run_session_created_idx").on(t.sessionId, t.createdAt),
+  /**
+   * 找「当前持有 lease 的活跃 Run」是热路径。部分索引（只覆盖 leaseOwner 非空的行）
+   * 与迁移 0015 一致 —— schema 与迁移必须同步，否则 drizzle-kit 的后续 diff
+   * 会产生噪声，且新环境的建表结果与迁移结果不同。
+   */
+  leaseIdx: index("ai_run_lease_idx")
+    .on(t.resumeId, t.leaseExpiresAt)
+    .where(sql`"leaseOwner" IS NOT NULL`),
+}));
+
+export const aiToolExecutions = pgTable("ai_tool_execution", {
+  id: text("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  runId: text("runId").notNull().references(() => aiRuns.id, { onDelete: "cascade" }),
+  attemptId: text("attemptId").notNull(),
+  toolCallId: text("toolCallId").notNull(),
+  toolName: text("toolName").notNull(),
+  inputHash: text("inputHash").notNull(),
+  status: text("status").$type<"running" | "succeeded" | "failed" | "interrupted">().notNull(),
+  result: jsonb("result").$type<Record<string, unknown>>(),
+  proposalId: text("proposalId"),
+  mutationId: text("mutationId"),
+  changeSetId: text("changeSetId"),
+  errorCode: text("errorCode"),
+  startedAt: timestamp("startedAt").notNull().defaultNow(),
+  finishedAt: timestamp("finishedAt", { mode: "date" }),
+}, (t) => ({
+  attemptCallIdx: uniqueIndex("ai_tool_execution_attempt_call_idx").on(
+    t.runId,
+    t.attemptId,
+    t.toolCallId,
+  ),
+}));
+
+export const aiRunEvents = pgTable("ai_run_event", {
+  eventId: text("eventId").primaryKey(),
+  runId: text("runId").notNull().references(() => aiRuns.id, { onDelete: "cascade" }),
+  attemptId: text("attemptId").notNull(),
+  sequence: integer("sequence").notNull(),
+  type: text("type").notNull(),
+  payload: jsonb("payload").$type<Record<string, unknown>>().notNull(),
+  sourceEventId: text("sourceEventId"),
+  occurredAt: timestamp("occurredAt").notNull().defaultNow(),
+  createdAt: timestamp("createdAt").notNull().defaultNow(),
+}, (t) => ({
+  runSequenceIdx: uniqueIndex("ai_run_event_run_sequence_idx").on(t.runId, t.sequence),
+  /**
+   * outbox 投影去重：同一源事件只投影一次。
+   *
+   * 这是**部分唯一索引**：`ON CONFLICT` 必须复述同一谓词，否则 Postgres 找不到
+   * 匹配的 arbiter 索引并抛 42P10（实测踩过）。
+   */
+  sourceEventIdx: uniqueIndex("ai_run_event_source_event_idx")
+    .on(t.sourceEventId)
+    .where(sql`"sourceEventId" IS NOT NULL`),
+}));
+
+export type DbAiRun = typeof aiRuns.$inferSelect;
+export type DbAiToolExecution = typeof aiToolExecutions.$inferSelect;
+export type DbAiRunEvent = typeof aiRunEvents.$inferSelect;
+
+// ─── Change Sets & Decisions (P04) ───────────────────────────
+
+/**
+ * 一次用户任务聚合的提案。
+ *
+ * 提案内容一旦被批准就**不能原地修改** —— 任何重新生成都产生新的
+ * `proposalVersion`，旧的批准不会自动延伸。
+ */
+export const resumeChangeSets = pgTable("resume_change_set", {
+  id: text("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  resumeId: text("resumeId").notNull().references(() => resumes.id, { onDelete: "cascade" }),
+  userId: text("userId").notNull().references(() => users.id, { onDelete: "cascade" }),
+  title: text("title").notNull(),
+  /** 提案基于的修订号；提交时用它做 CAS 前置条件之一。 */
+  baseRevision: integer("baseRevision").notNull(),
+  proposalVersion: integer("proposalVersion").notNull().default(1),
+  operations: jsonb("operations").$type<unknown[]>().notNull(),
+  status: text("status").$type<ProposalStatus>().notNull().default("draft"),
+  runId: text("runId"),
+  summary: text("summary"),
+  createdAt: timestamp("createdAt").notNull().defaultNow(),
+  updatedAt: timestamp("updatedAt").notNull().defaultNow(),
+}, (t) => ({
+  resumeCreatedIdx: index("resume_change_set_resume_created_idx").on(t.resumeId, t.createdAt),
+  runIdx: index("resume_change_set_run_idx").on(t.runId),
+}));
+
+/**
+ * 用户对**精确提案版本**的接受/拒绝。
+ *
+ * 决策表达「用户选择」，回执表达「实际应用」—— 两者必须分开记录：
+ * 用户批准了但 revision 冲突时，决策已成立而修改并未保存，UI 应显示
+ * 「已确认，尚未保存：内容冲突」而不是「已批准并应用」。
+ */
+export const resumeDecisions = pgTable("resume_decision", {
+  id: text("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  changeSetId: text("changeSetId")
+    .notNull()
+    .references(() => resumeChangeSets.id, { onDelete: "cascade" }),
+  proposalVersion: integer("proposalVersion").notNull(),
+  acceptedOperationIds: jsonb("acceptedOperationIds").$type<string[]>().notNull(),
+  rejectedOperationIds: jsonb("rejectedOperationIds").$type<string[]>().notNull(),
+  userId: text("userId").notNull().references(() => users.id, { onDelete: "cascade" }),
+  createdAt: timestamp("createdAt").notNull().defaultNow(),
+}, (t) => ({
+  changesetVersionIdx: uniqueIndex("resume_decision_changeset_version_idx").on(
+    t.changeSetId,
+    t.proposalVersion,
+  ),
+}));
+
+export type DbChangeSet = typeof resumeChangeSets.$inferSelect;
+export type DbDecision = typeof resumeDecisions.$inferSelect;

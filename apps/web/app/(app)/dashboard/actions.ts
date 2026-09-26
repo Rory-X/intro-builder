@@ -7,6 +7,7 @@ import { db } from "@/db";
 import { resumes } from "@/db/schema";
 import { emptyResumeContent } from "@intro-builder/shared/schemas";
 import { withDbRetry } from "@/lib/db-retry";
+import { withFreshItemIds } from "@/lib/resume-mutations/item-id";
 import {
   getDefaultTemplateId,
   getTemplateMetaAsync,
@@ -69,12 +70,18 @@ export async function duplicateResume(sourceId: string) {
   );
   if (!source) redirect("/dashboard");
   const resolved = await getTemplateMetaAsync(source.templateId);
+  // 副本是**独立的新文档**：条目必须重新分配身份。沿用源文档的 ID 会让两份
+  // 简历共享条目身份，将来按 ID 做版本对比或撤销时会互相错配。
+  const contentWithFreshIds = withFreshItemIds(
+    source.content as unknown as Record<string, unknown>,
+    { force: true },
+  );
   const [row] = await withDbRetry("duplicateResume.write", () =>
     db.insert(resumes).values({
       userId,
       title: `${source.title} (副本)`,
       templateId: resolved.id,
-      content: source.content,
+      content: contentWithFreshIds as unknown as typeof source.content,
     }).returning({ id: resumes.id }),
   );
   revalidatePath("/dashboard");

@@ -6,6 +6,7 @@ import {
 import type { ResumeOperation } from "@intro-builder/shared/types";
 
 import { agentRichTextToTipTapDoc } from "@/lib/agent/rich-text-conversion";
+import { createItemId } from "@/lib/resume-mutations/item-id";
 
 /**
  * Pure mapping from an agent {@link ResumeOperation} to the next resume content.
@@ -78,24 +79,26 @@ function textToDoc(text: string): TipTapDoc {
   return agentRichTextToTipTapDoc(text) as TipTapDoc;
 }
 
-function newId(): string {
-  const cryptoApi = (globalThis as { crypto?: { randomUUID?: () => string } }).crypto;
-  if (cryptoApi?.randomUUID) return cryptoApi.randomUUID();
-  return `id_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
-}
-
+/**
+ * 本模块是**迁移期**的旧应用器：它按下标（`experience.0.content`）定位，因此
+ * 在条目身份成为契约（P01）之后只保留给即时旧 operation 的兼容路径使用。
+ * 真正的新写入口是 `lib/resume-mutations/*`。
+ *
+ * 即便如此，这里新建的条目也必须带上稳定身份 —— 否则 Agent 新增的条目会被
+ * 后续提案退回下标定位，等于把 F03 换个入口重演一遍。
+ */
 function defaultItem(section: string): Record<string, unknown> {
   switch (section) {
     case "experience":
-      return { company: "", title: "", start: "", end: "", location: "", content: emptyDoc() };
+      return { id: createItemId(), company: "", title: "", start: "", end: "", location: "", content: emptyDoc() };
     case "education":
-      return { school: "", degree: "", major: "", location: "", start: "", end: "", gpa: "", highlights: emptyDoc() };
+      return { id: createItemId(), school: "", degree: "", major: "", location: "", start: "", end: "", gpa: "", highlights: emptyDoc() };
     case "projects":
-      return { name: "", role: "", location: "", start: "", end: "", stack: [], link: "", content: emptyDoc() };
+      return { id: createItemId(), name: "", role: "", location: "", start: "", end: "", stack: [], link: "", content: emptyDoc() };
     case "research":
-      return { name: "", role: "", location: "", start: "", end: "", paperTitle: "", link: "", content: emptyDoc() };
+      return { id: createItemId(), name: "", role: "", location: "", start: "", end: "", paperTitle: "", link: "", content: emptyDoc() };
     case "custom":
-      return { id: newId(), title: "", content: emptyDoc() };
+      return { id: createItemId("sec"), title: "", content: emptyDoc() };
     default:
       return {};
   }

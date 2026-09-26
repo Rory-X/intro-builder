@@ -17,6 +17,22 @@ Status: implemented
 
 只有**表结构**改动（加列、加索引）才走 Drizzle migration。**表结构改动 + 存量 jsonb 回填方案必须同时写进当期 plan**，不允许只改 schema 就交。
 
+### 例外：条目 `id` 走「读时兼容 + 写前确定性补齐」
+
+2026-09-26 增加的条目稳定身份（`experience`/`projects`/`education`/`research` 的 `id`）
+**不适用 `.default(randomUUID)`**：那会让每次 `parse` 产生新身份，比缺 ID 更糟。
+它采用本决定之外的第三种形态：
+
+- schema 里 `id` 是 `optional()` 且**无默认值** —— 只管「旧数据能读」；
+- 补齐由 `apps/web/lib/resume-mutations/identity.ts` 的 `initializeItemIdentities`
+  在 owner 开始可写会话前一次性完成，ID 由 `resumeId + section + index + contentHash`
+  **确定性**派生（重试必须算出同一套 ID），再由 P02 的 CAS 落库；
+- 公开只读路径**不写库**，重复 ID 直接拒绝。
+
+即：读侧仍然懒迁移（不报错、不改变旧数据），但**写侧不做随机补齐**，
+而是确定性计算 + 显式持久化。取舍理由见
+[条目身份决策笔记](2026-09-26-stable-item-identity-and-mutation-commands.md)。
+
 ## Alternatives considered
 
 - **一次性数据回填（migration 里 `UPDATE` 全部存量行）** — 能让库内数据形状立刻统一，读路径不需要兼容分支。但 `resumes` 表随用户增长，写 migration 时的全表更新会长时间锁表；且回填脚本一旦出 bug 影响所有历史简历，而懒迁移把风险限制在「单条记录被打开时」，可单独修复。放弃。

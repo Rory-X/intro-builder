@@ -5,6 +5,7 @@ import { resumes } from "@/db/schema";
 import { ResumeContent as ResumeContentSchema } from "@intro-builder/shared/schemas";
 import { getDefaultTemplateId } from "@/lib/templates/registry-server";
 import { withDbRetry } from "@/lib/db-retry";
+import { withFreshItemIds } from "@/lib/resume-mutations/item-id";
 
 export async function POST(request: Request) {
   const session = await auth();
@@ -24,12 +25,17 @@ export async function POST(request: Request) {
 
     const id = crypto.randomUUID();
     const templateId = await getDefaultTemplateId();
+    // 这是一份**新文档**：必须在落库前给每个条目分配稳定身份。否则导入出来的
+    // 简历第一次被 Agent 修改时就会退回下标定位（F03）。
+    const contentWithIds = withFreshItemIds(
+      parsed.data as unknown as Record<string, unknown>,
+    ) as unknown as typeof parsed.data;
     await withDbRetry("importResume.create", () =>
       db.insert(resumes).values({
         id,
         userId,
         title: title || "导入的简历",
-        content: parsed.data,
+        content: contentWithIds,
         templateId,
       }),
     );
