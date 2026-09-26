@@ -26,15 +26,44 @@
 - **验证**：`tests/unit/ai-prompt-contract.test.ts` 47 例。
 - **决策笔记**：`docs/notes/implemented/architecture/2026-09-26-modular-prompts-and-versioning.md`。
 
+### 已完成：任务 4 的润色与 Helpers 迁移
+
+- **落地**：`lib/ai/capabilities/{polish,polish-prompt,polish-runner}.ts` 与
+  `{resume-helpers,resume-helper-runner}.ts`；`lib/ai/model-config-from-request.ts`。
+- **三条路径不再转发**：`app/api/agent/rich-text/polish` 与
+  `app/api/agent/resume/helpers/[helperId]` 中的 `signAgentToken` /
+  `createAgentClient` **已完全移除**（只剩注释里的历史说明）。
+  响应形状保持不变，前端无需改动。
+- **纯逻辑逐字移植**：这些函数有经验性细节，重写极易丢失且丢失后不报错、
+  只让结果默默变差 —— `polishedBlocks` 数量不符时整体拒绝（不按下标硬套）、
+  保留「短标签 + 冒号 + 粗体」结构的 marks、两个 helper 的 target/mode 交叉校验。
+  迁移正确性的判据是**行为一致**：测试用微服务侧同一份 fixture 验证同一预期。
+- **模型配置随请求传、不落库**（部分覆盖任务 5）：浏览器从 localStorage 取
+  baseUrl/modelName、sessionStorage 取 key；缺配置返回 `model_not_configured`
+  并提示连接模型，**不回退已退役的服务**。
+- **失败按来源分流**：上游问题（模型返回不符约定 / 调用失败）报 502，
+  校验与地址策略保持 4xx —— 把「模型没按 schema 输出」说成用户参数错误会误导排查。
+- **建议超限不算失败**（helper 特有）：截断并如实回报 `truncated`，
+  而不是让用户「什么都没得到」。
+- **验证**：`ai-polish-migration` 26 例 + `ai-polish-runner` 12 例 +
+  `agent-rich-text-polish-route` 15 例 + `ai-resume-helper-migration` 32 例 +
+  `agent-resume-helper-route` 17 例。
+- **决策笔记**：`docs/notes/implemented/architecture/2026-09-26-polish-migrated-to-web.md`
+  （含 helpers 追加章节）。
+
 ### 未完成（本切片剩余）
 
 任务 3（可用建议的行为红→绿：诊断 / 润色 / 目标岗位 / 缺事实 / 拒绝后继续）、
-任务 4（润色与 Helpers 从微服务迁到 Web，保留旧 API 路径）、
-任务 5（统一模型配置来源）、任务 6（**真实对照评测** —— 需显式可用评测配置，
+任务 5 的其余部分（浮窗与诊断共用同一模型配置来源；当前三条路径已统一「随请求传」，
+但浮窗仍在用旧微服务入口）、任务 6（**真实对照评测** —— 需显式可用评测配置，
 属 plan 停止条件，缺失时不假造分数）、任务 7（能力覆盖与发布）。
 
 任务 6 的离线部分（契约/越权/「无保存却称已保存」校验）可以先做；
-真实模型对照（16×2×3=96 次）需评测凭据。
+真实模型对照（16×2×3=96 次）需评测凭据，未跑前标 `not_run`。
+
+**已知上限**：微服务里那份 polish/helpers 实现暂时保留（等 P07 归档），
+因此短期内同一逻辑有两份；Web 侧未重建 Redis 缓存（有意为之 ——
+缓存属于待退役组件链，不应在新路径重建）。
 
 ## 文件范围
 
