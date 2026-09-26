@@ -44,6 +44,9 @@ import { describe, expect, it } from "vitest";
  * `apps/archive/...` 因而不存在）。
  */
 const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), "..", "..", "..", "..");
+/** 归档目录根（绝对路径；`existsSync` 需要它）。 */
+const ARCHIVE_ROOT = join(REPO_ROOT, "archive/agent-microservice/2026-09-26");
+
 const MANIFEST_PATH = join(
   REPO_ROOT,
   "archive/agent-microservice/2026-09-26/MANIFEST.json",
@@ -287,22 +290,79 @@ describe("不含敏感文件", () => {
   });
 });
 
-describe("退役状态诚实（还没退完）", () => {
-  it("**源码尚未移入归档目录**（任务 4 才做，不能假装已完成）", () => {
-    /*
-     * 本提交只做任务 1（基线与清单）。`source/` 目录尚不存在 ——
-     * 若这里失败，说明有人把源码搬进来了但没更新本测试与 README。
-     * 那是**进展**，应当同时更新归档 README 的状态说明。
-     */
+describe("退役状态诚实（已移入，不再两处都存在）", () => {
+  /*
+   * 这两条原本断言「还没退完」（源码尚未移入、旧实现仍在现役路径）。
+   * P07 任务 4 已执行移动，因此它们记的**事实翻转了** ——
+   * 而这两条断言当初的写法本身就是「预期会在任务 4 失败」的探针，
+   * 现在正是把它们改写成新事实的时候（而不是删掉）。
+   */
+  it("**源码已移入归档目录**", () => {
     const manifest = loadManifest();
     const sourceRoot = join(REPO_ROOT, "archive/agent-microservice/2026-09-26/source");
-    expect(existsSync(sourceRoot)).toBe(false);
-    // 但清单已经准备好，说明「要搬什么」是明确的。
+    expect(existsSync(sourceRoot)).toBe(true);
+    // 清单仍完整 —— 移动不该让条目数变化（只有新增来源才会）。
     expect(manifest.entryCount).toBeGreaterThan(0);
   });
 
-  it("旧实现仍在现役路径（迁移前不能两处都声称存在）", () => {
-    // apps/agent 仍在原位 —— 归档是「移动」，还没执行。
-    expect(existsSync(join(REPO_ROOT, "apps/agent/package.json"))).toBe(true);
+  it("**旧实现已不在现役路径**（不能两处都声称存在）", () => {
+    /*
+     * 归档是**移动**不是复制：`apps/agent` 必须真的没了。
+     * 若这里失败说明它是被复制而非移动 —— 那会让「退役」变成
+     * 「两份并存」，而现役那份仍可能被误用。
+     */
+    expect(existsSync(join(REPO_ROOT, "apps/agent/package.json"))).toBe(false);
+    expect(existsSync(join(REPO_ROOT, "apps/agent"))).toBe(false);
+    // 部署流水线也必须移出 `.github/workflows`（否则它仍会被触发）。
+    expect(
+      existsSync(join(REPO_ROOT, ".github/workflows/deploy-agent.yml")),
+    ).toBe(false);
+  });
+
+  it("**清单里未落盘的条目恰好是仍属现役的那 5 个**", () => {
+    /*
+     * 这条区分两个不同的东西，混在一起会让进展看起来比实际更大：
+     *
+     * - **清单**记的是「计划归档什么」（基线 050d5bb5e 下的全部内容）；
+     * - **落盘**记的是「已经移进去多少」。
+     *
+     * `archive:agent:verify --check` 校验的是**清单与基线一致**，不是
+     * 「都已移入」—— 我最初把归档目录的文件数（72）与清单条目数（76）
+     * 对不上误判成缺陷，实际差的那几个是**仍属现役**的文件。
+     *
+     * 它们仍可达（显式配 `AGENT_ASSISTANT_SURFACE=panel` 时会走
+     * AgentPanel → AG-UI runtime → direct-runs），因此归档它们属
+     * 「删除 panel 形态」那一步，不是任务 4。本断言把这个边界钉住：
+     * 若日后有人移了其中一个而没更新这里，它会失败。
+     */
+    const manifest = loadManifest();
+    const stillLive = [
+      "apps/web/components/agent/agent-ag-ui-runtime-provider.tsx",
+      "apps/web/components/agent/agent-panel.tsx",
+      "apps/web/lib/agent/direct-run-client.ts",
+      "apps/web/lib/agent/secret.ts",
+      "apps/web/lib/agent/token.ts",
+    ];
+
+    const notYetArchived = manifest.entries
+      .filter((entry) => !existsSync(join(ARCHIVE_ROOT, entry.archivePath)))
+      .map((entry) => entry.originalPath)
+      .sort();
+
+    expect(notYetArchived).toEqual([...stillLive].sort());
+  });
+
+  it("**归档目录里的实现可读**（不是只存在 Git 历史）", () => {
+    /*
+     * plan 的验收条件之一：「旧实现不是只存在于 Git 历史」。
+     * 归档的价值在于**可读**——若只是删掉，下个会话只能靠 git 考古，
+     * 而考古的成本正是当初决定归档的理由。
+     */
+    const archived = join(
+      REPO_ROOT,
+      "archive/agent-microservice/2026-09-26/source/apps/agent",
+    );
+    expect(existsSync(join(archived, "package.json"))).toBe(true);
+    expect(existsSync(join(archived, "src"))).toBe(true);
   });
 });

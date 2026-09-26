@@ -1,9 +1,10 @@
 name: Deploy PartyKit
 
-# See the header of deploy-agent.yml: `paths:` cannot express "this root file
-# matters to Web but not to PartyKit", so the monorepo-wide files used to
-# redeploy PartyKit on every edit. The job always starts and the
-# `affected-apps` gate decides whether the deploy steps run.
+# `paths:` cannot express "this root file matters to Web but not to PartyKit",
+# so the monorepo-wide files used to redeploy PartyKit on every edit. The job
+# always starts and the `affected-apps` gate decides whether the deploy steps
+# run. (The Agent workflow this comment used to point at was archived in
+# P07 task 4 — see archive/agent-microservice/2026-09-26/README.md.)
 on:
   push:
     branches: [main]
@@ -15,7 +16,6 @@ on:
       - "pnpm-workspace.yaml"
       - "scripts/ci/affected-apps.ts"
       - ".github/workflows/deploy-partykit.yml"
-      - ".github/workflows/deploy-agent.yml"
   workflow_dispatch:
 
 concurrency:

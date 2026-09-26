@@ -78,6 +78,11 @@ const SOURCES: Array<{ from: string; to: string; reason: string }> = [
     reason: "微服务 HTTP 客户端（签发 token 后转发）",
   },
   {
+    from: "apps/web/tests/unit/agent-client.test.ts",
+    to: "source/apps/web/tests/unit/agent-client.test.ts",
+    reason: "旧微服务客户端的单测（随 client.ts 一起归档，否则留下测不存在模块的孤儿测试）",
+  },
+  {
     from: "apps/web/lib/agent/token.ts",
     to: "source/apps/web/lib/agent/token.ts",
     reason: "Agent JWT 签发（旧鉴权桥）",

@@ -1,6 +1,34 @@
 # Agent 微服务归档预留区
 
-状态：**规划中；当前只有本说明，旧源码尚未移入，线上服务尚未退役。**
+状态：**源码与部署配置已移入（P07 任务 4 完成）；线上服务尚未退役（属 P08）。**
+
+| 项 | 状态 |
+|---|---|
+| 源码 / 测试 / 部署配置移入 `source/` | **已完成** |
+| 旧版 Web 桥接（AG-UI panel/runtime、JWT/token、直连 client） | **已完成** |
+| 现役 lockfile 移除 agent importer | **已完成** |
+| CI 部署闸门不再触发 agent | **已完成** |
+| 仍有 5 个桥接文件留在现役（见下「尚未移入」） | 待「删除 panel 形态」那一步 |
+| 线上容器退役 | **未做**（P08，需人工确认） |
+
+## 尚未移入的 5 个文件
+
+它们**仍属现役**：显式配 `AGENT_ASSISTANT_SURFACE=panel` 时，
+`AgentPanel` → `agent-ag-ui-runtime-provider` → `/api/agent/direct-runs`
+（签发 JWT）这条路径仍可达。因此归档它们属「删除 panel 形态」，
+不是任务 4。
+
+- `apps/web/components/agent/agent-panel.tsx`
+- `apps/web/components/agent/agent-ag-ui-runtime-provider.tsx`
+- `apps/web/lib/agent/token.ts`
+- `apps/web/lib/agent/direct-run-client.ts`
+- `apps/web/lib/agent/secret.ts`
+
+它们仍在 `MANIFEST.json` 里（清单记的是**计划归档什么**，即基线下的全部内容）——
+「清单条目数」与「已落盘文件数」因此不相等，这是**设计如此**，
+`agent-archive-manifest.test.ts` 里有一条断言把这两个集合的差钉住。
+
+默认 surface 已翻转为 `floating`，所以**默认用户不再经过这条路径**。
 
 用户于 2026-09-26 决定让 Next.js + Vercel AI SDK 成为唯一在线 AI 执行入口。独立 Agent 服务及部署路线退出线上，旧实现保留在本目录用于考古、验证与受控复用。
 
@@ -51,4 +79,26 @@ manifest 至少包含 baselineCommit、retirementCommit、originalPath、archive
 
 旧代码包含空 Draft 读取、未连接润色工具、按位置修改、客户端补版本、双会话来源等已知限制，不能照搬到新路线。新的权威实现将位于 `apps/web/lib/ai/` 和 `apps/web/lib/resume-mutations/`，以实际 P04/P07 合并后的路径为准。
 
-完整恢复需要核验新的文档版本协议、平台凭据、保留卷、镜像 digest 和路由归属。没有兼容性验证，不恢复旧 writer 或自动部署。线上清理记录与保留资源应在 P08 执行后追加到 RETIREMENT.md。
+## 恢复条件（可执行清单）
+
+归档**不是**为了随时切回。若确实需要取用这里的实现，以下条件必须**全部**满足 ——
+缺任何一条都不应恢复自动部署：
+
+1. **明确目标**：只取用具体某个纯函数 / 算法（例如润色 prompt），
+   而不是「把旧服务跑起来」。旧服务缺少幂等、租约、原子提交与留痕，
+   整体恢复等于**退回一条不受保护的写入路径**。
+2. **协议核验**：新路线已改用 `ai_run` 的事件模型（数据库分配 sequence、
+   `fenceToken`、`mutationId` 幂等）。旧实现按 AG-UI 事件直通，
+   协议不兼容 —— 需要先写适配层并补测试。
+3. **内容契约**：旧代码含空 Draft 读取、按位置修改、客户端补版本等
+   已知限制（见上节）。恢复前必须逐条确认它们在新契约下不成立。
+4. **凭据与卷**：平台凭据、保留卷、镜像 digest、路由归属都要重新核验 ——
+   归档里**不含**任何真实 `.env`、私钥或 provider key（见上面去向规则）。
+5. **不恢复旧 writer**：即使取用了读路径，也**不得**让旧 writer 参与文档写入。
+   必要时的正确降级是关闭 AI、保持手动编辑 —— 那比恢复一个无幂等 writer 安全。
+6. **部署配置不自动执行**：`source/.github/workflows/deploy-agent.yml` 仅作文本存档，
+   移出 `.github/workflows` 就是为此。不要把它拷回去来「恢复部署」。
+
+没有兼容性验证，不恢复旧 writer 或自动部署。线上清理记录与保留资源
+应在 P08 执行后追加到 `RETIREMENT.md`（该文件尚未创建 —— 它必须写**实际**
+退役结果，不能预写）。

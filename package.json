@@ -5,11 +5,9 @@
   "scripts": {
     "dev": "pnpm --parallel --filter './apps/*' dev",
     "dev:web": "pnpm --filter @intro-builder/web dev",
-    "dev:agent": "pnpm --filter @intro-builder/agent dev",
     "dev:partykit": "pnpm --filter @intro-builder/partykit dev",
     "build": "pnpm --filter './apps/*' build",
     "build:web": "pnpm --filter @intro-builder/web build",
-    "build:agent": "pnpm --filter @intro-builder/agent build",
     "test": "pnpm --recursive test",
     "lint": "pnpm --recursive lint",
     "typecheck": "pnpm --recursive typecheck",

@@ -24,7 +24,7 @@ function resolve(input: AffectedAppsInput): AffectedApps {
 }
 
 describe("resolveAffectedApps", () => {
-  it("keeps a web-only editor change from deploying agent or partykit", () => {
+  it("keeps a web-only editor change from deploying partykit", () => {
     // 9ee0b049f "fix(editor): make toolbar history actions icon-only"
     const result = resolve({
       changedPaths: [
@@ -33,7 +33,7 @@ describe("resolveAffectedApps", () => {
       ],
     });
 
-    expect(result).toEqual({ web: true, agent: false, partykit: false });
+    expect(result).toEqual({ web: true, partykit: false });
   });
 
   it("does not redeploy anything for a root package.json scripts-only change", () => {
@@ -59,7 +59,7 @@ describe("resolveAffectedApps", () => {
       rootPackage: { before, after },
     });
 
-    expect(result).toEqual({ web: false, agent: false, partykit: false });
+    expect(result).toEqual({ web: false, partykit: false });
   });
 
   it("deploys every app when root dependencies change", () => {
@@ -71,10 +71,10 @@ describe("resolveAffectedApps", () => {
       rootPackage: { before, after },
     });
 
-    expect(result).toEqual({ web: true, agent: true, partykit: true });
+    expect(result).toEqual({ web: true, partykit: true });
   });
 
-  it("does not redeploy agent or partykit for a workspace settings-only change", () => {
+  it("does not redeploy partykit for a workspace settings-only change", () => {
     // f968d22b6 "fix(test): align jsdom globals with newer Node so gates stop
     // false-failing" added `verifyDepsBeforeRun: false`, which no app consumes.
     const before = 'packages:\n  - "apps/*"\n\nonlyBuiltDependencies:\n  - esbuild\n';
@@ -86,7 +86,7 @@ describe("resolveAffectedApps", () => {
       workspaceConfig: { before, after },
     });
 
-    expect(result).toEqual({ web: true, agent: false, partykit: false });
+    expect(result).toEqual({ web: true, partykit: false });
   });
 
   it("deploys every app when the workspace membership changes", () => {
@@ -98,10 +98,10 @@ describe("resolveAffectedApps", () => {
       workspaceConfig: { before, after },
     });
 
-    expect(result).toEqual({ web: true, agent: true, partykit: true });
+    expect(result).toEqual({ web: true, partykit: true });
   });
 
-  it("does not redeploy agent when only unrelated lockfile importers changed", () => {
+  it("does not redeploy partykit when only unrelated lockfile importers changed", () => {
     // 51be46358 "chore: restore v0.4.2 release baseline" rewrote root eslint
     // peer-resolution strings and added a vitest devDep to apps/partykit.
     // The apps/agent importer block was byte-identical.
@@ -123,23 +123,35 @@ describe("resolveAffectedApps", () => {
       lockfile: { before, after },
     });
 
-    expect(result).toEqual({ web: true, agent: false, partykit: true });
+    expect(result).toEqual({ web: true, partykit: true });
   });
 
-  it("deploys agent when its own lockfile importer changes", () => {
+  it("**已退役的 agent importer 变化不再触发任何部署**", () => {
+    /*
+     * 这条原来断言「agent 自己的 lockfile importer 变了就部署 agent」。
+     * P07 任务 4 归档了旧服务，它不再有部署目标 —— 而重生成 lockfile 时
+     * `apps/agent` 这个 importer 会被移除，所以这条路径是**真实会发生**的。
+     *
+     * 新语义：它既不该部署 agent（没有目标了），也不该掉进 failSafe
+     * 而把 web/partykit 一起部署（那是为一次删除而重新发布两个服务）。
+     */
     const before = lockfile({ "apps/agent": ["zod@4.1.11"], "apps/web": ["next@16.2.4"] });
-    const after = lockfile({ "apps/agent": ["zod@4.1.12"], "apps/web": ["next@16.2.4"] });
+    const after = lockfile({ "apps/web": ["next@16.2.4"] });
 
     const result = resolve({
       changedPaths: ["pnpm-lock.yaml"],
       lockfile: { before, after },
     });
 
-    expect(result.agent).toBe(true);
+    expect(result).toEqual({ web: false, partykit: false });
   });
 
-  it("deploys agent when its own source changes", () => {
-    // 99b5dbcd6 "feat(agent): harden autosave and agent UX"
+  it("**归档的 agent 源码变化不触发部署**（否则归档 PR 自己会重新发布线上）", () => {
+    /*
+     * 归档那个 PR 的 diff 恰好全是被删除的 apps/agent/** 路径。
+     * 若不显式拦下它们，failSafe 会把「把旧服务归档」这件事本身
+     * 判成未知变更 → web 与 partykit 双双生产部署。
+     */
     const result = resolve({
       changedPaths: [
         "apps/agent/src/agent-messages.ts",
@@ -147,7 +159,7 @@ describe("resolveAffectedApps", () => {
       ],
     });
 
-    expect(result).toEqual({ web: false, agent: true, partykit: false });
+    expect(result).toEqual({ web: false, partykit: false });
   });
 
   it("deploys partykit when its own source changes", () => {
@@ -156,7 +168,7 @@ describe("resolveAffectedApps", () => {
       changedPaths: ["apps/partykit/src/server.ts", "apps/partykit/src/utils/auth.ts"],
     });
 
-    expect(result).toEqual({ web: false, agent: false, partykit: true });
+    expect(result).toEqual({ web: false, partykit: true });
   });
 
   it("deploys partykit — but not agent — when the shared package changes", () => {
@@ -165,7 +177,7 @@ describe("resolveAffectedApps", () => {
       changedPaths: ["packages/shared/src/schemas/resume-schema.ts"],
     });
 
-    expect(result).toEqual({ web: true, agent: false, partykit: true });
+    expect(result).toEqual({ web: true, partykit: true });
   });
 
   it("still deploys agent when agent files change alongside a root lockfile edit", () => {
@@ -177,7 +189,7 @@ describe("resolveAffectedApps", () => {
       },
     });
 
-    expect(result).toEqual({ web: false, agent: true, partykit: false });
+    expect(result).toEqual({ web: false, partykit: false });
   });
 
   it("fails safe by deploying everything when a change cannot be classified", () => {
@@ -185,13 +197,13 @@ describe("resolveAffectedApps", () => {
     // deploy — the gate may only suppress a deploy it positively understands.
     const result = resolve({ changedPaths: ["some-unknown-root-file.toml"] });
 
-    expect(result).toEqual({ web: true, agent: true, partykit: true });
+    expect(result).toEqual({ web: true, partykit: true });
   });
 
   it("does not deploy anything when only documentation changed", () => {
     const result = resolve({ changedPaths: ["docs/notes/implemented/process/x.md", "README.md"] });
 
-    expect(result).toEqual({ web: false, agent: false, partykit: false });
+    expect(result).toEqual({ web: false, partykit: false });
   });
 
   it("does not deploy anything for a docs-and-lessons reshuffle", () => {
@@ -207,7 +219,7 @@ describe("resolveAffectedApps", () => {
       ],
     });
 
-    expect(result).toEqual({ web: false, agent: false, partykit: false });
+    expect(result).toEqual({ web: false, partykit: false });
   });
 
   it("ignores a manifest bump in the unreferenced config placeholder", () => {
@@ -218,33 +230,35 @@ describe("resolveAffectedApps", () => {
       changedPaths: ["packages/config/package.json", "packages/shared/package.json"],
     });
 
-    expect(result).toEqual({ web: true, agent: false, partykit: true });
+    expect(result).toEqual({ web: true, partykit: true });
   });
 
   it("treats an unrecognised workspace member as a fail-safe", () => {
     const result = resolve({ changedPaths: ["packages/brand-new/package.json"] });
 
-    expect(result).toEqual({ web: true, agent: true, partykit: true });
+    expect(result).toEqual({ web: true, partykit: true });
   });
 
   it("deploys only the app whose deploy workflow changed", () => {
+    /*
+     * `deploy-agent.yml` 已随旧服务归档（移出 `.github/workflows/`），
+     * 因此它的变化对应「归档目录里的一个文件变了」—— 不部署任何东西。
+     */
     expect(resolve({ changedPaths: [".github/workflows/deploy-agent.yml"] })).toEqual({
       web: false,
-      agent: true,
       partykit: false,
     });
     expect(resolve({ changedPaths: [".github/workflows/deploy-partykit.yml"] })).toEqual({
       web: false,
-      agent: false,
       partykit: true,
     });
     // Non-deploy CI config never ships anywhere.
     expect(resolve({ changedPaths: [".github/workflows/ci.yml", ".github/dependabot.yml"] })).toEqual(
-      { web: false, agent: false, partykit: false },
+      { web: false, partykit: false },
     );
   });
 
-  it("does not deploy agent for the v0.4.2 baseline bump", () => {
+  it("does not deploy partykit for the v0.4.2 baseline bump", () => {
     // Full file list of 51be46358: web/config/shared manifests plus lockfile.
     // Agent's own importer and manifest were untouched, yet it redeployed.
     const before = lockfile({
@@ -281,6 +295,6 @@ describe("resolveAffectedApps", () => {
       lockfile: { before, after },
     });
 
-    expect(result).toEqual({ web: true, agent: false, partykit: true });
+    expect(result).toEqual({ web: true, partykit: true });
   });
 });

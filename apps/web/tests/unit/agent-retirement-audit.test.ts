@@ -175,21 +175,41 @@ const RETIRED_AGENT_ROUTES = [
  * 模块消失 = 调用点全部消除后才能删的东西。
  */
 const KNOWN_LEGACY_MODULES = [
-  "lib/agent/client.ts",
+  /*
+   * `lib/agent/client.ts` 已从清单移除 —— 它被**归档移除**了
+   * （P07 任务 4）。清单记的是「现役目录里还剩哪些旧客户端」，
+   * 已移走的模块不该继续占位（否则这条断言永远拦不下真正的回归，
+   * 而会先因为文件不存在而报错）。
+   *
+   * 移走它之前先做的是：把两个按钮仍需要的 4 个**类型**迁到
+   * 现役能力模块（`lib/ai/capabilities/*` 自己已定义了等价类型，
+   * 只是 button 的 import 忘了跟着改）。
+   */
   "lib/agent/token.ts",
   "lib/agent/direct-run-client.ts",
 ];
 
 describe("旧客户端模块（定义处）", () => {
-  it("**恰好这三个模块**（新增旧客户端会被拦下）", () => {
+  it("**恰好这两个模块**（新增旧客户端会被拦下）", () => {
     const found = scanLegacyDefinitions();
     expect(Object.keys(found).sort()).toEqual([...KNOWN_LEGACY_MODULES].sort());
   });
 
-  it("这三个模块确实存在（防路径拼写错误）", () => {
+  it("这两个模块确实存在（防路径拼写错误）", () => {
     for (const relativePath of KNOWN_LEGACY_MODULES) {
       expect(() => read(relativePath), relativePath).not.toThrow();
     }
+  });
+
+  it("**lib/agent/client.ts 已归档移除**（不在现役目录里）", () => {
+    /*
+     * 反向确认：它不该在现役目录里复活。
+     *
+     * 这条断言与上面那条互为约束 —— 上面说「恰好这两个」，
+     * 这条说「第三个确实走了」。少了任何一条，回归都可能悄悄发生
+     * （例如有人为了让某个旧 import 编译通过而把它放回来）。
+     */
+    expect(() => read("lib/agent/client.ts")).toThrow();
   });
 });
 

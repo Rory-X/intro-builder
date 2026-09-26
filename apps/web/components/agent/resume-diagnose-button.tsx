@@ -10,7 +10,7 @@ import {
   buildResumeHelperContext,
   type ResumeHelperContextSnapshot,
 } from "@/lib/agent/resume-helper-context";
-import type { ResumeHelperResponse } from "@/lib/agent/client";
+import type { ResumeHelperSuggestion } from "@/lib/ai/capabilities/resume-helpers";
 import {
   readSessionAgentModelApiKey,
   readStoredAgentModelSettings,
@@ -157,7 +157,15 @@ export function GradientSparklesIcon({ gradientId }: { gradientId: string }) {
   );
 }
 
-function isSuggestion(value: unknown): value is ResumeHelperResponse["result"]["suggestions"][number] {
+/*
+ * 类型来自**现役能力模块**而不是 `lib/agent/client.ts`。
+ *
+ * 后者是旧微服务桥（含 JWTA 签发与 HTTP 客户端），正在归档；
+ * 而它的 `ResumeHelperResponse` 与这里的 `ResumeHelperSuggestion` 结构等价 ——
+ * 迁移时能力模块自己重新定义了这些类型（逐字移植的纯函数需要它们），
+ * 但两个按钮的 import 忘了跟着改。这是那批迁移的遗漏。
+ */
+function isSuggestion(value: unknown): value is ResumeHelperSuggestion {
   if (!isRecord(value)) return false;
   return (
     typeof value.id === "string" &&
