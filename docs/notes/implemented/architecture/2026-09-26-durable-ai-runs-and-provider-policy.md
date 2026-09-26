@@ -71,6 +71,34 @@ DNS rebinding（域名先解析到公网、再改指向内网）。彻底修复�
 校验或固定解析结果；当前平台不具备该能力。因此文档与日志必须引用这段说明，
 而不是宣称 SSRF 已消除。这是明确的已知上限，不是被忽略的问题。
 
+### 6. provider 装配层：校验在构造之前，脱敏在抛出之前（`lib/ai/provider.ts`）
+
+把策略真正接到 SDK 上的是装配层。它的职责刻意收窄为三件事，每件都对应一个
+「不报错但行为错」的失败模式：
+
+1. **校验必须在创建 provider 之前**。`createProviderStreamer` 先跑
+   `validateProviderUrl`，不通过就返回 `{ ok: false, code }` 且**不构造** SDK 客户端。
+   把校验放在构造之后，等于先造出一个可用的 `streamModel` 再补检查 ——
+   任何一处提前调用都会绕过它。校验失败**返回而不抛异常**：那是用户输入问题，
+   路由要把它变成 4xx，而不是冒泡成 500。
+2. **错误必须脱敏**。SDK / fetch 会把目标 URL 拼进错误消息，而 BYOK 的 baseUrl
+   允许带 query（有些代理用 `?key=`）。`redact()` 把 apiKey 与完整 baseUrl
+   替换掉，baseUrl 只保留 `protocol//host`。否则用户密钥会流进日志与响应。
+3. **预算与取消必须真的透传**。`abortSignal` 传丢 → 取消无效（数据库 fence 只拦
+   提交，不拦已在跑的模型调用）；`maxSteps` 传丢 → 步数无上限，不报错只烧额度。
+   两者都在这里显式绑定（`stopWhen: stepCountIs(maxSteps)`）。
+
+另外两条设计约束：
+
+- **构造 `streamModel` 不等于开始一次模型调用**。模型调用只发生在真正消费流的
+  时候（返回的异步生成器被迭代时）。这是「打开面板/刷新页面就烧一次额度」这类
+  问题的结构性防线 —— 该行为有专门的测试锁住。
+- **本层不做协议解释**。SDK 的 `fullStream` 片段原样透出，翻译由 `stream-adapter`
+  负责。两个转换点会让同一段流被解释两遍，迟早得出不同结论。
+
+用生成器包裹 `streamText` 而非直接返回 `result.fullStream`：这样「同步抛出」与
+「迭代中抛出」两类错误都走同一条脱敏路径（直接返回裸 stream 会绕过包装）。
+
 ## Alternatives considered
 
 - **把运行状态存进 Redis（沿用旧微服务思路）** — 旧链路已有 Redis，复用最省事。
@@ -128,6 +156,11 @@ DNS rebinding（域名先解析到公网、再改指向内网）。彻底修复�
    mock `db.execute` 的返回值 —— 那就完全证明不了租约竞争、sequence 分配、
    终态唯一这些依赖真实并发的行为。`setRunStoreExecutorForTesting` 让同一套生产逻辑
    跑在隔离数据库上。
+7. **`as never` 会污染 SDK 泛型推断**。装配层里写 `tools: input.tools as never`
+   会让 `streamText` 的 `TOOLS` 被推成 `never`，于是 `stopWhen` 报 `TS2322`
+   （`StopCondition<any>` 不能赋给 `StopCondition<never>`）。报错点在 `stopWhen`，
+   根因却在 `tools` —— 容易在错误的位置反复调整。`ModelMessage` 与 `ToolSet`
+   都能从 `ai` 直接导入，用真实类型即可，不需要绕过类型检查。
 
 ### 6. 工作副本：修 F02「一部分工具读空 Draft、一部分读旧摘要」
 
@@ -220,6 +253,12 @@ DNS rebinding（域名先解析到公网、再改指向内网）。彻底修复�
   含 EOF 判定、attempt 单结束、lease 全部分支、SQL 结构断言、请求哈希稳定性）、
   `apps/web/tests/unit/ai-provider-policy.test.ts`（17 例，含 8 个绕过用例与
   公网地址不误拒的反向用例）。
+- provider 装配层（纯函数，10 例）：`apps/web/tests/unit/ai-provider.test.ts` ——
+  合法配置可创建 provider 且**构造时不发起模型调用**；12 种非法输入
+  （http、127.0.0.1、192.168.x、10.x、169.254.169.254、localhost、单标签主机名、
+  含 userinfo、以及 4 种缺字段）全部在**创建 provider 之前**被拒；
+  拒绝结果不含 apiKey；`abortSignal` 与 `maxSteps` 真的透传（`stopWhen` 已绑定）；
+  SDK 片段原样透出不解释；SDK 抛错时 apiKey 不出现在消息里。
 
 - 工作副本（纯函数，19 例）：`tests/unit/ai-workspace.test.ts` —— 含
   「同一轮新增后能读到」「暂存不改变基准」「目标缺失不回退」「条件哈希随暂存变化」。
