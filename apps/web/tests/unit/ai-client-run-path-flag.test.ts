@@ -63,21 +63,33 @@ describe("默认行为（保守）", () => {
   });
 });
 
-describe("测试环境恒开（否则新路径无法被单测覆盖）", () => {
-  it("NODE_ENV=test 时走新路径", () => {
-    const decision = resolveClientRunPath({ NODE_ENV: "test" });
-    expect(decision.useNewPath).toBe(true);
-    expect(decision.reason).toContain("测试环境");
+describe("**测试环境也默认旧路径**（与服务端开关刻意不同）", () => {
+  it("NODE_ENV=test 且未设置开关时走旧路径", () => {
+    /*
+     * 服务端开关在测试环境恒开（否则路由测试被挡住）；客户端开关**不**这样做。
+     *
+     * 因为组件测试需要在**两条路径上都能被测**：若测试环境恒开新路径，
+     * 既有那批 mock 旧路径的组件测试（agent-panel-assistant-ui，26 处
+     * 旧路由 mock）会全部走新路径而失败 —— 而那批测试正是守护旧路径行为的。
+     */
+    expect(resolveClientRunPath({ NODE_ENV: "test" }).useNewPath).toBe(false);
   });
 
-  it("**即便显式写了 legacy，测试环境也不受影响**（测试要能测到真实行为）", () => {
+  it("测试环境显式 new 时才走新路径", () => {
     expect(
-      resolveClientRunPath({ NODE_ENV: "test", NEXT_PUBLIC_AI_RUN_PATH: "legacy" }).useNewPath,
+      resolveClientRunPath({ NODE_ENV: "test", NEXT_PUBLIC_AI_RUN_PATH: "new" }).useNewPath,
     ).toBe(true);
   });
 
-  it("生产环境不受测试豁免影响", () => {
+  it("测试环境显式 legacy 时走旧路径", () => {
+    expect(
+      resolveClientRunPath({ NODE_ENV: "test", NEXT_PUBLIC_AI_RUN_PATH: "legacy" }).useNewPath,
+    ).toBe(false);
+  });
+
+  it("生产环境与测试环境的行为一致（都默认旧路径）", () => {
     expect(resolveClientRunPath({ NODE_ENV: "production" }).useNewPath).toBe(false);
+    expect(resolveClientRunPath({ NODE_ENV: "production", NEXT_PUBLIC_AI_RUN_PATH: "new" }).useNewPath).toBe(true);
   });
 });
 
