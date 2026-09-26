@@ -147,8 +147,16 @@ export const itemIdArgs = z.object({
   ...commonWriteArgs,
 });
 
+/**
+ * 排序参数：**只有** `itemIds`。
+ *
+ * 刻意不接受 `section`。五个排序工具（reorderWorkExperiences / reorderProjects /
+ * reorderEducation / reorderResearch / reorderCustomSections）的工具名**已经**固定
+ * 了区块；让模型再填一次 `section` 等于给它一次自相矛盾的机会 ——
+ * 而调用方若拿模型填的值去执行，会出现「工具名叫 reorderProjects、
+ * 实际重排了 experience」这种静默错配。区块只在执行层由工具名推导。
+ */
 export const reorderItemsArgs = z.object({
-  section: z.enum(["experience", "projects", "education", "research", "custom"]),
   itemIds: z.array(z.string().min(1).max(128)).min(1).max(200).describe("按目标顺序排列的完整条目 ID 列表"),
   ...commonWriteArgs,
 });
@@ -172,6 +180,22 @@ export const moduleOrderArgs = z.object({
     .min(1)
     .max(200)
     .describe("完整的模块顺序列表（含所有模块）"),
+  ...commonWriteArgs,
+});
+
+/**
+ * 隐藏 / 显示模块。
+ *
+ * 只接受模块名，**不接受** `visible` 布尔值：那是调用方要表达的结果，
+ * 而工具名本身（hideResumeModule / showResumeModule）已经说清了意图。
+ * 让模型同时提供工具名与布尔值，等于给它一次自相矛盾的机会。
+ */
+export const moduleToggleArgs = z.object({
+  section: z
+    .string()
+    .min(1)
+    .max(128)
+    .describe("模块名（例如 skills、projects；自定义模块用 custom:<id>）"),
   ...commonWriteArgs,
 });
 
@@ -647,6 +671,102 @@ export function buildCustomSection(
     ],
     summary: String(args.changeSummary ?? `新增自定义模块「${title}」`),
     note: `新模块 ID：${sectionId}`,
+  };
+}
+
+/**
+ * 更新自定义模块的标题或正文。
+ *
+ * 单独一个函数（而不是复用 `buildUpdateItem`）是因为参数名不同：
+ * 通用条目的身份字段叫 `itemId`，而自定义模块在契约里叫 `sectionId`
+ * （见 `customSectionArgs`）。把两者混用会让模型在 `itemId` / `sectionId`
+ * 之间猜，猜错就是 `target_not_found`。
+ */
+export function buildUpdateCustomSection(
+  ctx: BuildContext,
+  args: Record<string, unknown>,
+): ToolProposal {
+  const sectionId = typeof args.sectionId === "string" ? args.sectionId : "";
+  if (!sectionId) {
+    return { status: "failed", code: "missing_section_id", message: "必须给出 sectionId（不是下标）" };
+  }
+  const read = readSection(ctx.workspace, { section: `custom:${sectionId}` });
+  if (!read.ok) {
+    return { status: "failed", code: "target_not_found", message: read.message };
+  }
+
+  const operations: SemanticOperation[] = [];
+  for (const field of ["title", "content"] as const) {
+    const value = args[field];
+    if (value === undefined) continue;
+    const target: Target = { section: "custom", itemId: sectionId, field };
+    const expected = conditionHashFor(ctx.workspace, target);
+    if (expected === null) continue;
+    operations.push({
+      id: opId(ctx),
+      kind: "set_field",
+      target,
+      condition: { expectedValueHash: expected },
+      value: field === "content" ? textToDoc(String(value)) : String(value),
+    });
+  }
+
+  if (operations.length === 0) {
+    return { status: "failed", code: "no_change", message: "没有给出要更新的字段" };
+  }
+  return {
+    status: "proposed",
+    operations,
+    summary: String(args.changeSummary ?? `更新自定义模块 ${sectionId}`),
+  };
+}
+
+/** 删除一个自定义模块。条件用**整条内容**，确保删的就是当时那条。 */
+export function buildDeleteCustomSection(
+  ctx: BuildContext,
+  args: Record<string, unknown>,
+): ToolProposal {
+  const sectionId = typeof args.sectionId === "string" ? args.sectionId : "";
+  if (!sectionId) {
+    return { status: "failed", code: "missing_section_id", message: "必须给出 sectionId（不是下标）" };
+  }
+  const target: Target = { section: "custom", itemId: sectionId };
+  const expected = conditionHashFor(ctx.workspace, target);
+  if (expected === null) {
+    return {
+      status: "failed",
+      code: "target_not_found",
+      message: `找不到自定义模块 ${sectionId}。请先用 readResume 确认当前的模块 ID。`,
+    };
+  }
+  return {
+    status: "proposed",
+    operations: [
+      { id: opId(ctx), kind: "delete_item", target, condition: { expectedValueHash: expected } },
+    ],
+    summary: String(args.changeSummary ?? `删除自定义模块 ${sectionId}`),
+  };
+}
+
+/** 调整自定义模块顺序。集合必须与当前一致（增删由别的工具负责）。 */
+export function buildReorderCustomSections(
+  ctx: BuildContext,
+  args: Record<string, unknown>,
+): ToolProposal {
+  const after = Array.isArray(args.itemIds) ? (args.itemIds as string[]) : [];
+  const before = ctx.workspace.current.custom.map((item) => item.id);
+  const sameSet = before.length === after.length && before.every((id) => after.includes(id));
+  if (!sameSet) {
+    return {
+      status: "failed",
+      code: "order_set_mismatch",
+      message: "排序必须覆盖当前全部自定义模块且不增不减；增删请用对应工具",
+    };
+  }
+  return {
+    status: "proposed",
+    operations: [{ id: opId(ctx), kind: "reorder_items", section: "custom", beforeIds: before, afterIds: after }],
+    summary: String(args.changeSummary ?? "调整自定义模块顺序"),
   };
 }
 
