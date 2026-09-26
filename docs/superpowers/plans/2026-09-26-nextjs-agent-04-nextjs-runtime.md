@@ -57,12 +57,28 @@
   全量：单元 11 文件 / 215 例，仓库 `pnpm test` 1209 例通过。
 - **决策笔记**：`docs/notes/implemented/bug-fix/2026-09-26-stream-adapter-read-sdk-fields.md`。
 
+### 已完成：任务 4 的 change-set 决策路由
+
+- **落地**：`app/api/ai/change-sets/[changeSetId]/decisions/route.ts`。
+- **守住的区分**：批准 ≠ 已保存。批准只写 `resume_decision`（绑定精确
+  `proposalVersion`）；真正改文档由 `commitResumeMutation` 完成。
+- **四条机械规则**：版本精确匹配（不符 409，且**校验通过前不写任何决策**）；
+  **先留痕后改文档**（决策没落库就不提交）；`applied` 只认真实回执；
+  冲突**不**标终态（保留 `pending` 以便重试）。
+- **归属**：他人 changeSet 返回 404 而非 403（403 泄露存在性），
+  与 `api/ai/runs/[runId]` 一致。
+- **验证**：`tests/unit/ai-change-set-route.test.ts` 10 例（红→绿）。
+- **已知上限（写入笔记）**：本路由**未传 `fence`** —— 用户的显式批准发生在 Run
+  结束之后，此时租约通常已释放，强制 fence 会让正常的「批准已结束 Run 的提案」
+  全部失败。因此**取消一个 Run 不阻止随后批准它遗留的提案**，这是有意取舍。
+- **决策笔记**：`docs/notes/implemented/architecture/2026-09-26-approval-is-not-a-save.md`。
+
 ### 未完成（本切片剩余）
 
 任务 2 的 provider 装配（真实 AI SDK 接线）、任务 3 的工具**实现体**移植、
-任务 4 接入提交与批准（change-set 决策路由）、任务 6 恢复与取消**路由**、
-任务 8 验证与灰度。存储、能力矩阵、事件层、流适配器均已就绪，
-但 `/api/ai/runs/*` 路由与工具实现尚未落地，**新链路未切流**。
+任务 6 恢复与取消**路由**（continue）、任务 8 验证与灰度。
+存储、能力矩阵、事件层、流适配器、查询/取消/决策路由均已就绪，
+但 `POST /api/ai/runs` 启动路由与工具实现尚未落地，**新链路未切流**。
 
 ### 实测发现（详见决策笔记）
 
