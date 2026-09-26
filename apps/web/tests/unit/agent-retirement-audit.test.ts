@@ -359,9 +359,12 @@ describe("能力矩阵：哪些已经 Web 自足", () => {
     "app/api/agent/floating/models/route.ts",
     "app/api/agent/floating/sessions/route.ts",
     "app/api/agent/floating/sessions/[sessionId]/route.ts",
-    // 会话列表（Web 自足）。
-    "app/api/agent/sessions/route.ts",
   ];
+  /*
+   * 曾经列在这里的 `app/api/agent/sessions/route.ts` 已**退役为 410**
+   * （零消费方 + 旧会话模型被 `ai_run.sessionId` 替代）。
+   * 它不是「Web 自足能力」，而是退役 stub —— 不再属于本清单。
+   */
 
   it("**这些路由都不含旧服务调用**（能力矩阵里的「已 Web 化」部分）", () => {
     for (const relativePath of WEB_NATIVE_ROUTES) {
