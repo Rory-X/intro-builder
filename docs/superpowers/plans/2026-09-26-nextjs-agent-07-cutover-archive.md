@@ -1,10 +1,16 @@
 # P07：唯一入口切流、代码归档与现役文档更新
 
-状态：进行中（任务 1 归档基线与清单已完成；任务 3 的**全部前置能力**
-（客户端消费器、多轮历史、协议适配、内容同步、协调层）已完成，且两条
-无消费方的旧路由已转 410；**浮窗组件尚未切换、默认 surface 仍是 panel**；
-任务 2 部分完成；任务 4-7 未开始）。依赖 P06 和完整能力验收；
+状态：进行中（任务 1 基线与清单、任务 3 前置能力 + **默认 surface 翻转**、
+任务 4 **源码与部署配置归档**、任务 6 的现役文档更新均已完成；
+**任务 5 依赖收敛未做**（AG-UI 依赖仍被现役 panel 路径引用）；
+任务 7 未做）。依赖 P06 和完整能力验收；
 归档根[说明](../../../archive/agent-microservice/2026-09-26/README.md)。
+
+**关键剩余**：`AgentPanel` / `agent-ag-ui-runtime-provider` / `token` /
+`direct-run-client` / `secret` 五个文件仍属现役（显式配
+`AGENT_ASSISTANT_SURFACE=panel` 时可达）—— 归档它们属「删除 panel 形态」，
+是任务 4 的余下部分。默认 surface 已翻转为 `floating`，因此**默认用户
+不再经过它们**。
 
 ## 完成记录（分批）
 
@@ -142,6 +148,31 @@
   全量 1751 例 / 集成 72 / typecheck / lint / build / notes 全绿。
 - **笔记**：`docs/notes/implemented/architecture/2026-09-26-floating-new-path-wired.md`。
 
+### 已完成：源码与部署配置归档（任务 4 主体）
+
+- **移动**：`apps/agent/`、`.github/workflows/deploy-agent.yml`、`docs/agent/`
+  → `archive/agent-microservice/2026-09-26/source/`（`git mv` 保留结构）。
+  旧 Web 桥接（`lib/agent/client.ts`、`session-store.ts`、
+  `agent-session-selector.tsx`）与两个孤儿测试一并移入。归档现 72 个文件。
+- **执行前核实发现三个必须先解决的问题**（按清单字面执行会让仓库变红
+  或做出**错误行为**）：
+  1. 清单收录的 `client.ts` 被两个现役按钮 `import type` —— 而那 4 个类型
+     在新能力模块里**已有等价定义**（逐字移植时定义了，只是按钮的 import
+     忘了跟着改）。先迁类型才归档。
+  2. **`archive/` 变更会触发全量生产部署**（failSafe，实测确认）——
+     而归档 PR 的 diff 恰好全是归档路径，即归档动作自己会重新发布线上。
+  3. 同理 `apps/agent/**` 的删除也会。两者都已显式拦下。
+- **`agent` 维度从 affected-apps 移除**（不再有部署目标）；
+  `apps/agent/**` 与 `archive/**` 均显式不部署（实测四种路径判定正确）。
+- **lockfile 重生成**（-1009/+290）：CI 用 `--frozen-lockfile`，少了
+  `apps/agent` 会直接失败。已核实只有该 importer 被移除，其余零差异。
+- **一个必须留回的文件**：第一轮误移 `token.ts`/`direct-run-client.ts`/`secret.ts`，
+  typecheck 报 `token.ts(5,41): Cannot find module './secret'` ——
+  它们仍属现役（panel 路径显式可达）。已移回。
+- **验证**：全量 1760 例 / 集成 72 / typecheck / lint(0 error) / build /
+  notes 61 篇全绿；`pnpm -r list` 已不含 `@intro-builder/agent`。
+- **笔记**：`docs/notes/implemented/architecture/2026-09-26-agent-source-archived.md`
+
 ### 未完成（本切片剩余）
 
 - **任务 3 的组件切换本身**：`floating-agent-chat.tsx`（2511 行）仍走旧入口。
@@ -158,10 +189,21 @@
 - **任务 2 的其余部分**：能力矩阵已由棘轮覆盖（11 个 Web 自足路由 +
   断言不引用旧配置键），但「预览环境完全不配置仍可使用」尚缺
   **真实环境的验证**（属任务 7）。
-- **任务 4、5、6、7**：移出源代码与部署配置、收敛构建与依赖、
-  更新事实文档、发布与观察。
-  **任务 4 执行移动后**，`agent-archive-manifest.test.ts` 里两条
-  「尚未移入」断言会失败 —— 那是预期信号。
+- **任务 5（收敛构建与依赖）**：workspace 已不含 archive、根 dev/build 已不启动
+  Agent、`build:agent`/`dev:agent` 已去掉、affected-apps 已收敛为
+  Web/PartyKit 两维度 —— 这些随任务 4 一并做了。**剩下的是 Web 侧依赖**：
+  `@ag-ui/*`、`@assistant-ui/*` 仍被现役 `agent-panel.tsx` 与
+  `agent-ag-ui-runtime-provider.tsx` 引用，只有等那两个文件归档后才能移除。
+  plan 也要求「保留仍用于 Markdown 展示的包直到引用清零」。
+- **任务 4 的余下部分（删除 panel 形态）**：归档
+  `agent-panel.tsx`、`agent-ag-ui-runtime-provider.tsx`、`token.ts`、
+  `direct-run-client.ts`、`secret.ts`，并删除 `direct-runs` 路由与
+  `AgentPanel` 渲染分支。**前置**：`agent-panel-assistant-ui.test.tsx`
+  （3456 行）**同时测浮窗**（27 处 `FloatingAgentChat`），
+  不能整文件归档，需先拆成两份。
+- **任务 7（发布与观察）**：全套 DoD + 必要人工冒烟通过后开 PR；
+  验证新生产部署，旧微服务暂保留但无请求；记录实际 deploymentId/commit。
+  **P08 才清理服务器**（需人工确认）。
 
 ## 文件范围
 
