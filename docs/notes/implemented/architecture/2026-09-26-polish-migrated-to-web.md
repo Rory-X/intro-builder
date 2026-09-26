@@ -126,3 +126,34 @@ baseUrl / modelName、从 sessionStorage 取 apiKey，随请求带给服务端�
   上游问题 502、校验问题 4xx。
 - 全量：`pnpm test` 1246 例通过、`typecheck` 四包全绿、
   `lint` 0 error（12 warning = 基线）、`build` 通过。
+
+---
+
+## 追加：Helpers 也完成迁移（同一切片）
+
+`resume-diagnose`（全份诊断）与 `section-next-steps`（单区块下一步）走同一条改造路径：
+路由不再 HTTP 转发，改为 Web 侧直连（`capabilities/resume-helpers.ts` +
+`resume-helper-runner.ts`）。
+
+移植时保留的两条 helper 特有约束，都是从微服务版本原样带过来的：
+
+1. **两个 helper 的 target 形状不可混用**。`resume-diagnose` 要求
+   `kind: "resume"` 且 section/fieldPath 为 null；`section-next-steps` 要求
+   `kind: "section"`。`intent.mode` 也必须与之匹配（`diagnose` / `next_steps`）——
+   用错会拿「全份诊断」的提示词去跑「单区块建议」，产出结构完全不符。
+2. **12 000 字上限是跨区块累加的**（不是单块）。模型要看到全貌才能给整体建议；
+   单块 4 000 字的限制只属于 polish 那条路径。
+
+新增一条本实现特有的处理：**建议数量超出 `maxSuggestions` 不算解析失败**。
+内容本身可用，只是模型没守约束。整体拒绝会让用户「什么都没得到」，
+因此改为**截断并如实回报 `truncated`**，由前端决定是否提示。
+
+`validateTarget` / `isValidContext` / `isValidIntent` 写成**类型谓词**
+（`value is ...`）而非返回 boolean。这不只是风格：返回 boolean 时 TS 无法收窄
+`body.target`，访问 `body.target.section` 报 TS18046；写成谓词后校验通过即收窄，
+也就不需要 `as` 强转掩盖问题（实测第一版正是因此报错）。
+
+验证：`ai-resume-helper-migration.test.ts` 32 例（两个 helper 的 target/mode
+交叉拒绝、413 边界、7 个必填字段逐个缺失、四种 riskFlag、超限截断与回报）；
+`agent-resume-helper-route.test.ts` 重写为 17 例（含「不再签发 token」
+「不再创建 Agent 客户端」「缺配置不回退」三条关键断言）。
