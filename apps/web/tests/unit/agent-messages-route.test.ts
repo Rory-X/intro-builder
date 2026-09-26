@@ -1,322 +1,57 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { Mock } from "vitest";
+import { describe, expect, it } from "vitest";
 
-vi.mock("@/lib/auth-helpers", () => ({ currentUserId: vi.fn() }));
-vi.mock("@/lib/agent/token", () => ({ signAgentToken: vi.fn() }));
-vi.mock("@/lib/agent/client", () => ({
-  AgentClientError: class AgentClientError extends Error {
-    statusCode: number;
-    error: string;
-    requestId: string;
-    retryAfterSeconds?: number;
+import { POST } from "@/app/api/agent/messages/route";
 
-    constructor(
-      message: string,
-      options: {
-        statusCode: number;
-        error: string;
-        requestId: string;
-        retryAfterSeconds?: number;
-      },
-    ) {
-      super(message);
-      this.name = "AgentClientError";
-      this.statusCode = options.statusCode;
-      this.error = options.error;
-      this.requestId = options.requestId;
-      this.retryAfterSeconds = options.retryAfterSeconds;
-    }
-  },
-  createAgentClient: vi.fn(),
-}));
-vi.mock("@/db", () => ({
-  db: {
-    query: {
-      resumes: {
-        findFirst: vi.fn(),
-      },
-    },
-  },
-}));
+/**
+ * `POST /api/agent/messages` 已退役（P07 任务 3）。
+ *
+ * 这条路由原本签发 Agent JWT 并把 AG-UI 消息转发给旧微服务。
+ * 它在仓库里**没有任何调用方** —— 浮窗走 `/api/agent/floating/chat`，
+ * 面板走 `/api/agent/direct-runs`，它自己是第三条只被测试调用的路径。
+ *
+ * 退役它的意义不只是「少一个入口」：新入口 `POST /api/ai/runs` 提供这条旧路径
+ * 不具备的东西 —— 事件落库（刷新可恢复）、幂等（同 requestId 不二次调模型）、
+ * 写租约与 fence（不并发写）、原子提交与回执（模型完成 ≠ 已保存）。
+ * 也就是说：**去掉的是一条不受保护的写入路径**。
+ */
 
-import { db } from "@/db";
-import { currentUserId } from "@/lib/auth-helpers";
-import { AgentClientError, createAgentClient } from "@/lib/agent/client";
-import { signAgentToken } from "@/lib/agent/token";
-import { maxDuration, POST, runtime } from "@/app/api/agent/messages/route";
-
-describe("POST /api/agent/messages", () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
+describe("POST /api/agent/messages（已退役）", () => {
+  it("**返回 410 而不是转发到旧服务**", async () => {
+    const response = await POST();
+    expect(response.status).toBe(410);
   });
 
-  it("uses the Node runtime with an explicit long streaming duration", () => {
-    expect(runtime).toBe("nodejs");
-    expect(maxDuration).toBe(120);
+  it("响应体给出统一 Run 入口作为替代", async () => {
+    const body = (await (await POST()).json()) as Record<string, unknown>;
+    expect(body.code).toBe("route_retired");
+    expect(body.retiredRoute).toBe("/api/agent/messages");
+    expect(String(body.replacement)).toContain("/api/ai/runs");
   });
 
-  it("requires a Web user session", async () => {
-    (currentUserId as unknown as Mock).mockResolvedValue(null);
-
-    const response = await POST(jsonRequest(validBody()));
-
-    expect(response.status).toBe(401);
-    await expect(response.json()).resolves.toEqual({ error: "未登录" });
+  it("**退役响应与旧实现无关：不再需要鉴权、不再读库**", async () => {
+    /*
+     * 旧实现在缺会话时返回 401、在简历不属于用户时返回 404。
+     * 退役后这些分支都不存在 —— 无论谁调、带什么 body，都得到 410。
+     * 这正是「不再有可达的旧业务逻辑」的直接证据。
+     */
+    expect((await POST()).status).toBe(410);
   });
 
-  it("requires the resume to belong to the Web user", async () => {
-    (currentUserId as unknown as Mock).mockResolvedValue("user_123");
-    (db.query.resumes.findFirst as unknown as Mock).mockResolvedValue(null);
-
-    const response = await POST(jsonRequest(validBody()));
-
-    expect(response.status).toBe(404);
-    await expect(response.json()).resolves.toEqual({ error: "简历不存在" });
+  it("不可缓存", async () => {
+    expect((await POST()).headers.get("Cache-Control")).toBe("no-store");
   });
 
-  it("signs an agent:chat token and proxies the request to Agent", async () => {
-    (currentUserId as unknown as Mock).mockResolvedValue("user_123");
-    (db.query.resumes.findFirst as unknown as Mock).mockResolvedValue({
-      id: "resume_abc",
-    });
-    (signAgentToken as unknown as Mock).mockResolvedValue({
-      token: "signed-chat-token",
-      expiresAt: new Date("2026-06-08T08:02:00.000Z"),
-    });
-    const sendAgentMessage = vi.fn().mockResolvedValue({
-      requestId: "req_agent_message",
-      data: {
-        status: "ok",
-        requestId: "req_agent_message",
-        message: {
-          id: "msg_assistant_1",
-          role: "assistant",
-          content: "建议先优化第一段工作经历。",
-        },
-        toolCalls: [
-          {
-            id: "tool_1",
-            name: "resume_read",
-            status: "completed",
-            title: "检查简历",
-            summary: "发现工作经历缺少结果。",
-            input: { scope: "resume" },
-            result: { topIssue: "缺少结果" },
-          },
-        ],
-        proposedOperations: [],
-        usage: {
-          provider: "fake-provider",
-          model: "fake-model",
-          inputTokens: 900,
-          outputTokens: 240,
-        },
-        cached: true,
-        cachedAt: "2026-06-09T00:00:00.000Z",
-      },
-    });
-    (createAgentClient as unknown as Mock).mockReturnValue({ sendAgentMessage });
-    const body = validBody();
-
-    const response = await POST(jsonRequest(body));
-
-    expect(response.status).toBe(200);
-    expect(signAgentToken).toHaveBeenCalledWith({
-      userId: "user_123",
-      resumeId: "resume_abc",
-      scope: "agent:chat",
-    });
-    expect(sendAgentMessage).toHaveBeenCalledWith({
-      token: "signed-chat-token",
-      request: body,
-    });
-    await expect(response.json()).resolves.toEqual({
-      status: "ok",
-      tokenExpiresAt: "2026-06-08T08:02:00.000Z",
-      requestId: "req_agent_message",
-      message: {
-        id: "msg_assistant_1",
-        role: "assistant",
-        content: "建议先优化第一段工作经历。",
-      },
-      toolCalls: [
-        {
-          id: "tool_1",
-          name: "resume_read",
-          status: "completed",
-          title: "检查简历",
-          summary: "发现工作经历缺少结果。",
-          input: { scope: "resume" },
-          result: { topIssue: "缺少结果" },
-        },
-      ],
-      proposedOperations: [],
-      usage: {
-        provider: "fake-provider",
-        model: "fake-model",
-        inputTokens: 900,
-        outputTokens: 240,
-      },
-      cached: true,
-      cachedAt: "2026-06-09T00:00:00.000Z",
-    });
-  });
-
-  it("proxies AG-UI SSE streams when the browser requests text/event-stream", async () => {
-    (currentUserId as unknown as Mock).mockResolvedValue("user_123");
-    (db.query.resumes.findFirst as unknown as Mock).mockResolvedValue({
-      id: "resume_abc",
-    });
-    (signAgentToken as unknown as Mock).mockResolvedValue({
-      token: "signed-chat-token",
-      expiresAt: new Date("2026-06-08T08:02:00.000Z"),
-    });
-    const stream = new ReadableStream<Uint8Array>({
-      start(controller) {
-        controller.enqueue(
-          new TextEncoder().encode('data: {"type":"RUN_STARTED"}\n\n'),
-        );
-        controller.close();
-      },
-    });
-    const streamAgentMessage = vi.fn().mockResolvedValue({
-      requestId: "req_agent_stream",
-      data: {
-        body: stream,
-        contentType: "text/event-stream",
-      },
-    });
-    const sendAgentMessage = vi.fn();
-    (createAgentClient as unknown as Mock).mockReturnValue({
-      sendAgentMessage,
-      streamAgentMessage,
-    });
-    const body = validBody();
-
-    const response = await POST(sseRequest(body));
-
-    expect(response.status).toBe(200);
-    expect(signAgentToken).toHaveBeenCalledWith({
-      userId: "user_123",
-      resumeId: "resume_abc",
-      scope: "agent:chat",
-    });
-    expect(sendAgentMessage).not.toHaveBeenCalled();
-    expect(streamAgentMessage).toHaveBeenCalledWith({
-      token: "signed-chat-token",
-      request: body,
-    });
-    expect(response.headers.get("content-type")).toContain("text/event-stream");
-    expect(response.headers.get("cache-control")).toBe("no-cache, no-transform");
-    expect(response.headers.get("x-request-id")).toBe("req_agent_stream");
-    await expect(response.text()).resolves.toContain("RUN_STARTED");
-  });
-
-  it("returns Agent errors without exposing provider internals", async () => {
-    (currentUserId as unknown as Mock).mockResolvedValue("user_123");
-    (db.query.resumes.findFirst as unknown as Mock).mockResolvedValue({
-      id: "resume_abc",
-    });
-    (signAgentToken as unknown as Mock).mockResolvedValue({
-      token: "signed-chat-token",
-      expiresAt: new Date("2026-06-08T08:02:00.000Z"),
-    });
-    const sendAgentMessage = vi.fn().mockRejectedValue(
-      new AgentClientError("Too many requests", {
-        statusCode: 429,
-        error: "rate_limited",
-        requestId: "req_limited",
-        retryAfterSeconds: 30,
-      }),
+  it("源码层确认无旧服务调用", async () => {
+    const { readFileSync } = await import("node:fs");
+    const { join } = await import("node:path");
+    const source = readFileSync(
+      join(process.cwd(), "app/api/agent/messages/route.ts"),
+      "utf8",
     );
-    (createAgentClient as unknown as Mock).mockReturnValue({ sendAgentMessage });
-
-    const response = await POST(jsonRequest(validBody()));
-
-    expect(response.status).toBe(429);
-    await expect(response.json()).resolves.toEqual({
-      error: "Agent 服务暂不可用",
-      code: "rate_limited",
-      requestId: "req_limited",
-      retryAfterSeconds: 30,
-    });
-  });
-
-  it("returns Agent SSE errors with code and request id", async () => {
-    (currentUserId as unknown as Mock).mockResolvedValue("user_123");
-    (db.query.resumes.findFirst as unknown as Mock).mockResolvedValue({
-      id: "resume_abc",
-    });
-    (signAgentToken as unknown as Mock).mockResolvedValue({
-      token: "signed-chat-token",
-      expiresAt: new Date("2026-06-08T08:02:00.000Z"),
-    });
-    const streamAgentMessage = vi.fn().mockRejectedValue(
-      new AgentClientError("Provider timed out", {
-        statusCode: 504,
-        error: "provider_timeout",
-        requestId: "req_sse_timeout",
-      }),
-    );
-    const sendAgentMessage = vi.fn();
-    (createAgentClient as unknown as Mock).mockReturnValue({
-      sendAgentMessage,
-      streamAgentMessage,
-    });
-
-    const response = await POST(sseRequest(validBody()));
-
-    expect(response.status).toBe(504);
-    expect(sendAgentMessage).not.toHaveBeenCalled();
-    await expect(response.json()).resolves.toEqual({
-      error: "Agent 服务暂不可用",
-      code: "provider_timeout",
-      requestId: "req_sse_timeout",
-    });
+    const calls = source
+      .split("\n")
+      .filter((line) => !/^\s*(\/\/|\*|\/\*)/.test(line))
+      .filter((line) => /createAgentClient\(|signAgentToken\(/.test(line));
+    expect(calls).toEqual([]);
   });
 });
-
-function validBody() {
-  return {
-    resumeId: "resume_abc",
-    locale: "zh-CN" as const,
-    workflowId: "resume-diagnose" as const,
-    messages: [{ id: "msg_user_1", role: "user" as const, content: "诊断整份简历" }],
-    context: {
-      resumeTitle: "前端开发工程师",
-      templateId: "professional",
-      activeSection: null,
-      completeness: {
-        overall: 80,
-        sections: [{ key: "experience", label: "工作经历", score: 18, max: 25 }],
-      },
-      sections: [
-        {
-          key: "experience",
-          label: "工作经历 1",
-          fieldPath: "experience.0.content",
-          plainText: "负责业务系统前端开发，优化页面性能。",
-        },
-      ],
-    },
-  };
-}
-
-function jsonRequest(body: unknown): Request {
-  return new Request("https://intro.test/api/agent/messages", {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify(body),
-  });
-}
-
-function sseRequest(body: unknown): Request {
-  return new Request("https://intro.test/api/agent/messages", {
-    method: "POST",
-    headers: {
-      "content-type": "application/json",
-      accept: "text/event-stream",
-    },
-    body: JSON.stringify(body),
-  });
-}

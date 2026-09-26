@@ -1,65 +1,33 @@
-import { AgentClientError, createAgentClient } from "@/lib/agent/client";
-import { getAgentJwtSecretDiagnostics } from "@/lib/agent/secret";
-import { signAgentToken } from "@/lib/agent/token";
-import { currentUserId } from "@/lib/auth-helpers";
+import { retiredAgentRouteResponse } from "@/lib/agent/retired-route";
+
+/**
+ * `GET /api/agent/session` —— **已退役**。
+ *
+ * ## 为什么退役
+ *
+ * 这条路由原本签发 Agent JWT 并把请求转发给旧微服务（`apps/agent`）的
+ * `/v1/session`。它在仓库里**没有任何调用方**（组件、hooks、lib 都没有引用），
+ * 只有它自己的测试在调 —— 也就是说它是一条「为了演练而存在」的路径。
+ *
+ * P07 任务 3 要求「旧公开 API 可短期返回明确 410/客户端升级提示，
+ * **不能重定向到旧服务**」。这里按 410 处理：
+ *
+ * - 路由本身保留（直接删会让外部调用方拿到 404，无法区分「路径错了」与
+ *   「功能已下线」）；
+ * - 响应体给出**替代入口**，而不是让调用方自己猜。
+ *
+ * ## 为什么不直接删除
+ *
+ * 410 是**可观察的退役信号**：运维能据此确认「确实没有流量」，
+ * 而这正是 P08「旧微服务暂保留但无请求」的判据之一。
+ * 直接删掉会让这个信号消失。
+ */
 
 export const dynamic = "force-dynamic";
 
-export async function GET(req: Request) {
-  const debug = isDebugRequest(req);
-  const userId = await currentUserId();
-  if (!userId) {
-    return Response.json({ error: "未登录" }, { status: 401 });
-  }
-
-  try {
-    const signed = await signAgentToken({
-      userId,
-      scope: "agent:session",
-    });
-    const agent = createAgentClient();
-    const result = await agent.getSession({ token: signed.token });
-
-    return Response.json({
-      status: "ok",
-      tokenExpiresAt: signed.expiresAt.toISOString(),
-      agent: result.data,
-      requestId: result.requestId,
-    });
-  } catch (error) {
-    if (error instanceof AgentClientError) {
-      return Response.json(
-        {
-          error: "Agent 服务暂不可用",
-          code: error.error,
-          requestId: error.requestId,
-          retryAfterSeconds: error.retryAfterSeconds,
-          ...(debug ? { debug: getAgentRuntimeDebug() } : {}),
-        },
-        { status: error.statusCode },
-      );
-    }
-
-    console.error("[agent-session] smoke route failed:", error);
-    return Response.json(
-      {
-        error: "Agent 服务暂不可用",
-        ...(debug ? { debug: getAgentRuntimeDebug() } : {}),
-      },
-      { status: 503 },
-    );
-  }
-}
-
-function isDebugRequest(req: Request): boolean {
-  return new URL(req.url).searchParams.get("debug") === "1";
-}
-
-function getAgentRuntimeDebug() {
-  return {
-    agentBaseUrl: process.env.AGENT_BASE_URL ?? "http://127.0.0.1:8787",
-    jwtAudience: process.env.AGENT_JWT_AUDIENCE ?? "intro-builder-agent",
-    jwtIssuer: process.env.AGENT_JWT_ISSUER ?? "intro-builder-web",
-    jwtSecret: getAgentJwtSecretDiagnostics(),
-  };
+export async function GET() {
+  return retiredAgentRouteResponse({
+    route: "/api/agent/session",
+    replacement: "Web 侧的模型配置与会话管理（/api/agent/floating/sessions）",
+  });
 }

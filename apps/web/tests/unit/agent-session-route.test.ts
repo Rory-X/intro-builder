@@ -1,137 +1,53 @@
-import { createHash } from "node:crypto";
+import { describe, expect, it } from "vitest";
 
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { Mock } from "vitest";
-
-vi.mock("@/lib/auth-helpers", () => ({ currentUserId: vi.fn() }));
-vi.mock("@/lib/agent/token", () => ({ signAgentToken: vi.fn() }));
-vi.mock("@/lib/agent/client", () => ({
-  AgentClientError: class AgentClientError extends Error {
-    statusCode: number;
-    error: string;
-    requestId: string;
-
-    constructor(
-      message: string,
-      options: { statusCode: number; error: string; requestId: string },
-    ) {
-      super(message);
-      this.name = "AgentClientError";
-      this.statusCode = options.statusCode;
-      this.error = options.error;
-      this.requestId = options.requestId;
-    }
-  },
-  createAgentClient: vi.fn(),
-}));
-
-import { currentUserId } from "@/lib/auth-helpers";
-import { signAgentToken } from "@/lib/agent/token";
-import { AgentClientError, createAgentClient } from "@/lib/agent/client";
 import { GET } from "@/app/api/agent/session/route";
 
-describe("GET /api/agent/session", () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
+/**
+ * `GET /api/agent/session` 已退役（P07 任务 3）。
+ *
+ * 这条路由原本签发 Agent JWT 并把请求转发给旧微服务 `/v1/session`。
+ * 它在仓库里**没有任何调用方**（组件、hooks、lib 都无引用），
+ * 只有本文件在调 —— 也就是一条「为了演练而存在」的路径。
+ *
+ * 因此它被转成 410 stub：不转发、不重定向，只给出可观察的退役信号。
+ * 这些断言替换了原先「断言它会转发」的那批（那批现在必然失败，
+ * 因为它们断言的行为已按 plan 要求移除）。
+ */
+
+describe("GET /api/agent/session（已退役）", () => {
+  it("**返回 410 而不是转发到旧服务**", async () => {
+    const response = await GET();
+    expect(response.status).toBe(410);
   });
 
-  afterEach(() => {
-    vi.unstubAllEnvs();
+  it("响应体含机器可读码（客户端据此分支，不匹配中文）", async () => {
+    const body = (await (await GET()).json()) as Record<string, unknown>;
+    expect(body.code).toBe("route_retired");
+    expect(body.retiredRoute).toBe("/api/agent/session");
   });
 
-  it("requires a Web user session", async () => {
-    (currentUserId as unknown as Mock).mockResolvedValue(null);
-
-    const response = await GET(new Request("https://intro.test/api/agent/session"));
-
-    expect(response.status).toBe(401);
-    await expect(response.json()).resolves.toEqual({ error: "未登录" });
+  it("**给出替代入口与下一步动作**（不只说「下线了」）", async () => {
+    const body = (await (await GET()).json()) as Record<string, unknown>;
+    expect(String(body.replacement)).toContain("floating/sessions");
+    expect(String(body.action).length).toBeGreaterThan(0);
   });
 
-  it("signs an Agent session token and proxies the protected Agent session", async () => {
-    (currentUserId as unknown as Mock).mockResolvedValue("user_123");
-    (signAgentToken as unknown as Mock).mockResolvedValue({
-      token: "signed-agent-token",
-      expiresAt: new Date("2026-06-08T08:02:00.000Z"),
-    });
-    const getSession = vi.fn().mockResolvedValue({
-      requestId: "req_agent",
-      data: {
-        status: "ok",
-        subject: "user_123",
-        resumeId: null,
-        scope: "agent:session",
-        expiresAt: "2026-06-08T08:02:00.000Z",
-        requestId: "req_agent",
-      },
-    });
-    (createAgentClient as unknown as Mock).mockReturnValue({ getSession });
-
-    const response = await GET(new Request("https://intro.test/api/agent/session"));
-
-    expect(response.status).toBe(200);
-    expect(signAgentToken).toHaveBeenCalledWith({
-      userId: "user_123",
-      scope: "agent:session",
-    });
-    expect(getSession).toHaveBeenCalledWith({ token: "signed-agent-token" });
-    await expect(response.json()).resolves.toEqual({
-      status: "ok",
-      tokenExpiresAt: "2026-06-08T08:02:00.000Z",
-      agent: {
-        status: "ok",
-        subject: "user_123",
-        resumeId: null,
-        scope: "agent:session",
-        expiresAt: "2026-06-08T08:02:00.000Z",
-        requestId: "req_agent",
-      },
-      requestId: "req_agent",
-    });
+  it("**明确不可缓存**（退役信号必须每次真实到达）", async () => {
+    expect((await GET()).headers.get("Cache-Control")).toBe("no-store");
   });
 
-  it("includes safe Web runtime diagnostics on explicit debug Agent failures", async () => {
-    vi.stubEnv("AGENT_JWT_SECRET", ' export AGENT_JWT_SECRET="test-agent-secret" \n');
-    vi.stubEnv("AGENT_JWT_ISSUER", "intro-builder-web");
-    vi.stubEnv("AGENT_JWT_AUDIENCE", "intro-builder-agent");
-    vi.stubEnv("AGENT_BASE_URL", "https://api.rory-x.me/intro-builder/agent");
-    (currentUserId as unknown as Mock).mockResolvedValue("user_123");
-    (signAgentToken as unknown as Mock).mockResolvedValue({
-      token: "signed-agent-token",
-      expiresAt: new Date("2026-06-08T08:02:00.000Z"),
-    });
-    const getSession = vi.fn().mockRejectedValue(
-      new AgentClientError("Invalid or expired bearer token", {
-        statusCode: 401,
-        error: "unauthorized",
-        requestId: "req_agent_debug",
-      }),
+  it("**不再签 token、不再调旧客户端**（源码层核实）", async () => {
+    const { readFileSync } = await import("node:fs");
+    const { join } = await import("node:path");
+    const source = readFileSync(
+      join(process.cwd(), "app/api/agent/session/route.ts"),
+      "utf8",
     );
-    (createAgentClient as unknown as Mock).mockReturnValue({ getSession });
-
-    const response = await GET(
-      new Request("https://intro.test/api/agent/session?debug=1"),
-    );
-
-    expect(response.status).toBe(401);
-    await expect(response.json()).resolves.toEqual({
-      error: "Agent 服务暂不可用",
-      code: "unauthorized",
-      requestId: "req_agent_debug",
-      debug: {
-        agentBaseUrl: "https://api.rory-x.me/intro-builder/agent",
-        jwtAudience: "intro-builder-agent",
-        jwtIssuer: "intro-builder-web",
-        jwtSecret: {
-          isSet: true,
-          rawLength: 46,
-          normalizedLength: 17,
-          normalizedSha256_12: createHash("sha256")
-            .update("test-agent-secret")
-            .digest("hex")
-            .slice(0, 12),
-        },
-      },
-    });
+    // 只允许注释里提到旧客户端（说明历史），不允许真实调用。
+    const calls = source
+      .split("\n")
+      .filter((line) => !/^\s*(\/\/|\*|\/\*)/.test(line))
+      .filter((line) => /createAgentClient\(|signAgentToken\(/.test(line));
+    expect(calls).toEqual([]);
   });
 });
