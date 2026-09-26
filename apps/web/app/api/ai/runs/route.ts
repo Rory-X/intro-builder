@@ -7,6 +7,7 @@ import { assertServerRuntime } from "@/lib/ai/server-guard";
 import { streamRunAttempt } from "@/lib/ai/run-route-support";
 import { loadResumeSourceForRun } from "@/lib/ai/resume-source";
 import { acquireLease, getRun, startRun } from "@/lib/ai/run-store";
+import { resolveRunRouteDecision, runRouteDisabledPayload } from "@/lib/ai/run-route-flag";
 
 /**
  * `POST /api/ai/runs` —— 新链路的唯一执行入口（P04 任务 2 + 6）。
@@ -136,6 +137,25 @@ function parseBody(raw: unknown):
 }
 
 export async function POST(request: Request) {
+  /*
+   * 灰度开关（P04 任务 8）。
+   *
+   * 放在最前面，早于鉴权：关闭时没必要读会话，也不该让调用方从响应差异推断
+   * 「这个路由是存在的、只是没开」。默认关闭，只有显式设置
+   * `AI_RUN_ROUTE_ENABLED=1` 才放行（测试环境恒开，否则路由测试会被开关挡住）。
+   *
+   * 理由：这是一条**服务端可达**的执行入口 —— 知道 URL 就能触发模型执行，
+   * 而它尚未接上客户端、也还没冒烟过。没有开关时「代码合并」=「生产立即可达」，
+   * 一旦出问题的影响面是全部用户。
+   */
+  const flag = resolveRunRouteDecision();
+  if (flag.mode !== "enabled") {
+    return NextResponse.json(
+      { ...runRouteDisabledPayload(), reason: flag.reason },
+      { status: 503 },
+    );
+  }
+
   const session = await auth();
   const userId = session?.user?.id;
   if (!userId) {

@@ -8,6 +8,7 @@ import { streamRunAttempt } from "@/lib/ai/run-route-support";
 import { loadResumeSourceForRun } from "@/lib/ai/resume-source";
 import { acquireLease, getRun, listEvents } from "@/lib/ai/run-store";
 import { isTerminalRunStatus } from "@/lib/ai/events";
+import { resolveRunRouteDecision, runRouteDisabledPayload } from "@/lib/ai/run-route-flag";
 
 /**
  * `POST /api/ai/runs/[runId]/continue` —— 恢复一个等待中或中断的 Run（P04 任务 6）。
@@ -139,6 +140,20 @@ export async function POST(
   context: { params: Promise<{ runId: string }> },
 ) {
   const { runId } = await context.params;
+
+  /*
+   * 与启动路由同一道灰度开关（P04 任务 8）。
+   *
+   * 两条路由必须共用同一个判定：若只关住启动而放开 continue，
+   * 调用方仍能对已存在的 Run 继续执行 —— 那等于开关形同虚设。
+   */
+  const flag = resolveRunRouteDecision();
+  if (flag.mode !== "enabled") {
+    return NextResponse.json(
+      { ...runRouteDisabledPayload(), reason: flag.reason },
+      { status: 503 },
+    );
+  }
 
   const session = await auth();
   const userId = session?.user?.id;
