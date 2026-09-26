@@ -5,6 +5,7 @@ import { AI_REQUEST_LIMITS, validateAiRequestInput, validateProviderUrl } from "
 import { createProviderStreamer } from "@/lib/ai/provider";
 import { assertServerRuntime } from "@/lib/ai/server-guard";
 import { streamRunAttempt } from "@/lib/ai/run-route-support";
+import type { HistoryMessage } from "@/lib/ai/run-history";
 import { loadResumeSourceForRun } from "@/lib/ai/resume-source";
 import { acquireLease, getRun, startRun } from "@/lib/ai/run-store";
 import { resolveRunRouteDecision, runRouteDisabledPayload } from "@/lib/ai/run-route-flag";
@@ -45,6 +46,17 @@ type StartBody = {
   mode: string;
   writeMode: "direct" | "approval";
   modelConfig: { baseUrl: string; apiKey: string; modelName: string };
+  /**
+   * 本轮之前的对话历史（多轮会话必需）。
+   *
+   * 此前这里**没有这个字段**：`parseBody` 校验了 `history` 的长度，
+   * 校验完却把它丢掉，然后 `streamRunAttempt({ history: [] })` 硬编码为空。
+   * 后果是每一轮都变成「失忆」的第一轮 —— 用户说「再短一点」，
+   * 模型不知道在说什么。
+   *
+   * 在还没有客户端消费方时不会暴露；P07 把浮窗切过来后必然暴露。
+   */
+  history: HistoryMessage[];
 };
 
 /**
@@ -82,10 +94,47 @@ function parseBody(raw: unknown):
     return { ok: false, status: 400, code: "empty_message", message: "消息不能为空" };
   }
 
-  const sizeCheck = validateAiRequestInput({
-    message,
-    historyLength: Array.isArray(record.history) ? record.history.length : 0,
-  });
+  /*
+   * 历史必须在**长度校验之前**收敛成合法形状。
+   *
+   * 客户端传来的 history 是不可信输入：必须逐条校验 `role` 与 `content`，
+   * 不能只数长度。非法条目直接拒绝整个请求（而不是静默丢弃）——
+   * 静默丢弃会让模型拿到一段缺了中间环节的对话，那比没有历史更糟。
+   */
+  const rawHistory = record.history;
+  const history: HistoryMessage[] = [];
+  if (rawHistory !== undefined) {
+    if (!Array.isArray(rawHistory)) {
+      return { ok: false, status: 400, code: "invalid_history", message: "history 必须是数组" };
+    }
+    for (const item of rawHistory) {
+      if (!item || typeof item !== "object") {
+        return { ok: false, status: 400, code: "invalid_history", message: "history 条目必须是对象" };
+      }
+      const entry = item as Record<string, unknown>;
+      const role = entry.role;
+      const content = entry.content;
+      if (role !== "user" && role !== "assistant") {
+        return {
+          ok: false,
+          status: 400,
+          code: "invalid_history",
+          message: "history 条目的 role 只能是 user 或 assistant",
+        };
+      }
+      if (typeof content !== "string") {
+        return {
+          ok: false,
+          status: 400,
+          code: "invalid_history",
+          message: "history 条目的 content 必须是字符串",
+        };
+      }
+      history.push({ role, content });
+    }
+  }
+
+  const sizeCheck = validateAiRequestInput({ message, historyLength: history.length });
   if (!sizeCheck.ok) {
     return { ok: false, status: 400, code: sizeCheck.code, message: sizeCheck.message };
   }
@@ -132,6 +181,7 @@ function parseBody(raw: unknown):
       mode,
       writeMode,
       modelConfig: { baseUrl, apiKey, modelName },
+      history,
     },
   };
 }
@@ -263,7 +313,15 @@ export async function POST(request: Request) {
     writeMode: body.writeMode,
     fenceToken: lease.fenceToken,
     source,
-    history: [],
+    /*
+     * 透传客户端带来的历史。
+     *
+     * 服务端**不**自己从事件重建：`start` 是「新开一轮」，而此时本轮还没有事件；
+     * 之前的轮次虽然落库了，但按会话聚合它们需要额外查询，且客户端的
+     * 会话视图才是用户实际看到的那个（包含本地未提交的中间状态）。
+     * 多轮上下文的权威来源是客户端会话。
+     */
+    history: body.history,
     message: body.message,
     streamModel: provider.streamModel,
     requestSignal: request.signal,
