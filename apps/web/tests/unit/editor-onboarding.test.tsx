@@ -34,7 +34,12 @@ describe("EditorOnboarding", () => {
     expect(
       screen.getByRole("button", { name: "配置 BYOK" }),
     ).toBeInTheDocument();
-    expect(onVisibilityChange).toHaveBeenLastCalledWith(true);
+    // EditorOnboarding reports visibility from a passive effect, which React
+    // flushes *after* the DOM mutation findByRole just observed. Asserting
+    // straight away races that flush: the callback intermittently had zero
+    // calls, so toHaveBeenLastCalledWith saw `undefined`. waitFor lets the
+    // effect land first.
+    await waitFor(() => expect(onVisibilityChange).toHaveBeenLastCalledWith(true));
   });
 
   it("shows onboarding when its stored outcome is corrupt", async () => {
