@@ -11,6 +11,11 @@ import {
   type ResumeHelperContextSnapshot,
 } from "@/lib/agent/resume-helper-context";
 import type { ResumeHelperResponse } from "@/lib/agent/client";
+import {
+  readSessionAgentModelApiKey,
+  readStoredAgentModelSettings,
+  toAgentModelConfig,
+} from "@/lib/agent/model-settings-storage";
 import type { ResumeContent } from "@intro-builder/shared/schemas";
 
 export function ResumeDiagnoseButton({ resumeId }: { resumeId: string }) {
@@ -76,10 +81,21 @@ export async function requestResumeHelper({
 }) {
   setState({ status: "loading" });
   try {
+    /*
+     * 带上当前模型配置（P05 任务 5）。
+     *
+     * 服务端不再回退已退役的 Agent 微服务，因此缺配置会返回
+     * `model_not_configured`。这里与浮窗、润色用**同一份**来源：
+     * localStorage 取 baseUrl/modelName、sessionStorage 取 apiKey，
+     * 随请求传、不落库。
+     */
+    const requestBody = isRecord(body)
+      ? { ...body, modelConfig: currentModelConfig() }
+      : body;
     const response = await fetch(path, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
+      body: JSON.stringify(requestBody),
     });
     const responseBody = await response.json().catch(() => null);
     if (!response.ok) {
@@ -168,6 +184,20 @@ function resumeHelperErrorMessage(responseBody: unknown): string {
   }
 
   return "Agent 服务暂不可用，请稍后再试";
+}
+
+/**
+ * 当前模型配置（P05 任务 5）。
+ *
+ * 与浮窗 `toAgentModelConfig(modelSettings)` 同一来源：`readStoredAgentModelSettings()`
+ * 已自动合并 sessionStorage 里的 apiKey，因此这里只需再显式取一次
+ * （保留 `readSessionAgentModelApiKey` 是为了让「key 存 sessionStorage」
+ * 这件事在调用点可见，而不是藏在另一个函数的实现里）。
+ */
+function currentModelConfig(): { baseUrl: string; apiKey: string; modelName: string } | null {
+  const settings = readStoredAgentModelSettings();
+  const apiKey = readSessionAgentModelApiKey();
+  return toAgentModelConfig({ ...settings, apiKey });
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

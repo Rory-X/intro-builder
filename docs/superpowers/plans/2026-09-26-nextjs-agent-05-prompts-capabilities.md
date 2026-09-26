@@ -1,6 +1,7 @@
 # P05：提示词质量与全部 AI 能力迁移
 
-状态：进行中（任务 1、2 已完成；任务 3–7 未开始）。依赖 P04。依据：[提示词与评测详案](../specs/2026-09-26-nextjs-agent-prompts.md)。
+状态：进行中（任务 1、2、3、4 已完成；任务 6 完成离线部分，真实对照 `not_run`；
+任务 5 部分完成；任务 7 未开始）。依赖 P04。依据：[提示词与评测详案](../specs/2026-09-26-nextjs-agent-prompts.md)。
 
 ## 完成记录（分批）
 
@@ -25,6 +26,25 @@
   改为整句匹配 + 排除省略号，补 3 条回归测试。
 - **验证**：`tests/unit/ai-prompt-contract.test.ts` 47 例。
 - **决策笔记**：`docs/notes/implemented/architecture/2026-09-26-modular-prompts-and-versioning.md`。
+
+### 已完成：任务 3 的五个场景行为验证
+
+- **落地**：`tests/unit/ai-capability-behavior.test.ts`（18 例）。
+- **「行为」的判据**：不是断言提示词含某句话（那与模型实际行为无等价关系，
+  且调措辞时会无意义变红），而是断言**编排层真的做了什么**。
+  用 `orchestrateRun` + 全注入依赖驱动，判定依据是事件
+  （`mutation.committed` / `tool.failed` / `endType`）。
+- **五场景判据**：诊断只读不写文档；润色有真实回执才算写入、
+  **无回执的成功不算已保存**；目标岗位只读且禁止 JD 技术入技能；
+  缺事实 `askUser` 后 `waiting_user` 且不写文档；拒绝后继续失败发 `tool.failed`
+  并带 code、**提交前被取消则工具执行 0 次**、一次失败不终止整轮。
+- **红→绿**：1 例一开始失败（`askUser` 场景），暴露对编排层状态契约的理解错误
+  —— `asked` 是独立状态而非 `succeeded`；编排层只在 `asked` 下发出
+  `run.waiting_user` 并跳出流消费。
+- **决策笔记**：`docs/notes/implemented/testing/2026-09-26-capability-behavior-tests.md`。
+- **已知上限（如实说明）**：这些测试用假流驱动，验证的是「编排层在各种工具结果下的
+  行为」，**不是模型输出质量**；「禁止只用『突出亮点、加强量化』」这条**只有文本
+  层面的约束断言**，没有行为验证（需真实模型）。
 
 ### 已完成：任务 4 的润色与 Helpers 迁移
 
