@@ -110,6 +110,19 @@ export type MutationSession = {
   revision: number;
   /** 已确认基准；供需要「服务端已落盘内容」的调用方读取。 */
   getBaseline: () => MutationSessionBaseline;
+  /**
+   * 是否有**未提交到服务端的**本地编辑（本地 dirty 或在途提交）。
+   *
+   * 暴露它的必要性：新 Run 路径下服务端会自己写库，客户端随后需要决定
+   * 「能不能把服务端内容写进表单」。判据正是这个 —— 有本地编辑时写表单会
+   * **抹掉用户刚敲的字**。
+   *
+   * 用与 `applyRemoteCommit` **完全相同**的判据（`dirtyRef || inFlightRef`），
+   * 而不是让调用方从 `status` 推断 —— 两处判据一旦不一致，就会出现
+   * 「hook 认为没有本地编辑所以覆盖了表单、而调用方认为有」这类自相矛盾的
+   * 行为，且难以判断是哪一层错了。
+   */
+  hasLocalEdits: () => boolean;
   /** 标记有本地改动，安排一次提交（去抖）。 */
   schedule: () => void;
   /** 立刻提交并把在途请求等到真实回执。冲突时 reject。 */
@@ -519,6 +532,7 @@ export function useResumeMutationSession(
     status,
     revision,
     getBaseline: () => baselineRef.current,
+    hasLocalEdits: () => dirtyRef.current || inFlightRef.current,
     schedule,
     flush,
     conflictRevision,

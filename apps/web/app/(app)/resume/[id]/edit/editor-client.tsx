@@ -12,8 +12,10 @@ import { useForm, FormProvider } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { toast } from "sonner";
 import { ResumeContent } from "@intro-builder/shared/schemas";
+import { migrateContent } from "@intro-builder/shared/utils";
 import { computeCompletenessScore } from "@/lib/completeness-score";
 import {
+  getResumeMutationBaseline,
   getResumeVersion,
   listResumeVersions,
   submitResumeVersionRestore,
@@ -80,7 +82,10 @@ import { ResumeDiagnoseButton } from "@/components/agent/resume-diagnose-button"
 import { AgentModeToggle } from "@/components/agent/agent-mode-toggle";
 import { AgentPanel } from "@/components/agent/agent-panel";
 import { AgentBubble } from "@/components/agent/agent-bubble";
-import { FloatingAgentChat } from "@/components/agent/floating-agent-chat";
+import {
+  FloatingAgentChat,
+  type FloatingRunBridge,
+} from "@/components/agent/floating-agent-chat";
 import type { AgentOperationApplyResult } from "@/components/agent/agent-operation-apply";
 import type { ResumeOperation } from "@intro-builder/shared/types";
 import { applyResumeOperation } from "@/lib/agent/apply-operation";
@@ -885,6 +890,58 @@ export default function EditorClient({ userId, id, initialTitle, initialTemplate
     form.setValue("sectionOrder", newOrder, { shouldDirty: true });
   }
 
+  /**
+   * 浮窗走**新路径**（统一 Run 路由）时需要的编辑器能力。
+   *
+   * ## 为什么由这里提供
+   *
+   * 新路径下**服务端**写库（`commitResumeMutation`），而组件本身拿不到
+   * 三样必需的东西 —— 它们都在这个编辑器里：
+   *
+   * | 能力 | 为什么组件拿不到 |
+   * |---|---|
+   * | CAS 基准（revision） | 来自 `mutationSession`，组件的 props 里没有它 |
+   * | 是否有本地未提交编辑 | 同上（决定服务端写库后能否覆盖表单） |
+   * | 服务端内容读取 / 基准推进 | 需要 `getResumeMutationBaseline` 与 `form.reset` |
+   *
+   * ## 为什么 benchmark 必须来自 mutationSession
+   *
+   * 服务端会用它与权威 revision 比对（spec §6）。任何本地推断值都会在某些
+   * 时序下与服务端错位，表现为「明明没冲突却报冲突」—— 而那种故障极难定位
+   * （错误信息说冲突，但用户确实没改过）。
+   *
+   * `hasLocalEdits` 刻意用 `mutationSession.hasLocalEdits()`（与
+   * `applyRemoteCommit` 内部**完全相同**的判据），而不是在这里从 `status` 推断：
+   * 两处判据一旦不一致，就会出现「hook 认为没有本地编辑所以覆盖了表单、
+   * 而调用方认为有」这类自相矛盾的行为。
+   */
+  const runBridge = useMemo<FloatingRunBridge>(
+    () => ({
+      getRevision: () => mutationSession.getBaseline().revision,
+      getHasLocalEdits: () => mutationSession.hasLocalEdits(),
+      loadServerContent: async (targetResumeId: string) => {
+        const baseline = await getResumeMutationBaseline(targetResumeId);
+        if (!baseline) return null;
+        /*
+         * 读取层返回 `unknown`（可能是旧格式），必须走 migrate + parse ——
+         * 直接当 `ResumeContent` 用会让旧数据在表单里出现结构错位。
+         */
+        const parsed = ResumeContent.safeParse(migrateContent(baseline.content));
+        return parsed.success ? parsed.data : null;
+      },
+      applyRemoteCommit: ({ content, revision }) => {
+        resumeHistory.markBoundary();
+        resumeHistory.capture({ title, templateId: template, content }, { merge: false });
+        mutationSession.applyRemoteCommit({
+          content,
+          revision,
+          applyContent: (next) => form.reset(next),
+        });
+      },
+    }),
+    [form, mutationSession, resumeHistory, template, title],
+  );
+
   function applyAgentOperation(operation: ResumeOperation): AgentOperationApplyResult {
     // Delegate to the pure mapping so create-from-zero inserts (which may need
     // brand-new array items) and updates both apply consistently.
@@ -1146,6 +1203,14 @@ export default function EditorClient({ userId, id, initialTitle, initialTemplate
       completeness={agentCompleteness}
       applyOperation={applyAgentOperation}
       flushAutosave={flushAgentAutosave}
+      /*
+       * 传入新路径能力。
+       *
+       * **注意它本身不开启新路径** —— 是否走新路由由
+       * `NEXT_PUBLIC_AI_RUN_PATH` 控制（见 `run-path-flag`）。
+       * 这里只是让组件**具备**能力，因此传入它不会改变现有行为。
+       */
+      runBridge={runBridge}
     />
   );
 
