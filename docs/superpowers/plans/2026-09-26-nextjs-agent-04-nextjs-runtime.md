@@ -154,12 +154,35 @@
 - **验证**：`tests/unit/ai-run-continue-route.test.ts` 14 例。
 - **决策笔记**：`docs/notes/implemented/architecture/2026-09-26-run-continue-route.md`。
 
+### 已完成：任务 8 的服务端灰度开关
+
+- **落地**：`lib/ai/run-route-flag.ts` —— 纯函数决策（接收 env、返回决策 + 理由），
+  与 `scripts/migrate-on-deploy.ts` 的 `shouldRunDeployMigrations` 同一范式。
+- **默认关闭**（legacy）：`/api/ai/runs/*` 是服务端可达的执行入口，而客户端尚未接线、
+  也没冒烟过 —— 没有开关时「合并」=「生产立即可达」。打开需显式设
+  `AI_RUN_ROUTE_ENABLED=1`。
+- **判定顺序**：`NODE_ENV=test` 恒开（否则路由测试会被自己的开关挡住，
+  测到的是「503 被拒」而不是真实行为）→ 显式取值优先 →
+  **无法识别的取值按关闭处理**（拼错的开关名不该打开未验证路径）。
+- **关闭时回 503** + `code: "run_route_disabled"` + 理由，而不是 404
+  （404 会让人以为路由不存在而去猜路径）。开关检查放在**鉴权之前**。
+- **两条路由共用同一判定**：只关启动而放开 continue，开关就形同虚设 ——
+  这一条有专门测试锁住。
+- **验证**：`tests/unit/ai-run-route-flag.test.ts` 27 例 +
+  `tests/unit/ai-run-route-gate.test.ts` 2 例（mock 开关为关闭，断言两条路由
+  都 503 且不读会话、不建 Run、不申请租约）。
+- **决策笔记**：`docs/notes/implemented/architecture/2026-09-26-run-route-gray-release-flag.md`。
+
 ### 未完成（本切片剩余）
 
-任务 8 验证与灰度：服务端开关默认 legacy、指定预览环境先跑新链路、
-记录首反馈/工具完成/提交/恢复延迟。**新链路仍未切流** ——
-`app/api/ai/runs/*` 与客户端浮窗尚未接线，旧链路 `app/api/agent/floating/chat`
-仍是唯一在跑的执行入口。
+任务 8 的其余部分：**客户端浮窗接线**（`floating-agent-chat.tsx` 仍打
+`/api/agent/floating/chat`，需切到新事件流并处理 503 回退）、
+**真实浏览器手工冒烟**（DoD §6 要求 Agent 改动走一遍面板打开 → 发送消息 →
+工具卡展示）、以及**线上指标记录**（首反馈 / 工具完成 / 提交 / 恢复延迟）——
+后者需要真实流量，属「缺少生产访问」的停止条件，不假装完成。
+
+**新链路仍未切流**：`app/api/ai/runs/*` 默认返回 503，旧链路仍是唯一在跑的
+执行入口。
 
 ### 实测发现（详见决策笔记）
 
