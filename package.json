@@ -16,6 +16,8 @@
     "verify": "pnpm lint && pnpm typecheck && pnpm test && pnpm build",
     "notes:verify": "tsx scripts/notes/verify-agent-note-tree.ts && tsx scripts/notes/verify-agent-note-format.ts && tsx scripts/notes/verify-archived-agent-notes.ts",
     "notes:anchors": "tsx scripts/notes/check-note-anchors.ts",
+    "archive:agent:manifest": "tsx scripts/archive/generate-agent-manifest.ts",
+    "archive:agent:verify": "tsx scripts/archive/generate-agent-manifest.ts --check",
     "notes:archive": "tsx scripts/notes/archive-agent-note.ts",
     "db:migrate": "tsx scripts/db/apply-favorites-migration.ts",
     "dev:ensure-user": "tsx scripts/dev/ensure-dev-user.ts"
