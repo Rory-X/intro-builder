@@ -25,14 +25,30 @@ Both the Web application and PartyKit deployment must use the same
 `COLLAB_JWT_SECRET`. Connections are rejected before Yjs synchronization when
 the token is missing, invalid, expired, or issued for another room.
 
-For production, configure the GitHub Actions secret `COLLAB_JWT_SECRET`. The
-PartyKit deployment workflow validates it and injects it with the CLI `--var`
-option:
+For production the secret is stored on the PartyKit platform itself, alongside
+the Web app's signing endpoints, and the Worker reads it from
+`room.env.COLLAB_JWT_SECRET`:
 
 ```bash
-COLLAB_JWT_SECRET=... pnpm exec partykit deploy \
-  --var "COLLAB_JWT_SECRET=$COLLAB_JWT_SECRET"
+# One-off, per project (intro-collab). Prompts for the value, or pipe it in.
+pnpm exec partykit env add COLLAB_JWT_SECRET
+pnpm exec partykit env list           # expect: Deployed variables: COLLAB_JWT_SECRET
 ```
+
+Deployment is then a plain `partykit deploy` and needs no secret of its own:
+
+```bash
+pnpm exec partykit deploy
+```
+
+The deploy workflow deliberately does not pass `--var`, so it requires no
+`COLLAB_JWT_SECRET` GitHub Actions secret. See
+`docs/notes/implemented/architecture/2026-09-26-collab-secret-lives-on-platform.md`
+for why the earlier `--var` injection was removed.
+
+The value must match the Web app's `COLLAB_JWT_SECRET` environment variable;
+otherwise the Web side signs tokens the Worker cannot verify and every
+connection is closed with 4401.
 
 ## Dependencies
 

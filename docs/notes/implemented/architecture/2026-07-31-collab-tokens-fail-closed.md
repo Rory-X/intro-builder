@@ -14,7 +14,8 @@ PartyKit 服务端在 `onConnect` 里把「没 token」与「没配 secret」**�
 
 Web 侧签发端点（`app/api/collab/join/route.ts`、`app/api/collab/owner-token/route.ts`）同样从 `process.env.COLLAB_JWT_SECRET` 取密钥，不存在任何硬编码或默认密钥。
 
-**部署侧必须保证该 secret 存在**：`deploy-partykit.yml` 在部署前显式检查凭证，并把 `COLLAB_JWT_SECRET` 通过 `--var` 传给 PartyKit。任何人改动这条链路时，都要保持「缺配置 = 拒绝服务」的语义。
+**部署侧必须保证该 secret 存在**：`deploy-partykit.yml` 在部署前显式检查 `PARTYKIT_LOGIN` / `PARTYKIT_TOKEN` 两个部署凭证。`COLLAB_JWT_SECRET` 本身存放在 PartyKit 平台（`partykit env add`），由 Worker 从 `room.env` 读取，部署命令不再注入它——原因见
+[2026-09-26-collab-secret-lives-on-platform.md](./2026-09-26-collab-secret-lives-on-platform.md)。任何人改动这条链路时，都要保持「缺配置 = 拒绝服务」的语义，而该语义由 `apps/partykit/src/server.ts` 保证，不依赖部署步骤。
 
 ## Alternatives considered
 
