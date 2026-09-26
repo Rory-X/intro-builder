@@ -1,6 +1,8 @@
 import type { RunEventEnvelope, RunStatus } from "@intro-builder/shared/types";
 
 import { reduceRunEvent, createRunProjection, type RunProjection } from "./reducer";
+import { trimHistory, type HistoryMessage } from "@/lib/ai/run-history";
+import { AI_REQUEST_LIMITS } from "@/lib/ai/provider-policy";
 
 /**
  * Run 流的客户端消费（P06 接线 / P07 切流的共同前置）。
@@ -66,12 +68,32 @@ export type StreamRunOptions = {
   mode: string;
   writeMode: "direct" | "approval";
   sessionId?: string | null;
+  /**
+   * 本轮之前的对话历史。
+   *
+   * **多轮会话必须传** —— 不传时服务端会当作「失忆」的第一轮，
+   * 用户说「再短一点」模型不知道在说什么。
+   *
+   * 超出服务端上限时会被裁到最近的若干条（见 `trimHistory`）：
+   * 整体拒绝会让用户连当前这轮都发不出去，而那对用户没有帮助。
+   */
+  history?: HistoryMessage[];
   modelConfig: { baseUrl: string; apiKey: string; modelName: string };
   signal?: AbortSignal;
 };
 
 export type StreamRunResult =
-  | { status: "streamed"; runId: string | null }
+  | {
+      status: "streamed";
+      runId: string | null;
+      /**
+       * 因超上限被裁掉的历史条数。
+       *
+       * 如实回报而不是静默裁剪：用户会感知到「AI 忘了我前面说的」，
+       * 而调用方需要能据此解释原因（例如提示「对话很长了，已省略最早的几轮」）。
+       */
+      trimmedHistory: number;
+    }
   /**
    * 服务端复用了已有 Run（幂等命中），**没有**返回事件流。
    *
@@ -128,6 +150,16 @@ export async function streamRun(
   options: StreamRunOptions,
   handlers: RunStreamHandlers,
 ): Promise<StreamRunResult> {
+  /*
+   * 先算出要发送的历史 —— 后面要用它回报「裁掉了多少」。
+   * 计算只做一次，避免两处调用 `trimHistory` 得到不一致的结果。
+   */
+  const requestedHistory = trimHistory(
+    options.history ?? [],
+    AI_REQUEST_LIMITS.maxHistoryMessages,
+  );
+  const trimmedCount = (options.history?.length ?? 0) - requestedHistory.length;
+
   let response: Response;
   try {
     response = await fetch("/api/ai/runs", {
@@ -141,6 +173,15 @@ export async function streamRun(
         message: options.message,
         mode: options.mode,
         writeMode: options.writeMode,
+        /*
+         * 在这里裁剪到服务端上限。
+         *
+         * 服务端对超长历史是**整体拒绝**（400 history_too_long）——
+         * 那会让用户连当前这轮都发不出去。客户端主动裁到上限内，
+         * 至少让对话能继续；`result.trimmedHistory` 如实回报裁掉了多少，
+         * 调用方可以据此提示用户（而不是让模型默默忘记）。
+         */
+        history: requestedHistory,
         modelConfig: options.modelConfig,
       }),
       ...(options.signal ? { signal: options.signal } : {}),
@@ -186,7 +227,7 @@ export async function streamRun(
     };
   }
 
-  return consumeRunStream(response, handlers);
+  return consumeRunStream(response, handlers, trimmedCount);
 }
 
 /**
@@ -197,6 +238,8 @@ export async function streamRun(
 export async function consumeRunStream(
   response: Response,
   handlers: RunStreamHandlers,
+  /** 已被裁掉的历史条数（由调用方算出并透传，仅供结果回报）。 */
+  trimmedHistory = 0,
 ): Promise<StreamRunResult> {
   if (!response.body) {
     return { status: "error", code: "empty_body", message: "响应为空" };
@@ -248,7 +291,7 @@ export async function consumeRunStream(
   }
 
   handlers.onDone();
-  return { status: "streamed", runId };
+  return { status: "streamed", runId, trimmedHistory };
 }
 
 export type ResumeRunResult =
