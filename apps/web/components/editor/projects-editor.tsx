@@ -13,6 +13,7 @@ import { cn } from "@/lib/utils";
 import { SectionHelperButton } from "@/components/agent/section-helper-button";
 import { tiptapPlainText } from "@/lib/agent/resume-helper-context";
 import { useCompletenessScore } from "@/hooks/use-completeness-score";
+import { withItemId } from "@/lib/resume-mutations/item-id";
 
 type Props = {
   resumeId?: string;
@@ -52,7 +53,7 @@ export function ProjectsEditor({ resumeId }: Props) {
           itemCount={fields.length}
           isOpen={isOpen}
           onToggle={() => setIsOpen(!isOpen)}
-          onAdd={() => { append({ name: "", role: "", location: "", start: "", end: "", stack: [], link: "", content: emptyDoc() }); setIsOpen(true); }}
+          onAdd={() => { append(withItemId({ name: "", role: "", location: "", start: "", end: "", stack: [], link: "", content: emptyDoc() })); setIsOpen(true); }}
           helper={resumeId ? (
             <SectionHelperButton
               resumeId={resumeId}

@@ -13,7 +13,19 @@ export const Basics = z.object({
   photo: z.string().optional().default(""),
 });
 
+/**
+ * 条目稳定身份。
+ *
+ * **故意不给默认值**：`.default(randomUUID)` 会让每次 parse 都产生新 ID，
+ * 于是「同一条经历」在不同请求里身份不同，提案就会写错目标。
+ * 缺失 ID 的旧文档由 `initializeItemIdentities` 在 owner 开始可写会话前
+ * 一次性补齐并 CAS 持久化（见 lib/resume-mutations/identity.ts）。
+ * 公开只读页不得触发写入。
+ */
+const ItemId = z.string().min(1).max(128).optional();
+
 export const Education = z.object({
+  id: ItemId,
   school: z.string().default(""),
   degree: z.string().default(""),
   major: z.string().default(""),
@@ -25,6 +37,7 @@ export const Education = z.object({
 });
 
 export const Experience = z.object({
+  id: ItemId,
   company: z.string().default(""),
   title: z.string().default(""),
   start: z.string().default(""),
@@ -34,6 +47,7 @@ export const Experience = z.object({
 });
 
 export const Project = z.object({
+  id: ItemId,
   name: z.string().default(""),
   role: z.string().default(""),
   location: z.string().default(""),
@@ -67,6 +81,7 @@ function migrateSkills(input: unknown): unknown {
 }
 
 export const Research = z.object({
+  id: ItemId,
   name: z.string().default(""),
   role: z.string().default(""),
   location: z.string().default(""),
