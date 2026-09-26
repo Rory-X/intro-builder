@@ -37,14 +37,10 @@ vi.mock("@/lib/ai/provider", () => ({
     streamModel: () => (async function* () {})() ,
   }),
 }));
+const loadSourceMock = vi.fn();
 vi.mock("@/lib/ai/resume-source", () => ({
   // 漏了这个 mock 会得到 undefined → 路由返回 404「找不到该简历」。
-  loadResumeSourceForRun: async () => ({
-    content: { basics: {}, experience: [], sectionOrder: [] },
-    revision: 3,
-    title: "简历",
-    templateId: "classic",
-  }),
+  loadResumeSourceForRun: (...args: unknown[]) => loadSourceMock(...args),
 }));
 vi.mock("@/lib/ai/run-route-support", () => ({
   streamRunAttempt: (...args: unknown[]) => streamAttemptMock(...args),
@@ -85,6 +81,12 @@ async function callStart(payload: unknown): Promise<Response> {
 beforeEach(() => {
   vi.clearAllMocks();
   authMock.mockResolvedValue({ user: { id: "user-1", name: "测试用户" } });
+  loadSourceMock.mockResolvedValue({
+    content: { basics: {}, experience: [], sectionOrder: [] },
+    revision: 3,
+    title: "简历",
+    templateId: "classic",
+  });
   startRunMock.mockResolvedValue({ status: "created", runId: "run-1" });
   acquireLeaseMock.mockResolvedValue({
     status: "acquired",
@@ -199,5 +201,70 @@ describe("长度上限仍然生效", () => {
     const response = await callStart(body({ history }));
     expect(response.status).toBe(200);
     expect(streamAttemptMock).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("**客户端 revision 必须与权威一致**（spec §6）", () => {
+  it("**陈旧 revision 返回 409 且带 currentRevision**（不静默用旧视图）", async () => {
+    /*
+     * spec 原文：「Run 只读取与 flush 回执**同一 revision** 的内容；
+     * 如果期间出现其他编辑，取得最新基准或冲突反馈，**不能悄悄用旧 snapshot**。」
+     *
+     * 此前 body.revision 只被校验、从未被使用 —— 服务端直接读 DB 当前内容
+     * 喂给模型。客户端在 revision 3 的视图上组织上下文，而服务端可能已把
+     * revision 9 的内容交给模型：模型看到的文档与用户以为的不是同一份，
+     * 而**没有任何一方会知道**。
+     */
+    loadSourceMock.mockResolvedValue({
+      content: { basics: {}, experience: [], sectionOrder: [] },
+      revision: 9,
+      title: "简历",
+      templateId: "classic",
+    });
+
+    const response = await callStart(body({ revision: 3 }));
+    expect(response.status).toBe(409);
+    const payload = (await response.json()) as Record<string, unknown>;
+    expect(payload.code).toBe("revision_mismatch");
+    // 带出权威 revision，客户端可据此 rebase 后重试。
+    expect(payload.currentRevision).toBe(9);
+    // **不创建 Run、不执行** —— 陈旧请求不该消耗额度或拿租约。
+    expect(startRunMock).not.toHaveBeenCalled();
+    expect(streamAttemptMock).not.toHaveBeenCalled();
+  });
+
+  it("revision 一致时正常执行", async () => {
+    const response = await callStart(body({ revision: 3 }));
+    expect(response.status).toBe(200);
+    expect(streamAttemptMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("**客户端 revision 更新时不阻塞**（不是「必须等于旧值」，而是必须一致）", async () => {
+    loadSourceMock.mockResolvedValue({
+      content: { basics: {}, experience: [], sectionOrder: [] },
+      revision: 12,
+      title: "简历",
+      templateId: "classic",
+    });
+    // 客户端传 12、权威也是 12 → 通过。
+    expect((await callStart(body({ revision: 12 }))).status).toBe(200);
+  });
+
+  it("**revision 校验在创建 Run 之前**（不留下不会被执行的 Run）", async () => {
+    /*
+     * 若先建 Run 再校验，一次陈旧请求会在库里留下一个永不执行的 Run ——
+     * 而它已经拿到租约，会挡住后续对同一简历的**合法**请求，
+     * 直到租约自然过期。用户看到「什么都没发生，但之后一段时间全都报
+     * 已在执行中」，且无从排查。
+     */
+    loadSourceMock.mockResolvedValue({
+      content: { basics: {}, experience: [], sectionOrder: [] },
+      revision: 99,
+      title: "简历",
+      templateId: "classic",
+    });
+    await callStart(body({ revision: 1 }));
+    expect(startRunMock).not.toHaveBeenCalled();
+    expect(acquireLeaseMock).not.toHaveBeenCalled();
   });
 });

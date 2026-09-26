@@ -248,6 +248,36 @@ export async function POST(request: Request) {
   }
 
   /*
+   * 客户端 revision 必须与权威 revision 一致（spec §6）。
+   *
+   * spec 原文：**「Run 只读取与 flush 回执同一 revision 的内容；如果期间
+   * 出现其他编辑，取得最新基准或冲突反馈，不能悄悄用旧 snapshot。」**
+   *
+   * 此前 `body.revision` **只被校验、从未被使用** —— 服务端直接读 DB 当前
+   * 内容喂给模型。那意味着：客户端在 revision 5 的视图上组织上下文
+   * （历史、用户指代「那段经历」），而服务端可能已把 revision 9 的内容交给
+   * 模型。模型看到的文档与用户以为的不是同一份，而**没有任何一方会知道**。
+   *
+   * 这与提交层的 CAS 是**两层**保护，缺一不可：
+   * - 这里拦「一开始就陈旧」（客户端 flush 后又被别的标签页/协作方改过）；
+   * - 提交语句里的 `expectedRevision` 拦「执行期间被改」。
+   *
+   * 返回 409 而不是自动改用最新内容：自动改用会让模型基于用户没见过的文档
+   * 做修改，而用户无从察觉。让客户端刷新并重发是唯一诚实的选择。
+   * 响应体带 `currentRevision`，客户端可据此 rebase 后重试。
+   */
+  if (body.revision !== source.revision) {
+    return NextResponse.json(
+      {
+        error: "简历已在别处更新，请刷新后重试",
+        code: "revision_mismatch",
+        currentRevision: source.revision,
+      },
+      { status: 409 },
+    );
+  }
+
+  /*
    * 幂等创建。重复 requestId 返回**同一个 Run**，此时不重新执行 ——
    * 客户端的重试与用户的连点都不应该让模型跑第二遍。
    */
