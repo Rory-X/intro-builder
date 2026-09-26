@@ -52,13 +52,24 @@ export type SyncPlan =
    */
   | { action: "sync"; revision: number; content: ResumeContent }
   /**
-   * **不要同步**：本地有未提交的编辑。
+   * **只推进基准，不覆盖表单**：本地有未提交的编辑。
    *
    * 这条判据是防数据丢失的核心：若本地有 dirty 内容，把服务端内容
-   * 直接写进表单会**抹掉用户刚敲的字**。此时应当只推进基准、
-   * 让后续的本地提交带着新基准去合并（若真冲突，服务端会返回冲突）。
+   * 直接写进表单会**抹掉用户刚敲的字**。此时把基准推到服务端内容、
+   * 但表单保持用户的输入 —— 于是用户那次提交的 diff
+   * （`buildMutationOperations(基准 → 表单)`）会**涵盖他的本地编辑**，
+   * 由服务端的 CAS 决定是否冲突。
+   *
+   * `content` 是**服务端内容**（与 `sync` 同一份），不是本地内容。
+   * 这一点是必须的：基准若不是服务端内容，用户的本地编辑会被当成
+   * 「已保存」而**永不提交**（见下方 `planCommitSync` 的说明）。
    */
-  | { action: "advance-baseline-only"; revision: number; reason: "local-edits" }
+  | {
+      action: "advance-baseline-only";
+      revision: number;
+      content: ResumeContent;
+      reason: "local-edits";
+    }
   /**
    * 需要重新拉取 baseline 后再同步。
    *
@@ -93,17 +104,19 @@ export function planCommitSync(input: {
     return { action: "reload", reason: "missing-revision" };
   }
 
-  if (input.hasLocalEdits) {
-    /*
-     * 有本地未提交编辑时**只推进基准**。
-     *
-     * 把服务端内容写进表单会抹掉用户正在敲的字 —— 那是不可接受的数据丢失。
-     * 推进基准后，本地那次提交会以新基准提交；若目标字段真的被服务端改过，
-     * 服务端的 CAS 会如实返回冲突，由既有冲突 UI 处理。
-     */
-    return { action: "advance-baseline-only", revision, reason: "local-edits" };
-  }
-
+  /*
+   * **先检查内容是否可得，再决定分支。**
+   *
+   * 第一版把「有本地编辑」的判断放在内容检查之前，导致那条分支**不带内容**。
+   * 于是调用方只能拿本地内容当基准 —— 而那是严重的数据丢失：
+   *
+   * 基准被设成「已含用户未保存编辑的本地内容」后，
+   * `buildMutationOperations(基准 → 表单)` 会认为那些编辑**已经保存过**，
+   * 于是它们**永远不会被提交**，而界面上看起来一切正常
+   * （内容还在表单里、状态是 idle）。用户刷新后才发现改动没了。
+   *
+   * 因此两个分支都必须带上服务端内容：区别只在**表单要不要被覆盖**。
+   */
   if (!input.serverContent) {
     /*
      * 拿不到权威内容时不猜。
@@ -113,6 +126,17 @@ export function planCommitSync(input: {
      * 前者提示用户重试，后者应当上报。
      */
     return { action: "reload", reason: "missing-content" };
+  }
+
+  if (input.hasLocalEdits) {
+    /*
+     * 有本地未提交编辑时**只推进基准**。
+     *
+     * 把服务端内容写进表单会抹掉用户正在敲的字 —— 那是不可接受的数据丢失。
+     * 但基准**必须**是服务端内容：这样用户那次提交的 diff 会涵盖他的本地编辑，
+     * 由服务端的 CAS 决定是否冲突（而不是把它们当成已保存而丢弃）。
+     */
+    return { action: "advance-baseline-only", revision, content: input.serverContent, reason: "local-edits" };
   }
 
   return { action: "sync", revision, content: input.serverContent };

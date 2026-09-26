@@ -52,8 +52,12 @@ P07 任务 3 要把浮窗从旧微服务入口切到 `/api/ai/runs`。前面几�
 就是**双重写库**：两次提交、两条留痕、并发下 revision 还会互相顶掉。
 
 服务端写完后由 `runBridge.applyRemoteCommit` 同步客户端内容
-（判据由 `commit-sync` 的 `planCommitSync` 给出：有本地编辑时只推进基准、
-不覆盖表单）。
+（判据由 `commit-sync` 的 `planCommitSync` 给出）。
+
+**「不覆盖表单」不等于「基准可以用本地内容」** —— 我在这个提交里把后者写错了，
+后果是静默数据丢失（用户未保存的编辑永远不被提交）。
+正确做法是**基准取服务端内容、表单保持用户输入**；
+细节见 `docs/notes/implemented/bug-fix/2026-09-26-baseline-content-lost-local-edits.md`。
 
 ### 4. 幂等命中如实报错而不是假装完成
 
