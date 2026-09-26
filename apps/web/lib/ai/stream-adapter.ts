@@ -28,9 +28,22 @@ export type SdkStreamPart =
   | { type: "text-delta"; id?: string; text?: string }
   | { type: "text-end"; id?: string }
   | { type: "reasoning-delta"; text?: string }
-  | { type: "tool-input-start"; toolCallId: string; toolName: string }
-  | { type: "tool-input-delta"; toolCallId: string; inputTextDelta?: string }
-  | { type: "tool-input-end"; toolCallId: string }
+  /*
+   * `tool-input-start` / `tool-input-delta` **不带** `toolCallId`。
+   *
+   * 这是 AI SDK v6 `TextStreamPart`（`fullStream` 的元素类型）的真实形状：
+   * 增量阶段用 `id` / `delta`，只有最终定型的 `tool-call` / `tool-result`
+   * 才用 `toolCallId`。SDK 内部同样把 `chunk.id` 当作 toolCallId 使用
+   * （`onInputStart({ toolCallId: chunk.id })`），因此两者是同一个值。
+   *
+   * 旧版本这里写的是 `toolCallId` / `inputTextDelta`，于是真实流送进来时
+   * 这两个字段永远是 `undefined`，`tool.started` 与参数片段**一个都不会发出**，
+   * 用户看不到工具在执行。`readToolCallId` / `readInputTextDelta` 同时接受
+   * 两种拼写，避免再因为字段改名而静默失效。
+   */
+  | { type: "tool-input-start"; id?: string; toolCallId?: string; toolName: string }
+  | { type: "tool-input-delta"; id?: string; toolCallId?: string; delta?: string; inputTextDelta?: string }
+  | { type: "tool-input-end"; id?: string; toolCallId?: string }
   | { type: "tool-call"; toolCallId: string; toolName: string; input?: unknown }
   | { type: "tool-result"; toolCallId: string; toolName?: string; output?: unknown }
   | { type: "tool-error"; toolCallId: string; toolName?: string; error?: unknown }
@@ -49,6 +62,29 @@ export type StreamAdapterOptions = {
   /** 本轮是否产生了 written 提案（用于区分「完成」与「等待用户」）。 */
   shouldWaitForUser?: () => boolean;
 };
+
+/**
+ * 读取工具调用 ID，兼容 SDK 的两种拼写。
+ *
+ * 增量片段（`tool-input-*`）用 `id`，定型片段（`tool-call`/`tool-result`）用
+ * `toolCallId`；SDK 内部认为二者同值。两者都读，任一存在即可工作，
+ * 避免 SDK 改名时静默丢事件（这正是本函数存在的理由）。
+ *
+ * 参数取整个 `SdkStreamPart` 联合：它有 `[key: string]: unknown` 的兜底成员，
+ * 用窄结构做形参会因为「索引签名不提供可选属性」而无法通过类型检查。
+ */
+function readToolCallId(part: SdkStreamPart): string {
+  const record = part as { id?: unknown; toolCallId?: unknown };
+  const raw = record.toolCallId ?? record.id;
+  return typeof raw === "string" ? raw : raw == null ? "" : String(raw);
+}
+
+/** 读取参数增量文本，同样兼容 `delta`（SDK 真实字段）与旧名 `inputTextDelta`。 */
+function readInputTextDelta(part: SdkStreamPart): string {
+  const record = part as { delta?: unknown; inputTextDelta?: unknown };
+  const raw = record.delta ?? record.inputTextDelta;
+  return typeof raw === "string" ? raw : "";
+}
 
 /**
  * 把一段 SDK 片段转换成业务事件（0 个或多个）。
@@ -79,7 +115,7 @@ export function adaptStreamPart(
     }
 
     case "tool-input-start": {
-      const toolCallId = String(part.toolCallId ?? "");
+      const toolCallId = readToolCallId(part);
       if (!toolCallId) return [];
       // 去重：同一个 toolCallId 只开始一次。
       if (state.startedTools.has(toolCallId)) return [];
@@ -93,8 +129,8 @@ export function adaptStreamPart(
     }
 
     case "tool-input-delta": {
-      const toolCallId = String(part.toolCallId ?? "");
-      const delta = typeof part.inputTextDelta === "string" ? part.inputTextDelta : "";
+      const toolCallId = readToolCallId(part);
+      const delta = readInputTextDelta(part);
       if (!toolCallId || !delta) return [];
       // 仅用于展示；不参与执行。
       return [{ type: "tool.arguments", payload: { toolCallId, delta } }];
