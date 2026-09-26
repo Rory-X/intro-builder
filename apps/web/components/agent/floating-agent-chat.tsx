@@ -604,11 +604,25 @@ export function FloatingAgentChat({
             }
             if (plan.action === "advance-baseline-only") {
               /*
-               * 只推进基准时仍需一次「内容不变」的提交回调 ——
-               * 用当前表单内容与同一 revision 调用，效果是只更新基准。
+               * 只推进基准，**表单保持用户输入**。
+               *
+               * `plan.content` 是**服务端内容**（不是本地内容）。
+               * 这一点是必须的，而且我第一版写错了：
+               *
+               * 我当时传的是 `getResumeContent()`（本地当前内容，含用户未保存
+               * 的编辑）。`applyRemoteCommit` 会把它设为基准 ——
+               * 而后续提交的 operations 由
+               * `buildMutationOperations(基准 → 表单)` 计算。
+               * 基准等于表单 ⇒ **diff 恒为空** ⇒ 用户的那些编辑
+               * **永远不会被提交**，而界面上看起来完全正常
+               * （内容还在、状态是 idle）。刷新后改动才消失 —— 静默数据丢失。
+               *
+               * 正确做法：基准 = 服务端内容、表单 = 用户输入。
+               * 于是用户那次提交的 diff 会涵盖他的编辑，
+               * 由服务端 CAS 决定是否冲突（而不是当成已保存而丢弃）。
                */
               runBridge.applyRemoteCommit({
-                content: getResumeContent(),
+                content: plan.content,
                 revision: plan.revision,
               });
               toast.message("服务端已更新内容，你还有未保存的修改，已保留你的输入。");
@@ -647,7 +661,6 @@ export function FloatingAgentChat({
     },
     [
       activeSessionId,
-      getResumeContent,
       modelConfig,
       resumeId,
       runBridge,

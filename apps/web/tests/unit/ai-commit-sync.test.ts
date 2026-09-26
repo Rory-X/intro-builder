@@ -56,13 +56,20 @@ describe("同步决策", () => {
      * 这条是防数据丢失的核心：把服务端内容直接写进表单会抹掉用户正在输入的
      * 内容。此时推进基准即可 —— 本地那次提交会带着新基准提交，
      * 若真冲突由服务端 CAS 如实返回，走既有冲突 UI。
+     *
+     * **但基准内容必须是服务端内容**（不是本地内容）。
+     * 这一点是我第一版写错的地方，后果是静默数据丢失：
+     * `applyRemoteCommit` 会把传入的 content 设为基准，而后续提交的
+     * operations 由 `buildMutationOperations(基准 → 表单)` 计算。
+     * 若基准 = 本地当前内容（含用户未保存的编辑），diff 恒为空 ——
+     * 那些编辑**永远不会被提交**，而界面上看起来完全正常。
      */
     expect(plan).toEqual({
       action: "advance-baseline-only",
       revision: 5,
+      content: expect.objectContaining({ basics: expect.anything() }),
       reason: "local-edits",
     });
-    expect(plan).not.toHaveProperty("content");
   });
 
   it("**回执缺 revision → reload（missing-revision）**，不猜", () => {
@@ -91,18 +98,20 @@ describe("同步决策", () => {
     expect(plan).toEqual({ action: "reload", reason: "missing-content" });
   });
 
-  it("**有本地编辑时即使取不到内容也不 reload**（基准仍要推进）", () => {
+  it("**取不到内容时即使有本地编辑也 reload**（不能凭空推进基准）", () => {
     const plan = planCommitSync({
       receipt: { mutationId: "m-1", revision: 5, changeSetId: null },
       serverContent: null,
       hasLocalEdits: true,
     });
-    // 缺内容不该阻塞基准推进 —— 否则本地后续提交会一直用旧基准。
-    expect(plan).toEqual({
-      action: "advance-baseline-only",
-      revision: 5,
-      reason: "local-edits",
-    });
+    /*
+     * 我第一版让这条返回 `advance-baseline-only`（理由：「基准推进不需要内容」）。
+     * 那是错的 —— 推进基准必须知道**新基准的内容是什么**，否则调用方只能拿
+     * 本地内容顶上，而那就制造了 diff 恒空、编辑永不提交的静默数据丢失。
+     *
+     * 现在两个分支都要求服务端内容；缺内容一律 reload。
+     */
+    expect(plan).toEqual({ action: "reload", reason: "missing-content" });
   });
 });
 
@@ -154,7 +163,7 @@ describe("诚实性：不假装已同步", () => {
     expect(plan).not.toHaveProperty("content");
   });
 
-  it("只有 sync 分支才返回内容", () => {
+  it("**sync 与 advance-baseline-only 都带内容**（区别只在表单要不要被覆盖）", () => {
     const synced = planCommitSync({
       receipt: { mutationId: "m-1", revision: 2, changeSetId: null },
       serverContent: content(),
@@ -162,11 +171,18 @@ describe("诚实性：不假装已同步", () => {
     });
     expect(synced).toHaveProperty("content");
 
-    const notSynced = planCommitSync({
+    const baselineOnly = planCommitSync({
       receipt: { mutationId: "m-1", revision: 2, changeSetId: null },
       serverContent: content(),
       hasLocalEdits: true,
     });
-    expect(notSynced).not.toHaveProperty("content");
+    /*
+     * 两个分支都必须带内容。第一版让 advance-baseline-only 不带，
+     * 于是调用方只能拿本地内容当基准 —— diff 恒空、编辑永不提交。
+     * 这是静默数据丢失，因此这里显式断言两分支的形状一致。
+     */
+    expect(baselineOnly).toHaveProperty("content");
+    expect(baselineOnly.action).toBe("advance-baseline-only");
+    expect(synced.action).toBe("sync");
   });
 });
