@@ -1,17 +1,30 @@
-import { and, eq } from "drizzle-orm";
 import { RunAgentInputSchema } from "@ag-ui/core";
 
-import { db } from "@/db";
-import { resumes } from "@/db/schema";
 import { mapAgUiRunToAgentMessageRequest } from "@/lib/agent/ag-ui-run-adapter";
-import { createAgentRunSessionContext } from "@/lib/agent/run-session";
-import { signAgentToken } from "@/lib/agent/token";
+import {
+  agUiErrorResponse,
+  translateRunSseResponse,
+} from "@/lib/ai/ag-ui-from-run";
+import { createProviderStreamer } from "@/lib/ai/provider";
+import { AI_REQUEST_LIMITS } from "@/lib/ai/provider-policy";
+import { loadResumeSourceForRun } from "@/lib/ai/resume-source";
+import { streamRunAttempt } from "@/lib/ai/run-route-support";
+import { acquireLease, startRun } from "@/lib/ai/run-store";
 import { currentUserId } from "@/lib/auth-helpers";
 
-const DEFAULT_AGENT_PUBLIC_BASE_URL = "http://127.0.0.1:8787";
+/**
+ * `POST /api/agent/direct-runs`
+ *
+ * panel 仍然把 AG-UI 请求发到这里。响应现在是 Next.js 统一 Run
+ * 翻译出的 AG-UI 事件流，不再签 JWT，也不再返回指向独立 Agent 服务的 streamUrl。
+ *
+ * 客户端已经会在响应是 `text/event-stream` 时直接消费，不会再发第二跳。
+ */
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
+
+const LEASE_TTL_MS = AI_REQUEST_LIMITS.routeDeadlineMs * 3;
 
 export async function POST(req: Request) {
   const userId = await currentUserId();
@@ -29,83 +42,100 @@ export async function POST(req: Request) {
     return Response.json({ error: mapped.message }, { status: 400 });
   }
 
-  let resumeTitle = "Agent 会话";
-  if (mapped.request.resumeId !== null) {
-    const resume = await db.query.resumes.findFirst({
-      where: and(
-        eq(resumes.id, mapped.request.resumeId),
-        eq(resumes.userId, userId),
-      ),
-    });
-    if (!resume) {
-      return Response.json({ error: "简历不存在" }, { status: 404 });
-    }
-    resumeTitle = resume.title || mapped.request.context?.resumeTitle || resumeTitle;
-  } else {
-    resumeTitle = "从 0 创建简历";
+  const identity = {
+    threadId: parsed.input.threadId,
+    runId: parsed.input.runId,
+  };
+
+  const resumeId = mapped.request.resumeId;
+  if (!resumeId) {
+    return Response.json(
+      {
+        error: "请先打开一份简历，再让助手起草或修改",
+        code: "resume_required",
+      },
+      { status: 400 },
+    );
   }
 
-  const threadId =
-    readForwardedThreadId(parsed.input.forwardedProps) ?? parsed.input.threadId;
-  const sessionContext = createAgentRunSessionContext({
-    resumeId: mapped.request.resumeId,
-    userId,
-    threadId,
-    mode: mapped.request.mode ?? "optimize_existing",
-    workflowId: mapped.request.workflowId,
-    resumeTitle,
-  });
-  const signed = await signAgentToken({
-    userId,
-    ...(mapped.request.resumeId ? { resumeId: mapped.request.resumeId } : {}),
-    scope: "agent:chat",
-  });
-
-  return Response.json({
-    status: "ok",
-    streamUrl: joinUrl(resolveAgentPublicBaseUrl(), "/v1/agent/chat"),
-    token: signed.token,
-    tokenExpiresAt: signed.expiresAt.toISOString(),
-    request: {
-      ...mapped.request,
-      sessionContext,
-    },
-  });
-}
-
-function resolveAgentPublicBaseUrl(): string {
-  return (
-    process.env.AGENT_PUBLIC_BASE_URL ??
-    process.env.NEXT_PUBLIC_AGENT_BASE_URL ??
-    process.env.AGENT_BASE_URL ??
-    DEFAULT_AGENT_PUBLIC_BASE_URL
-  );
-}
-
-function joinUrl(baseUrl: string, path: string): string {
-  return `${baseUrl.replace(/\/+$/, "")}/${path.replace(/^\/+/, "")}`;
-}
-
-function readForwardedThreadId(value: unknown): string | null {
-  const introBuilder = readIntroBuilderForwardedProps(value);
-  if (!introBuilder) return null;
-  const threadId = introBuilder.threadId;
-  return typeof threadId === "string" && threadId.trim() !== ""
-    ? threadId.trim()
-    : null;
-}
-
-function readIntroBuilderForwardedProps(value: unknown): Record<string, unknown> | null {
-  if (!isRecord(value)) return null;
-  if (isRecord(value.introBuilder)) return value.introBuilder;
-  if (isRecord(value.runConfig) && isRecord(value.runConfig.introBuilder)) {
-    return value.runConfig.introBuilder;
+  const modelConfig = mapped.request.modelConfig;
+  if (!modelConfig) {
+    return Response.json(
+      { error: "请先连接模型", code: "missing_model_config" },
+      { status: 400 },
+    );
   }
-  return null;
-}
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+  const provider = createProviderStreamer(modelConfig);
+  if (!provider.ok) {
+    return Response.json({ error: provider.message, code: provider.code }, { status: 400 });
+  }
+
+  const source = await loadResumeSourceForRun({ resumeId, userId });
+  if (!source) {
+    return Response.json({ error: "简历不存在" }, { status: 404 });
+  }
+
+  const history = mapped.request.messages.slice(0, -1).map((message) => ({
+    role: message.role,
+    content: message.content,
+  }));
+  const message = mapped.request.messages.at(-1)?.content ?? "";
+  if (!message.trim()) {
+    return Response.json({ error: "消息不能为空" }, { status: 400 });
+  }
+
+  const mode =
+    mapped.request.mode === "create_from_zero" ? "create_from_zero" : "optimize_existing";
+
+  const started = await startRun({
+    id: crypto.randomUUID(),
+    userId,
+    resumeId,
+    sessionId: null,
+    requestId: parsed.input.runId,
+    mode,
+    writeMode: "direct",
+    promptVersion: "p07-panel",
+    modelId: modelConfig.modelName,
+    deadlineAt: new Date(Date.now() + AI_REQUEST_LIMITS.routeDeadlineMs),
+  });
+
+  if (started.status === "existing") {
+    return agUiErrorResponse(identity, "这条请求已经执行过，没有重复运行");
+  }
+
+  const lease = await acquireLease({
+    runId: started.runId,
+    userId,
+    leaseOwner: crypto.randomUUID(),
+    ttlMs: LEASE_TTL_MS,
+  });
+  if (lease.status !== "acquired") {
+    const message =
+      lease.status === "held_by_other"
+        ? "这份简历上已有正在执行的任务，请等它结束"
+        : "这次任务不能开始";
+    return agUiErrorResponse(identity, message);
+  }
+
+  const runResponse = streamRunAttempt({
+    runId: started.runId,
+    resumeId,
+    sessionId: null,
+    userId,
+    actorName: "用户",
+    attemptId: crypto.randomUUID(),
+    writeMode: "direct",
+    fenceToken: lease.fenceToken,
+    source,
+    history,
+    message,
+    streamModel: provider.streamModel,
+    requestSignal: req.signal,
+  });
+
+  return translateRunSseResponse(runResponse, identity);
 }
 
 async function readAgUiRun(

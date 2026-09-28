@@ -942,6 +942,18 @@ export default function EditorClient({ userId, id, initialTitle, initialTemplate
     [form, mutationSession, resumeHistory, template, title],
   );
 
+  const syncPanelServerCommit = useCallback(
+    async (receipt: { revision: number }) => {
+      const content = await runBridge.loadServerContent(id);
+      if (!content) {
+        toast.error("助手已保存，但编辑器没能同步，请刷新页面");
+        return;
+      }
+      runBridge.applyRemoteCommit({ content, revision: receipt.revision });
+    },
+    [id, runBridge],
+  );
+
   function applyAgentOperation(operation: ResumeOperation): AgentOperationApplyResult {
     // Delegate to the pure mapping so create-from-zero inserts (which may need
     // brand-new array items) and updates both apply consistently.
@@ -1627,6 +1639,7 @@ export default function EditorClient({ userId, id, initialTitle, initialTemplate
                   completeness={agentCompleteness}
                   applyOperation={applyAgentOperation}
                   flushAutosave={flushAgentAutosave}
+                  onServerCommit={syncPanelServerCommit}
                   onBackToEdit={() => setIsAgentMode(false)}
                 />
               ) : useFloatingAgent && isFloatingAgentDocked ? (
@@ -1773,6 +1786,7 @@ export default function EditorClient({ userId, id, initialTitle, initialTemplate
                   completeness={agentCompleteness}
                   applyOperation={applyAgentOperation}
                   flushAutosave={flushAgentAutosave}
+                  onServerCommit={syncPanelServerCommit}
                   onBackToEdit={() => setIsAgentMode(false)}
                 />
               </SheetContent>

@@ -1978,13 +1978,15 @@ describe("AgentPanel assistant-ui runtime", () => {
 
     const [, init] = fetchMock.mock.calls[0];
     const body = JSON.parse(String(init?.body));
-    expect(body.forwardedProps.introBuilder).toEqual({
-      resumeId: null,
-      mode: "create_from_zero",
-      locale: "zh-CN",
-      workflowId: "create-from-zero",
-      context: null,
-    });
+    expect(body.forwardedProps.introBuilder).toEqual(
+      expect.objectContaining({
+        resumeId: "resume_1",
+        mode: "create_from_zero",
+        locale: "zh-CN",
+        workflowId: "create-from-zero",
+      }),
+    );
+    expect(body.forwardedProps.introBuilder.context).toEqual(expect.any(Object));
     expect(body.messages.at(-1)).toEqual(
       expect.objectContaining({
         role: "user",
@@ -2127,13 +2129,13 @@ describe("AgentPanel assistant-ui runtime", () => {
 
     expect(body.forwardedProps.introBuilder).toEqual(
       expect.objectContaining({
-        resumeId: null,
+        resumeId: "resume_1",
         mode: "create_from_zero",
         locale: "zh-CN",
         workflowId: "create-from-zero",
-        context: null,
       }),
     );
+    expect(body.forwardedProps.introBuilder.context).toEqual(expect.any(Object));
   });
 
   it("renders assistant markdown as formatted content", async () => {

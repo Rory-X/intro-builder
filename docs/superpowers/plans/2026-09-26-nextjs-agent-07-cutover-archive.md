@@ -2,15 +2,14 @@
 
 状态：进行中（任务 1 基线与清单、任务 3 前置能力 + **默认 surface 翻转**、
 任务 4 **源码与部署配置归档**、任务 6 的现役文档更新均已完成；
-**任务 5 依赖收敛未做**（AG-UI 依赖仍被现役 panel 路径引用）；
-任务 7 未做）。依赖 P06 和完整能力验收；
+**任务 5 依赖收敛未做**（AG-UI 依赖仍被现役 panel 路径引用，panel 界面保留，
+这些依赖继续留下）；任务 7 未做）。依赖 P06 和完整能力验收；
 归档根[说明](../../../archive/agent-microservice/2026-09-26/README.md)。
 
-**关键剩余**：`AgentPanel` / `agent-ag-ui-runtime-provider` / `token` /
-`direct-run-client` / `secret` 五个文件仍属现役（显式配
-`AGENT_ASSISTANT_SURFACE=panel` 时可达）—— 归档它们属「删除 panel 形态」，
-是任务 4 的余下部分。默认 surface 已翻转为 `floating`，因此**默认用户
-不再经过它们**。
+**关键剩余**：panel 界面保留。`POST /api/agent/direct-runs` 已在 Next.js
+里执行统一 Run，不再签发 JWT，也不再把流指向独立服务。下面五个文件仍属现役，
+**不再按「删除 panel」归档**。线上容器停机属 P08，要等生产证据，本切片不做。
+默认 surface 仍是 `floating`。
 
 ## 完成记录（分批）
 
@@ -173,37 +172,41 @@
   notes 61 篇全绿；`pnpm -r list` 已不含 `@intro-builder/agent`。
 - **笔记**：`docs/notes/implemented/architecture/2026-09-26-agent-source-archived.md`
 
+### 已完成：panel 改走 Next.js 统一 Run（2026-09-28）
+
+用户否决了「删掉 panel」。界面、AG-UI 协议和五个现役文件都留下。
+变的是执行位置：
+
+- `POST /api/agent/direct-runs` 在本进程调用 `streamRunAttempt`，再把 Run 事件
+  翻译成 AG-UI SSE（`lib/ai/ag-ui-from-run.ts`）。不再签发 JWT，不再返回
+  `streamUrl`。
+- 客户端 `openPanelRunStream` 只打这一跳。响应里即使带着旧地址也不再跟随。
+- 写入在服务端（`writeMode: "direct"`）。翻译层不带 `proposedOperations`，
+  避免 panel 再用 `applyOperation` 写第二次。落盘后发 `CUSTOM mutation.committed`，
+  编辑器按 revision 拉服务端内容并走已有的 `applyRemoteCommit`。
+- 从 0 创建若编辑器里已经打开简历，就把这份简历和上下文交给 Run。
+  没有简历 id 时路由返回 400 `resume_required`（统一 Run 没有「新建一份简历」的工具）。
+- 旧服务调用点余额为 0。`token.ts` 仍导出 `signAgentToken`，留在定义处清单里，
+  本步不删：现役测试还在覆盖它，panel 也不再调用它。
+- 确认卡片这一轮没有接上。直接模式是服务端立刻落盘。
+
+笔记：`docs/notes/implemented/architecture/2026-09-28-panel-uses-nextjs-run.md`。
+
+下面「未完成」里原先写的「浮窗仍走旧 fetch、默认 surface 仍是 panel、
+调用点还剩 direct-runs」已经过时，那些在更早的提交里已经落地。
+
 ### 未完成（本切片剩余）
 
-- **任务 3 的组件切换本身**：`floating-agent-chat.tsx`（2511 行）仍走旧入口。
-  所有零件已就绪，剩「替换 `fetch` 目标 + 接线回调 + 翻转默认 surface」：
-  - 用 `createFloatingRun` 替换现有的 `readFloatingAgentStream` 调用；
-  - 用 `restoreWorkspace` 做刷新恢复；
-  - **翻转 `readAgentSurface()` 默认值**（现为 `"panel"` = 旧 AgentPanel →
-    AG-UI runtime → `direct-runs` → 旧微服务）。
-    `agent-retirement-audit` 里有一条断言钉住「默认是 panel」，
-    翻转后它会失败 —— 那是**预期信号**，届时同步更新。
-  - **需要人工冒烟**：浮窗/停靠、移动端、暗色、键盘。
-- **切换后的余额**：旧服务调用点从 6 降到 2（`direct-runs` 与 AG-UI runtime），
-  组件切换后应降到 0；届时棘轮清单归零，可归档旧客户端与 token 模块。
-- **任务 2 的其余部分**：能力矩阵已由棘轮覆盖（11 个 Web 自足路由 +
-  断言不引用旧配置键），但「预览环境完全不配置仍可使用」尚缺
-  **真实环境的验证**（属任务 7）。
-- **任务 5（收敛构建与依赖）**：workspace 已不含 archive、根 dev/build 已不启动
-  Agent、`build:agent`/`dev:agent` 已去掉、affected-apps 已收敛为
-  Web/PartyKit 两维度 —— 这些随任务 4 一并做了。**剩下的是 Web 侧依赖**：
-  `@ag-ui/*`、`@assistant-ui/*` 仍被现役 `agent-panel.tsx` 与
-  `agent-ag-ui-runtime-provider.tsx` 引用，只有等那两个文件归档后才能移除。
-  plan 也要求「保留仍用于 Markdown 展示的包直到引用清零」。
-- **任务 4 的余下部分（删除 panel 形态）**：归档
-  `agent-panel.tsx`、`agent-ag-ui-runtime-provider.tsx`、`token.ts`、
-  `direct-run-client.ts`、`secret.ts`，并删除 `direct-runs` 路由与
-  `AgentPanel` 渲染分支。**前置**：`agent-panel-assistant-ui.test.tsx`
-  （3456 行）**同时测浮窗**（27 处 `FloatingAgentChat`），
-  不能整文件归档，需先拆成两份。
-- **任务 7（发布与观察）**：全套 DoD + 必要人工冒烟通过后开 PR；
-  验证新生产部署，旧微服务暂保留但无请求；记录实际 deploymentId/commit。
-  **P08 才清理服务器**（需人工确认）。
+- **浮窗仍欠的接线**：`restoreWorkspace` 还没接进浮窗刷新恢复；
+  任务进度卡、提案卡、撤销按钮还没接进浮窗对话。需要人工冒烟：
+  浮窗/停靠、panel、移动端、暗色、键盘。
+- **任务 2 的其余部分**：「预览环境完全不配置仍可使用」尚缺真实环境验证
+  （属任务 7）。
+- **任务 5**：`@ag-ui/*`、`@assistant-ui/*` 继续被保留的 panel 引用。
+  panel 不删，这些依赖就不移除。
+- **五个现役文件不归档**。它们是 panel 界面本身，不是待删的微服务桥。
+- **任务 7（发布与观察）**：全套 DoD 通过后开 PR；验证生产部署跑的是这次提交。
+  独立服务容器在那之前保持运行。**P08 才按手册停已核实的 Agent 专属容器**。
 
 ## 文件范围
 

@@ -7,10 +7,10 @@
  *
  * | 形态 | 服务端路径 | 是否依赖旧微服务 |
  * |---|---|---|
- * | `panel` | `AgentPanel` → AG-UI runtime → `/api/agent/direct-runs` | **是**（签发 JWT + 返回 `streamUrl` 指向微服务） |
+ * | `panel` | `AgentPanel` → AG-UI runtime → `/api/agent/direct-runs` | **否**（Next.js 统一 Run，翻译成 AG-UI） |
  * | `floating` | `/api/agent/floating/chat` | 否（Web 侧直接用 AI SDK） |
  *
- * 也就是说：**默认形态决定了默认用户是否还在依赖待退役的微服务**。
+ * panel 不再签发 JWT，也不再把流指向独立 Agent 服务。默认仍是 floating。
  *
  * 此前默认是 `panel`，于是「默认配置下 AI 助手的流量仍走待退役的服务」——
  * 退役审计（`agent-retirement-audit.test.ts`）把这个事实钉成了一条断言，
@@ -43,9 +43,8 @@ export function readAgentSurface(env: AgentSurfaceEnv = process.env): AgentSurfa
   /*
    * 只有**显式** `panel` 才回到旧面板。
    *
-   * 无法识别的取值按新形态（`floating`）处理 —— 与 `panel` 时代相反，
-   * 而这是有意的：`panel` 会走 `direct-runs`（依赖待退役的微服务），
-   * 拼错的开关名不该把用户留在一条正在退役的路径上。
+   * 无法识别的取值按新形态（`floating`）处理。
+   * 显式 `panel` 仍打开侧栏，但那条路径已经在 Next.js 里执行统一 Run。
    */
   return raw === "panel" ? "panel" : "floating";
 }

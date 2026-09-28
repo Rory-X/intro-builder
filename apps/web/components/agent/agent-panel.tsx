@@ -140,6 +140,7 @@ export function AgentPanel({
   applyOperation,
   flushAutosave,
   onBackToEdit,
+  onServerCommit,
   defaultAutoApply = false,
   lockAutoApply = false,
   showBackButton = true,
@@ -153,6 +154,11 @@ export function AgentPanel({
   applyOperation: ApplyAgentOperation;
   flushAutosave: () => Promise<void>;
   onBackToEdit?: () => void;
+  onServerCommit?: (receipt: {
+    mutationId: string;
+    revision: number;
+    changeSetId: string | null;
+  }) => void | Promise<void>;
   defaultAutoApply?: boolean;
   lockAutoApply?: boolean;
   showBackButton?: boolean;
@@ -389,13 +395,19 @@ export function AgentPanel({
         key={threadKey}
         getIntroBuilderForwardedProps={(intent) => {
           const modelConfig = toAgentModelConfig(modelSettings);
+          const context = buildAgentResumeContext({
+            content: getResumeContent(),
+            templateId,
+            activeSection: null,
+            completeness,
+          });
           if (intent.mode === "create_from_zero") {
             return {
-              resumeId: null,
+              resumeId,
               mode: "create_from_zero",
               locale: "zh-CN",
               workflowId: "create-from-zero",
-              context: null,
+              context,
               ...(modelConfig ? { modelConfig } : {}),
             };
           }
@@ -404,12 +416,7 @@ export function AgentPanel({
             resumeId,
             locale: "zh-CN",
             workflowId: intent.workflowId,
-            context: buildAgentResumeContext({
-              content: getResumeContent(),
-              templateId,
-              activeSection: null,
-              completeness,
-            }),
+            context,
             ...(modelConfig ? { modelConfig } : {}),
           };
         }}
@@ -447,6 +454,7 @@ export function AgentPanel({
         onResumeWorkspace={handleResumeWorkspace}
         onToolResult={appendToolResult}
         onInterrupts={setAgentTurnInterrupts}
+        onServerCommit={onServerCommit}
         autoAccept={autoApply}
         onOperationApplied={autoApply ? handleAutoAcceptOperation : undefined}
       >

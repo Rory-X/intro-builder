@@ -330,10 +330,10 @@ describe("退役状态诚实（已移入，不再两处都存在）", () => {
      * 「都已移入」—— 我最初把归档目录的文件数（72）与清单条目数（76）
      * 对不上误判成缺陷，实际差的那几个是**仍属现役**的文件。
      *
-     * 它们仍可达（显式配 `AGENT_ASSISTANT_SURFACE=panel` 时会走
-     * AgentPanel → AG-UI runtime → direct-runs），因此归档它们属
-     * 「删除 panel 形态」那一步，不是任务 4。本断言把这个边界钉住：
-     * 若日后有人移了其中一个而没更新这里，它会失败。
+     * 它们仍可达：显式配 `AGENT_ASSISTANT_SURFACE=panel` 时会走
+     * AgentPanel → AG-UI runtime → direct-runs。2026-09-28 起这条路由
+     * 在 Next.js 里执行统一 Run，panel 界面保留，所以这五个文件继续留在现役。
+     * 本断言把这个边界钉住：若日后有人移了其中一个而没更新这里，它会失败。
      */
     const manifest = loadManifest();
     const stillLive = [
