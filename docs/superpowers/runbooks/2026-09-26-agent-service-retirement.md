@@ -43,9 +43,9 @@
 
 PR #155 已合并。GitHub Production deployment `6704188483`，sha `0ad45bb6517b`，状态 success，时间 `2026-09-28T06:57:11Z`。`https://intro-builder.rory-x.me` 与 `https://intro-builder.vercel.app` 都返回 Next.js，`x-vercel-cache: MISS`。未登录 `POST /api/agent/direct-runs` 在 `intro-builder.vercel.app` 返回 401 `{error:未登录}`，响应里没有 `streamUrl`。旧路由在签发 JWT 之前也是这个 401，所以这一下不能证明线上进程已经是新代码；能证明的是 GitHub 把该 sha 标成了 Production success。
 
-合并后再次 `docker inspect`，三个容器 ID 与 1.1 相同，仍是 running。`agent_default` 上的其他业务还在。近 24 小时 `agent-caddy-1` 标准输出 13 行，全是证书续期和本次只读的 admin API `GET /config`，没有 HTTP 访问日志。`agent-agent-1` 标准输出 24 小时为 0 行，说明它本来就不把请求打到标准输出。因此**不能**据此声称旧请求已排空。
+合并后再次 `docker inspect`，三个容器 ID 与 1.1 相同，仍是 running。镜像仍是 `ghcr.io/rory-x/intro-builder/agent:github-8859bfc56a34`（提交 `8859bfc56a34`）。这个提交只在循环结束、鉴权失败或会话快照失败时写标准输出，普通 404 不写。近 24 小时标准输出为 0 行，所以没有完成的循环，也没有鉴权失败。`/proc/net/tcp` 里 8787 只有 LISTEN，没有 ESTABLISHED。同一时刻 Redis 五秒内只增了 5 次 GET 和 1 次 INFO。这是一次点采样，不是停掉新流量之后的观察窗口。Caddy 近 24 小时标准输出仍然只有证书续期和本次只读的 admin API，没有 HTTP 访问日志。`agent_default` 上的其他业务还在。
 
-这次仍然不停容器。缺的是登录态下的聊天、润色、诊断、模块建议、模型连接和留痕，以及一份看得见的排空记录。
+这次仍然不停容器。缺的是登录态下的聊天、润色、诊断、模块建议、模型连接和留痕。
 
 本授权范围：退役本项目微服务线上入口、部署路线和以上经实时重核的专属容器。明确不包含：删除服务器、清空 Docker、删除共享网络、删除 Redis/Caddy 卷、删除数据库、撤销其他项目共用的 SSH 凭证或域名。
 
