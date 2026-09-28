@@ -1,8 +1,8 @@
 # Agent 微服务退役手册
 
-日期：2026-09-26。**当前状态：2026-09-28 又做了一次只读复核；停容器、删网络、删卷、停 workflow 都没有执行。**
+日期：2026-09-26。**当前状态：2026-09-28 生产已切到合并提交，但停容器、删网络、删卷、停 workflow 都没有执行。**
 执行前置：[P07 切流归档](../plans/2026-09-26-nextjs-agent-07-cutover-archive.md)完成且新 Next.js 生产能力验证通过。
-2026-09-28 这条还没有满足：生产部署仍是 `199928ec39cb`，panel 改走 Next.js Run 的提交 `23ac628c5` 不在 `origin/main` 上。
+生产 deployment 已是合并提交 `0ad45bb6517b`（PR #155）。还没满足的是第 2 节里的登录态生产冒烟，以及可观察的旧请求排空。Caddy 标准输出没有 HTTP 访问日志，不能把「没有访问记录」当成已排空。
 
 ## 1. 已核实的资源与范围
 
@@ -37,20 +37,28 @@
 | Deploy Agent workflow `290746404` | GitHub 返回 `state: deleted`（源码已移出 `.github/workflows`）。没有再执行 disable，也没有取消其他 workflow |
 | 生产 Web | GitHub Production deployment `6682074846`，sha `199928ec39cb`，与 `origin/main` 一致。该提交的 `direct-runs` 仍 `signAgentToken` 并返回 `streamUrl` |
 
-因此本次不停这三个容器。标签和镜像符合手册第 5 节的匹配条件，但生产 Web 还在走旧桥，停掉会打断线上 panel。
+上面这一次不停，是因为当时生产 Web 还在走旧桥。
+
+## 1.2 2026-09-28 合并之后
+
+PR #155 已合并。GitHub Production deployment `6704188483`，sha `0ad45bb6517b`，状态 success，时间 `2026-09-28T06:57:11Z`。`https://intro-builder.rory-x.me` 与 `https://intro-builder.vercel.app` 都返回 Next.js，`x-vercel-cache: MISS`。未登录 `POST /api/agent/direct-runs` 在 `intro-builder.vercel.app` 返回 401 `{error:未登录}`，响应里没有 `streamUrl`。旧路由在签发 JWT 之前也是这个 401，所以这一下不能证明线上进程已经是新代码；能证明的是 GitHub 把该 sha 标成了 Production success。
+
+合并后再次 `docker inspect`，三个容器 ID 与 1.1 相同，仍是 running。`agent_default` 上的其他业务还在。近 24 小时 `agent-caddy-1` 标准输出 13 行，全是证书续期和本次只读的 admin API `GET /config`，没有 HTTP 访问日志。`agent-agent-1` 标准输出 24 小时为 0 行，说明它本来就不把请求打到标准输出。因此**不能**据此声称旧请求已排空。
+
+这次仍然不停容器。缺的是登录态下的聊天、润色、诊断、模块建议、模型连接和留痕，以及一份看得见的排空记录。
 
 本授权范围：退役本项目微服务线上入口、部署路线和以上经实时重核的专属容器。明确不包含：删除服务器、清空 Docker、删除共享网络、删除 Redis/Caddy 卷、删除数据库、撤销其他项目共用的 SSH 凭证或域名。
 
 ## 2. 执行前证据清单
 
-- [ ] P07 新 production deployment/commit 已确认；预览成功不能替代生产。
+- [x] P07 新 production deployment/commit 已确认；预览成功不能替代生产。2026-09-28：deployment `6704188483`，sha `0ad45bb6517b`，Production success。其余未勾选项仍然挡住停容器。
 - [ ] 在不配置旧服务地址的环境验证聊天、润色、诊断、模块建议、模型连接、留痕。
 - [ ] 生产关键路径同样通过；无微服务 fallback。
 - [ ] 新文档提交可以幂等重试、拦截冲突，旧标签页无法继续无 revision 写入。
 - [ ] 新模型配置已在 Web 生效；若旧服务持有唯一默认 key，先迁移，禁止先删。
-- [ ] 原始代码和退役前版本归档清单/hash 已验证。
-- [ ] 明确旧 Redis 会话的保留策略：默认保留专属卷，不删除数据；需要转储时在受控目录加密存放，不回传到聊天或 Git。
-- [ ] 检查 Caddy **实际加载配置**和共享依赖，不仅看挂载文件；若其他业务经过它，先拆分该依赖。
+- [x] 原始代码和退役前版本归档清单/hash 已验证。2026-09-28 `archive:agent:verify --check`：清单 76 条，与基线 `050d5bb5e` 一致。
+- [x] 明确旧 Redis 会话的保留策略：默认保留专属卷，不删除数据；需要转储时在受控目录加密存放，不回传到聊天或 Git。2026-09-28 三卷仍在，没有转储，也没有删除。
+- [x] 检查 Caddy **实际加载配置**和共享依赖，不仅看挂载文件；若其他业务经过它，先拆分该依赖。2026-09-28 已加载配置只有 `api.rory-x.me` 的 `/intro-builder/agent` → `agent:8787`。共享的是 Docker 网络 `agent_default`，不是这条反代。网络不删。
 - [ ] 没有进行中的旧请求；无法核实就先停新流量、观察并排空，不直接称已排空。
 
 这些是已有用户清理授权的执行条件，不要求每项再次征求许可。遇到归属不明或超出这三容器的资源，再说明具体证据和扩大范围的原因。
