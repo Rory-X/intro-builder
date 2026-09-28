@@ -42,7 +42,7 @@ panel 的界面、AG-UI 协议和五个现役文件都留下。
 - **代价与已知上限**：panel 不再展示「先确认再写入」的卡片，服务端直接落盘。用户要求分步确认时要重访这个决定。
   没有打开简历时，从 0 创建不能再生成一份新草稿。
   `token.ts` 仍导出 `signAgentToken`，但 panel 路径不再调用它。
-  线上容器还在跑；在生产证据齐全之前停掉它们，会打断仍然连着旧桥的已部署版本。
+  线上容器还在跑。生产已经是合并提交 `0ad45bb6517b`，但登录态冒烟和旧请求排空还没有证据；在那之前停容器仍然不符合退役手册。
 
 ## Verification
 
@@ -51,4 +51,4 @@ panel 的界面、AG-UI 协议和五个现役文件都留下。
 - `apps/web/tests/unit/agent-retirement-audit.test.ts` 的调用点余额是 0；定义处清单只剩 `lib/agent/token.ts`。
 - 编辑器两处 `AgentPanel` 都传入 `onServerCommit`，回调读 `runBridge.loadServerContent` 再 `applyRemoteCommit`。
 - `apps/web` 单元测试 1769 通过、1 跳过；`tsc --noEmit`、`eslint`（0 error）、`next build`、`notes:verify` 通过。
-- 2026-09-28 只读复核：生产部署是 `199928ec39cb`，该提交的 `direct-runs` 仍签发 JWT。`agent-agent-1`、`agent-redis-1`、`agent-caddy-1` 仍在跑；Caddy 只代理 `api.rory-x.me` 的 `/intro-builder/agent`；`agent_default` 仍挂着其他业务。容器、网络和卷都没有停、没有删。
+- 2026-09-28 合并前，生产部署是 `199928ec39cb`，该提交的 `direct-runs` 仍签发 JWT。PR #155 合并后，GitHub Production deployment `6704188483` 的 sha 是 `0ad45bb6517b`，状态 success。`https://intro-builder.vercel.app/api/agent/direct-runs` 未登录返回 401，响应里没有 `streamUrl`；旧路由在签发前也是这个 401，所以这不是新代码的充分证据。`agent-agent-1`、`agent-redis-1`、`agent-caddy-1` 仍在跑；Caddy 只代理 `api.rory-x.me` 的 `/intro-builder/agent`；`agent_default` 仍挂着其他业务。Caddy 近 24 小时标准输出没有 HTTP 访问日志。运行中的镜像 `github-8859bfc56a34` 只在循环结束或鉴权失败时写日志；这 24 小时为 0 行，8787 只有 LISTEN。这是一次点采样，登录态冒烟仍未做。容器、网络和卷都没有停、没有删。
