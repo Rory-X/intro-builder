@@ -73,8 +73,8 @@ importers:
         specifier: ^1.8.1
         version: 1.8.1
       '@atlaskit/pragmatic-drag-and-drop-auto-scroll':
-        specifier: ^2.1.5
-        version: 2.1.5
+        specifier: ^3.2.0
+        version: 3.2.0
       '@auth/drizzle-adapter':
         specifier: ^1.11.2
         version: 1.11.2
@@ -472,11 +472,14 @@ packages:
       '@types/react':
         optional: true
 
-  '@atlaskit/pragmatic-drag-and-drop-auto-scroll@2.1.5':
-    resolution: {integrity: sha512-InLvVhZAHPBfv3CxuG4AfOQuhNJjaFy69YBfodPMWtRFQNQAKa9Yb3vL9Ho6qsD9qKUBuJa4A5k7QddaXQ4Eyw==}
+  '@atlaskit/pragmatic-drag-and-drop-auto-scroll@3.2.0':
+    resolution: {integrity: sha512-vuL+AJae6c6lkmFd63v7c/7J7seyi7ZA8uMLNe9GvvApySToun3Zlv8SfyZU0d+wcNG4+Ix6qpRb8jOobZgNNg==}
 
   '@atlaskit/pragmatic-drag-and-drop@1.8.1':
     resolution: {integrity: sha512-uXWNPpL8n4OmTVbduH7nq8pk8htqGo/prR5cYEE8sVCPJGAUMWn6lzvWTfI+4VCeQvHiDRODVz4YzH06OVAxhw==}
+
+  '@atlaskit/pragmatic-drag-and-drop@3.1.0':
+    resolution: {integrity: sha512-VU+2Oh6OgvC6D1xiX3lfm1gZJsaSPD+ZKjAHodOQ9IO6RfOvAyReLlK5ut9gIUpPmbD8d09wlCs7y4A6/I8c5Q==}
 
   '@auth/core@0.41.2':
     resolution: {integrity: sha512-Hx5MNBxN2fJTbJKGUKAA0wca43D0Akl3TvufY54Gn8lop7F+34vU1zA1pn0vQfIoVuLIrpfc2nkyjwIaPJMW7w==}
@@ -7840,12 +7843,18 @@ snapshots:
     optionalDependencies:
       '@types/react': 19.2.14
 
-  '@atlaskit/pragmatic-drag-and-drop-auto-scroll@2.1.5':
+  '@atlaskit/pragmatic-drag-and-drop-auto-scroll@3.2.0':
     dependencies:
-      '@atlaskit/pragmatic-drag-and-drop': 1.8.1
+      '@atlaskit/pragmatic-drag-and-drop': 3.1.0
       '@babel/runtime': 7.29.2
 
   '@atlaskit/pragmatic-drag-and-drop@1.8.1':
+    dependencies:
+      '@babel/runtime': 7.29.2
+      bind-event-listener: 3.0.0
+      raf-schd: 4.0.3
+
+  '@atlaskit/pragmatic-drag-and-drop@3.1.0':
     dependencies:
       '@babel/runtime': 7.29.2
       bind-event-listener: 3.0.0
