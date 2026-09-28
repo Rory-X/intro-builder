@@ -50,4 +50,5 @@ panel 的界面、AG-UI 协议和五个现役文件都留下。
 - `apps/web/lib/agent/direct-run-client.ts` 导出 `openPanelRunStream`，不再读 `streamUrl`。
 - `apps/web/tests/unit/agent-retirement-audit.test.ts` 的调用点余额是 0；定义处清单只剩 `lib/agent/token.ts`。
 - 编辑器两处 `AgentPanel` 都传入 `onServerCommit`，回调读 `runBridge.loadServerContent` 再 `applyRemoteCommit`。
-- `apps/web` 单元测试 1769 通过、1 跳过；`tsc --noEmit`、`eslint`（0 error）、`next build`、`notes:verify` 通过。线上容器未停。
+- `apps/web` 单元测试 1769 通过、1 跳过；`tsc --noEmit`、`eslint`（0 error）、`next build`、`notes:verify` 通过。
+- 2026-09-28 只读复核：生产部署是 `199928ec39cb`，该提交的 `direct-runs` 仍签发 JWT。`agent-agent-1`、`agent-redis-1`、`agent-caddy-1` 仍在跑；Caddy 只代理 `api.rory-x.me` 的 `/intro-builder/agent`；`agent_default` 仍挂着其他业务。容器、网络和卷都没有停、没有删。

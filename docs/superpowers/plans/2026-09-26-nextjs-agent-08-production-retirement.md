@@ -2,7 +2,7 @@
 
 状态：未开始。依赖 P07 的生产完成证据；详细命令见[退役手册](../runbooks/2026-09-26-agent-service-retirement.md)。
 
-2026-09-28：panel 的 `/api/agent/direct-runs` 在代码里不再签发 JWT、不再把流指向独立服务。这只去掉了代码依赖。生产 Web 还没有跑到这个提交，手册要求的切流证据还没有，所以**不停止** agent-agent-1、agent-redis-1、agent-caddy-1，也不动共享网络和数据卷。
+2026-09-28：panel 的 `/api/agent/direct-runs` 在分支 `codex/panel-uses-nextjs-run`（`23ac628c5`）里不再签发 JWT、不再把流指向独立服务。这只去掉了代码依赖。生产部署仍是 `199928ec39cb`，该提交仍会签 JWT。同日只读复核见[退役手册](../runbooks/2026-09-26-agent-service-retirement.md)：三个专属容器仍在跑，`agent_default` 仍挂着其他业务，三个命名卷仍在。**没有停容器，没有删网络，没有删卷。**
 
 用户已经明确要求后续通过本机 SSH 清理相关服务容器。此计划记录授权范围和执行条件，不把清理扩大为删除服务器、Docker、共享网络、数据库或数据卷。
 
