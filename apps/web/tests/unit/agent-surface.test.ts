@@ -11,11 +11,8 @@ describe("agent surface env switch", () => {
 
   it("**默认是 floating**（P07 任务 3 翻转）", () => {
     /*
-     * 默认形态决定默认用户是否还在依赖待退役的微服务：
-     * `panel` → AgentPanel → AG-UI → /api/agent/direct-runs（签发 JWT + 指向微服务）；
-     * `floating` → /api/agent/floating/chat（Web 自足）。
-     *
-     * 翻转后默认用户不再经过 direct-runs。
+     * 默认是 floating。panel 仍可显式打开，它的 `/api/agent/direct-runs`
+     * 现在也在 Next.js 里执行统一 Run。
      */
     expect(readAgentSurface({})).toBe("floating");
   });

@@ -1,7 +1,8 @@
 # Agent 微服务退役手册
 
-日期：2026-09-26。**当前状态：只读盘点完成，以下变更命令均未执行。**
+日期：2026-09-26。**当前状态：2026-09-28 又做了一次只读复核；停容器、删网络、删卷、停 workflow 都没有执行。**
 执行前置：[P07 切流归档](../plans/2026-09-26-nextjs-agent-07-cutover-archive.md)完成且新 Next.js 生产能力验证通过。
+2026-09-28 这条还没有满足：生产部署仍是 `199928ec39cb`，panel 改走 Next.js Run 的提交 `23ac628c5` 不在 `origin/main` 上。
 
 ## 1. 已核实的资源与范围
 
@@ -19,6 +20,24 @@
 | 旧公开路径 | `https://api.rory-x.me/intro-builder/agent` |
 
 当次同网络还出现 deeix、metapi、sub2api、memos、liveagent、mewmo 等容器。容器名中有 agent 或 redis 并不能说明属于本项目。
+
+## 1.1 2026-09-28 只读复核
+
+下面的容器 ID 只属于这一次记录。下一次真要停之前必须重新 `docker inspect`，不能拿这些 ID 直接 `stop`/`rm`。
+
+| 项 | 结果 |
+| --- | --- |
+| `agent-agent-1` | `f9fb41a44299`，`ghcr.io/rory-x/intro-builder/agent:github-8859bfc56a34`，running，`unless-stopped`，project `agent`，workdir `/opt/intro-agent/apps/agent`，无挂载 |
+| `agent-redis-1` | `b154ffee0ff1`，`redis:8-alpine`，running，卷 `agent_redis_data` → `/data` |
+| `agent-caddy-1` | `131f9f570b4c`，`caddy:2-alpine`，running，主机发布 80/443；挂载本地 `Caddyfile` 与卷 `agent_caddy_data`、`agent_caddy_config` |
+| 已加载的 HTTP 路由 | 只有一条：`api.rory-x.me` 的 `/intro-builder/agent` 与 `/intro-builder/agent/*` → `agent:8787`，监听 `:443` |
+| 公开探测 | `HEAD https://api.rory-x.me/intro-builder/agent` 返回 HTTP 404，响应头 `via: 1.1 Caddy`，服务仍在 |
+| `agent_default` | 仍在。上面还接着 metapi、sub2api、deeix-chat-app、liveagent-gateway、mewmo-agent-agent-1、memos-memos-1 等，不能删 |
+| 三个命名卷 | `agent_redis_data`、`agent_caddy_data`、`agent_caddy_config` 都还在 |
+| Deploy Agent workflow `290746404` | GitHub 返回 `state: deleted`（源码已移出 `.github/workflows`）。没有再执行 disable，也没有取消其他 workflow |
+| 生产 Web | GitHub Production deployment `6682074846`，sha `199928ec39cb`，与 `origin/main` 一致。该提交的 `direct-runs` 仍 `signAgentToken` 并返回 `streamUrl` |
+
+因此本次不停这三个容器。标签和镜像符合手册第 5 节的匹配条件，但生产 Web 还在走旧桥，停掉会打断线上 panel。
 
 本授权范围：退役本项目微服务线上入口、部署路线和以上经实时重核的专属容器。明确不包含：删除服务器、清空 Docker、删除共享网络、删除 Redis/Caddy 卷、删除数据库、撤销其他项目共用的 SSH 凭证或域名。
 

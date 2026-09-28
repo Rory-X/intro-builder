@@ -58,15 +58,15 @@ function isRealCall(line: string): boolean {
    * 也算成了调用点，于是清单里「调用点」的数字混入了「定义处」。
    * 两者要归档的动作不同（删调用 vs 删模块），混在一起会让余额不可读。
    */
-  if (/export\s+(async\s+)?function\s+(createAgentClient|signAgentToken|fetchDirectAgentRunStream)\b/.test(trimmed)) {
+  if (/export\s+(async\s+)?function\s+(createAgentClient|signAgentToken)\b/.test(trimmed)) {
     return false;
   }
-  return /createAgentClient\(|signAgentToken\(|fetchDirectAgentRunStream\(/.test(trimmed);
+  return /createAgentClient\(|signAgentToken\(/.test(trimmed);
 }
 
 /** 是否是旧客户端的**定义处**（模块本身待归档）。 */
 function isLegacyDefinition(line: string): boolean {
-  return /export\s+(async\s+)?function\s+(createAgentClient|signAgentToken|fetchDirectAgentRunStream)\b/.test(
+  return /export\s+(async\s+)?function\s+(createAgentClient|signAgentToken)\b/.test(
     line.trim(),
   );
 }
@@ -143,14 +143,13 @@ function scanAllLegacyCalls(): Record<string, number[]> {
  * （切到 `/api/ai/runs` 或直接删除）。
  */
 const KNOWN_LEGACY_CALL_SITES: Record<string, string[]> = {
-  // 直连 Run 的流式引导：签发 token（实际执行转发给微服务）。
-  //
-  // **仍有活路径**：默认 surface 是 "panel" → `AgentPanel` →
-  // `AgentAgUiRuntimeProvider` → 这条路由。因此它不能像下面两条那样
-  // 直接转 410 —— 必须先完成组件切换（P07 任务 3）。
-  "app/api/agent/direct-runs/route.ts": ["signAgentToken"],
-  // AG-UI runtime 桥接：调用 direct-runs 的客户端封装。
-  "components/agent/agent-ag-ui-runtime-provider.tsx": ["fetchDirectAgentRunStream"],
+  /*
+   * panel 的 `/api/agent/direct-runs` 已改为在 Next.js 里执行统一 Run，
+   * 不再签发 JWT，客户端也不再跟随 streamUrl。因此这里没有调用点。
+   *
+   * 空对象是有意的：全树扫描仍会把新出现的 `signAgentToken()` /
+   * `createAgentClient()` 算进来，和这份清单对不上就会失败。
+   */
 };
 
 /**
@@ -161,7 +160,7 @@ const KNOWN_LEGACY_CALL_SITES: Record<string, string[]> = {
  *
  * 之所以能先退役这两条：它们在仓库里**零消费方**（除自己的测试）——
  * `session` 是演练用的会话探针，`messages` 是第三条转发路径。
- * 而 `direct-runs` 有活路径（默认 panel surface），必须等组件切换。
+ * `direct-runs` 仍有活路径（显式 panel），执行已在 Next.js，不在这份退役清单里。
  */
 const RETIRED_AGENT_ROUTES = [
   "app/api/agent/session/route.ts",
@@ -186,16 +185,15 @@ const KNOWN_LEGACY_MODULES = [
    * 只是 button 的 import 忘了跟着改）。
    */
   "lib/agent/token.ts",
-  "lib/agent/direct-run-client.ts",
 ];
 
 describe("旧客户端模块（定义处）", () => {
-  it("**恰好这两个模块**（新增旧客户端会被拦下）", () => {
+  it("**恰好还剩 token 模块**（新增旧客户端会被拦下）", () => {
     const found = scanLegacyDefinitions();
     expect(Object.keys(found).sort()).toEqual([...KNOWN_LEGACY_MODULES].sort());
   });
 
-  it("这两个模块确实存在（防路径拼写错误）", () => {
+  it("token 模块确实存在（防路径拼写错误）", () => {
     for (const relativePath of KNOWN_LEGACY_MODULES) {
       expect(() => read(relativePath), relativePath).not.toThrow();
     }
@@ -320,17 +318,9 @@ describe("已退役路由：410 stub 而非转发", () => {
 describe("默认 UI 路径（关键的诚实性）", () => {
   it("**默认 surface 是 floating**（已翻转，默认用户不再走 direct-runs）", () => {
     /*
-     * P07 任务 3 的翻转已完成。
-     *
-     * 翻转前：默认 `panel` → `AgentPanel` → AG-UI runtime →
-     * `/api/agent/direct-runs`（签发 JWT + 把 `streamUrl` 指向旧微服务）——
-     * 也就是默认用户的流量仍走待退役的服务。
-     *
-     * 翻转后默认 `floating` → `/api/agent/floating/chat`（Web 自足，不依赖微服务）。
-     *
-     * 仍欠债的是 `direct-runs` 那条**可选**路径本身（显式配 panel 时才会走），
-     * 它留在 `KNOWN_LEGACY_CALL_SITES` 里 —— 余额从 2 处降到 2 处（不变），
-     * 但默认路径已经不再经过它。
+     * P07 任务 3 的翻转已完成：默认 `floating`。
+     * panel 的 `/api/agent/direct-runs` 现在也在 Next.js 里执行统一 Run，
+     * 不再签发 JWT，调用点余额是 0。
      */
     expect(readAgentSurface({})).toBe("floating");
   });
@@ -343,7 +333,7 @@ describe("默认 UI 路径（关键的诚实性）", () => {
   it("**取值不认识时回落到 floating 而不是报错**（拼错不该留在退役路径上）", () => {
     /*
      * 与 `panel` 时代相反，而这是有意的：`panel` 会走 `direct-runs`
-     * （依赖待退役的微服务）。拼错的开关名不该把用户留在一条正在退役的路径上。
+     * 拼错的开关名不该把用户留在一条没人预期的路径上。
      */
     expect(readAgentSurface({ AGENT_ASSISTANT_SURFACE: "weird" })).toBe("floating");
   });
@@ -434,6 +424,6 @@ describe("还剩多少（可读的余额）", () => {
      * 切流时这个数字会逐次下降；降到 0 时应当把旧客户端与 token 模块
      * 一起归档（P07 任务 4）。
      */
-    expect(total).toBe(2);
+    expect(total).toBe(0);
   });
 });

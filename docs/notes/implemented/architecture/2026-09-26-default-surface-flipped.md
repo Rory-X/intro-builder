@@ -9,7 +9,7 @@ P07 任务 3 的核心动作之一是「翻转默认 surface」。核实后发�
 
 | 形态 | 服务端路径 | 是否依赖旧微服务 |
 |---|---|---|
-| `panel` | `AgentPanel` → AG-UI runtime → `/api/agent/direct-runs` | **是**（签发 JWT + 把 `streamUrl` 指向微服务） |
+| `panel` | `AgentPanel` → AG-UI runtime → `/api/agent/direct-runs` | 翻转当时是。2026-09-28 起这条路由在 Next.js 执行统一 Run，见 `2026-09-28-panel-uses-nextjs-run.md` |
 | `floating` | `/api/agent/floating/chat` | 否（Web 侧直接用 AI SDK） |
 
 也就是说：**默认形态决定了默认用户是否还在依赖待退役的微服务**。
@@ -27,9 +27,9 @@ P07 任务 3 的核心动作之一是「翻转默认 surface」。核实后发�
 // 翻转后：raw === "panel" ? "panel" : "floating"
 ```
 
-**只有显式 `panel` 才回到旧面板。无法识别的取值按 `floating` 处理** ——
-与之前相反，而这是有意的：`panel` 会走 `direct-runs`（依赖待退役的微服务），
-**拼错的开关名不该把用户留在一条正在退役的路径上**。
+**只有显式 `panel` 才回到侧栏。无法识别的取值按 `floating` 处理**。
+翻转当时，`panel` 会走还在签发 JWT 的 `direct-runs`，拼错的开关名不该把用户留在那条路径上。
+2026-09-28 起这条路由改为 Next.js 统一 Run，默认仍是 floating。
 
 ### 为什么现在可以翻转
 
@@ -65,10 +65,9 @@ P07 任务 3 的核心动作之一是「翻转默认 surface」。核实后发�
 **这正是 plan 与笔记里预告过的信号**（那条断言的设计意图就是标记翻转时刻）。
 已更新为记录新事实，并在注释里写明翻转前后的差异与仍欠的债。
 
-**仍欠债的部分**：`direct-runs` 那条路径**本身**仍在
-`KNOWN_LEGACY_CALL_SITES` 里（显式配 `panel` 时才会走）——
-余额数字不变（2 处），但**默认路径已经不再经过它**。
-这是「欠债余额」与「默认可达性」两个不同维度的进展。
+翻转当时的欠债是：`direct-runs` 仍在 `KNOWN_LEGACY_CALL_SITES` 里（2 处），
+默认路径已经不再经过它。2026-09-28 起 panel 也在 Next.js 执行，调用点余额是 0。
+见 `docs/notes/implemented/architecture/2026-09-28-panel-uses-nextjs-run.md`。
 
 ## Alternatives considered
 

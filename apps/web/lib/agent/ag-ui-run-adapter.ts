@@ -48,10 +48,11 @@ export function mapAgUiRunToAgentMessageRequest(
 
   let resumeId: string | null;
   let context: AgentResumeContext | null;
-  if (mode === "create_from_zero") {
-    if (introBuilder.resumeId !== null) {
-      return { ok: false, message: "resumeId must be null for create-from-zero" };
-    }
+  /*
+   * 从 0 创建仍可以不带简历（旧契约）。panel 现在会把当前打开的简历一并带上，
+   * 让统一 Run 直接写进这份文档，而不是再去独立服务里生成一份新草稿。
+   */
+  if (mode === "create_from_zero" && introBuilder.resumeId === null) {
     if (introBuilder.context !== null) {
       return { ok: false, message: "context must be null for create-from-zero" };
     }

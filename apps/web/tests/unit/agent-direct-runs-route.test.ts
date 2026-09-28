@@ -2,170 +2,149 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { Mock } from "vitest";
 
 vi.mock("@/lib/auth-helpers", () => ({ currentUserId: vi.fn() }));
-vi.mock("@/lib/agent/token", () => ({ signAgentToken: vi.fn() }));
-vi.mock("@/db", () => ({
-  db: {
-    query: {
-      resumes: {
-        findFirst: vi.fn(),
-      },
-    },
-  },
-}));
+vi.mock("@/lib/ai/provider", () => ({ createProviderStreamer: vi.fn() }));
+vi.mock("@/lib/ai/resume-source", () => ({ loadResumeSourceForRun: vi.fn() }));
+vi.mock("@/lib/ai/run-store", () => ({ startRun: vi.fn(), acquireLease: vi.fn() }));
+vi.mock("@/lib/ai/run-route-support", () => ({ streamRunAttempt: vi.fn() }));
 
-import { db } from "@/db";
 import { currentUserId } from "@/lib/auth-helpers";
-import { signAgentToken } from "@/lib/agent/token";
+import { createProviderStreamer } from "@/lib/ai/provider";
+import { loadResumeSourceForRun } from "@/lib/ai/resume-source";
+import { acquireLease, startRun } from "@/lib/ai/run-store";
+import { streamRunAttempt } from "@/lib/ai/run-route-support";
 import { POST } from "@/app/api/agent/direct-runs/route";
 
 describe("POST /api/agent/direct-runs", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    vi.stubEnv(
-      "AGENT_PUBLIC_BASE_URL",
-      "https://api.rory-x.me/intro-builder/agent",
-    );
+    (createProviderStreamer as unknown as Mock).mockReturnValue({
+      ok: true,
+      streamModel: vi.fn(),
+    });
   });
 
-  it("rejects unauthenticated direct run bootstraps", async () => {
+  it("未登录时不创建 Run", async () => {
     (currentUserId as unknown as Mock).mockResolvedValue(null);
 
     const response = await POST(runRequest(validRunInput()));
 
     expect(response.status).toBe(401);
-    expect(signAgentToken).not.toHaveBeenCalled();
+    expect(startRun).not.toHaveBeenCalled();
     await expect(response.json()).resolves.toEqual({ error: "未登录" });
   });
 
-  it("returns a direct Agent stream bootstrap after BFF auth and resume ownership checks", async () => {
+  it("没有模型配置时拒绝，不创建 Run", async () => {
     (currentUserId as unknown as Mock).mockResolvedValue("user_123");
-    (db.query.resumes.findFirst as unknown as Mock).mockResolvedValue({
-      id: "resume_abc",
-      title: "前端工程师",
-    });
-    (signAgentToken as unknown as Mock).mockResolvedValue({
-      token: "signed-chat-token",
-      expiresAt: new Date("2026-06-08T08:02:00.000Z"),
-    });
 
     const response = await POST(runRequest(validRunInput()));
-    const body = await response.json();
 
-    expect(response.status).toBe(200);
-    expect(signAgentToken).toHaveBeenCalledWith({
-      userId: "user_123",
-      resumeId: "resume_abc",
-      scope: "agent:chat",
-    });
-    expect(body).toEqual({
-      status: "ok",
-      streamUrl:
-        "https://api.rory-x.me/intro-builder/agent/v1/agent/chat",
-      token: "signed-chat-token",
-      tokenExpiresAt: "2026-06-08T08:02:00.000Z",
-      request: expect.objectContaining({
-        resumeId: "resume_abc",
-        workflowId: "resume-diagnose",
-        sessionContext: {
-          sessionId: "agent_session_resume_abc_resume_abc",
-          threadId: "resume_abc",
-          resumeId: "resume_abc",
-          mode: "optimize_existing",
-          workflowId: "resume-diagnose",
-          resumeTitle: "前端工程师",
-        },
-      }),
-    });
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({ code: "missing_model_config" });
+    expect(startRun).not.toHaveBeenCalled();
   });
 
-  it("uses the selected Agent thread when bootstrapping an existing resume run", async () => {
+  it("从 0 创建但没有简历时拒绝", async () => {
     (currentUserId as unknown as Mock).mockResolvedValue("user_123");
-    (db.query.resumes.findFirst as unknown as Mock).mockResolvedValue({
-      id: "resume_abc",
-      title: "前端工程师",
-    });
-    (signAgentToken as unknown as Mock).mockResolvedValue({
-      token: "signed-chat-token",
-      expiresAt: new Date("2026-06-08T08:02:00.000Z"),
-    });
-
-    const response = await POST(
-      runRequest({
-        ...validRunInput(),
-        threadId: "assistant-ui-current-thread",
-        forwardedProps: {
-          introBuilder: {
-            ...validRunInput().forwardedProps.introBuilder,
-            threadId: "thread_history_a",
-          },
-        },
-      }),
-    );
-    const body = await response.json();
-
-    expect(response.status).toBe(200);
-    expect(body.request.sessionContext).toMatchObject({
-      sessionId: "agent_session_resume_abc_thread_history_a",
-      threadId: "thread_history_a",
-      resumeId: "resume_abc",
-    });
-  });
-
-  it("starts create-from-zero direct runs without requiring a resume row", async () => {
-    (currentUserId as unknown as Mock).mockResolvedValue("user_123");
-    (signAgentToken as unknown as Mock).mockResolvedValue({
-      token: "signed-create-zero-token",
-      expiresAt: new Date("2026-06-08T08:02:00.000Z"),
-    });
 
     const response = await POST(runRequest(createFromZeroRunInput()));
-    const body = await response.json();
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({ code: "resume_required" });
+    expect(startRun).not.toHaveBeenCalled();
+  });
+
+  it("简历不属于当前用户时返回 404", async () => {
+    (currentUserId as unknown as Mock).mockResolvedValue("user_123");
+    (loadResumeSourceForRun as unknown as Mock).mockResolvedValue(null);
+
+    const response = await POST(runRequest(withModel(validRunInput())));
+
+    expect(response.status).toBe(404);
+    expect(startRun).not.toHaveBeenCalled();
+  });
+
+  it("在 Next.js Run 上执行，并把事件翻译成 AG-UI 流", async () => {
+    (currentUserId as unknown as Mock).mockResolvedValue("user_123");
+    (createProviderStreamer as unknown as Mock).mockReturnValue({
+      ok: true,
+      streamModel: vi.fn(),
+    });
+    (loadResumeSourceForRun as unknown as Mock).mockResolvedValue({
+      revision: 3,
+      content: { sectionOrder: [] },
+      title: "前端工程师",
+      templateId: "professional",
+    });
+    (startRun as unknown as Mock).mockResolvedValue({ status: "created", runId: "db-run" });
+    (acquireLease as unknown as Mock).mockResolvedValue({
+      status: "acquired",
+      fenceToken: 7,
+      leaseExpiresAt: new Date("2026-09-28T00:00:00.000Z"),
+    });
+    (streamRunAttempt as unknown as Mock).mockReturnValue(
+      new Response(
+        `data: ${JSON.stringify({
+          schemaVersion: 1,
+          eventId: "e1",
+          runId: "db-run",
+          attemptId: "a1",
+          sequence: 1,
+          type: "text.delta",
+          occurredAt: "2026-09-28T00:00:00.000Z",
+          payload: { text: "已检查" },
+        })}\n\n`,
+        { headers: { "content-type": "text/event-stream" } },
+      ),
+    );
+
+    const response = await POST(runRequest(withModel(validRunInput())));
+    const body = await response.text();
 
     expect(response.status).toBe(200);
-    expect(db.query.resumes.findFirst).not.toHaveBeenCalled();
-    expect(signAgentToken).toHaveBeenCalledWith({
-      userId: "user_123",
-      scope: "agent:chat",
-    });
-    expect(body.request).toEqual(
+    expect(response.headers.get("content-type")).toContain("text/event-stream");
+    expect(body).toContain('"type":"RUN_STARTED"');
+    expect(body).toContain('"delta":"已检查"');
+    expect(body).not.toContain("streamUrl");
+    expect(body).not.toContain("api.rory-x.me");
+    expect(startRun).toHaveBeenCalledWith(
       expect.objectContaining({
-        resumeId: null,
-        mode: "create_from_zero",
-        workflowId: "create-from-zero",
-        context: null,
-        sessionContext: expect.objectContaining({
-          sessionId: expect.stringMatching(
-            /^agent_session_create_from_zero_[0-9a-f]{16}_thread_a$/,
-          ),
-          threadId: "thread_a",
-          resumeId: null,
-          mode: "create_from_zero",
-          workflowId: "create-from-zero",
-          resumeTitle: "从 0 创建简历",
-        }),
+        resumeId: "resume_abc",
+        userId: "user_123",
+        writeMode: "direct",
+        requestId: "run_1",
+      }),
+    );
+    expect(streamRunAttempt).toHaveBeenCalledWith(
+      expect.objectContaining({
+        resumeId: "resume_abc",
+        message: "请诊断这份简历",
+        writeMode: "direct",
+        fenceToken: 7,
       }),
     );
   });
-
-  it("rejects direct runs for resumes the current user does not own", async () => {
-    (currentUserId as unknown as Mock).mockResolvedValue("user_123");
-    (db.query.resumes.findFirst as unknown as Mock).mockResolvedValue(null);
-
-    const response = await POST(runRequest(validRunInput()));
-
-    expect(response.status).toBe(404);
-    expect(signAgentToken).not.toHaveBeenCalled();
-    await expect(response.json()).resolves.toEqual({ error: "简历不存在" });
-  });
 });
+
+function withModel(input: ReturnType<typeof validRunInput>) {
+  return {
+    ...input,
+    forwardedProps: {
+      introBuilder: {
+        ...input.forwardedProps.introBuilder,
+        modelConfig: {
+          baseUrl: "https://api.example.com/v1",
+          apiKey: "sk-test",
+          modelName: "m",
+        },
+      },
+    },
+  };
+}
 
 function runRequest(body: unknown): Request {
   return new Request("https://intro.test/api/agent/direct-runs", {
     method: "POST",
-    headers: {
-      "content-type": "application/json",
-      accept: "application/json",
-    },
+    headers: { "content-type": "application/json" },
     body: JSON.stringify(body),
   });
 }
@@ -195,9 +174,7 @@ function validRunInput() {
           activeSection: null,
           completeness: {
             overall: 80,
-            sections: [
-              { key: "experience", label: "工作经历", score: 18, max: 25 },
-            ],
+            sections: [{ key: "experience", label: "工作经历", score: 18, max: 25 }],
           },
           sections: [
             {

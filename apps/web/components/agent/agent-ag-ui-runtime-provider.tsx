@@ -31,7 +31,8 @@ import {
   type AgUiAgentQuestion,
 } from "@/lib/agent/ag-ui-stream";
 import { isAutoApplicableOperation } from "@/lib/agent/apply-operation";
-import { fetchDirectAgentRunStream } from "@/lib/agent/direct-run-client";
+import { openPanelRunStream } from "@/lib/agent/direct-run-client";
+import { readMutationCommitted } from "@/lib/ai/ag-ui-from-run";
 import type {
   AgentResumeContext,
   AgentResumeSessionMode,
@@ -54,11 +55,12 @@ type IntroBuilderForwardedProps =
       threadId?: string;
     }
   | {
-      resumeId: null;
+      resumeId: string | null;
       mode: "create_from_zero";
       locale: "zh-CN";
       workflowId: "create-from-zero";
-      context: null;
+      context: AgentResumeContext | null;
+      threadId?: string;
     };
 
 type RunParameters = Parameters<HttpAgent["runAgent"]>[0];
@@ -80,6 +82,11 @@ export type AgentAgUiRuntimeProviderProps = {
   autoAccept?: boolean;
   onOperationApplied?: (operation: ResumeOperation) => void;
   onQuestion?: (question: AgUiAgentQuestion) => void;
+  onServerCommit?: (receipt: {
+    mutationId: string;
+    revision: number;
+    changeSetId: string | null;
+  }) => void | Promise<void>;
 };
 
 export type AgentAgUiInterrupt = {
@@ -129,6 +136,7 @@ export function AgentAgUiRuntimeProvider({
   autoAccept = false,
   onOperationApplied,
   onQuestion,
+  onServerCommit,
 }: AgentAgUiRuntimeProviderProps) {
   const agent = useMemo(
     () =>
@@ -146,6 +154,7 @@ export function AgentAgUiRuntimeProvider({
         autoAccept,
         onOperationApplied,
         onQuestion,
+        onServerCommit,
       }),
     [
       getIntroBuilderForwardedProps,
@@ -160,6 +169,7 @@ export function AgentAgUiRuntimeProvider({
       autoAccept,
       onOperationApplied,
       onQuestion,
+      onServerCommit,
     ],
   );
   const runtime = useAgUiRuntime({
@@ -207,6 +217,7 @@ class IntroBuilderHttpAgent extends HttpAgent {
     autoAccept = false,
     onOperationApplied,
     onQuestion,
+    onServerCommit,
   }: {
     url: string;
     getIntroBuilderForwardedProps: (
@@ -223,9 +234,14 @@ class IntroBuilderHttpAgent extends HttpAgent {
     autoAccept?: boolean;
     onOperationApplied?: (operation: ResumeOperation) => void;
     onQuestion?: (question: AgUiAgentQuestion) => void;
+    onServerCommit?: (receipt: {
+      mutationId: string;
+      revision: number;
+      changeSetId: string | null;
+    }) => void | Promise<void>;
   }) {
     const observeFetch: HttpAgentFetchFn = async (requestUrl, requestInit) => {
-      const response = await fetchDirectAgentRunStream({
+      const response = await openPanelRunStream({
         requestUrl,
         requestInit,
       }).catch((error) => {
@@ -244,6 +260,7 @@ class IntroBuilderHttpAgent extends HttpAgent {
         autoAccept,
         onOperationApplied,
         onQuestion,
+        onServerCommit,
       });
       return response;
     };
@@ -311,6 +328,7 @@ async function observeAgUiResponse(
     autoAccept = false,
     onOperationApplied,
     onQuestion,
+    onServerCommit,
   }: {
     onTextDelta: () => void;
     onError: (message: string) => void;
@@ -321,6 +339,11 @@ async function observeAgUiResponse(
     autoAccept?: boolean;
     onOperationApplied?: (operation: ResumeOperation) => void;
     onQuestion?: (question: AgUiAgentQuestion) => void;
+    onServerCommit?: (receipt: {
+      mutationId: string;
+      revision: number;
+      changeSetId: string | null;
+    }) => void | Promise<void>;
   },
 ) {
   if (!response.ok) {
@@ -366,6 +389,15 @@ async function observeAgUiResponse(
       const question = extractAgUiQuestion(event);
       if (question && onQuestion) {
         onQuestion(question);
+      }
+
+      const committed = readMutationCommitted(event);
+      if (committed && onServerCommit) {
+        try {
+          await onServerCommit(committed);
+        } catch {
+          onError("助手已保存，但编辑器没能同步，请刷新页面");
+        }
       }
     }
   } catch (error) {

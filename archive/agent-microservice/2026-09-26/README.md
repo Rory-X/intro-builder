@@ -5,18 +5,19 @@
 | 项 | 状态 |
 |---|---|
 | 源码 / 测试 / 部署配置移入 `source/` | **已完成** |
-| 旧版 Web 桥接（AG-UI panel/runtime、JWT/token、直连 client） | **已完成** |
+| 旧版 Web 桥接（`client.ts`、会话存储、选择器） | **已完成** |
 | 现役 lockfile 移除 agent importer | **已完成** |
 | CI 部署闸门不再触发 agent | **已完成** |
-| 仍有 5 个桥接文件留在现役（见下「尚未移入」） | 待「删除 panel 形态」那一步 |
-| 线上容器退役 | **未做**（P08，需人工确认） |
+| 仍有 5 个 panel 文件留在现役（见下） | **留下**：界面保留，不按删除 panel 归档 |
+| 线上容器退役 | **未做**（P08，需生产证据） |
 
-## 尚未移入的 5 个文件
+## 留在现役的 5 个文件
 
-它们**仍属现役**：显式配 `AGENT_ASSISTANT_SURFACE=panel` 时，
+2026-09-28 起，panel 界面保留，执行改到 Next.js 统一 Run。
+显式配 `AGENT_ASSISTANT_SURFACE=panel` 时，
 `AgentPanel` → `agent-ag-ui-runtime-provider` → `/api/agent/direct-runs`
-（签发 JWT）这条路径仍可达。因此归档它们属「删除 panel 形态」，
-不是任务 4。
+仍可达，但这条路由**不再签发 JWT**，也不再把流指向本归档里的独立服务。
+因此这五个文件继续留在现役，不移进本目录。
 
 - `apps/web/components/agent/agent-panel.tsx`
 - `apps/web/components/agent/agent-ag-ui-runtime-provider.tsx`
