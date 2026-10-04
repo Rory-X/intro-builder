@@ -22,7 +22,7 @@
   },
   "devDependencies": {
     "next": "16.2.4",
-    "tsx": "^4.22.3",
+    "tsx": "^4.23.15",
     "typescript": "^5.9.3"
   }
 }
