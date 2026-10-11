@@ -23,8 +23,8 @@ This version has breaking changes — APIs, conventions, and file structure may 
   直接在真实编辑器中介绍编辑、预览、排版安全、AI 辅助与 Agent，不再建设独立
   的三步创建页。后续产品切片需另行筛选，不与依赖 major 升级混做。
 - **远端事实**：当前工作区的 `origin` 指向
-  `https://github.com/Rory-X/intro-builder.git`，是项目真实远端；`zoo` 指向
-  `ZOO-AiiiPM/intro-builder-zoo.git`。用户说“远端 / 最新 / pull / PR”时，默认
+  `https://github.com/Rory-X/intro-builder.git`，是项目真实远端；历史 fork 是
+  `ZOO-AiiiPM/intro-builder-zoo.git`，但不要假设本地已配置 `zoo`。用户说“远端 / 最新 / pull / PR”时，默认
   查 `Rory-X/intro-builder`、`origin/main` 和该仓库的 PR ref。不要假设存在
   `upstream` remote；先用 `git remote -v` 核对。
 - **对 Agent 的预期**：交付小而可验证的切片。任何非平凡改动都必须走第 4 节
@@ -35,9 +35,9 @@ This version has breaking changes — APIs, conventions, and file structure may 
 
 | 维度 | 选型 | 备注 |
 |---|---|---|
-| 框架 | Next.js **16.2** App Router | 见文件顶部红字。`middleware.ts` 现在叫 `proxy.ts`。 |
-| 运行时 | React **19.2**，CI 使用 Node **22**、pnpm **10** | pnpm workspace 覆盖根、两个 app 与共享 packages（已退役的旧服务在 `archive/`，不是成员）。 |
-| 鉴权 | Auth.js v5 + Resend 魔法链接 | `lib/auth.ts`；14 天数据库会话。 |
+| 框架 | Next.js **16.3.8** App Router | `eslint-config-next` 同版本。见文件顶部红字。`middleware.ts` 现在叫 `proxy.ts`。 |
+| 运行时 | React / React DOM **19.3.0**，CI 使用 Node **22**、pnpm **10** | pnpm workspace 覆盖根、两个 app 与共享 packages（已退役的旧服务在 `archive/`，不是成员）。 |
+| 鉴权 | Auth.js v5 + 邮箱验证码 / Resend 魔法链接 | `lib/auth.ts`；14 天 JWT 会话。 |
 | 数据库 | Drizzle ORM + Postgres | `db/schema.ts`。`*.neon.tech` 走 Neon HTTP，其它走 `postgres.js` TCP。选择器在 `db/connection.ts`。 |
 | 表单 | React Hook Form + Zod | `packages/shared/src/schemas/resume-schema.ts` 是简历内容的唯一契约。 |
 | 富文本 | TipTap v3 + 扩展 | 存储是 TipTap JSON；只读渲染在 `components/preview/rich-text-renderer.tsx`；Agent 润色要走 JSON ↔ HTML 的既有转换工具。 |
@@ -217,8 +217,9 @@ PoC 标准：
 
 ## 5. Skill 索引（按需读取）
 
-**本仓库 vendored 的 skill**：`.agents/skills/frontend-design/SKILL.md`
-（做 UI 设计时读）。`template-studio-skill/SKILL.md` 是把参考简历转成
+**本仓库的 skill**：当前 checkout 不含历史上提到的
+`.agents/skills/frontend-design/SKILL.md`，做 UI 时先核实运行环境提供的设计 skill，
+不要伪造路径。`template-studio-skill/SKILL.md` 是把参考简历转成
 schema-v2 模板的产出工具。
 
 **`.cursor/rules/*.mdc` 已废弃**：那 4 份领域规则（DB 演进、Server Action 鉴权、
@@ -234,8 +235,8 @@ schema-v2 模板的产出工具。
 ## 6. 完成定义（Definition of Done）
 
 声称完成或开 PR 之前，本地必须全绿。CI（`.github/workflows/ci.yml`）跑
-lint、typecheck、unit tests、**以及决策笔记门禁**；本地还要跑生产构建，
-因为构建能捕获 RSC / 路由错误（CI 目前不跑 build）。加上
+lint、typecheck、unit tests、生产构建，另有笔记 workflow 跑**决策笔记门禁**；
+本地也要跑生产构建，因为构建能捕获 RSC / 路由错误。加上
 `.github/workflows/deploy-partykit.yml` 的协同服务部署闸门。
 本地通过是**必要条件，不是充分条件**。
 
@@ -251,10 +252,18 @@ pnpm notes:verify     # 决策笔记门禁（§4.6）
 > script，正确入口是 `pnpm typecheck`。`tsconfig` 的 `exclude` 含 `tests`，**测试文件不参与
 > 类型检查**，测试里的类型错误只能靠 Vitest 运行时暴露。
 
+> **跨平台过滤器**：根 dev / build 用双引号包住 `./apps/*`，并加
+> `--fail-if-no-match`。Windows 的 cmd 不识别单引号；旧脚本曾报告
+> `No projects matched` 却退出 0，不能把它记作构建通过。
+
 > **运行时版本**：CI 用 **Node 22 + pnpm 10**。更新的本地 Node（如 26）曾让
 > `localStorage` 与 `req.formData()` 在 jsdom 下失效，产生过上百个假失败——
 > 已在 `apps/web/tests/setup.ts` 里做了运行时对齐。若你仍遇到成片的
 > 「本地红、CI 绿」，先用 `node -v` 对照 CI 版本，**不要**急着去改业务代码。
+> 当前 jsdom 要求 Node 22 **至少 22.13.0**，22.6 也不满足要求。
+> Windows 完整历史下的归档测试会逐项启动 Git，可用
+> `pnpm test --maxWorkers=4 --testTimeout=30000` 跑完整套测试；测试与构建串行，
+> 不修改 CI 默认时限，也不跳过归档校验。
 
 任何 UI / 数据流改动还要补一次手工冒烟：
 
