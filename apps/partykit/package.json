@@ -12,10 +12,10 @@
   },
   "dependencies": {
     "@intro-builder/shared": "workspace:*",
-    "jose": "^6.0.11",
-    "partykit": "^0.0.111",
-    "partysocket": "^1.0.2",
-    "y-partykit": "^0.0.25"
+    "jose": "^6.2.12",
+    "partykit": "^0.0.115",
+    "partysocket": "^1.3.0",
+    "y-partykit": "^0.0.33"
   },
   "devDependencies": {
     "@types/node": "^20.19.39",
