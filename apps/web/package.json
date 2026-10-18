@@ -19,7 +19,7 @@
     "@ag-ui/client": "0.0.56",
     "@ag-ui/core": "0.0.56",
     "@ag-ui/encoder": "0.0.56",
-    "@ai-sdk/openai-compatible": "2.0.50",
+    "@ai-sdk/openai-compatible": "3.0.70",
     "@assistant-ui/react": "^0.14.15",
     "@assistant-ui/react-ag-ui": "0.0.36",
     "@assistant-ui/react-markdown": "0.14.2",
