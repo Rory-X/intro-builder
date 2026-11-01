@@ -21,7 +21,7 @@
     "dev:ensure-user": "tsx scripts/dev/ensure-dev-user.ts"
   },
   "devDependencies": {
-    "next": "16.3.8",
+    "next": "16.4.3",
     "tsx": "^4.23.15",
     "typescript": "^5.9.3"
   }
